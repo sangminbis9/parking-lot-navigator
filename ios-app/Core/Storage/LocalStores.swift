@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 final class DestinationStore: ObservableObject {
     @Published private(set) var recents: [Destination] = []

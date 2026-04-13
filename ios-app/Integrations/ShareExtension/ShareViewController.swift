@@ -30,11 +30,11 @@ final class ShareViewController: UIViewController {
 
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
-               let value = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) {
+               let value = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) {
                 return (value as? URL)?.absoluteString
             }
             if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-               let value = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
+               let value = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) {
                 return value as? String
             }
         }
@@ -47,7 +47,7 @@ final class ShareViewController: UIViewController {
         components.host = "search"
         components.queryItems = [URLQueryItem(name: "q", value: query)]
         guard let url = components.url else { return }
-        extensionContext?.open(url)
+        extensionContext?.open(url, completionHandler: nil)
     }
 }
 

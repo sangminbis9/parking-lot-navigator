@@ -54,6 +54,7 @@ targets:
     platform: iOS
     sources:
       - Integrations/ShareExtension
+      - Core/Models
       - Core/Storage
       - Integrations/DeepLinks
     configFiles:
