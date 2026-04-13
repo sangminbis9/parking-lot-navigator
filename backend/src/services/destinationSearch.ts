@@ -1,5 +1,6 @@
 import type { DestinationCandidate } from "@parking/shared-types";
 import { config } from "../config/env.js";
+import { logger } from "../logging/logger.js";
 
 export async function searchDestination(query: string): Promise<DestinationCandidate[]> {
   if (!config.KAKAO_REST_API_KEY || config.PARKING_PROVIDER_MODE === "mock") {
@@ -17,7 +18,9 @@ export async function searchDestination(query: string): Promise<DestinationCandi
   });
 
   if (!response.ok) {
-    throw new Error(`Kakao Local API 호출 실패: ${response.status}`);
+    const errorText = await response.text();
+    logger.warn({ status: response.status, errorText }, "Kakao Local API 호출 실패, mock 목적지로 fallback합니다.");
+    return mockDestinations(query);
   }
 
   const body = (await response.json()) as {

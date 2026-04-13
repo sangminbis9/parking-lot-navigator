@@ -15,8 +15,15 @@ export function normalizeParkingRecord(
   destinationLng: number,
   staleThresholdSeconds: number
 ): ParkingLot {
-  const totalCapacity = raw.totalCapacity ?? null;
+  if (raw.lat === null || raw.lat === undefined || raw.lng === null || raw.lng === undefined) {
+    throw new Error(`좌표가 없는 주차장은 정규화할 수 없습니다: ${raw.source}:${raw.sourceParkingId}`);
+  }
   const availableSpaces = raw.availableSpaces ?? null;
+  const rawTotalCapacity = raw.totalCapacity ?? null;
+  const totalCapacity =
+    rawTotalCapacity !== null && availableSpaces !== null && availableSpaces > rawTotalCapacity
+      ? null
+      : rawTotalCapacity;
   const occupancyRate =
     totalCapacity !== null && totalCapacity > 0 && availableSpaces !== null
       ? Math.max(0, Math.min(1, 1 - availableSpaces / totalCapacity))

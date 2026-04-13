@@ -5,8 +5,8 @@ export interface RawParkingRecord {
   sourceParkingId: string;
   name: string;
   address?: string | null;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   totalCapacity?: number | null;
   availableSpaces?: number | null;
   congestionStatus?: ParkingLot["congestionStatus"] | null;

@@ -17,13 +17,103 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
     }
 
     try {
-      // TODO(실연동): 서울 열린데이터광장 시영주차장 실시간 주차대수 API URL과 응답 필드를 확정해 매핑합니다.
-      // 현재는 인증키와 endpoint wiring을 검증할 수 있도록 빈 배열을 반환합니다.
-      this.markSuccess(0.65);
-      return [];
+      const body = await fetchSeoulJson<SeoulRealtimeResponse>(
+        this.config,
+        "GetParkingInfo",
+        1,
+        1000
+      );
+      const rows = body.GetParkingInfo?.row ?? [];
+      this.markSuccess(rows.length > 0 ? 0.82 : 0.35);
+      return rows.map(mapRealtimeRow).filter((item): item is RawParkingRecord => item !== null);
     } catch (error) {
       this.markFailure(error);
       return [];
     }
   }
+}
+
+interface SeoulRealtimeResponse {
+  GetParkingInfo?: {
+    row?: SeoulRealtimeRow[];
+  };
+}
+
+interface SeoulRealtimeRow {
+  PKLT_CD?: string;
+  PKLT_NM?: string;
+  ADDR?: string;
+  TPKCT?: number;
+  NOW_PRK_VHCL_CNT?: number;
+  NOW_PRK_VHCL_UPDT_TM?: string;
+  PRK_STTS_YN?: string;
+  PRK_STTS_NM?: string;
+  WD_OPER_BGNG_TM?: string;
+  WD_OPER_END_TM?: string;
+  BSC_PRK_CRG?: number;
+  BSC_PRK_HR?: number;
+  ADD_PRK_CRG?: number;
+  ADD_PRK_HR?: number;
+  PAY_YN_NM?: string;
+}
+
+function mapRealtimeRow(row: SeoulRealtimeRow): RawParkingRecord | null {
+  if (!row.PKLT_CD || !row.PKLT_NM) return null;
+  const totalCapacity = toNumber(row.TPKCT);
+  const currentVehicles = toNumber(row.NOW_PRK_VHCL_CNT);
+  const availableSpaces =
+    totalCapacity !== null && currentVehicles !== null ? Math.max(0, totalCapacity - currentVehicles) : null;
+  return {
+    source: "seoul-realtime",
+    sourceParkingId: row.PKLT_CD,
+    name: row.PKLT_NM,
+    address: row.ADDR ?? null,
+    totalCapacity,
+    availableSpaces,
+    realtimeAvailable: row.PRK_STTS_YN === "1" || availableSpaces !== null,
+    freshnessTimestamp: parseSeoulDate(row.NOW_PRK_VHCL_UPDT_TM),
+    operatingHours: formatHours(row.WD_OPER_BGNG_TM, row.WD_OPER_END_TM),
+    feeSummary: formatFee(row.BSC_PRK_CRG, row.BSC_PRK_HR, row.ADD_PRK_CRG, row.ADD_PRK_HR, row.PAY_YN_NM),
+    supportsEv: false,
+    supportsAccessible: false,
+    isPublic: true,
+    isPrivate: false,
+    rawSourcePayload: row
+  };
+}
+
+async function fetchSeoulJson<T>(
+  config: AppConfig,
+  service: string,
+  start: number,
+  end: number
+): Promise<T> {
+  const url = `${config.SEOUL_OPEN_DATA_BASE_URL}/${config.SEOUL_OPEN_DATA_KEY}/json/${service}/${start}/${end}/`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`서울 열린데이터광장 호출 실패: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+function toNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function parseSeoulDate(value?: string): string | null {
+  if (!value) return null;
+  const normalized = value.replace(" ", "T") + "+09:00";
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function formatHours(start?: string, end?: string): string | null {
+  if (!start || !end) return null;
+  return `${start.slice(0, 2)}:${start.slice(2)}-${end.slice(0, 2)}:${end.slice(2)}`;
+}
+
+function formatFee(base?: number, baseMinutes?: number, add?: number, addMinutes?: number, payName?: string): string | null {
+  if (payName?.includes("무료")) return "무료";
+  if (!base || !baseMinutes) return payName ?? null;
+  const addText = add && addMinutes ? `, 추가 ${addMinutes}분 ${add.toLocaleString("ko-KR")}원` : "";
+  return `기본 ${baseMinutes}분 ${base.toLocaleString("ko-KR")}원${addText}`;
 }
