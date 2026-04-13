@@ -1,6 +1,5 @@
 API_BASE_URL = http:/$()/localhost:4000
 APP_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator
-APP_INTENTS_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator.Intents
 SHARE_EXTENSION_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator.ShareExtension
 APP_GROUP_ID = group.com.example.ParkingLotNavigator
 KAKAO_NATIVE_APP_KEY = 개발용_Kakao_Native_App_Key

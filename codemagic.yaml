@@ -24,7 +24,6 @@ workflows:
         XCODE_SCHEME: ParkingLotNavigator
         API_BASE_URL: https://api.example.com
         APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
-        APP_INTENTS_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.Intents
         SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
         APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
         KAKAO_NATIVE_APP_KEY: Codemagic_환경변수에서_교체
@@ -41,7 +40,6 @@ workflows:
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
-          APP_INTENTS_BUNDLE_ID = $APP_INTENTS_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID
           KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
@@ -82,7 +80,6 @@ workflows:
         XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
         XCODE_SCHEME: ParkingLotNavigator
         APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
-        APP_INTENTS_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.Intents
         SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
         APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
         NAVIGATION_PROVIDER: mock
@@ -98,7 +95,6 @@ workflows:
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
-          APP_INTENTS_BUNDLE_ID = $APP_INTENTS_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID
           KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY

@@ -38,11 +38,10 @@ App Store Connect API Key를 Codemagic integration으로 쓰는 경우에는 Cod
 Apple Developer 승인이 완료되면 아래 App ID를 만듭니다.
 
 - 앱: `com.sangminbis9.ParkingLotNavigator`
-- App Intents extension: `com.sangminbis9.ParkingLotNavigator.Intents`
 - Share Extension: `com.sangminbis9.ParkingLotNavigator.ShareExtension`
 - App Group: `group.com.sangminbis9.ParkingLotNavigator`
 
-앱과 extension target 모두 같은 App Group entitlement를 사용할 수 있게 설정합니다.
+App Intents는 첫 빌드 안정성을 위해 메인 앱 target에 포함합니다. Share Extension target은 같은 App Group entitlement를 사용할 수 있게 설정합니다.
 
 ## 5. TestFlight workflow
 

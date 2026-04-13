@@ -5,8 +5,8 @@ struct ParkingAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: FindParkingNearDestinationIntent(),
             phrases: [
-                "\(.applicationName)에서 목적지 주변 주차 찾아줘",
-                "\(.applicationName)로 주차장 찾아줘"
+                "\(.applicationName) 주차 찾기",
+                "\(.applicationName) 목적지 주차"
             ],
             shortTitle: "주차 찾기",
             systemImageName: "parkingsign"
@@ -15,8 +15,8 @@ struct ParkingAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: NavigateRecentDestinationIntent(),
             phrases: [
-                "\(.applicationName)에서 최근 목적지로 길안내",
-                "\(.applicationName)로 최근 목적지 안내해줘"
+                "\(.applicationName) 최근 목적지",
+                "\(.applicationName) 최근 길안내"
             ],
             shortTitle: "최근 목적지 안내",
             systemImageName: "location.north"
