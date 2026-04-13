@@ -1,0 +1,123 @@
+workflows:
+  backend-ci:
+    name: 백엔드 CI
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    scripts:
+      - name: Node 의존성 설치
+        script: npm install
+      - name: 백엔드 타입 빌드
+        script: npm.cmd run build --workspace backend || npm run build --workspace backend
+      - name: 백엔드 테스트
+        script: npm.cmd run test --workspace backend || npm run test --workspace backend
+    artifacts:
+      - backend/dist/**
+
+  ios-simulator-build:
+    name: iOS 시뮬레이터 빌드
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
+        XCODE_SCHEME: ParkingLotNavigator
+        API_BASE_URL: https://api.example.com
+        APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
+        APP_INTENTS_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.Intents
+        SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
+        APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
+        KAKAO_NATIVE_APP_KEY: Codemagic_환경변수에서_교체
+        NAVIGATION_PROVIDER: mock
+    scripts:
+      - name: Node 의존성 설치
+        script: npm install
+      - name: 백엔드 테스트
+        script: npm run test --workspace backend
+      - name: XcodeGen 설치
+        script: brew install xcodegen
+      - name: iOS 설정 파일 생성
+        script: |
+          cat > ios-app/Config/Debug.xcconfig <<EOF
+          API_BASE_URL = $API_BASE_URL
+          APP_BUNDLE_ID = $APP_BUNDLE_ID
+          APP_INTENTS_BUNDLE_ID = $APP_INTENTS_BUNDLE_ID
+          SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
+          APP_GROUP_ID = $APP_GROUP_ID
+          KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
+          NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          EOF
+          cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
+      - name: Xcode 프로젝트 생성
+        script: |
+          cd ios-app
+          xcodegen generate
+      - name: 시뮬레이터 빌드
+        script: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+    artifacts:
+      - ~/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
+
+  ios-testflight:
+    name: iOS TestFlight 업로드
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: codemagic_app_store_connect
+    environment:
+      groups:
+        - appstore_credentials
+        - ios_runtime_config
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.sangminbis9.ParkingLotNavigator
+      vars:
+        XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
+        XCODE_SCHEME: ParkingLotNavigator
+        APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
+        APP_INTENTS_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.Intents
+        SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
+        APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
+        NAVIGATION_PROVIDER: mock
+    scripts:
+      - name: Node 의존성 설치
+        script: npm install
+      - name: 백엔드 테스트
+        script: npm run test --workspace backend
+      - name: XcodeGen 설치
+        script: brew install xcodegen
+      - name: iOS Release 설정 파일 생성
+        script: |
+          cat > ios-app/Config/Debug.xcconfig <<EOF
+          API_BASE_URL = $API_BASE_URL
+          APP_BUNDLE_ID = $APP_BUNDLE_ID
+          APP_INTENTS_BUNDLE_ID = $APP_INTENTS_BUNDLE_ID
+          SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
+          APP_GROUP_ID = $APP_GROUP_ID
+          KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
+          NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          EOF
+          cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
+      - name: Xcode 프로젝트 생성
+        script: |
+          cd ios-app
+          xcodegen generate
+      - name: 코드 서명 프로파일 적용
+        script: xcode-project use-profiles --custom-export-options='{"testFlightInternalTestingOnly": true}'
+      - name: IPA 빌드
+        script: xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - ~/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false

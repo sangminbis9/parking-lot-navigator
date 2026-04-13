@@ -26,7 +26,7 @@ targets:
       Release: Config/Release.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
         INFOPLIST_FILE: Resources/AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Integrations/NavigationBridge/ParkingLotNavigator-Bridging-Header.h
@@ -46,7 +46,7 @@ targets:
       Release: Config/Release.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator.Intents
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_INTENTS_BUNDLE_ID)
         INFOPLIST_FILE: Resources/IntentsInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
   ParkingShareExtension:
@@ -61,7 +61,7 @@ targets:
       Release: Config/Release.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator.ShareExtension
+        PRODUCT_BUNDLE_IDENTIFIER: $(SHARE_EXTENSION_BUNDLE_ID)
         INFOPLIST_FILE: Resources/ShareExtensionInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES

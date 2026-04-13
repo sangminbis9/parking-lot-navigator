@@ -52,6 +52,8 @@ pnpm --filter @parking/backend release:check
 5. `cd ios-app && xcodegen generate`
 6. Xcode에서 `ParkingLotNavigator.xcodeproj`를 열고 실행합니다.
 
+Mac이 없다면 Codemagic으로 빌드합니다. 자세한 절차는 `docs/release/codemagic-guide.md`를 확인하세요.
+
 ## 실제 API 연결 방법
 
 - 백엔드 `.env`에 `KAKAO_REST_API_KEY`, `SEOUL_OPEN_DATA_KEY`, `PUBLIC_DATA_SERVICE_KEY`를 넣습니다.
