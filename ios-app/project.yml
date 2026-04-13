@@ -10,6 +10,8 @@ settings:
   base:
     SWIFT_VERSION: 5.9
     DEVELOPMENT_TEAM: DEVELOPMENT_TEAM_PLACEHOLDER
+    APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
+    INFOPLIST_OUTPUT_FORMAT: XML
 targets:
   ParkingLotNavigator:
     type: application
@@ -21,7 +23,10 @@ targets:
       - Integrations/AppIntents
       - Integrations/NavigationBridge
       - Integrations/DeepLinks
-      - Resources
+      - path: Resources
+        excludes:
+          - IntentsInfo.plist
+          - ShareExtensionInfo.plist
     configFiles:
       Debug: Config/Debug.xcconfig
       Release: Config/Release.xcconfig
@@ -31,6 +36,8 @@ targets:
         INFOPLIST_FILE: Resources/AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Integrations/NavigationBridge/ParkingLotNavigator-Bridging-Header.h
+        APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
+        INFOPLIST_OUTPUT_FORMAT: XML
     dependencies:
       - target: ParkingShareExtension
   ParkingShareExtension:
@@ -50,6 +57,8 @@ targets:
         INFOPLIST_FILE: Resources/ShareExtensionInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
+        APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
+        INFOPLIST_OUTPUT_FORMAT: XML
   ParkingLotNavigatorTests:
     type: bundle.unit-test
     platform: iOS

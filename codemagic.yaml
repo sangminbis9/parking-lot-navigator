@@ -58,6 +58,8 @@ workflows:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
+            APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
+            INFOPLIST_OUTPUT_FORMAT=XML \
             build
     artifacts:
       - ~/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
