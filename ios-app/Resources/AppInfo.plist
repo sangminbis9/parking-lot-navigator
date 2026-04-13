@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>서울 주차 내비</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>parkingnavigator</string>
+      </array>
+    </dict>
+  </array>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>선택한 주차장까지 인앱 길안내를 제공하기 위해 현재 위치가 필요합니다.</string>
+  <key>API_BASE_URL</key>
+  <string>$(API_BASE_URL)</string>
+  <key>APP_GROUP_ID</key>
+  <string>$(APP_GROUP_ID)</string>
+  <key>KAKAO_NATIVE_APP_KEY</key>
+  <string>$(KAKAO_NATIVE_APP_KEY)</string>
+  <key>NAVIGATION_PROVIDER</key>
+  <string>$(NAVIGATION_PROVIDER)</string>
+</dict>
+</plist>

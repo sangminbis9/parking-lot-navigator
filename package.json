@@ -1,0 +1,17 @@
+{
+  "name": "parking-lot-navigator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "서울 목적지 주변 주차 추천, 실시간 주차 정보, 인앱 내비게이션 실서비스 후보",
+  "workspaces": [
+    "backend",
+    "shared-types"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter @parking/backend dev",
+    "test": "pnpm --filter @parking/backend test",
+    "preflight": "pnpm --filter @parking/backend preflight",
+    "release:check": "pnpm --filter @parking/backend release:check"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

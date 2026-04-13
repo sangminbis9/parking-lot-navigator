@@ -1,0 +1,74 @@
+name: ParkingLotNavigator
+options:
+  minimumXcodeGenVersion: 2.42.0
+  deploymentTarget:
+    iOS: "16.0"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+    DEVELOPMENT_TEAM: DEVELOPMENT_TEAM_PLACEHOLDER
+targets:
+  ParkingLotNavigator:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Core
+      - Features
+      - Integrations/NavigationBridge
+      - Integrations/DeepLinks
+      - Resources
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator
+        INFOPLIST_FILE: Resources/AppInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: Integrations/NavigationBridge/ParkingLotNavigator-Bridging-Header.h
+    dependencies:
+      - target: ParkingLotNavigatorIntents
+      - target: ParkingShareExtension
+  ParkingLotNavigatorIntents:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Integrations/AppIntents
+      - Core/Models
+      - Core/Storage
+      - Integrations/DeepLinks
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator.Intents
+        INFOPLIST_FILE: Resources/IntentsInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
+  ParkingShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Integrations/ShareExtension
+      - Core/Storage
+      - Integrations/DeepLinks
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ParkingLotNavigator.ShareExtension
+        INFOPLIST_FILE: Resources/ShareExtensionInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+  ParkingLotNavigatorTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: ParkingLotNavigator
