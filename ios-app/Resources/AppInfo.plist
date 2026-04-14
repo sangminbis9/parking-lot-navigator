@@ -4,6 +4,18 @@
 <dict>
   <key>CFBundleDisplayName</key>
   <string>서울 주차 내비</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key>
+  <string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>UIRequiresFullScreen</key>
+  <true/>
+  <key>UILaunchScreen</key>
+  <dict/>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
