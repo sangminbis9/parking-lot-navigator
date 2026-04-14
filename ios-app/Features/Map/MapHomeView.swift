@@ -9,6 +9,7 @@ struct MapHomeView: View {
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+    @FocusState private var isSearchFocused: Bool
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -17,7 +18,9 @@ struct MapHomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            KakaoParkingMapView(center: mapCenter, pins: pins)
+            KakaoParkingMapView(center: mapCenter, pins: pins) {
+                isSearchFocused = false
+            }
             .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
@@ -77,13 +80,18 @@ struct MapHomeView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("목적지, 주소, 장소명을 입력", text: $viewModel.query)
+                .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
-                .onSubmit { Task { await viewModel.search() } }
+                .onSubmit {
+                    isSearchFocused = false
+                    Task { await viewModel.search() }
+                }
             if viewModel.isSearching {
                 ProgressView()
             } else {
                 Button("검색") {
+                    isSearchFocused = false
                     Task { await viewModel.search() }
                 }
                 .buttonStyle(.borderedProminent)

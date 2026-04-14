@@ -6,18 +6,24 @@ import UIKit
 struct KakaoParkingMapView: UIViewRepresentable {
     let center: CLLocationCoordinate2D
     let pins: [MapPinItem]
+    let onTap: () -> Void
 
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
         view.sizeToFit()
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
         context.coordinator.createController(view)
         context.coordinator.controller?.prepareEngine()
+        context.coordinator.controller?.activateEngine()
         return view
     }
 
     func updateUIView(_ uiView: KMViewContainer, context: Context) {
         context.coordinator.latestCenter = center
         context.coordinator.latestPins = pins
+        context.coordinator.onTap = onTap
         context.coordinator.controller?.activateEngine()
         context.coordinator.render()
     }
@@ -35,13 +41,20 @@ struct KakaoParkingMapView: UIViewRepresentable {
         var controller: KMController?
         var latestCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
         var latestPins: [MapPinItem] = []
+        var onTap: (() -> Void)?
 
         private var mapReady = false
         private var stylesReady = false
+        private var renderedCenter: CLLocationCoordinate2D?
+        private var renderedPinIDs: [String] = []
 
         func createController(_ view: KMViewContainer) {
             controller = KMController(viewContainer: view)
             controller?.delegate = self
+        }
+
+        @objc func handleTap() {
+            onTap?()
         }
 
         @objc func addViews() {
@@ -72,8 +85,20 @@ struct KakaoParkingMapView: UIViewRepresentable {
         func render() {
             guard mapReady, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
             configureLabelsIfNeeded()
-            moveCamera(on: mapView)
-            renderPins(on: mapView)
+            if shouldMoveCamera {
+                moveCamera(on: mapView)
+                renderedCenter = latestCenter
+            }
+            if renderedPinIDs != latestPins.map(\.id) {
+                renderPins(on: mapView)
+                renderedPinIDs = latestPins.map(\.id)
+            }
+        }
+
+        private var shouldMoveCamera: Bool {
+            guard let renderedCenter else { return true }
+            return abs(renderedCenter.latitude - latestCenter.latitude) > 0.000001 ||
+                abs(renderedCenter.longitude - latestCenter.longitude) > 0.000001
         }
 
         private func moveCamera(on mapView: KakaoMap) {
