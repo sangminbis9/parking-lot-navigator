@@ -1,6 +1,5 @@
 import Combine
 import CoreLocation
-import MapKit
 import SwiftUI
 
 struct MapHomeView: View {
@@ -9,10 +8,7 @@ struct MapHomeView: View {
     @EnvironmentObject private var destinationStore: DestinationStore
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
-        span: MKCoordinateSpan(latitudeDelta: 0.018, longitudeDelta: 0.018)
-    )
+    @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -21,11 +17,7 @@ struct MapHomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Map(coordinateRegion: $region, annotationItems: pins) { pin in
-                MapAnnotation(coordinate: pin.coordinate) {
-                    annotationView(for: pin)
-                }
-            }
+            KakaoParkingMapView(center: mapCenter, pins: pins)
             .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
@@ -54,7 +46,7 @@ struct MapHomeView: View {
             locationProvider.request()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
-            moveMap(to: coordinate, span: 0.015)
+            moveMap(to: coordinate)
         }
     }
 
@@ -110,7 +102,7 @@ struct MapHomeView: View {
                 ForEach(viewModel.destinations) { destination in
                     Button {
                         destinationStore.addRecent(destination)
-                        moveMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), span: 0.01)
+                        moveMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng))
                         Task { await viewModel.select(destination) }
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
@@ -146,7 +138,7 @@ struct MapHomeView: View {
             Spacer()
             Button {
                 if let coordinate = locationProvider.coordinate {
-                    moveMap(to: coordinate, span: 0.015)
+                    moveMap(to: coordinate)
                 } else {
                     locationProvider.request()
                 }
@@ -193,7 +185,7 @@ struct MapHomeView: View {
                                     isSelected: viewModel.selectedParkingLot?.id == parkingLot.id,
                                     onSelect: {
                                         viewModel.selectedParkingLot = parkingLot
-                                        moveMap(to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng), span: 0.008)
+                                        moveMap(to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng))
                                     },
                                     onDetail: {
                                         router.showDetail(destination: destination, parkingLot: parkingLot)
@@ -215,46 +207,6 @@ struct MapHomeView: View {
         }
     }
 
-    private func annotationView(for pin: MapPinItem) -> some View {
-        Group {
-            switch pin.kind {
-            case .currentLocation:
-                Circle()
-                    .fill(.blue)
-                    .frame(width: 16, height: 16)
-                    .overlay(Circle().stroke(.white, lineWidth: 3))
-                    .shadow(radius: 4)
-            case .destination:
-                Image(systemName: "flag.circle.fill")
-                    .font(.system(size: 34))
-                    .foregroundStyle(.red)
-                    .background(Circle().fill(.white).frame(width: 22, height: 22))
-                    .shadow(radius: 4)
-            case .parking(let parkingLot):
-                Button {
-                    viewModel.selectedParkingLot = parkingLot
-                    moveMap(to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng), span: 0.008)
-                } label: {
-                    VStack(spacing: 2) {
-                        Text(parkingLot.availableSpaces.map { "\($0)" } ?? "P")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 34, minHeight: 28)
-                            .background(markerColor(for: parkingLot))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Image(systemName: "triangle.fill")
-                            .font(.system(size: 9))
-                            .rotationEffect(.degrees(180))
-                            .foregroundStyle(markerColor(for: parkingLot))
-                            .offset(y: -4)
-                    }
-                }
-                .buttonStyle(.plain)
-                .shadow(radius: 3)
-            }
-        }
-    }
-
     private func inlineError(_ message: String) -> some View {
         Text(message)
             .font(.subheadline)
@@ -265,26 +217,9 @@ struct MapHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func markerColor(for parkingLot: ParkingLot) -> Color {
-        if parkingLot.stale { return .gray }
-        switch parkingLot.congestionStatus {
-        case .available:
-            return .green
-        case .moderate:
-            return .orange
-        case .busy, .full:
-            return .red
-        case .unknown:
-            return .blue
-        }
-    }
-
-    private func moveMap(to coordinate: CLLocationCoordinate2D, span: CLLocationDegrees) {
+    private func moveMap(to coordinate: CLLocationCoordinate2D) {
         withAnimation {
-            region = MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
-            )
+            mapCenter = coordinate
         }
     }
 }
