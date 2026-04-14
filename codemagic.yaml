@@ -37,8 +37,9 @@ workflows:
         script: brew install xcodegen
       - name: iOS 설정 파일 생성
         script: |
+          XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
           cat > ios-app/Config/Debug.xcconfig <<EOF
-          API_BASE_URL = $API_BASE_URL
+          API_BASE_URL = $XCCONFIG_API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID
@@ -95,8 +96,9 @@ workflows:
         script: brew install xcodegen
       - name: iOS Release 설정 파일 생성
         script: |
+          XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
           cat > ios-app/Config/Debug.xcconfig <<EOF
-          API_BASE_URL = $API_BASE_URL
+          API_BASE_URL = $XCCONFIG_API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID
