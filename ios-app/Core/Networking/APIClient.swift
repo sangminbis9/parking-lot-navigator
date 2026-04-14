@@ -16,14 +16,14 @@ final class APIClient: APIClientProtocol {
     }
 
     func searchDestination(query: String) async throws -> [Destination] {
-        var components = URLComponents(url: baseURL.appendingPathComponent("/search/destination"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: endpoint("search/destination"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "q", value: query)]
         let response: DestinationSearchResponse = try await get(components.url!)
         return response.items
     }
 
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
-        var components = URLComponents(url: baseURL.appendingPathComponent("/parking/nearby"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: endpoint("parking/nearby"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
@@ -34,8 +34,12 @@ final class APIClient: APIClientProtocol {
     }
 
     func providerHealth() async throws -> [ProviderHealth] {
-        let response: ProviderHealthResponse = try await get(baseURL.appendingPathComponent("/parking/providers/health"))
+        let response: ProviderHealthResponse = try await get(endpoint("parking/providers/health"))
         return response.providers
+    }
+
+    private func endpoint(_ path: String) -> URL {
+        baseURL.appendingPathComponent(path)
     }
 
     private func get<T: Decodable>(_ url: URL) async throws -> T {

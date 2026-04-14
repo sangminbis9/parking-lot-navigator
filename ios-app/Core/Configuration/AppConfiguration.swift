@@ -8,7 +8,11 @@ struct AppConfiguration {
 
     static var current: AppConfiguration {
         let info = Bundle.main.infoDictionary ?? [:]
-        let apiBase = (info["API_BASE_URL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "http://localhost:4000")!
+        let apiBaseString = (info["API_BASE_URL"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let apiBase = URL(string: apiBaseString).flatMap { url -> URL? in
+            guard url.scheme == "https", url.host != nil else { return nil }
+            return url
+        } ?? URL(string: "https://api.example.com")!
         return AppConfiguration(
             apiBaseURL: apiBase,
             appGroupID: info["APP_GROUP_ID"] as? String ?? "group.com.example.ParkingLotNavigator",
