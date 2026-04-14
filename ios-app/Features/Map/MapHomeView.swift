@@ -265,7 +265,7 @@ private struct ParkingMapCard: View {
                 Button("상세") { onDetail() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                Button("길안내") { onNavigate() }
+                Button("경로 보기") { onNavigate() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }

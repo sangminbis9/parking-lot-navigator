@@ -1,9 +1,17 @@
 import SwiftUI
+import KakaoMapsSDK
 
 @main
 struct ParkingLotNavigatorApp: App {
     @StateObject private var destinationStore = DestinationStore()
     private let apiClient: APIClientProtocol = APIClient()
+
+    init() {
+        let appKey = AppConfiguration.current.kakaoNativeAppKey
+        if !appKey.isEmpty {
+            SDKInitializer.InitSDK(appKey: appKey)
+        }
+    }
 
     var body: some Scene {
         WindowGroup {

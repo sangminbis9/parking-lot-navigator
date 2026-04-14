@@ -1,39 +1,146 @@
 import SwiftUI
+import MapKit
+import UIKit
 
 struct NavigationLaunchView: View {
     let destination: Destination
     let parkingLot: ParkingLot
-    @State private var status = "길안내를 준비하고 있습니다."
-    private let navigationService: NavigationService = NavigationServiceFactory.make()
+    @State private var estimatedDistanceMeters: CLLocationDistance?
+    @State private var estimatedTravelTimeSeconds: TimeInterval?
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "location.north.line")
-                .font(.system(size: 56))
-                .foregroundStyle(.blue)
-            Text(parkingLot.name)
-                .font(.title2.weight(.bold))
-            Text("목적지 \(destination.name) 주변 선택 주차장까지 인앱 길안내를 시작합니다.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Text(status)
-                .font(.subheadline)
-            Button("길안내 시작") {
-                Task { await start() }
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(parkingLot.name)
+                        .font(.title2.weight(.bold))
+                    Text(parkingLot.address)
+                        .foregroundStyle(.secondary)
+                    Text("목적지 \(destination.name) 주변 선택 주차장까지의 경로 미리보기입니다.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .buttonStyle(.borderedProminent)
+
+            Section("경로 미리보기") {
+                NavigationRoutePreview(destination: destination, parkingLot: parkingLot)
+                    .frame(height: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                LabeledContent("직선 거리", value: "\(parkingLot.distanceFromDestinationMeters)m")
+                if let estimatedDistanceMeters {
+                    LabeledContent("예상 주행 거리", value: formattedDistance(estimatedDistanceMeters))
+                }
+                if let estimatedTravelTimeSeconds {
+                    LabeledContent("예상 시간", value: formattedDuration(estimatedTravelTimeSeconds))
+                }
+            }
+
+            Section("주차 정보") {
+                LabeledContent("실시간 상태", value: parkingLot.displayStatus)
+                LabeledContent("가능 대수", value: parkingLot.availableSpaces.map(String.init) ?? "정보 없음")
+                LabeledContent("요금", value: parkingLot.feeSummary ?? "정보 없음")
+            }
+
+            Section {
+                Button("Apple 지도에서 열기") {
+                    openInAppleMaps()
+                }
+                Button("카카오내비로 열기") {
+                    openKakaoNavi()
+                }
+                .buttonStyle(.borderedProminent)
+            } footer: {
+                Text("앱 안에서는 경로를 미리 확인하고, 실제 턴바이턴 운전 안내는 외부 내비 앱으로 시작합니다.")
+            }
         }
-        .padding()
-        .navigationTitle("인앱 내비게이션")
-        .task { await start() }
+        .navigationTitle("경로 미리보기")
+        .task { await loadRouteEstimate() }
     }
 
-    private func start() async {
+    private func loadRouteEstimate() async {
         do {
-            try await navigationService.startNavigation(to: parkingLot, from: destination)
-            status = "길안내가 시작되었습니다."
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng)))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng)))
+            request.transportType = .automobile
+            let response = try await MKDirections(request: request).calculate()
+            guard let route = response.routes.first else { return }
+            estimatedDistanceMeters = route.distance
+            estimatedTravelTimeSeconds = route.expectedTravelTime
         } catch {
-            status = "SDK 초기화 또는 길안내 시작에 실패했습니다. 현재는 mock 길안내로 동작합니다."
+            estimatedDistanceMeters = nil
+            estimatedTravelTimeSeconds = nil
         }
     }
+
+    private func openInAppleMaps() {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng)))
+        item.name = parkingLot.name
+        item.openInMaps(launchOptions: [
+            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+        ])
+    }
+
+    private func openKakaoNavi() {
+        let name = parkingLot.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? parkingLot.name
+        let urlString = "kakaonavi://navigate?name=\(name)&x=\(parkingLot.lng)&y=\(parkingLot.lat)&coord_type=wgs84"
+        if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else if let storeURL = URL(string: "https://apps.apple.com/kr/app/id417698849") {
+            UIApplication.shared.open(storeURL)
+        }
+    }
+
+    private func formattedDistance(_ meters: CLLocationDistance) -> String {
+        if meters >= 1000 {
+            return String(format: "%.1fkm", meters / 1000)
+        }
+        return "\(Int(meters))m"
+    }
+
+    private func formattedDuration(_ seconds: TimeInterval) -> String {
+        let minutes = max(1, Int(seconds / 60))
+        return "\(minutes)분"
+    }
+}
+
+private struct NavigationRoutePreview: View {
+    let destination: Destination
+    let parkingLot: ParkingLot
+    @State private var region: MKCoordinateRegion
+
+    init(destination: Destination, parkingLot: ParkingLot) {
+        self.destination = destination
+        self.parkingLot = parkingLot
+        let center = CLLocationCoordinate2D(
+            latitude: (destination.lat + parkingLot.lat) / 2,
+            longitude: (destination.lng + parkingLot.lng) / 2
+        )
+        let latDelta = max(abs(destination.lat - parkingLot.lat) * 2.4, 0.006)
+        let lngDelta = max(abs(destination.lng - parkingLot.lng) * 2.4, 0.006)
+        _region = State(initialValue: MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lngDelta)
+        ))
+    }
+
+    var body: some View {
+        Map(coordinateRegion: $region, annotationItems: pins) { pin in
+            MapMarker(coordinate: pin.coordinate, tint: pin.tint)
+        }
+    }
+
+    private var pins: [PreviewPin] {
+        [
+            PreviewPin(id: "destination", coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), tint: .red),
+            PreviewPin(id: "parking", coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng), tint: .blue)
+        ]
+    }
+}
+
+private struct PreviewPin: Identifiable {
+    let id: String
+    let coordinate: CLLocationCoordinate2D
+    let tint: Color
 }

@@ -35,7 +35,7 @@ struct ParkingDetailView: View {
             }
 
             Section {
-                Button("이 주차장으로 길안내 시작") {
+                Button("경로 미리보기") {
                     destinationStore.addRecent(destination)
                     router.startNavigation(destination: destination, parkingLot: parkingLot)
                 }
