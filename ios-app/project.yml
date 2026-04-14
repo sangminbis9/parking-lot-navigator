@@ -38,6 +38,7 @@ targets:
         INFOPLIST_FILE: Resources/AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Integrations/NavigationBridge/ParkingLotNavigator-Bridging-Header.h
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
         INFOPLIST_OUTPUT_FORMAT: XML
     dependencies:
