@@ -31,7 +31,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, KMControllerDelegate {
+    final class Coordinator: NSObject, MapControllerDelegate {
         var controller: KMController?
         var latestCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
         var latestPins: [MapPinItem] = []
@@ -44,28 +44,28 @@ struct KakaoParkingMapView: UIViewRepresentable {
             controller?.delegate = self
         }
 
-        func addViews() {
+        @objc func addViews() {
             let mapPoint = MapPoint(longitude: latestCenter.longitude, latitude: latestCenter.latitude)
             let info = MapviewInfo(viewName: "mapview", viewInfoName: "map", defaultPosition: mapPoint, defaultLevel: 6)
             controller?.addView(info)
         }
 
-        func addViewSucceeded(_ viewName: String, viewInfoName: String) {
+        @objc func addViewSucceeded(_ viewName: String, viewInfoName: String) {
             mapReady = true
             configureLabelsIfNeeded()
             render()
         }
 
-        func addViewFailed(_ viewName: String, viewInfoName: String) {
+        @objc func addViewFailed(_ viewName: String, viewInfoName: String) {
             mapReady = false
         }
 
-        func containerDidResized(_ size: CGSize) {
+        @objc func containerDidResized(_ size: CGSize) {
             let mapView = controller?.getView("mapview") as? KakaoMap
             mapView?.viewRect = CGRect(origin: .zero, size: size)
         }
 
-        func authenticationFailed(_ errorCode: Int, desc: String) {
+        @objc func authenticationFailed(_ errorCode: Int, desc: String) {
             print("KakaoMapsSDK authentication failed: \(errorCode) \(desc)")
         }
 
@@ -146,7 +146,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             }
         }
 
-        private func rank(for kind: MapPinItem.Kind) -> UInt {
+        private func rank(for kind: MapPinItem.Kind) -> Int {
             switch kind {
             case .currentLocation:
                 return 30
