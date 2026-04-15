@@ -10,6 +10,9 @@ struct MapHomeView: View {
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     @State private var mapZoomLevel = 13
+    @State private var didAutoCenterOnLocation = false
+    @State private var hasUserFocusedMapTarget = false
+    @State private var shouldCenterOnNextLocation = false
     @FocusState private var isSearchFocused: Bool
 
     init(apiClient: APIClientProtocol) {
@@ -50,7 +53,7 @@ struct MapHomeView: View {
             locationProvider.request()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
-            moveMap(to: coordinate, zoomLevel: 15)
+            handleLocationUpdate(coordinate)
         }
     }
 
@@ -111,7 +114,7 @@ struct MapHomeView: View {
                 ForEach(viewModel.destinations) { destination in
                     Button {
                         destinationStore.addRecent(destination)
-                        moveMap(
+                        focusMap(
                             to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
                             zoomLevel: 16
                         )
@@ -152,6 +155,7 @@ struct MapHomeView: View {
                 if let coordinate = locationProvider.coordinate {
                     moveMap(to: coordinate, zoomLevel: 15)
                 } else {
+                    shouldCenterOnNextLocation = true
                     locationProvider.request()
                 }
             } label: {
@@ -197,7 +201,7 @@ struct MapHomeView: View {
                                     isSelected: viewModel.selectedParkingLot?.id == parkingLot.id,
                                     onSelect: {
                                         viewModel.selectedParkingLot = parkingLot
-                                        moveMap(
+                                        focusMap(
                                             to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
                                             zoomLevel: 17
                                         )
@@ -235,6 +239,27 @@ struct MapHomeView: View {
     private func moveMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
         mapCenter = coordinate
         mapZoomLevel = zoomLevel
+    }
+
+    private func focusMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
+        hasUserFocusedMapTarget = true
+        shouldCenterOnNextLocation = false
+        moveMap(to: coordinate, zoomLevel: zoomLevel)
+    }
+
+    private func handleLocationUpdate(_ coordinate: CLLocationCoordinate2D) {
+        if shouldCenterOnNextLocation {
+            shouldCenterOnNextLocation = false
+            didAutoCenterOnLocation = true
+            moveMap(to: coordinate, zoomLevel: 15)
+            return
+        }
+
+        guard !didAutoCenterOnLocation, !hasUserFocusedMapTarget, viewModel.selectedDestination == nil else {
+            return
+        }
+        didAutoCenterOnLocation = true
+        moveMap(to: coordinate, zoomLevel: 15)
     }
 }
 
