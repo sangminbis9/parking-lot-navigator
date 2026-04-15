@@ -21,6 +21,7 @@
   <key>LSApplicationQueriesSchemes</key>
   <array>
     <string>kakaonavi</string>
+    <string>kakaonavi-sdk</string>
   </array>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>

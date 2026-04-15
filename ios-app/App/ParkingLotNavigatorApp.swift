@@ -1,5 +1,6 @@
 import SwiftUI
 import KakaoMapsSDK
+import KakaoSDKCommon
 
 @main
 struct ParkingLotNavigatorApp: App {
@@ -10,6 +11,7 @@ struct ParkingLotNavigatorApp: App {
         let appKey = AppConfiguration.current.kakaoNativeAppKey
         if !appKey.isEmpty {
             SDKInitializer.InitSDK(appKey: appKey)
+            KakaoSDK.initSDK(appKey: appKey)
         }
     }
 

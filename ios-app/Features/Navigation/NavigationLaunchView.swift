@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import UIKit
+import KakaoSDKNavi
 
 struct NavigationLaunchView: View {
     let destination: Destination
@@ -83,12 +84,21 @@ struct NavigationLaunchView: View {
     }
 
     private func openKakaoNavi() {
-        let name = parkingLot.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? parkingLot.name
-        let urlString = "kakaonavi://navigate?name=\(name)&x=\(parkingLot.lng)&y=\(parkingLot.lat)&coord_type=wgs84"
-        if let url = URL(string: urlString), UIApplication.shared.canOpenURL(url) {
+        let destination = NaviLocation(
+            name: parkingLot.name,
+            x: String(parkingLot.lng),
+            y: String(parkingLot.lat)
+        )
+        let option = NaviOption(coordType: .WGS84)
+        guard let url = NaviApi.shared.navigateUrl(destination: destination, option: option) else {
+            UIApplication.shared.open(NaviApi.webNaviInstallUrl)
+            return
+        }
+
+        if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
-        } else if let storeURL = URL(string: "https://apps.apple.com/kr/app/id417698849") {
-            UIApplication.shared.open(storeURL)
+        } else {
+            UIApplication.shared.open(NaviApi.webNaviInstallUrl)
         }
     }
 

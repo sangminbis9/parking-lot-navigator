@@ -10,12 +10,15 @@ packages:
   KakaoMapsSDK:
     url: https://github.com/kakao-mapsSDK/KakaoMapsSDK-SPM.git
     from: "2.12.10"
+  KakaoOpenSDK:
+    url: https://github.com/kakao/kakao-ios-sdk.git
+    from: "2.27.2"
 settings:
   base:
     SWIFT_VERSION: 5.9
     DEVELOPMENT_TEAM: 95N46NPCJ7
     MARKETING_VERSION: 1.0
-    CURRENT_PROJECT_VERSION: 15
+    CURRENT_PROJECT_VERSION: 16
     APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
     INFOPLIST_OUTPUT_FORMAT: XML
 targets:
@@ -49,6 +52,8 @@ targets:
       - target: ParkingShareExtension
       - package: KakaoMapsSDK
         product: KakaoMapsSDK-SPM
+      - package: KakaoOpenSDK
+        product: KakaoSDKNavi
   ParkingShareExtension:
     type: app-extension
     platform: iOS
