@@ -61,9 +61,9 @@ enum MapExploreMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .parking: return "주차"
-        case .festivals: return "축제"
-        case .events: return "이벤트"
+        case .parking: return "\u{C8FC}\u{CC28}"
+        case .festivals: return "\u{CD95}\u{C81C}"
+        case .events: return "\u{C774}\u{BCA4}\u{D2B8}"
         }
     }
 }
