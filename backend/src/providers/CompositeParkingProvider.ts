@@ -16,13 +16,18 @@ export class CompositeParkingProvider {
       .filter((record) => hasCoordinates(record))
       .map((record) => normalizeParkingRecord(record, lat, lng, config.STALE_THRESHOLD_SECONDS))
       .filter((item) => item.distanceFromDestinationMeters <= options.radiusMeters);
-    const deduped = deduplicateParkingLots(normalized);
+    const deduped = deduplicateParkingLots(preferRealLots(normalized));
     return rankParkingLots(deduped, options);
   }
 
   health(): ProviderHealth[] {
     return this.providers.map((provider) => provider.health());
   }
+}
+
+function preferRealLots(items: ParkingLot[]): ParkingLot[] {
+  const realItems = items.filter((item) => item.source !== "mock");
+  return realItems.length > 0 ? realItems : items;
 }
 
 function mergeRawRecords(records: RawParkingRecord[]): RawParkingRecord[] {

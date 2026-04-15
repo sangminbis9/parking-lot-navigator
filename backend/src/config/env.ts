@@ -8,8 +8,18 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default("info"),
   PARKING_PROVIDER_MODE: z.enum(["mock", "real", "hybrid"]).default("mock"),
   DEFAULT_SEARCH_RADIUS_METERS: z.coerce.number().default(800),
+  DEFAULT_DISCOVER_RADIUS_METERS: z.coerce.number().default(3000),
   STALE_THRESHOLD_SECONDS: z.coerce.number().default(600),
   CACHE_TTL_SECONDS: z.coerce.number().default(60),
+  DISCOVER_CACHE_TTL_SECONDS: z.coerce.number().default(21600),
+  FESTIVAL_PROVIDER_ENABLED: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default("true"),
+  EVENT_PROVIDER_ENABLED: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default("false"),
   KAKAO_REST_API_KEY: z.string().optional(),
   KAKAO_LOCAL_BASE_URL: z.string().url().default("https://dapi.kakao.com"),
   SEOUL_OPEN_DATA_KEY: z.string().optional(),
@@ -29,6 +39,12 @@ export function assertProductionSecrets(cfg: AppConfig): string[] {
     if (!cfg.KAKAO_REST_API_KEY) missing.push("KAKAO_REST_API_KEY");
     if (!cfg.SEOUL_OPEN_DATA_KEY) missing.push("SEOUL_OPEN_DATA_KEY");
     if (!cfg.PUBLIC_DATA_SERVICE_KEY) missing.push("PUBLIC_DATA_SERVICE_KEY");
+  }
+  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.FESTIVAL_PROVIDER_ENABLED && !cfg.PUBLIC_DATA_SERVICE_KEY) {
+    missing.push("PUBLIC_DATA_SERVICE_KEY");
+  }
+  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.EVENT_PROVIDER_ENABLED && !cfg.SEOUL_OPEN_DATA_KEY) {
+    missing.push("SEOUL_OPEN_DATA_KEY");
   }
   return missing;
 }

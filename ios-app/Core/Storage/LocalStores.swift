@@ -63,3 +63,16 @@ enum SharedDestinationStore {
         return draft
     }
 }
+
+enum AnonymousDeviceStore {
+    private static let key = "anonymousDeviceID"
+
+    static func deviceID() -> String {
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let created = UUID().uuidString
+        UserDefaults.standard.set(created, forKey: key)
+        return created
+    }
+}

@@ -213,6 +213,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(.systemOrange)))
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
+            manager.addPoiStyle(makeStyle(id: "festival", image: .discoverPin(fill: .systemPurple, symbol: "sparkles")))
+            manager.addPoiStyle(makeStyle(id: "event", image: .discoverPin(fill: .systemTeal, symbol: "calendar")))
             stylesReady = true
         }
 
@@ -245,6 +247,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 20
             case .parking:
                 return 10
+            case .festival:
+                return 12
+            case .event:
+                return 12
             }
         }
     }
@@ -300,6 +306,10 @@ private extension MapPinItem {
                     return "parking-stale"
                 }
             }
+        case .festival:
+            return "festival"
+        case .event:
+            return "event"
         }
     }
 }
@@ -324,6 +334,10 @@ private extension UIImage {
 
     static func parkingPin(_ color: UIColor) -> UIImage {
         parkingMarker(fill: color, size: 32, scale: mapPinScale)
+    }
+
+    static func discoverPin(fill: UIColor, symbol: String) -> UIImage {
+        circularPin(fill: fill, symbol: symbol, size: 34, scale: mapPinScale)
     }
 
     static func circularPin(fill: UIColor, symbol: String?, size: CGFloat, scale: CGFloat) -> UIImage {

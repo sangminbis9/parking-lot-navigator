@@ -1,3 +1,5 @@
+import type { PlaceCategory } from "./analytics.js";
+
 export interface DestinationCandidate {
   id: string;
   name: string;
@@ -5,6 +7,8 @@ export interface DestinationCandidate {
   lat: number;
   lng: number;
   source: "mock" | "kakao-local";
+  rawCategory?: string | null;
+  normalizedCategory?: PlaceCategory;
 }
 
 export interface DestinationSearchResponse {

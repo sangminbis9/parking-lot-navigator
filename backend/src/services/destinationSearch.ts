@@ -1,5 +1,6 @@
 import type { DestinationCandidate } from "@parking/shared-types";
 import { config } from "../config/env.js";
+import { normalizePlaceCategory } from "../features/analytics/categoryNormalization.js";
 import { logger } from "../logging/logger.js";
 
 export async function searchDestination(query: string): Promise<DestinationCandidate[]> {
@@ -24,7 +25,16 @@ export async function searchDestination(query: string): Promise<DestinationCandi
   }
 
   const body = (await response.json()) as {
-    documents?: Array<{ id: string; place_name: string; road_address_name: string; address_name: string; y: string; x: string }>;
+    documents?: Array<{
+      id: string;
+      place_name: string;
+      road_address_name: string;
+      address_name: string;
+      y: string;
+      x: string;
+      category_group_name?: string;
+      category_name?: string;
+    }>;
   };
 
   return (body.documents ?? []).map((doc) => ({
@@ -33,7 +43,9 @@ export async function searchDestination(query: string): Promise<DestinationCandi
     address: doc.road_address_name || doc.address_name,
     lat: Number(doc.y),
     lng: Number(doc.x),
-    source: "kakao-local"
+    source: "kakao-local",
+    rawCategory: doc.category_name || doc.category_group_name || null,
+    normalizedCategory: normalizePlaceCategory(doc.category_name || doc.category_group_name, doc.place_name)
   }));
 }
 

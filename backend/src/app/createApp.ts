@@ -3,6 +3,8 @@ import sensible from "@fastify/sensible";
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
 import { config } from "../config/env.js";
+import { registerAnalyticsRoutes } from "../features/analytics/analyticsRoutes.js";
+import { registerDiscoverRoutes } from "../features/discover/discoverRoutes.js";
 import { errorHandler } from "../middleware/errorHandler.js";
 import { registerParkingRoutes } from "../routes/parkingRoutes.js";
 import { registerSearchRoutes } from "../routes/searchRoutes.js";
@@ -23,6 +25,8 @@ export async function createApp() {
   app.get("/health", async () => ({ status: "ok", generatedAt: new Date().toISOString() }));
   await registerSearchRoutes(app);
   await registerParkingRoutes(app);
+  await registerAnalyticsRoutes(app);
+  await registerDiscoverRoutes(app);
 
   return app;
 }
