@@ -137,7 +137,9 @@ private struct NavigationRoutePreview: View {
 
     var body: some View {
         Map(coordinateRegion: $region, annotationItems: pins) { pin in
-            MapMarker(coordinate: pin.coordinate, tint: pin.tint)
+            MapAnnotation(coordinate: pin.coordinate, anchorPoint: CGPoint(x: 0.5, y: 1.0)) {
+                PreviewPinView(pin: pin)
+            }
         }
     }
 
@@ -153,4 +155,54 @@ private struct PreviewPin: Identifiable {
     let id: String
     let coordinate: CLLocationCoordinate2D
     let tint: Color
+}
+
+private struct PreviewPinView: View {
+    let pin: PreviewPin
+
+    private var symbolName: String? {
+        pin.id == "destination" ? "flag.fill" : nil
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Circle()
+                .fill(pin.tint)
+                .frame(width: 16, height: 16)
+                .overlay(
+                    Circle()
+                        .stroke(.white, lineWidth: 1.25)
+                )
+                .shadow(color: .black.opacity(0.26), radius: 2, y: 1)
+
+            Triangle()
+                .fill(pin.tint)
+                .frame(width: 5, height: 6)
+                .offset(y: 13)
+
+            if let symbolName {
+                Image(systemName: symbolName)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(y: 4)
+            } else {
+                Text("P")
+                    .font(.system(size: 7.2, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .offset(y: 3.5)
+            }
+        }
+        .frame(width: 16, height: 20.5)
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
 }

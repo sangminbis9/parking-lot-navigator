@@ -194,9 +194,11 @@ struct MapHomeView: View {
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
-                            ForEach(viewModel.recommendedParkingLots) { parkingLot in
+                            ForEach(viewModel.parkingRecommendations) { recommendation in
+                                let parkingLot = recommendation.parkingLot
                                 ParkingMapCard(
                                     parkingLot: parkingLot,
+                                    recommendation: recommendation,
                                     isDestinationParking: viewModel.isDestinationParking(parkingLot, for: destination),
                                     isSelected: viewModel.selectedParkingLot?.id == parkingLot.id,
                                     onSelect: {
@@ -265,6 +267,7 @@ struct MapHomeView: View {
 
 private struct ParkingMapCard: View {
     let parkingLot: ParkingLot
+    let recommendation: ParkingRecommendation
     let isDestinationParking: Bool
     let isSelected: Bool
     let onSelect: () -> Void
@@ -292,6 +295,15 @@ private struct ParkingMapCard: View {
             Text(parkingLot.name)
                 .font(.headline)
                 .lineLimit(2)
+            HStack(spacing: 6) {
+                Text("추천 \(recommendation.scorePercent)점")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.blue)
+                Text(recommendation.primaryReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Text(parkingLot.displayStatus)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(statusColor)

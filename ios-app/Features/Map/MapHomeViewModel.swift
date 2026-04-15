@@ -14,24 +14,19 @@ final class MapHomeViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let apiClient: APIClientProtocol
+    private let recommendationEngine = ParkingRecommendationEngine()
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
     }
 
+    var parkingRecommendations: [ParkingRecommendation] {
+        guard let selectedDestination else { return [] }
+        return recommendationEngine.recommendations(for: parkingLots, destination: selectedDestination)
+    }
+
     var recommendedParkingLots: [ParkingLot] {
-        guard let selectedDestination else { return parkingLots }
-        return parkingLots.sorted { lhs, rhs in
-            let lhsOwnsDestination = isDestinationParking(lhs, for: selectedDestination)
-            let rhsOwnsDestination = isDestinationParking(rhs, for: selectedDestination)
-            if lhsOwnsDestination != rhsOwnsDestination {
-                return lhsOwnsDestination
-            }
-            if lhs.realtimeAvailable != rhs.realtimeAvailable {
-                return lhs.realtimeAvailable
-            }
-            return lhs.score > rhs.score
-        }
+        parkingRecommendations.map(\.parkingLot)
     }
 
     func search() async {

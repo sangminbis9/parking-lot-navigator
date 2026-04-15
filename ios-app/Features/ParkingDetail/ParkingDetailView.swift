@@ -6,6 +6,10 @@ struct ParkingDetailView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var destinationStore: DestinationStore
 
+    private var recommendation: ParkingRecommendation {
+        ParkingRecommendationEngine().recommendation(for: parkingLot, destination: destination)
+    }
+
     var body: some View {
         List {
             Section {
@@ -14,6 +18,13 @@ struct ParkingDetailView: View {
                 HStack {
                     StatusBadge(text: parkingLot.displayStatus, kind: parkingLot.stale ? .warning : (parkingLot.realtimeAvailable ? .realtime : .neutral))
                     StatusBadge(text: parkingLot.source, kind: .source)
+                }
+            }
+
+            Section("추천 이유") {
+                LabeledContent("추천 점수", value: "\(recommendation.scorePercent)점")
+                ForEach(recommendation.reasons, id: \.self) { reason in
+                    Label(reason, systemImage: "checkmark.circle.fill")
                 }
             }
 

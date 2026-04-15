@@ -312,21 +312,24 @@ private extension CLLocationCoordinate2D {
 }
 
 private extension UIImage {
+    static var mapPinScale: CGFloat { 0.5 }
+
     static var currentLocationPin: UIImage {
-        circularPin(fill: .systemBlue, symbol: nil, size: 28)
+        circularPin(fill: .systemBlue, symbol: nil, size: 28, scale: mapPinScale)
     }
 
     static var destinationPin: UIImage {
-        circularPin(fill: .systemRed, symbol: "flag.fill", size: 38)
+        circularPin(fill: .systemRed, symbol: "flag.fill", size: 38, scale: mapPinScale)
     }
 
     static func parkingPin(_ color: UIColor) -> UIImage {
-        parkingMarker(fill: color, size: 32)
+        parkingMarker(fill: color, size: 32, scale: mapPinScale)
     }
 
-    static func circularPin(fill: UIColor, symbol: String?, size: CGFloat) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size + 9))
+    static func circularPin(fill: UIColor, symbol: String?, size: CGFloat, scale: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * scale, height: (size + 9) * scale))
         return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
             let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
             let cg = context.cgContext
             cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.28).cgColor)
@@ -359,9 +362,10 @@ private extension UIImage {
         }
     }
 
-    static func parkingMarker(fill: UIColor, size: CGFloat) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size + 9))
+    static func parkingMarker(fill: UIColor, size: CGFloat, scale: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * scale, height: (size + 9) * scale))
         return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
             let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
             let cg = context.cgContext
             cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.26).cgColor)

@@ -2,12 +2,13 @@ import Foundation
 
 @MainActor
 final class ParkingResultsViewModel: ObservableObject {
-    @Published var items: [ParkingLot] = []
+    @Published var recommendations: [ParkingRecommendation] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let destination: Destination
     private let apiClient: APIClientProtocol
+    private let recommendationEngine = ParkingRecommendationEngine()
 
     init(destination: Destination, apiClient: APIClientProtocol) {
         self.destination = destination
@@ -18,8 +19,10 @@ final class ParkingResultsViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            items = try await apiClient.nearbyParking(lat: destination.lat, lng: destination.lng, radiusMeters: 800)
+            let items = try await apiClient.nearbyParking(lat: destination.lat, lng: destination.lng, radiusMeters: 800)
+            recommendations = recommendationEngine.recommendations(for: items, destination: destination)
         } catch {
+            recommendations = []
             errorMessage = "주변 주차장을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
         }
         isLoading = false

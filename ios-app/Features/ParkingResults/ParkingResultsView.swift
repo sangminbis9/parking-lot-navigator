@@ -42,11 +42,11 @@ struct ParkingResultsView: View {
                 FailureStateView(message: errorMessage) { Task { await viewModel.load() } }
             } else {
                 Section("추천 주차장") {
-                    ForEach(viewModel.items) { item in
+                    ForEach(viewModel.recommendations) { recommendation in
                         Button {
-                            router.showDetail(destination: destination, parkingLot: item)
+                            router.showDetail(destination: destination, parkingLot: recommendation.parkingLot)
                         } label: {
-                            ParkingLotRow(parkingLot: item)
+                            ParkingLotRow(recommendation: recommendation)
                         }
                     }
                 }
@@ -58,13 +58,20 @@ struct ParkingResultsView: View {
 }
 
 struct ParkingLotRow: View {
-    let parkingLot: ParkingLot
+    let recommendation: ParkingRecommendation
+
+    private var parkingLot: ParkingLot {
+        recommendation.parkingLot
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(parkingLot.name).font(.headline)
                 Spacer()
+                Text("\(recommendation.scorePercent)점")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.blue)
                 Text("\(parkingLot.distanceFromDestinationMeters)m")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -72,9 +79,15 @@ struct ParkingLotRow: View {
             Text(parkingLot.address)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            Text(recommendation.primaryReason)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
             HStack {
                 StatusBadge(text: parkingLot.displayStatus, kind: parkingLot.stale ? .warning : (parkingLot.realtimeAvailable ? .realtime : .neutral))
                 StatusBadge(text: parkingLot.isPublic ? "공영" : "민영", kind: .source)
+                ForEach(recommendation.badges.prefix(3), id: \.self) { badge in
+                    StatusBadge(text: badge, kind: .neutral)
+                }
                 if parkingLot.supportsEv { StatusBadge(text: "EV", kind: .neutral) }
                 if parkingLot.supportsAccessible { StatusBadge(text: "교통약자", kind: .neutral) }
             }
