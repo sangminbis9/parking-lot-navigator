@@ -47,7 +47,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MapControllerDelegate, UIGestureRecognizerDelegate {
         var controller: KMController?
-        var latestCamera = MapCameraTarget(
+        fileprivate var latestCamera = MapCameraTarget(
             coordinate: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
             zoomLevel: 13
         )
