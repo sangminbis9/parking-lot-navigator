@@ -60,7 +60,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var mapReady = false
         private var stylesReady = false
         private var renderedCamera: MapCameraTarget?
-        private var renderedPinIDs: [String] = []
+        private var renderedPinSnapshot: [MapPinSnapshot] = []
         private var observers: [NSObjectProtocol] = []
 
         func createController(_ view: KMViewContainer) {
@@ -146,9 +146,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
-            if renderedPinIDs != latestPins.map(\.id) {
+            let pinSnapshot = latestPins.map { MapPinSnapshot(pin: $0) }
+            if renderedPinSnapshot != pinSnapshot {
                 renderPins(on: mapView)
-                renderedPinIDs = latestPins.map(\.id)
+                renderedPinSnapshot = pinSnapshot
             }
         }
 
@@ -211,7 +212,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-available", image: .parkingPin(.systemGreen)))
             manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(.systemOrange)))
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
-            manager.addPoiStyle(makeStyle(id: "parking-unknown", image: .parkingPin(.systemBlue)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
             stylesReady = true
         }
@@ -229,32 +229,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
             layer.clearAllItems()
 
             for pin in latestPins {
-                let option = PoiOptions(styleID: styleID(for: pin.kind), poiID: pin.id)
+                let option = PoiOptions(styleID: pin.styleID, poiID: pin.id)
                 option.rank = rank(for: pin.kind)
                 let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
                 let poi = layer.addPoi(option: option, at: point)
                 poi?.show()
-            }
-        }
-
-        private func styleID(for kind: MapPinItem.Kind) -> String {
-            switch kind {
-            case .currentLocation:
-                return "current-location"
-            case .destination:
-                return "destination"
-            case .parking(let parkingLot):
-                if parkingLot.stale { return "parking-stale" }
-                switch parkingLot.congestionStatus {
-                case .available:
-                    return "parking-available"
-                case .moderate:
-                    return "parking-moderate"
-                case .busy, .full:
-                    return "parking-busy"
-                case .unknown:
-                    return "parking-unknown"
-                }
             }
         }
 
@@ -276,9 +255,59 @@ private struct MapCameraTarget: Equatable {
     let zoomLevel: Int
 
     static func == (lhs: MapCameraTarget, rhs: MapCameraTarget) -> Bool {
-        abs(lhs.coordinate.latitude - rhs.coordinate.latitude) <= 0.000001 &&
-            abs(lhs.coordinate.longitude - rhs.coordinate.longitude) <= 0.000001 &&
+        lhs.coordinate.isClose(to: rhs.coordinate) &&
             lhs.zoomLevel == rhs.zoomLevel
+    }
+}
+
+private struct MapPinSnapshot: Equatable {
+    let id: String
+    let coordinate: CLLocationCoordinate2D
+    let styleID: String
+
+    init(pin: MapPinItem) {
+        id = pin.id
+        coordinate = pin.coordinate
+        styleID = pin.styleID
+    }
+
+    static func == (lhs: MapPinSnapshot, rhs: MapPinSnapshot) -> Bool {
+        lhs.id == rhs.id &&
+            lhs.coordinate.isClose(to: rhs.coordinate) &&
+            lhs.styleID == rhs.styleID
+    }
+}
+
+private extension MapPinItem {
+    var styleID: String {
+        switch kind {
+        case .currentLocation:
+            return "current-location"
+        case .destination:
+            return "destination"
+        case .parking(let parkingLot):
+            if parkingLot.stale {
+                return "parking-stale"
+            } else {
+                switch parkingLot.congestionStatus {
+                case .available:
+                    return "parking-available"
+                case .moderate:
+                    return "parking-moderate"
+                case .busy, .full:
+                    return "parking-busy"
+                case .unknown:
+                    return "parking-stale"
+                }
+            }
+        }
+    }
+}
+
+private extension CLLocationCoordinate2D {
+    func isClose(to other: CLLocationCoordinate2D) -> Bool {
+        abs(latitude - other.latitude) <= 0.000001 &&
+            abs(longitude - other.longitude) <= 0.000001
     }
 }
 
@@ -292,7 +321,7 @@ private extension UIImage {
     }
 
     static func parkingPin(_ color: UIColor) -> UIImage {
-        circularPin(fill: color, symbol: "parkingsign", size: 38)
+        parkingMarker(fill: color, size: 32)
     }
 
     static func circularPin(fill: UIColor, symbol: String?, size: CGFloat) -> UIImage {
@@ -327,6 +356,41 @@ private extension UIImage {
             )
             UIColor.white.setFill()
             image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+        }
+    }
+
+    static func parkingMarker(fill: UIColor, size: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size + 9))
+        return renderer.image { context in
+            let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
+            let cg = context.cgContext
+            cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.26).cgColor)
+
+            fill.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+
+            UIColor.white.setStroke()
+            let outline = UIBezierPath(ovalIn: rect)
+            outline.lineWidth = 2.5
+            outline.stroke()
+
+            let triangle = UIBezierPath()
+            triangle.move(to: CGPoint(x: size / 2 - 4.5, y: size - 5))
+            triangle.addLine(to: CGPoint(x: size / 2 + 4.5, y: size - 5))
+            triangle.addLine(to: CGPoint(x: size / 2, y: size + 6))
+            triangle.close()
+            fill.setFill()
+            triangle.fill()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: size * 0.45, weight: .heavy),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            let textRect = CGRect(x: 0, y: 6, width: size, height: size * 0.55)
+            NSString(string: "P").draw(in: textRect, withAttributes: attributes)
         }
     }
 }

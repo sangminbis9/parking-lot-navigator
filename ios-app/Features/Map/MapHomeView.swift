@@ -233,10 +233,8 @@ struct MapHomeView: View {
     }
 
     private func moveMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
-        withAnimation {
-            mapCenter = coordinate
-            mapZoomLevel = zoomLevel
-        }
+        mapCenter = coordinate
+        mapZoomLevel = zoomLevel
     }
 }
 

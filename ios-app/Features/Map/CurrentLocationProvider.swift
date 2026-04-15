@@ -7,6 +7,7 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private let manager = CLLocationManager()
+    private var isRequestingLocation = false
 
     override init() {
         super.init()
@@ -20,7 +21,9 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
-            manager.startUpdatingLocation()
+            guard !isRequestingLocation else { return }
+            isRequestingLocation = true
+            manager.requestLocation()
         case .denied, .restricted:
             break
         @unknown default:
@@ -35,5 +38,10 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         coordinate = locations.last?.coordinate
+        isRequestingLocation = false
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        isRequestingLocation = false
     }
 }
