@@ -5,6 +5,7 @@ import UIKit
 
 struct KakaoParkingMapView: UIViewRepresentable {
     let center: CLLocationCoordinate2D
+    let zoomLevel: Int
     let pins: [MapPinItem]
     let onTap: () -> Void
 
@@ -13,23 +14,30 @@ struct KakaoParkingMapView: UIViewRepresentable {
         view.sizeToFit()
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
         tap.cancelsTouchesInView = false
+        tap.delaysTouchesBegan = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = context.coordinator
+        context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
+        context.coordinator.latestPins = pins
+        context.coordinator.onTap = onTap
         view.addGestureRecognizer(tap)
         context.coordinator.createController(view)
-        context.coordinator.controller?.prepareEngine()
-        context.coordinator.controller?.activateEngine()
+        context.coordinator.prepareEngineIfNeeded()
+        context.coordinator.activateEngineIfNeeded()
         return view
     }
 
     func updateUIView(_ uiView: KMViewContainer, context: Context) {
-        context.coordinator.latestCenter = center
+        context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
-        context.coordinator.controller?.activateEngine()
+        context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
     }
 
     static func dismantleUIView(_ uiView: KMViewContainer, coordinator: Coordinator) {
-        coordinator.controller?.pauseEngine()
+        coordinator.removeObservers()
+        coordinator.pauseEngine()
         coordinator.controller?.resetEngine()
     }
 
@@ -37,34 +45,83 @@ struct KakaoParkingMapView: UIViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, MapControllerDelegate {
+    final class Coordinator: NSObject, MapControllerDelegate, UIGestureRecognizerDelegate {
         var controller: KMController?
-        var latestCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+        var latestCamera = MapCameraTarget(
+            coordinate: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
+            zoomLevel: 13
+        )
         var latestPins: [MapPinItem] = []
         var onTap: (() -> Void)?
 
+        private weak var container: KMViewContainer?
+        private var enginePrepared = false
+        private var engineActive = false
         private var mapReady = false
         private var stylesReady = false
-        private var renderedCenter: CLLocationCoordinate2D?
+        private var renderedCamera: MapCameraTarget?
         private var renderedPinIDs: [String] = []
+        private var observers: [NSObjectProtocol] = []
 
         func createController(_ view: KMViewContainer) {
+            container = view
             controller = KMController(viewContainer: view)
             controller?.delegate = self
+            addObservers()
+        }
+
+        func prepareEngineIfNeeded() {
+            guard !enginePrepared else { return }
+            controller?.prepareEngine()
+            enginePrepared = true
+        }
+
+        func activateEngineIfNeeded() {
+            prepareEngineIfNeeded()
+            guard !engineActive else { return }
+            controller?.activateEngine()
+            engineActive = true
+        }
+
+        func pauseEngine() {
+            guard engineActive else { return }
+            controller?.pauseEngine()
+            engineActive = false
+        }
+
+        func removeObservers() {
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
+            observers = []
         }
 
         @objc func handleTap() {
             onTap?()
         }
 
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
         @objc func addViews() {
-            let mapPoint = MapPoint(longitude: latestCenter.longitude, latitude: latestCenter.latitude)
-            let info = MapviewInfo(viewName: "mapview", viewInfoName: "map", defaultPosition: mapPoint, defaultLevel: 6)
+            let mapPoint = MapPoint(
+                longitude: latestCamera.coordinate.longitude,
+                latitude: latestCamera.coordinate.latitude
+            )
+            let info = MapviewInfo(
+                viewName: "mapview",
+                viewInfoName: "map",
+                defaultPosition: mapPoint,
+                defaultLevel: latestCamera.zoomLevel
+            )
             controller?.addView(info)
         }
 
         @objc func addViewSucceeded(_ viewName: String, viewInfoName: String) {
             mapReady = true
+            updateMapRect()
             configureLabelsIfNeeded()
             render()
         }
@@ -74,8 +131,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         @objc func containerDidResized(_ size: CGSize) {
-            let mapView = controller?.getView("mapview") as? KakaoMap
-            mapView?.viewRect = CGRect(origin: .zero, size: size)
+            updateMapRect(size: size)
         }
 
         @objc func authenticationFailed(_ errorCode: Int, desc: String) {
@@ -84,10 +140,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         func render() {
             guard mapReady, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            updateMapRect()
             configureLabelsIfNeeded()
             if shouldMoveCamera {
                 moveCamera(on: mapView)
-                renderedCenter = latestCenter
+                renderedCamera = latestCamera
             }
             if renderedPinIDs != latestPins.map(\.id) {
                 renderPins(on: mapView)
@@ -96,15 +153,45 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         private var shouldMoveCamera: Bool {
-            guard let renderedCenter else { return true }
-            return abs(renderedCenter.latitude - latestCenter.latitude) > 0.000001 ||
-                abs(renderedCenter.longitude - latestCenter.longitude) > 0.000001
+            guard let renderedCamera else { return true }
+            return renderedCamera != latestCamera
         }
 
         private func moveCamera(on mapView: KakaoMap) {
-            let target = MapPoint(longitude: latestCenter.longitude, latitude: latestCenter.latitude)
-            let cameraUpdate = CameraUpdate.make(target: target, zoomLevel: 5, mapView: mapView)
+            let target = MapPoint(
+                longitude: latestCamera.coordinate.longitude,
+                latitude: latestCamera.coordinate.latitude
+            )
+            let cameraUpdate = CameraUpdate.make(target: target, zoomLevel: latestCamera.zoomLevel, mapView: mapView)
             mapView.moveCamera(cameraUpdate)
+        }
+
+        private func updateMapRect(size: CGSize? = nil) {
+            guard let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            let resolvedSize = size ?? container?.bounds.size ?? .zero
+            guard resolvedSize.width > 0, resolvedSize.height > 0 else { return }
+            mapView.viewRect = CGRect(origin: .zero, size: resolvedSize)
+        }
+
+        private func addObservers() {
+            guard observers.isEmpty else { return }
+            let center = NotificationCenter.default
+            observers = [
+                center.addObserver(
+                    forName: UIApplication.willResignActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.pauseEngine()
+                },
+                center.addObserver(
+                    forName: UIApplication.didBecomeActiveNotification,
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.activateEngineIfNeeded()
+                }
+            ]
         }
 
         private func configureLabelsIfNeeded() {
@@ -181,6 +268,17 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 10
             }
         }
+    }
+}
+
+private struct MapCameraTarget: Equatable {
+    let coordinate: CLLocationCoordinate2D
+    let zoomLevel: Int
+
+    static func == (lhs: MapCameraTarget, rhs: MapCameraTarget) -> Bool {
+        abs(lhs.coordinate.latitude - rhs.coordinate.latitude) <= 0.000001 &&
+            abs(lhs.coordinate.longitude - rhs.coordinate.longitude) <= 0.000001 &&
+            lhs.zoomLevel == rhs.zoomLevel
     }
 }
 

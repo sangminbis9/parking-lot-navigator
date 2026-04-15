@@ -9,6 +9,7 @@ struct MapHomeView: View {
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+    @State private var mapZoomLevel = 13
     @FocusState private var isSearchFocused: Bool
 
     init(apiClient: APIClientProtocol) {
@@ -18,7 +19,7 @@ struct MapHomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            KakaoParkingMapView(center: mapCenter, pins: pins) {
+            KakaoParkingMapView(center: mapCenter, zoomLevel: mapZoomLevel, pins: pins) {
                 isSearchFocused = false
             }
             .ignoresSafeArea(edges: .top)
@@ -49,7 +50,7 @@ struct MapHomeView: View {
             locationProvider.request()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
-            moveMap(to: coordinate)
+            moveMap(to: coordinate, zoomLevel: 15)
         }
     }
 
@@ -110,7 +111,10 @@ struct MapHomeView: View {
                 ForEach(viewModel.destinations) { destination in
                     Button {
                         destinationStore.addRecent(destination)
-                        moveMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng))
+                        moveMap(
+                            to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
+                            zoomLevel: 16
+                        )
                         Task { await viewModel.select(destination) }
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
@@ -146,7 +150,7 @@ struct MapHomeView: View {
             Spacer()
             Button {
                 if let coordinate = locationProvider.coordinate {
-                    moveMap(to: coordinate)
+                    moveMap(to: coordinate, zoomLevel: 15)
                 } else {
                     locationProvider.request()
                 }
@@ -193,7 +197,10 @@ struct MapHomeView: View {
                                     isSelected: viewModel.selectedParkingLot?.id == parkingLot.id,
                                     onSelect: {
                                         viewModel.selectedParkingLot = parkingLot
-                                        moveMap(to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng))
+                                        moveMap(
+                                            to: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
+                                            zoomLevel: 17
+                                        )
                                     },
                                     onDetail: {
                                         router.showDetail(destination: destination, parkingLot: parkingLot)
@@ -225,9 +232,10 @@ struct MapHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func moveMap(to coordinate: CLLocationCoordinate2D) {
+    private func moveMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
         withAnimation {
             mapCenter = coordinate
+            mapZoomLevel = zoomLevel
         }
     }
 }
