@@ -241,7 +241,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             layer.clearAllItems()
 
             for pin in latestPins {
-                let option = PoiOptions(styleID: pin.styleID, poiID: pin.id)
+                let option = PoiOptions(styleID: pin.styleID, poiID: pin.poiID)
                 option.rank = rank(for: pin.kind)
                 option.clickable = true
                 let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
@@ -257,7 +257,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         func poiTappedHandler(_ param: PoiInteractionEventParam) {
-            guard let tappedPin = latestPins.first(where: { $0.id == param.poiItem.itemID }) else { return }
+            guard let tappedPin = latestPins.first(where: { $0.poiID == param.poiItem.itemID }) else { return }
             onPinTap?(tappedPin)
         }
 
@@ -321,21 +321,33 @@ private struct MapPinSnapshot: Equatable {
     let id: String
     let coordinate: CLLocationCoordinate2D
     let styleID: String
+    let poiID: String
 
     init(pin: MapPinItem) {
         id = pin.id
         coordinate = pin.coordinate
         styleID = pin.styleID
+        poiID = pin.poiID
     }
 
     static func == (lhs: MapPinSnapshot, rhs: MapPinSnapshot) -> Bool {
         lhs.id == rhs.id &&
             lhs.coordinate.isClose(to: rhs.coordinate) &&
-            lhs.styleID == rhs.styleID
+            lhs.styleID == rhs.styleID &&
+            lhs.poiID == rhs.poiID
     }
 }
 
 private extension MapPinItem {
+    var poiID: String {
+        id.map { character in
+            character.isLetter || character.isNumber || character == "-" || character == "_" ? character : "_"
+        }
+        .reduce(into: "") { result, character in
+            result.append(character)
+        }
+    }
+
     var styleID: String {
         switch kind {
         case .currentLocation:
