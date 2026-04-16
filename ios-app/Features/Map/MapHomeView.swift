@@ -126,7 +126,8 @@ struct MapHomeView: View {
                 MapPinItem(
                     id: "festival-\(festival.id)",
                     coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
-                    kind: .festival(festival)
+                    kind: .festival(festival),
+                    showsTitleLabel: viewModel.selectedFestival?.id == festival.id
                 )
             })
         }
@@ -135,7 +136,8 @@ struct MapHomeView: View {
                 MapPinItem(
                     id: "event-\(event.id)",
                     coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
-                    kind: .event(event)
+                    kind: .event(event),
+                    showsTitleLabel: viewModel.selectedEvent?.id == event.id
                 )
             })
         }

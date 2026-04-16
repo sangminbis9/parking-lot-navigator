@@ -426,6 +426,8 @@ struct MapPinItem: Identifiable {
     let id: String
     let coordinate: CLLocationCoordinate2D
     let kind: Kind
+
+    var showsTitleLabel = false
 }
 
 private extension CLLocationCoordinate2D {

@@ -18,11 +18,17 @@ struct KakaoParkingMapView: UIViewRepresentable {
         tap.delaysTouchesBegan = false
         tap.delaysTouchesEnded = false
         tap.delegate = context.coordinator
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        pinch.cancelsTouchesInView = false
+        pinch.delaysTouchesBegan = false
+        pinch.delaysTouchesEnded = false
+        pinch.delegate = context.coordinator
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         view.addGestureRecognizer(tap)
+        view.addGestureRecognizer(pinch)
         context.coordinator.createController(view)
         context.coordinator.prepareEngineIfNeeded()
         context.coordinator.activateEngineIfNeeded()
@@ -68,6 +74,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var observers: [NSObjectProtocol] = []
         private var poiTapHandlers: [DisposableEventHandler] = []
         private var registeredDynamicStyleIDs: Set<String> = []
+        private var suppressDiscoverLabelsAfterGesture = false
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -102,10 +109,19 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
             if let tappedPin = pin(at: gesture.location(in: container)) {
+                suppressDiscoverLabelsAfterGesture = false
                 onPinTap?(tappedPin)
                 return
             }
             onTap?()
+        }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard gesture.state == .began || gesture.state == .changed else { return }
+            guard !suppressDiscoverLabelsAfterGesture else { return }
+            suppressDiscoverLabelsAfterGesture = true
+            renderedPinSnapshot = []
+            render()
         }
 
         func gestureRecognizer(
@@ -153,6 +169,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             updateMapRect()
             configureLabelsIfNeeded()
             if shouldMoveCamera {
+                suppressDiscoverLabelsAfterGesture = false
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
@@ -164,7 +181,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         private var showsDiscoverLabels: Bool {
-            latestCamera.zoomLevel >= 15
+            !suppressDiscoverLabelsAfterGesture && latestCamera.zoomLevel >= 15
         }
 
         private var shouldMoveCamera: Bool {
@@ -383,11 +400,11 @@ private extension MapPinItem {
             }
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
-            guard showsDiscoverLabel else { return style.id }
+            guard showsDiscoverLabel && showsTitleLabel else { return style.id }
             return style.labeledID(for: festival.title)
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
-            guard showsDiscoverLabel else { return style.id }
+            guard showsDiscoverLabel && showsTitleLabel else { return style.id }
             return style.labeledID(for: event.title)
         }
     }
