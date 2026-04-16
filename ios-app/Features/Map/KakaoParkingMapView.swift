@@ -263,18 +263,16 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         private func pin(at touchPoint: CGPoint) -> MapPinItem? {
             guard let mapView = controller?.getView("mapview") as? KakaoMap else { return nil }
-            guard let touchedMapPoint = mapView.getPosition(touchPoint) else { return nil }
+            let touchedMapPoint = mapView.getPosition(touchPoint)
             let referencePoint = CGPoint(x: touchPoint.x + 36, y: touchPoint.y)
             let referenceMapPoint = mapView.getPosition(referencePoint)
             let touchCoordinate = CLLocationCoordinate2D(
                 latitude: touchedMapPoint.wgsCoord.latitude,
                 longitude: touchedMapPoint.wgsCoord.longitude
             )
-            let touchRadius = referenceMapPoint.map {
-                CLLocation(latitude: touchCoordinate.latitude, longitude: touchCoordinate.longitude).distance(
-                    from: CLLocation(latitude: $0.wgsCoord.latitude, longitude: $0.wgsCoord.longitude)
-                )
-            } ?? 80
+            let touchRadius = CLLocation(latitude: touchCoordinate.latitude, longitude: touchCoordinate.longitude).distance(
+                from: CLLocation(latitude: referenceMapPoint.wgsCoord.latitude, longitude: referenceMapPoint.wgsCoord.longitude)
+            )
             let thresholdMeters = max(touchRadius, 40)
 
             return latestPins

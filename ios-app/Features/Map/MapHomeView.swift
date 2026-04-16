@@ -81,7 +81,7 @@ struct MapHomeView: View {
                     openMaps(name: festival.title, latitude: festival.lat, longitude: festival.lng)
                 },
                 onOpenSource: { url in
-                    _ = openURL(url)
+                    openURL(url)
                 }
             )
         }
@@ -100,7 +100,7 @@ struct MapHomeView: View {
                     openMaps(name: event.title, latitude: event.lat, longitude: event.lng)
                 },
                 onOpenSource: { url in
-                    _ = openURL(url)
+                    openURL(url)
                 }
             )
         }
