@@ -32,20 +32,32 @@ export class TourApiFestivalProvider extends BaseProviderHealth implements Festi
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
       const url = new URL("/B551011/KorService2/searchFestival2", this.baseUrl);
-      url.searchParams.set("serviceKey", this.serviceKey);
+      url.searchParams.set("serviceKey", this.serviceKey.trim());
       url.searchParams.set("MobileOS", "ETC");
       url.searchParams.set("MobileApp", "ParkingLotNavigator");
       url.searchParams.set("_type", "json");
       url.searchParams.set("numOfRows", "100");
       url.searchParams.set("pageNo", "1");
       url.searchParams.set("arrange", "E");
-      url.searchParams.set("eventStartDate", formatCompactDate(daysAgo(90)));
+      url.searchParams.set("eventStartDate", formatCompactDate(new Date()));
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0",
+          Accept: "application/json,text/plain,*/*"
+        }
+      });
       if (!response.ok) throw new Error(`TourAPI festival failed: ${response.status}`);
       const body = (await response.json()) as {
-        response?: { body?: { items?: { item?: TourApiFestivalItem[] | TourApiFestivalItem } } };
+        response?: {
+          header?: { resultCode?: string; resultMsg?: string };
+          body?: { items?: { item?: TourApiFestivalItem[] | TourApiFestivalItem } };
+        };
       };
+      const resultCode = body.response?.header?.resultCode;
+      if (resultCode && resultCode !== "0000") {
+        throw new Error(`TourAPI festival failed: ${body.response?.header?.resultMsg ?? resultCode}`);
+      }
       const rawItems = body.response?.body?.items?.item;
       const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
       const normalized = items
@@ -62,10 +74,6 @@ export class TourApiFestivalProvider extends BaseProviderHealth implements Festi
       return [];
     }
   }
-}
-
-function daysAgo(days: number): Date {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 function normalizeTourFestival(item: TourApiFestivalItem, query: DiscoverQuery): Festival | null {

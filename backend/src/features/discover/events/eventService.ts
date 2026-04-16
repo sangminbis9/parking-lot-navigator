@@ -17,7 +17,9 @@ export class EventService {
 
     const results = await Promise.all(this.providers.map((provider) => provider.events(query)));
     const items = results.flat();
-    cache.set(cacheKey, items, config.DISCOVER_CACHE_TTL_SECONDS);
+    if (items.length > 0 || this.health().some((provider) => provider.status !== "down")) {
+      cache.set(cacheKey, items, config.DISCOVER_CACHE_TTL_SECONDS);
+    }
     return items;
   }
 
