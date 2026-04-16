@@ -8,6 +8,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let zoomLevel: Int
     let pins: [MapPinItem]
     let onTap: () -> Void
+    let onPinTap: (MapPinItem) -> Void
 
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
@@ -20,6 +21,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
+        context.coordinator.onPinTap = onPinTap
         view.addGestureRecognizer(tap)
         context.coordinator.createController(view)
         context.coordinator.prepareEngineIfNeeded()
@@ -31,6 +33,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
+        context.coordinator.onPinTap = onPinTap
         context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
     }
@@ -53,6 +56,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         )
         var latestPins: [MapPinItem] = []
         var onTap: (() -> Void)?
+        var onPinTap: ((MapPinItem) -> Void)?
 
         private weak var container: KMViewContainer?
         private var enginePrepared = false
@@ -62,6 +66,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var renderedCamera: MapCameraTarget?
         private var renderedPinSnapshot: [MapPinSnapshot] = []
         private var observers: [NSObjectProtocol] = []
+        private var poiTapHandlers: [DisposableEventHandler] = []
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -228,15 +233,28 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private func renderPins(on mapView: KakaoMap) {
             let manager = mapView.getLabelManager()
             guard let layer = manager.getLabelLayer(layerID: "parking-pins") else { return }
+            poiTapHandlers = []
             layer.clearAllItems()
 
             for pin in latestPins {
                 let option = PoiOptions(styleID: pin.styleID, poiID: pin.id)
                 option.rank = rank(for: pin.kind)
+                option.clickable = true
                 let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
                 let poi = layer.addPoi(option: option, at: point)
+                if let handler = poi?.addPoiTappedEventHandler(
+                    target: self,
+                    handler: KakaoParkingMapView.Coordinator.poiTappedHandler
+                ) {
+                    poiTapHandlers.append(handler)
+                }
                 poi?.show()
             }
+        }
+
+        func poiTappedHandler(_ param: PoiInteractionEventParam) {
+            guard let tappedPin = latestPins.first(where: { $0.id == param.poiItem.itemID }) else { return }
+            onPinTap?(tappedPin)
         }
 
         private func rank(for kind: MapPinItem.Kind) -> Int {

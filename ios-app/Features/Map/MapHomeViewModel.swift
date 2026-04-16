@@ -13,6 +13,8 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedFestival: Festival?
     @Published var selectedEvent: FreeEvent?
+    @Published var showsFestivalLayer = true
+    @Published var showsEventLayer = true
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
     @Published var isLoadingParking = false
@@ -61,6 +63,36 @@ final class MapHomeViewModel: ObservableObject {
         await loadParkingLots(for: destination)
     }
 
+    func selectFestival(_ festival: Festival) async {
+        selectedFestival = festival
+        selectedEvent = nil
+        await selectDiscoverDestination(
+            id: "festival-\(festival.id)",
+            name: festival.title,
+            address: festival.address,
+            lat: festival.lat,
+            lng: festival.lng,
+            source: festival.source,
+            rawCategory: festival.tags.joined(separator: ","),
+            normalizedCategory: "festival"
+        )
+    }
+
+    func selectEvent(_ event: FreeEvent) async {
+        selectedEvent = event
+        selectedFestival = nil
+        await selectDiscoverDestination(
+            id: "event-\(event.id)",
+            name: event.title,
+            address: event.address,
+            lat: event.lat,
+            lng: event.lng,
+            source: event.source,
+            rawCategory: event.eventType,
+            normalizedCategory: "event"
+        )
+    }
+
     func loadParkingLots(for destination: Destination) async {
         let destinationID = destination.id
         isLoadingParking = true
@@ -87,6 +119,44 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverItems(center: center)
     }
 
+    func setFestivalLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+        showsFestivalLayer = isVisible
+        if !isVisible {
+            selectedFestival = nil
+            return
+        }
+        if festivals.isEmpty {
+            await loadFestivals(center: center)
+        }
+    }
+
+    func setEventLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+        showsEventLayer = isVisible
+        if !isVisible {
+            selectedEvent = nil
+            return
+        }
+        if events.isEmpty {
+            await loadEvents(center: center)
+        }
+    }
+
+    func loadDiscoverLayers(center: CLLocationCoordinate2D) async {
+        isLoadingDiscover = true
+        errorMessage = nil
+        do {
+            if showsFestivalLayer {
+                festivals = try await apiClient.nearbyFestivals(lat: center.latitude, lng: center.longitude, radiusMeters: 3000)
+            }
+            if showsEventLayer {
+                events = try await apiClient.nearbyEvents(lat: center.latitude, lng: center.longitude, radiusMeters: 3000)
+            }
+        } catch {
+            errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
+        }
+        isLoadingDiscover = false
+    }
+
     func loadDiscoverItems(center: CLLocationCoordinate2D) async {
         isLoadingDiscover = true
         errorMessage = nil
@@ -103,6 +173,56 @@ final class MapHomeViewModel: ObservableObject {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
         }
         isLoadingDiscover = false
+    }
+
+    private func loadFestivals(center: CLLocationCoordinate2D) async {
+        isLoadingDiscover = true
+        errorMessage = nil
+        do {
+            festivals = try await apiClient.nearbyFestivals(lat: center.latitude, lng: center.longitude, radiusMeters: 3000)
+        } catch {
+            errorMessage = "\u{CD95}\u{C81C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+        }
+        isLoadingDiscover = false
+    }
+
+    private func loadEvents(center: CLLocationCoordinate2D) async {
+        isLoadingDiscover = true
+        errorMessage = nil
+        do {
+            events = try await apiClient.nearbyEvents(lat: center.latitude, lng: center.longitude, radiusMeters: 3000)
+        } catch {
+            errorMessage = "\u{C774}\u{BCA4}\u{D2B8} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+        }
+        isLoadingDiscover = false
+    }
+
+    private func selectDiscoverDestination(
+        id: String,
+        name: String,
+        address: String,
+        lat: Double,
+        lng: Double,
+        source: String,
+        rawCategory: String?,
+        normalizedCategory: String
+    ) async {
+        exploreMode = .parking
+        let destination = Destination(
+            id: id,
+            name: name,
+            address: address,
+            lat: lat,
+            lng: lng,
+            source: source,
+            rawCategory: rawCategory,
+            normalizedCategory: normalizedCategory
+        )
+        selectedDestination = destination
+        destinations = []
+        selectedParkingLot = nil
+        parkingLots = []
+        await loadParkingLots(for: destination)
     }
 
     private func recordSelection(_ destination: Destination, queryText: String) {

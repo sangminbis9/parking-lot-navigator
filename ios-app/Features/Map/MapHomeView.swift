@@ -26,12 +26,14 @@ struct MapHomeView: View {
         ZStack(alignment: .top) {
             KakaoParkingMapView(center: mapCenter, zoomLevel: mapZoomLevel, pins: pins) {
                 isSearchFocused = false
+            } onPinTap: { pin in
+                handlePinTap(pin)
             }
             .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
                 searchPanel
-                exploreModeChips
+                discoverLayerToggles
                 if !viewModel.destinations.isEmpty {
                     destinationResults
                 }
@@ -54,9 +56,11 @@ struct MapHomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             locationProvider.request()
+            await viewModel.loadDiscoverLayers(center: mapCenter)
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
+            Task { await viewModel.loadDiscoverLayers(center: coordinate) }
         }
         .sheet(item: $viewModel.selectedFestival) { festival in
             DiscoverDetailSheet(
@@ -100,26 +104,24 @@ struct MapHomeView: View {
 
     private var pins: [MapPinItem] {
         var items: [MapPinItem] = []
-        switch viewModel.exploreMode {
-        case .parking:
-            if let coordinate = locationProvider.coordinate {
-                items.append(MapPinItem(id: "current-location", coordinate: coordinate, kind: .currentLocation))
-            }
-            if let destination = viewModel.selectedDestination {
-                items.append(MapPinItem(
-                    id: "destination-\(destination.id)",
-                    coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
-                    kind: .destination(destination)
-                ))
-            }
-            items.append(contentsOf: viewModel.parkingLots.map { parkingLot in
-                MapPinItem(
-                    id: "parking-\(parkingLot.id)",
-                    coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
-                    kind: .parking(parkingLot)
-                )
-            })
-        case .festivals:
+        if let coordinate = locationProvider.coordinate {
+            items.append(MapPinItem(id: "current-location", coordinate: coordinate, kind: .currentLocation))
+        }
+        if let destination = viewModel.selectedDestination {
+            items.append(MapPinItem(
+                id: "destination-\(destination.id)",
+                coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
+                kind: .destination(destination)
+            ))
+        }
+        items.append(contentsOf: viewModel.parkingLots.map { parkingLot in
+            MapPinItem(
+                id: "parking-\(parkingLot.id)",
+                coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
+                kind: .parking(parkingLot)
+            )
+        })
+        if viewModel.showsFestivalLayer {
             items.append(contentsOf: viewModel.festivals.map { festival in
                 MapPinItem(
                     id: "festival-\(festival.id)",
@@ -127,7 +129,8 @@ struct MapHomeView: View {
                     kind: .festival(festival)
                 )
             })
-        case .events:
+        }
+        if viewModel.showsEventLayer {
             items.append(contentsOf: viewModel.events.map { event in
                 MapPinItem(
                     id: "event-\(event.id)",
@@ -138,7 +141,6 @@ struct MapHomeView: View {
         }
         return items
     }
-
     private var searchPanel: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
@@ -168,21 +170,23 @@ struct MapHomeView: View {
         .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
     }
 
-    private var exploreModeChips: some View {
+    private var discoverLayerToggles: some View {
         HStack(spacing: 8) {
-            ForEach(MapExploreMode.allCases) { mode in
-                Button {
-                    Task { await viewModel.setExploreMode(mode, center: mapCenter) }
-                } label: {
-                    Text(mode.title)
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(viewModel.exploreMode == mode ? Color.blue.opacity(0.18) : Color(.secondarySystemBackground))
-                        .foregroundStyle(viewModel.exploreMode == mode ? .blue : .primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
+            layerToggle(
+                title: "\u{CD95}\u{C81C}",
+                systemImage: "sparkles",
+                tint: .purple,
+                isOn: viewModel.showsFestivalLayer
+            ) {
+                Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, center: mapCenter) }
+            }
+            layerToggle(
+                title: "\u{C774}\u{BCA4}\u{D2B8}",
+                systemImage: "calendar",
+                tint: .teal,
+                isOn: viewModel.showsEventLayer
+            ) {
+                Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, center: mapCenter) }
             }
             if viewModel.isLoadingDiscover {
                 ProgressView()
@@ -192,6 +196,29 @@ struct MapHomeView: View {
         }
     }
 
+    private func layerToggle(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        isOn: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isOn ? tint.opacity(0.18) : Color(.secondarySystemBackground))
+                .foregroundStyle(isOn ? tint : .secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isOn ? tint.opacity(0.35) : .clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isOn ? "\u{CF1C}\u{C9D0}" : "\u{AEBC}\u{C9D0}")
+    }
     private var destinationResults: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
@@ -254,16 +281,8 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private var bottomPanel: some View {
-        switch viewModel.exploreMode {
-        case .parking:
-            parkingPanel
-        case .festivals:
-            festivalPanel
-        case .events:
-            eventPanel
-        }
+        parkingPanel
     }
-
     @ViewBuilder
     private var parkingPanel: some View {
         if let destination = viewModel.selectedDestination {
@@ -421,6 +440,24 @@ struct MapHomeView: View {
         let item = MKMapItem(placemark: placemark)
         item.name = name
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    }
+
+    private func handlePinTap(_ pin: MapPinItem) {
+        switch pin.kind {
+        case .festival(let festival):
+            focusMap(to: pin.coordinate, zoomLevel: 16)
+            Task { await viewModel.selectFestival(festival) }
+        case .event(let event):
+            focusMap(to: pin.coordinate, zoomLevel: 16)
+            Task { await viewModel.selectEvent(event) }
+        case .parking(let parkingLot):
+            viewModel.selectedParkingLot = parkingLot
+            focusMap(to: pin.coordinate, zoomLevel: 17)
+        case .destination(let destination):
+            focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
+        case .currentLocation:
+            focusMap(to: pin.coordinate, zoomLevel: 15)
+        }
     }
 
     private func handleLocationUpdate(_ coordinate: CLLocationCoordinate2D) {
