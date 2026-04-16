@@ -13,7 +13,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
         view.sizeToFit()
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tap.cancelsTouchesInView = false
         tap.delaysTouchesBegan = false
         tap.delaysTouchesEnded = false
@@ -99,7 +99,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
             observers = []
         }
 
-        @objc func handleTap() {
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            if let tappedPin = pin(at: gesture.location(in: container)) {
+                onPinTap?(tappedPin)
+                return
+            }
             onTap?()
         }
 
@@ -255,6 +259,37 @@ struct KakaoParkingMapView: UIViewRepresentable {
         func poiTappedHandler(_ param: PoiInteractionEventParam) {
             guard let tappedPin = latestPins.first(where: { $0.id == param.poiItem.itemID }) else { return }
             onPinTap?(tappedPin)
+        }
+
+        private func pin(at touchPoint: CGPoint) -> MapPinItem? {
+            guard let mapView = controller?.getView("mapview") as? KakaoMap else { return nil }
+            guard let touchedMapPoint = mapView.getPosition(touchPoint) else { return nil }
+            let referencePoint = CGPoint(x: touchPoint.x + 36, y: touchPoint.y)
+            let referenceMapPoint = mapView.getPosition(referencePoint)
+            let touchCoordinate = CLLocationCoordinate2D(
+                latitude: touchedMapPoint.wgsCoord.latitude,
+                longitude: touchedMapPoint.wgsCoord.longitude
+            )
+            let touchRadius = referenceMapPoint.map {
+                CLLocation(latitude: touchCoordinate.latitude, longitude: touchCoordinate.longitude).distance(
+                    from: CLLocation(latitude: $0.wgsCoord.latitude, longitude: $0.wgsCoord.longitude)
+                )
+            } ?? 80
+            let thresholdMeters = max(touchRadius, 40)
+
+            return latestPins
+                .map { pin in
+                    (
+                        pin,
+                        CLLocation(latitude: touchCoordinate.latitude, longitude: touchCoordinate.longitude).distance(
+                            from: CLLocation(latitude: pin.coordinate.latitude, longitude: pin.coordinate.longitude)
+                        )
+                    )
+                }
+                .filter { _, distance in distance <= thresholdMeters }
+                .sorted { $0.1 < $1.1 }
+                .first?
+                .0
         }
 
         private func rank(for kind: MapPinItem.Kind) -> Int {

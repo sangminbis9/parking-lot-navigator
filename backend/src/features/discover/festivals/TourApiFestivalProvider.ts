@@ -39,7 +39,7 @@ export class TourApiFestivalProvider extends BaseProviderHealth implements Festi
       url.searchParams.set("numOfRows", "100");
       url.searchParams.set("pageNo", "1");
       url.searchParams.set("arrange", "E");
-      url.searchParams.set("eventStartDate", formatCompactDate(new Date()));
+      url.searchParams.set("eventStartDate", formatCompactDate(daysAgo(90)));
 
       const response = await fetch(url);
       if (!response.ok) throw new Error(`TourAPI festival failed: ${response.status}`);
@@ -62,6 +62,10 @@ export class TourApiFestivalProvider extends BaseProviderHealth implements Festi
       return [];
     }
   }
+}
+
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 function normalizeTourFestival(item: TourApiFestivalItem, query: DiscoverQuery): Festival | null {
