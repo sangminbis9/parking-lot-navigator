@@ -67,6 +67,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var renderedPinSnapshot: [MapPinSnapshot] = []
         private var observers: [NSObjectProtocol] = []
         private var poiTapHandlers: [DisposableEventHandler] = []
+        private var registeredDynamicStyleIDs: Set<String> = []
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -155,11 +156,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
-            let pinSnapshot = latestPins.map { MapPinSnapshot(pin: $0) }
+            let pinSnapshot = latestPins.map { MapPinSnapshot(pin: $0, showsDiscoverLabels: showsDiscoverLabels) }
             if renderedPinSnapshot != pinSnapshot {
                 renderPins(on: mapView)
                 renderedPinSnapshot = pinSnapshot
             }
+        }
+
+        private var showsDiscoverLabels: Bool {
+            latestCamera.zoomLevel >= 15
         }
 
         private var shouldMoveCamera: Bool {
@@ -222,8 +227,9 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(.systemOrange)))
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
-            manager.addPoiStyle(makeStyle(id: "festival", image: .discoverPin(fill: .systemPurple, symbol: "sparkles")))
-            manager.addPoiStyle(makeStyle(id: "event", image: .discoverPin(fill: .systemTeal, symbol: "calendar")))
+            for style in DiscoverPinStyle.allCases {
+                manager.addPoiStyle(makeStyle(id: style.id, image: .discoverPin(fill: style.fill, symbol: style.symbol)))
+            }
             stylesReady = true
         }
 
@@ -241,7 +247,13 @@ struct KakaoParkingMapView: UIViewRepresentable {
             layer.clearAllItems()
 
             for pin in latestPins {
-                let option = PoiOptions(styleID: pin.styleID, poiID: pin.poiID)
+                let styleID = pin.styleID(showsDiscoverLabel: showsDiscoverLabels)
+                if !registeredDynamicStyleIDs.contains(styleID),
+                   let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
+                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
+                    registeredDynamicStyleIDs.insert(style.id)
+                }
+                let option = PoiOptions(styleID: styleID, poiID: pin.poiID)
                 option.rank = rank(for: pin.kind)
                 option.clickable = true
                 let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
@@ -323,10 +335,10 @@ private struct MapPinSnapshot: Equatable {
     let styleID: String
     let poiID: String
 
-    init(pin: MapPinItem) {
+    init(pin: MapPinItem, showsDiscoverLabels: Bool) {
         id = pin.id
         coordinate = pin.coordinate
-        styleID = pin.styleID
+        styleID = pin.styleID(showsDiscoverLabel: showsDiscoverLabels)
         poiID = pin.poiID
     }
 
@@ -348,7 +360,7 @@ private extension MapPinItem {
         }
     }
 
-    var styleID: String {
+    func styleID(showsDiscoverLabel: Bool = false) -> String {
         switch kind {
         case .currentLocation:
             return "current-location"
@@ -369,11 +381,194 @@ private extension MapPinItem {
                     return "parking-stale"
                 }
             }
-        case .festival:
-            return "festival"
-        case .event:
-            return "event"
+        case .festival(let festival):
+            let style = DiscoverPinStyle.festivalStyle(for: festival)
+            guard showsDiscoverLabel else { return style.id }
+            return style.labeledID(for: festival.title)
+        case .event(let event):
+            let style = DiscoverPinStyle.eventStyle(for: event)
+            guard showsDiscoverLabel else { return style.id }
+            return style.labeledID(for: event.title)
         }
+    }
+
+    func dynamicDiscoverStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
+        switch kind {
+        case .festival(let festival):
+            let style = DiscoverPinStyle.festivalStyle(for: festival)
+            guard styleID == style.labeledID(for: festival.title) else { return nil }
+            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: festival.title.shortMapLabel))
+        case .event(let event):
+            let style = DiscoverPinStyle.eventStyle(for: event)
+            guard styleID == style.labeledID(for: event.title) else { return nil }
+            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: event.title.shortMapLabel))
+        default:
+            return nil
+        }
+    }
+}
+
+private enum DiscoverPinStyle: CaseIterable {
+    case festivalDefault
+    case festivalNight
+    case festivalNature
+    case festivalFood
+    case festivalPerformance
+    case eventDefault
+    case eventExhibition
+    case eventPerformance
+    case eventEducation
+    case eventMarket
+    case eventSports
+
+    var id: String {
+        switch self {
+        case .festivalDefault:
+            return "festival-default"
+        case .festivalNight:
+            return "festival-night"
+        case .festivalNature:
+            return "festival-nature"
+        case .festivalFood:
+            return "festival-food"
+        case .festivalPerformance:
+            return "festival-performance"
+        case .eventDefault:
+            return "event-default"
+        case .eventExhibition:
+            return "event-exhibition"
+        case .eventPerformance:
+            return "event-performance"
+        case .eventEducation:
+            return "event-education"
+        case .eventMarket:
+            return "event-market"
+        case .eventSports:
+            return "event-sports"
+        }
+    }
+
+    var fill: UIColor {
+        switch self {
+        case .festivalDefault:
+            return .systemPurple
+        case .festivalNight:
+            return .systemIndigo
+        case .festivalNature:
+            return .systemGreen
+        case .festivalFood:
+            return .systemOrange
+        case .festivalPerformance:
+            return .systemPink
+        case .eventDefault:
+            return .systemTeal
+        case .eventExhibition:
+            return .systemMint
+        case .eventPerformance:
+            return .systemRed
+        case .eventEducation:
+            return .systemBlue
+        case .eventMarket:
+            return .systemBrown
+        case .eventSports:
+            return .systemCyan
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .festivalDefault:
+            return "sparkles"
+        case .festivalNight:
+            return "moon.stars.fill"
+        case .festivalNature:
+            return "leaf.fill"
+        case .festivalFood:
+            return "fork.knife"
+        case .festivalPerformance:
+            return "music.note"
+        case .eventDefault:
+            return "calendar"
+        case .eventExhibition:
+            return "paintpalette.fill"
+        case .eventPerformance:
+            return "theatermasks.fill"
+        case .eventEducation:
+            return "book.fill"
+        case .eventMarket:
+            return "bag.fill"
+        case .eventSports:
+            return "figure.run"
+        }
+    }
+
+    func labeledID(for title: String) -> String {
+        "\(id)-label-\(title.stableStyleKey)"
+    }
+
+    static func festivalStyle(for festival: Festival) -> DiscoverPinStyle {
+        let text = [festival.title, festival.subtitle, festival.venueName, festival.address]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .appending(" \(festival.tags.joined(separator: " "))")
+            .lowercased()
+
+        if text.containsAny(["밤", "야간", "달빛", "빛", "라이트", "light", "night"]) {
+            return .festivalNight
+        }
+        if text.containsAny(["숲", "정원", "꽃", "벚꽃", "장미", "자연", "생태", "garden", "flower"]) {
+            return .festivalNature
+        }
+        if text.containsAny(["푸드", "음식", "먹거리", "맥주", "와인", "커피", "food", "beer", "wine"]) {
+            return .festivalFood
+        }
+        if text.containsAny(["음악", "뮤직", "공연", "콘서트", "재즈", "락", "페스티벌", "music", "concert", "jazz"]) {
+            return .festivalPerformance
+        }
+        return .festivalDefault
+    }
+
+    static func eventStyle(for event: FreeEvent) -> DiscoverPinStyle {
+        let text = [event.title, event.eventType, event.venueName, event.address, event.shortDescription]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+        if text.containsAny(["전시", "미술", "갤러리", "박물관", "뮤지엄", "exhibition", "gallery", "museum", "art"]) {
+            return .eventExhibition
+        }
+        if text.containsAny(["공연", "음악", "콘서트", "연극", "무용", "국악", "performance", "concert", "theater", "dance"]) {
+            return .eventPerformance
+        }
+        if text.containsAny(["교육", "강좌", "체험", "워크숍", "클래스", "education", "workshop", "class"]) {
+            return .eventEducation
+        }
+        if text.containsAny(["장터", "마켓", "시장", "플리", "market", "fair"]) {
+            return .eventMarket
+        }
+        if text.containsAny(["스포츠", "체육", "러닝", "걷기", "마라톤", "sports", "running", "marathon"]) {
+            return .eventSports
+        }
+        return .eventDefault
+    }
+}
+
+private extension String {
+    func containsAny(_ needles: [String]) -> Bool {
+        needles.contains { contains($0) }
+    }
+
+    var shortMapLabel: String {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 12 else { return trimmed }
+        return "\(String(trimmed.prefix(11)))..."
+    }
+
+    var stableStyleKey: String {
+        let hash = unicodeScalars.reduce(UInt32(2166136261)) { partial, scalar in
+            (partial ^ scalar.value) &* 16777619
+        }
+        return String(hash, radix: 16)
     }
 }
 
@@ -399,44 +594,100 @@ private extension UIImage {
         parkingMarker(fill: color, size: 32, scale: mapPinScale)
     }
 
-    static func discoverPin(fill: UIColor, symbol: String) -> UIImage {
-        circularPin(fill: fill, symbol: symbol, size: 34, scale: mapPinScale)
+    static func discoverPin(fill: UIColor, symbol: String, label: String? = nil) -> UIImage {
+        discoverMarker(fill: fill, symbol: symbol, label: label, size: 34, scale: mapPinScale)
+    }
+
+    static func discoverMarker(fill: UIColor, symbol: String, label: String?, size: CGFloat, scale: CGFloat) -> UIImage {
+        guard let label, !label.isEmpty else {
+            return circularPin(fill: fill, symbol: symbol, size: size, scale: scale)
+        }
+
+        let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        let horizontalPadding: CGFloat = 8
+        let bubbleHeight: CGFloat = 24
+        let gap: CGFloat = 3
+        let labelWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width + horizontalPadding * 2)
+        let bubbleWidth = min(labelWidth, 124)
+        let canvasWidth = max(size, bubbleWidth)
+        let canvasHeight = bubbleHeight + gap + size + 9
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
+            let cg = context.cgContext
+            cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.22).cgColor)
+
+            let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 0, width: bubbleWidth, height: bubbleHeight)
+            let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 8)
+            UIColor.systemBackground.withAlphaComponent(0.92).setFill()
+            bubble.fill()
+            fill.withAlphaComponent(0.9).setStroke()
+            bubble.lineWidth = 1.5
+            bubble.stroke()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byTruncatingTail
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.label,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: label).draw(
+                in: bubbleRect.insetBy(dx: horizontalPadding, dy: 3),
+                withAttributes: attributes
+            )
+
+            let pinOriginX = (canvasWidth - size) / 2
+            drawCircularPinBody(
+                fill: fill,
+                symbol: symbol,
+                size: size,
+                origin: CGPoint(x: pinOriginX, y: bubbleHeight + gap),
+                context: context
+            )
+        }
     }
 
     static func circularPin(fill: UIColor, symbol: String?, size: CGFloat, scale: CGFloat) -> UIImage {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * scale, height: (size + 9) * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
-            let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
-            let cg = context.cgContext
-            cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.28).cgColor)
-            fill.setFill()
-            UIBezierPath(ovalIn: rect).fill()
-
-            UIColor.white.setStroke()
-            let outline = UIBezierPath(ovalIn: rect)
-            outline.lineWidth = 3
-            outline.stroke()
-
-            let triangle = UIBezierPath()
-            triangle.move(to: CGPoint(x: size / 2 - 5, y: size - 4))
-            triangle.addLine(to: CGPoint(x: size / 2 + 5, y: size - 4))
-            triangle.addLine(to: CGPoint(x: size / 2, y: size + 7))
-            triangle.close()
-            fill.setFill()
-            triangle.fill()
-
-            guard let symbol, let image = UIImage(systemName: symbol) else { return }
-            let iconSize = size * 0.48
-            let iconRect = CGRect(
-                x: (size - iconSize) / 2,
-                y: (size - iconSize) / 2,
-                width: iconSize,
-                height: iconSize
-            )
-            UIColor.white.setFill()
-            image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+            drawCircularPinBody(fill: fill, symbol: symbol, size: size, origin: .zero, context: context)
         }
+    }
+
+    static func drawCircularPinBody(fill: UIColor, symbol: String?, size: CGFloat, origin: CGPoint, context: UIGraphicsImageRendererContext) {
+        let rect = CGRect(x: origin.x + 2, y: origin.y + 2, width: size - 4, height: size - 4)
+        let cg = context.cgContext
+        cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.28).cgColor)
+        fill.setFill()
+        UIBezierPath(ovalIn: rect).fill()
+
+        UIColor.white.setStroke()
+        let outline = UIBezierPath(ovalIn: rect)
+        outline.lineWidth = 3
+        outline.stroke()
+
+        let triangle = UIBezierPath()
+        triangle.move(to: CGPoint(x: origin.x + size / 2 - 5, y: origin.y + size - 4))
+        triangle.addLine(to: CGPoint(x: origin.x + size / 2 + 5, y: origin.y + size - 4))
+        triangle.addLine(to: CGPoint(x: origin.x + size / 2, y: origin.y + size + 7))
+        triangle.close()
+        fill.setFill()
+        triangle.fill()
+
+        guard let symbol, let image = UIImage(systemName: symbol) else { return }
+        let iconSize = size * 0.48
+        let iconRect = CGRect(
+            x: origin.x + (size - iconSize) / 2,
+            y: origin.y + (size - iconSize) / 2,
+            width: iconSize,
+            height: iconSize
+        )
+        UIColor.white.setFill()
+        image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
     }
 
     static func parkingMarker(fill: UIColor, size: CGFloat, scale: CGFloat) -> UIImage {

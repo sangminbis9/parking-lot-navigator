@@ -461,6 +461,7 @@ struct MapHomeView: View {
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
+        guard !didAutoCenterOnLocation else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
         if viewModel.showsFestivalLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true

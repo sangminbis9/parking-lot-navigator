@@ -23,9 +23,11 @@ final class MapHomeViewModel: ObservableObject {
 
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
-    private let discoverLayerRadiusMeters = 20_000
-    private let discoverFallbackRadiusMeters = 60_000
-    private let defaultDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+    private let localDiscoverRadiusMeters = 20_000
+    private let seoulDiscoverRadiusMeters = 60_000
+    private let nationwideDiscoverRadiusMeters = 450_000
+    private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
+    private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -129,7 +131,7 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         if festivals.isEmpty {
-            await loadFestivals(center: defaultDiscoverCenter, radiusMeters: discoverFallbackRadiusMeters)
+            await loadFestivals(center: center)
         }
     }
 
@@ -140,12 +142,59 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         if events.isEmpty {
-            await loadEvents(center: defaultDiscoverCenter, radiusMeters: discoverFallbackRadiusMeters)
+            await loadEvents(center: center)
         }
     }
 
     func loadInitialDiscoverLayers() async {
-        await loadDiscoverLayers(center: defaultDiscoverCenter)
+        await loadInitialDiscoverLayersFromProviderDefaults()
+    }
+
+    private func loadInitialDiscoverLayersFromProviderDefaults() async {
+        isLoadingDiscover = true
+        errorMessage = nil
+        var failedLoads = 0
+        var attemptedLoads = 0
+
+        if showsFestivalLayer && showsEventLayer {
+            attemptedLoads = 2
+            async let festivalResult = loadInitialFestivalLayer()
+            async let eventResult = loadInitialEventLayer()
+            let (loadedFestivals, loadedEvents) = await (festivalResult, eventResult)
+            switch loadedFestivals {
+            case .success(let items):
+                festivals = items
+            case .failure:
+                failedLoads += 1
+            }
+            switch loadedEvents {
+            case .success(let items):
+                events = items
+            case .failure:
+                failedLoads += 1
+            }
+        } else if showsFestivalLayer {
+            attemptedLoads += 1
+            switch await loadInitialFestivalLayer() {
+            case .success(let items):
+                festivals = items
+            case .failure:
+                failedLoads += 1
+            }
+        } else if showsEventLayer {
+            attemptedLoads += 1
+            switch await loadInitialEventLayer() {
+            case .success(let items):
+                events = items
+            case .failure:
+                failedLoads += 1
+            }
+        }
+
+        if attemptedLoads > 0 && attemptedLoads == failedLoads {
+            errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
+        }
+        isLoadingDiscover = false
     }
 
     func loadDiscoverLayers(center: CLLocationCoordinate2D) async {
@@ -203,9 +252,9 @@ final class MapHomeViewModel: ObservableObject {
             case .parking:
                 break
             case .festivals:
-                festivals = try await apiClient.nearbyFestivals(lat: center.latitude, lng: center.longitude, radiusMeters: discoverLayerRadiusMeters)
+                festivals = try await discoverFestivals(center: center)
             case .events:
-                events = try await apiClient.nearbyEvents(lat: center.latitude, lng: center.longitude, radiusMeters: discoverLayerRadiusMeters)
+                events = try await discoverEvents(center: center)
             }
         } catch {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
@@ -213,22 +262,22 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingDiscover = false
     }
 
-    private func loadFestivals(center: CLLocationCoordinate2D, radiusMeters: Int) async {
+    private func loadFestivals(center: CLLocationCoordinate2D) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
-            festivals = try await apiClient.nearbyFestivals(lat: center.latitude, lng: center.longitude, radiusMeters: radiusMeters)
+            festivals = try await discoverFestivals(center: center)
         } catch {
             errorMessage = "\u{CD95}\u{C81C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingDiscover = false
     }
 
-    private func loadEvents(center: CLLocationCoordinate2D, radiusMeters: Int) async {
+    private func loadEvents(center: CLLocationCoordinate2D) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
-            events = try await apiClient.nearbyEvents(lat: center.latitude, lng: center.longitude, radiusMeters: radiusMeters)
+            events = try await discoverEvents(center: center)
         } catch {
             errorMessage = "\u{C774}\u{BCA4}\u{D2B8} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
@@ -239,32 +288,56 @@ final class MapHomeViewModel: ObservableObject {
         let nearby = try await apiClient.nearbyFestivals(
             lat: center.latitude,
             lng: center.longitude,
-            radiusMeters: discoverLayerRadiusMeters
+            radiusMeters: localDiscoverRadiusMeters
         )
-        if !nearby.isEmpty || center.isClose(to: defaultDiscoverCenter) {
+        if !nearby.isEmpty || center.isClose(to: koreaDiscoverCenter) {
             return nearby
         }
         return try await apiClient.nearbyFestivals(
-            lat: defaultDiscoverCenter.latitude,
-            lng: defaultDiscoverCenter.longitude,
-            radiusMeters: discoverFallbackRadiusMeters
+            lat: koreaDiscoverCenter.latitude,
+            lng: koreaDiscoverCenter.longitude,
+            radiusMeters: nationwideDiscoverRadiusMeters
         )
     }
 
     private func discoverEvents(center: CLLocationCoordinate2D) async throws -> [FreeEvent] {
-        let nearby = try await apiClient.nearbyEvents(
+        return try await apiClient.nearbyEvents(
             lat: center.latitude,
             lng: center.longitude,
-            radiusMeters: discoverLayerRadiusMeters
+            radiusMeters: localDiscoverRadiusMeters
         )
-        if !nearby.isEmpty || center.isClose(to: defaultDiscoverCenter) {
-            return nearby
-        }
+    }
+
+    private func initialFestivals() async throws -> [Festival] {
+        return try await apiClient.nearbyFestivals(
+            lat: koreaDiscoverCenter.latitude,
+            lng: koreaDiscoverCenter.longitude,
+            radiusMeters: nationwideDiscoverRadiusMeters
+        )
+    }
+
+    private func initialEvents() async throws -> [FreeEvent] {
         return try await apiClient.nearbyEvents(
-            lat: defaultDiscoverCenter.latitude,
-            lng: defaultDiscoverCenter.longitude,
-            radiusMeters: discoverFallbackRadiusMeters
+            lat: seoulDiscoverCenter.latitude,
+            lng: seoulDiscoverCenter.longitude,
+            radiusMeters: seoulDiscoverRadiusMeters
         )
+    }
+
+    private func loadInitialFestivalLayer() async -> Result<[Festival], Error> {
+        do {
+            return .success(try await initialFestivals())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func loadInitialEventLayer() async -> Result<[FreeEvent], Error> {
+        do {
+            return .success(try await initialEvents())
+        } catch {
+            return .failure(error)
+        }
     }
 
     private func loadFestivalLayer(center: CLLocationCoordinate2D) async -> Result<[Festival], Error> {
