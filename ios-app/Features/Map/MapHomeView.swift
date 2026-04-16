@@ -56,15 +56,11 @@ struct MapHomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             locationProvider.request()
-            await viewModel.loadDiscoverLayers(center: mapCenter)
+            await viewModel.loadInitialDiscoverLayers()
             centerOnInitialDiscoverPinIfNeeded()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
-            Task {
-                await viewModel.loadDiscoverLayers(center: coordinate)
-                centerOnInitialDiscoverPinIfNeeded()
-            }
         }
         .sheet(item: $viewModel.selectedFestival) { festival in
             DiscoverDetailSheet(

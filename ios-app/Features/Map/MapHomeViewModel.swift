@@ -129,7 +129,7 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         if festivals.isEmpty {
-            await loadFestivals(center: center, radiusMeters: discoverLayerRadiusMeters)
+            await loadFestivals(center: defaultDiscoverCenter, radiusMeters: discoverFallbackRadiusMeters)
         }
     }
 
@@ -140,8 +140,12 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         if events.isEmpty {
-            await loadEvents(center: center, radiusMeters: discoverLayerRadiusMeters)
+            await loadEvents(center: defaultDiscoverCenter, radiusMeters: discoverFallbackRadiusMeters)
         }
+    }
+
+    func loadInitialDiscoverLayers() async {
+        await loadDiscoverLayers(center: defaultDiscoverCenter)
     }
 
     func loadDiscoverLayers(center: CLLocationCoordinate2D) async {
@@ -150,20 +154,37 @@ final class MapHomeViewModel: ObservableObject {
         var failedLoads = 0
         var attemptedLoads = 0
 
-        if showsFestivalLayer {
-            attemptedLoads += 1
-            do {
-                festivals = try await discoverFestivals(center: center)
-            } catch {
+        if showsFestivalLayer && showsEventLayer {
+            attemptedLoads = 2
+            async let festivalResult = loadFestivalLayer(center: center)
+            async let eventResult = loadEventLayer(center: center)
+            let (loadedFestivals, loadedEvents) = await (festivalResult, eventResult)
+            switch loadedFestivals {
+            case .success(let items):
+                festivals = items
+            case .failure:
                 failedLoads += 1
             }
-        }
-
-        if showsEventLayer {
+            switch loadedEvents {
+            case .success(let items):
+                events = items
+            case .failure:
+                failedLoads += 1
+            }
+        } else if showsFestivalLayer {
             attemptedLoads += 1
-            do {
-                events = try await discoverEvents(center: center)
-            } catch {
+            switch await loadFestivalLayer(center: center) {
+            case .success(let items):
+                festivals = items
+            case .failure:
+                failedLoads += 1
+            }
+        } else if showsEventLayer {
+            attemptedLoads += 1
+            switch await loadEventLayer(center: center) {
+            case .success(let items):
+                events = items
+            case .failure:
                 failedLoads += 1
             }
         }
@@ -244,6 +265,22 @@ final class MapHomeViewModel: ObservableObject {
             lng: defaultDiscoverCenter.longitude,
             radiusMeters: discoverFallbackRadiusMeters
         )
+    }
+
+    private func loadFestivalLayer(center: CLLocationCoordinate2D) async -> Result<[Festival], Error> {
+        do {
+            return .success(try await discoverFestivals(center: center))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func loadEventLayer(center: CLLocationCoordinate2D) async -> Result<[FreeEvent], Error> {
+        do {
+            return .success(try await discoverEvents(center: center))
+        } catch {
+            return .failure(error)
+        }
     }
 
     private func selectDiscoverDestination(
