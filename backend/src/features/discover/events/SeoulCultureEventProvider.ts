@@ -58,7 +58,9 @@ function normalizeSeoulEvent(row: SeoulCultureEventRow, query: DiscoverQuery): F
   const lng = Number(row.LOT);
   const dates = parseDateRange(row.DATE ?? "");
   if (!row.TITLE || !dates || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const isFree = (row.USE_FEE ?? "").includes("무료") || (row.USE_FEE ?? "").toLowerCase().includes("free");
+  const feeText = row.USE_FEE ?? "";
+  const lowerFeeText = feeText.toLowerCase();
+  const isFree = feeText.includes("\uBB34\uB8CC") || feeText.includes("0\uC6D0") || lowerFeeText.includes("free");
   return {
     id: `seoul-culture:${hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`)}`,
     title: row.TITLE,

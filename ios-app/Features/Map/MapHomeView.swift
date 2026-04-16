@@ -57,10 +57,14 @@ struct MapHomeView: View {
         .task {
             locationProvider.request()
             await viewModel.loadDiscoverLayers(center: mapCenter)
+            centerOnInitialDiscoverPinIfNeeded()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
-            Task { await viewModel.loadDiscoverLayers(center: coordinate) }
+            Task {
+                await viewModel.loadDiscoverLayers(center: coordinate)
+                centerOnInitialDiscoverPinIfNeeded()
+            }
         }
         .sheet(item: $viewModel.selectedFestival) { festival in
             DiscoverDetailSheet(
@@ -457,6 +461,19 @@ struct MapHomeView: View {
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
             focusMap(to: pin.coordinate, zoomLevel: 15)
+        }
+    }
+
+    private func centerOnInitialDiscoverPinIfNeeded() {
+        guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
+        if viewModel.showsFestivalLayer, let festival = viewModel.festivals.first {
+            didAutoCenterOnLocation = true
+            moveMap(to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng), zoomLevel: 12)
+            return
+        }
+        if viewModel.showsEventLayer, let event = viewModel.events.first {
+            didAutoCenterOnLocation = true
+            moveMap(to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng), zoomLevel: 12)
         }
     }
 

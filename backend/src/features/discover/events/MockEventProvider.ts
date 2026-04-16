@@ -8,21 +8,21 @@ export class MockEventProvider implements EventProvider {
     const items: FreeEvent[] = [
       {
         id: "mock-event-gallery",
-        title: "무료 시민 전시",
+        title: "Free public exhibition",
         eventType: "exhibition",
         startDate: new Date().toISOString().slice(0, 10),
         endDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         status: "ongoing",
         isFree: true,
-        venueName: "시민청",
-        address: "서울 중구 세종대로 110",
+        venueName: "Seoul City Hall",
+        address: "110 Sejong-daero, Jung-gu, Seoul",
         lat: query.lat + 0.0015,
         lng: query.lng - 0.001,
         distanceMeters: distanceMeters(query.lat, query.lng, query.lat + 0.0015, query.lng - 0.001),
         source: "mock",
         sourceUrl: null,
         imageUrl: null,
-        shortDescription: "누구나 관람할 수 있는 무료 공공 전시"
+        shortDescription: "Free public culture event"
       }
     ];
     return sortByStatusThenDistance(items).filter((item) => item.distanceMeters <= query.radiusMeters);
