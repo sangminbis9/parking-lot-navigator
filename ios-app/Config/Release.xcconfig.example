@@ -1,4 +1,4 @@
-API_BASE_URL = https:/$()/parkingbackend-production-8e80.up.railway.app
+API_BASE_URL = https:/$()/parking-lot-navigator-api.parkingnav.workers.dev
 APP_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator
 SHARE_EXTENSION_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator.ShareExtension
 APP_GROUP_ID = group.com.sangminbis9.ParkingLotNavigator
