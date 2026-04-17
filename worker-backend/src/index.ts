@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
 
 type Env = {
+  DB?: D1Database;
   NODE_ENV: string;
   LOG_LEVEL: string;
   PARKING_PROVIDER_MODE: "mock" | "real" | "hybrid";
@@ -218,11 +219,11 @@ function queryObject(url: string): Record<string, string> {
 
 async function loadBackend(env: Env): Promise<BackendRuntime> {
   syncProcessEnv(env);
-  backendRuntime ??= importBackend();
+  backendRuntime ??= importBackend(env);
   return backendRuntime;
 }
 
-async function importBackend(): Promise<BackendRuntime> {
+async function importBackend(env: Env): Promise<BackendRuntime> {
   const [
     { searchDestination },
     { createCompositeParkingProvider },
@@ -241,7 +242,7 @@ async function importBackend(): Promise<BackendRuntime> {
 
   return {
     searchDestination,
-    parkingProvider: createCompositeParkingProvider(),
+    parkingProvider: createCompositeParkingProvider({ d1: env.DB }),
     festivalService: createFestivalService(),
     eventService: createEventService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository)

@@ -20,6 +20,15 @@ pnpm exec wrangler secret put SEOUL_OPEN_DATA_KEY
 pnpm exec wrangler secret put PUBLIC_DATA_SERVICE_KEY
 ```
 
+Create the D1 database in Cloudflare Dashboard or with Wrangler, then keep the `DB` binding in `wrangler.toml`.
+
+Apply schema migrations after creating the database:
+
+```powershell
+cd worker-backend
+pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0001_parking_lots.sql
+```
+
 ## Local development
 
 ```powershell

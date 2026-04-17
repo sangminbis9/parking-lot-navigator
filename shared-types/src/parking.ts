@@ -2,6 +2,7 @@ export type ParkingSource =
   | "mock"
   | "seoul-realtime"
   | "seoul-metadata"
+  | "national-static"
   | "ts-korea"
   | "kakao-local";
 
