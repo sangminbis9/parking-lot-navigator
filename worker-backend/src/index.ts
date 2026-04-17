@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
+import { syncNationalParkingPage } from "./nationalParkingSync.js";
 
 type Env = {
   DB?: D1Database;
+  SYNC_ADMIN_TOKEN?: string;
   NODE_ENV: string;
   LOG_LEVEL: string;
   PARKING_PROVIDER_MODE: "mock" | "real" | "hybrid";
@@ -21,6 +23,7 @@ type Env = {
   PUBLIC_DATA_SERVICE_KEY?: string;
   PUBLIC_DATA_ENV: "development" | "production";
   PUBLIC_DATA_BASE_URL: string;
+  NATIONAL_PARKING_DATA_BASE_URL?: string;
 };
 
 type BackendModules = {
@@ -69,6 +72,12 @@ const discoverQuerySchema = z.object({
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
   freeOnly: optionalBoolean
+});
+
+const syncNationalParkingSchema = z.object({
+  pageNo: z.coerce.number().int().min(1).default(1),
+  numOfRows: z.coerce.number().int().min(1).max(1000).default(500),
+  dryRun: optionalBoolean
 });
 
 const placeCategorySchema = z.enum([
@@ -209,12 +218,66 @@ app.get("/discover/providers/health", async (c) => {
   });
 });
 
+app.post("/admin/sync-national-parking", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  if (!c.env.PUBLIC_DATA_SERVICE_KEY) {
+    return c.json({ error: "public_data_key_not_configured" }, 503);
+  }
+
+  const query = syncNationalParkingSchema.parse(queryObject(c.req.raw.url));
+  const result = await syncNationalParkingPage({
+    db: c.env.DB,
+    serviceKey: c.env.PUBLIC_DATA_SERVICE_KEY,
+    baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "http://api.data.go.kr",
+    pageNo: query.pageNo,
+    numOfRows: query.numOfRows,
+    dryRun: query.dryRun ?? false
+  });
+  return c.json({ ...result, generatedAt: new Date().toISOString() });
+});
+
+app.get("/admin/sync-national-parking/preview", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.PUBLIC_DATA_SERVICE_KEY) {
+    return c.json({ error: "public_data_key_not_configured" }, 503);
+  }
+
+  const query = syncNationalParkingSchema.parse(queryObject(c.req.raw.url));
+  const result = await syncNationalParkingPage({
+    db: c.env.DB,
+    serviceKey: c.env.PUBLIC_DATA_SERVICE_KEY,
+    baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "http://api.data.go.kr",
+    pageNo: query.pageNo,
+    numOfRows: Math.min(query.numOfRows, 20),
+    dryRun: true
+  });
+  return c.json({ ...result, generatedAt: new Date().toISOString() });
+});
+
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default app;
 
 function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams.entries());
+}
+
+function authorizeAdminSync(request: Request, env: Env): Response | null {
+  if (!env.SYNC_ADMIN_TOKEN) {
+    return Response.json({ error: "sync_admin_token_not_configured" }, { status: 503 });
+  }
+
+  const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+  if (token !== env.SYNC_ADMIN_TOKEN) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  return null;
 }
 
 async function loadBackend(env: Env): Promise<BackendRuntime> {

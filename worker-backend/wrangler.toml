@@ -19,6 +19,7 @@ KAKAO_LOCAL_BASE_URL = "https://dapi.kakao.com"
 SEOUL_OPEN_DATA_BASE_URL = "http://openapi.seoul.go.kr:8088"
 PUBLIC_DATA_ENV = "production"
 PUBLIC_DATA_BASE_URL = "https://apis.data.go.kr"
+NATIONAL_PARKING_DATA_BASE_URL = "http://api.data.go.kr"
 
 [[d1_databases]]
 binding = "DB"
