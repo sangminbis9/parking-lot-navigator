@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "pnpm --filter @parking/backend dev",
+    "worker:dev": "pnpm --filter @parking/worker-backend dev",
+    "worker:deploy": "pnpm --filter @parking/worker-backend deploy",
     "test": "pnpm --filter @parking/backend test",
     "preflight": "pnpm --filter @parking/backend preflight",
     "release:check": "pnpm --filter @parking/backend release:check"

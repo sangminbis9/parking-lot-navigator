@@ -1,0 +1,22 @@
+{
+  "name": "@parking/worker-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@parking/shared-types": "file:../shared-types",
+    "hono": "^4.7.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "wrangler": "latest"
+  }
+}

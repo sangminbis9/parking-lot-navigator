@@ -1,5 +1,7 @@
-import { createApp } from "./app/createApp.js";
-import { config } from "./config/env.js";
+await import("dotenv/config");
+
+const { createApp } = await import("./app/createApp.js");
+const { config } = await import("./config/env.js");
 
 const app = await createApp();
 

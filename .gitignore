@@ -5,6 +5,8 @@ dist/
 .env.*
 !.env.example
 !.env.production.example
+worker-backend/.dev.vars
+worker-backend/.dev.vars.*
 ios-app/Config/Debug.xcconfig
 ios-app/Config/Release.xcconfig
 ios-app/*.xcodeproj/

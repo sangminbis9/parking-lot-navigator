@@ -1,4 +1,6 @@
-import { config, assertProductionSecrets } from "../src/config/env.js";
+await import("dotenv/config");
+
+const { config, assertProductionSecrets } = await import("../src/config/env.js");
 
 const missing = assertProductionSecrets(config);
 
