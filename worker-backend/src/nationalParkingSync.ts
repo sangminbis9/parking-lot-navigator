@@ -1,4 +1,5 @@
 const NATIONAL_PARKING_PATH = "/openapi/tn_pubr_prkplce_info_api";
+const NATIONAL_PARKING_PAGE_URL = "https://www.data.go.kr/data/15012896/standard.do";
 const D1_BATCH_SIZE = 50;
 
 export interface NationalParkingSyncInput {
@@ -67,6 +68,7 @@ interface NationalParkingApiItem {
   longitude?: string | number;
   latitudeValue?: string | number;
   longitudeValue?: string | number;
+  pwdbsPpkZoneYn?: string;
   referenceDate?: string;
   instt_code?: string;
 }
@@ -94,10 +96,7 @@ interface NormalizedNationalParkingLot {
 }
 
 export async function syncNationalParkingPage(input: NationalParkingSyncInput): Promise<NationalParkingSyncResult> {
-  const body = await fetchNationalParkingPage(input);
-  ensureSuccess(body);
-
-  const items = extractItems(body);
+  const { items, totalCount } = await fetchNationalParkingItems(input);
   const normalized = items.map(normalizeNationalParkingLot).filter((item): item is NormalizedNationalParkingLot => item !== null);
   const skipped = items.length - normalized.length;
 
@@ -108,7 +107,7 @@ export async function syncNationalParkingPage(input: NationalParkingSyncInput): 
   return {
     pageNo: input.pageNo,
     numOfRows: input.numOfRows,
-    totalCount: toNumber(body.response?.body?.totalCount),
+    totalCount,
     fetched: items.length,
     valid: normalized.length,
     skipped,
@@ -116,6 +115,27 @@ export async function syncNationalParkingPage(input: NationalParkingSyncInput): 
     dryRun: input.dryRun,
     sample: normalized.slice(0, 3)
   };
+}
+
+async function fetchNationalParkingItems(
+  input: NationalParkingSyncInput
+): Promise<{ items: NationalParkingApiItem[]; totalCount: number | null }> {
+  try {
+    const body = await fetchNationalParkingPage(input);
+    ensureSuccess(body);
+    return {
+      items: extractItems(body),
+      totalCount: toNumber(body.response?.body?.totalCount)
+    };
+  } catch (error) {
+    if (input.pageNo !== 1) throw error;
+    const fallbackItems = await fetchNationalParkingHtmlFallback();
+    if (fallbackItems.length === 0) throw error;
+    return {
+      items: fallbackItems.slice(0, input.numOfRows),
+      totalCount: null
+    };
+  }
 }
 
 async function fetchNationalParkingPage(input: NationalParkingSyncInput): Promise<NationalParkingApiResponse> {
@@ -144,6 +164,17 @@ async function fetchNationalParkingPage(input: NationalParkingSyncInput): Promis
   }
 }
 
+async function fetchNationalParkingHtmlFallback(): Promise<NationalParkingApiItem[]> {
+  const response = await fetch(NATIONAL_PARKING_PAGE_URL, {
+    headers: {
+      Accept: "text/html,*/*",
+      "User-Agent": "ParkingLotNavigator/0.1"
+    }
+  });
+  if (!response.ok) return [];
+  return parseNationalParkingHtml(await response.text());
+}
+
 function ensureSuccess(body: NationalParkingApiResponse): void {
   const code = body.response?.header?.resultCode;
   if (code && code !== "00" && code !== "0") {
@@ -157,6 +188,50 @@ function extractItems(body: NationalParkingApiResponse): NationalParkingApiItem[
   const item = items?.item;
   if (Array.isArray(item)) return item;
   return item ? [item] : [];
+}
+
+function parseNationalParkingHtml(html: string): NationalParkingApiItem[] {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .map(parseNationalParkingTextRow)
+    .filter((item): item is NationalParkingApiItem => item !== null);
+}
+
+function parseNationalParkingTextRow(line: string): NationalParkingApiItem | null {
+  const match = line.match(
+    /^(\d{3}-\d-\d{6})\s+(.+?)\s+(\S+)\s+(\S+)\s+(.+?)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+?)\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\S+)\s+(\d+)\s+(\d+)(?:\s+(\d+)\s+(\d+))?.*?\s+(\d{2,3}-\d{3,4}-\d{4})\s+(\d{2}\.\d+)\s+(\d{3}\.\d+)\s+([YN])\s+(\d{4}-\d{2}-\d{2})$/
+  );
+  if (!match) return null;
+
+  return {
+    prkplceNo: match[1],
+    prkplceNm: match[2],
+    prkplceSe: match[3],
+    prkplceType: match[4],
+    rdnmadr: match[5],
+    prkcmprt: match[6],
+    feedingSe: match[7],
+    enforceSe: match[8],
+    operDay: match[9],
+    weekdayOperOpenHhmm: match[10],
+    weekdayOperColseHhmm: match[11],
+    satOperOperOpenHhmm: match[12],
+    satOperCloseHhmm: match[13],
+    holidayOperOpenHhmm: match[14],
+    holidayCloseOpenHhmm: match[15],
+    parkingchrgeInfo: match[16],
+    basicTime: match[17],
+    basicCharge: match[18],
+    addUnitTime: match[19],
+    addUnitCharge: match[20],
+    phoneNumber: match[21],
+    latitude: match[22],
+    longitude: match[23],
+    pwdbsPpkZoneYn: match[24],
+    referenceDate: match[25]
+  };
 }
 
 function normalizeNationalParkingLot(row: NationalParkingApiItem): NormalizedNationalParkingLot | null {
@@ -183,7 +258,7 @@ function normalizeNationalParkingLot(row: NationalParkingApiItem): NormalizedNat
     feeSummary: formatFeeSummary(row),
     operatingHours: formatOperatingHours(row),
     supportsEv: false,
-    supportsAccessible: yesLike(row.spcmnt) || yesLike(row.institutionNm),
+    supportsAccessible: yesLike(row.pwdbsPpkZoneYn) || yesLike(row.spcmnt),
     isPublic: clean(row.prkplceSe)?.includes("\uacf5\uc601") ?? false,
     isPrivate: clean(row.prkplceSe)?.includes("\ubbfc\uc601") ?? false,
     region1: region.region1,

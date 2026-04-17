@@ -233,7 +233,7 @@ app.post("/admin/sync-national-parking", async (c) => {
     const result = await syncNationalParkingPage({
       db: c.env.DB,
       serviceKey: c.env.PUBLIC_DATA_SERVICE_KEY,
-      baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "http://api.data.go.kr",
+      baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "https://api.data.go.kr",
       pageNo: query.pageNo,
       numOfRows: query.numOfRows,
       dryRun: query.dryRun ?? false
@@ -256,7 +256,7 @@ app.get("/admin/sync-national-parking/preview", async (c) => {
     const result = await syncNationalParkingPage({
       db: c.env.DB,
       serviceKey: c.env.PUBLIC_DATA_SERVICE_KEY,
-      baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "http://api.data.go.kr",
+      baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "https://api.data.go.kr",
       pageNo: query.pageNo,
       numOfRows: Math.min(query.numOfRows, 20),
       dryRun: true
