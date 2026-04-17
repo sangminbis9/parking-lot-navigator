@@ -136,7 +136,12 @@ async function fetchNationalParkingPage(input: NationalParkingSyncInput): Promis
     throw new Error(`National parking API failed: ${response.status}`);
   }
 
-  return (await response.json()) as NationalParkingApiResponse;
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as NationalParkingApiResponse;
+  } catch {
+    throw new Error(`National parking API returned non-JSON body: ${sanitizeBody(text)}`);
+  }
 }
 
 function ensureSuccess(body: NationalParkingApiResponse): void {
@@ -338,4 +343,8 @@ function normalizeDate(value: unknown): string | null {
   if (!text) return null;
   const date = new Date(text);
   return Number.isNaN(date.getTime()) ? text : date.toISOString();
+}
+
+function sanitizeBody(value: string): string {
+  return value.replace(/\s+/g, " ").slice(0, 240);
 }
