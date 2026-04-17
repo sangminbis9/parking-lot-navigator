@@ -75,6 +75,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var poiTapHandlers: [DisposableEventHandler] = []
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
+        private var showAllDiscoverLabelsAfterZoomIn = false
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -118,8 +119,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             guard gesture.state == .began || gesture.state == .changed else { return }
-            guard !suppressDiscoverLabelsAfterGesture else { return }
-            suppressDiscoverLabelsAfterGesture = true
+            if gesture.scale > 1.06 {
+                suppressDiscoverLabelsAfterGesture = false
+                showAllDiscoverLabelsAfterZoomIn = true
+            } else if gesture.scale < 0.98 {
+                suppressDiscoverLabelsAfterGesture = true
+                showAllDiscoverLabelsAfterZoomIn = false
+            } else {
+                return
+            }
             renderedPinSnapshot = []
             render()
         }
@@ -170,10 +178,17 @@ struct KakaoParkingMapView: UIViewRepresentable {
             configureLabelsIfNeeded()
             if shouldMoveCamera {
                 suppressDiscoverLabelsAfterGesture = false
+                showAllDiscoverLabelsAfterZoomIn = false
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
-            let pinSnapshot = latestPins.map { MapPinSnapshot(pin: $0, showsDiscoverLabels: showsDiscoverLabels) }
+            let pinSnapshot = latestPins.map {
+                MapPinSnapshot(
+                    pin: $0,
+                    showsDiscoverLabels: showsDiscoverLabels,
+                    showsAllDiscoverLabels: showsAllDiscoverLabels
+                )
+            }
             if renderedPinSnapshot != pinSnapshot {
                 renderPins(on: mapView)
                 renderedPinSnapshot = pinSnapshot
@@ -181,7 +196,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         private var showsDiscoverLabels: Bool {
-            !suppressDiscoverLabelsAfterGesture && latestCamera.zoomLevel >= 15
+            !suppressDiscoverLabelsAfterGesture && (latestCamera.zoomLevel >= 15 || showAllDiscoverLabelsAfterZoomIn)
+        }
+
+        private var showsAllDiscoverLabels: Bool {
+            !suppressDiscoverLabelsAfterGesture && showAllDiscoverLabelsAfterZoomIn
         }
 
         private var shouldMoveCamera: Bool {
@@ -264,7 +283,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
             layer.clearAllItems()
 
             for pin in latestPins {
-                let styleID = pin.styleID(showsDiscoverLabel: showsDiscoverLabels)
+                let styleID = pin.styleID(
+                    showsDiscoverLabel: showsDiscoverLabels,
+                    showsAllDiscoverLabels: showsAllDiscoverLabels
+                )
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
                     manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
@@ -352,10 +374,13 @@ private struct MapPinSnapshot: Equatable {
     let styleID: String
     let poiID: String
 
-    init(pin: MapPinItem, showsDiscoverLabels: Bool) {
+    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool) {
         id = pin.id
         coordinate = pin.coordinate
-        styleID = pin.styleID(showsDiscoverLabel: showsDiscoverLabels)
+        styleID = pin.styleID(
+            showsDiscoverLabel: showsDiscoverLabels,
+            showsAllDiscoverLabels: showsAllDiscoverLabels
+        )
         poiID = pin.poiID
     }
 
@@ -377,7 +402,7 @@ private extension MapPinItem {
         }
     }
 
-    func styleID(showsDiscoverLabel: Bool = false) -> String {
+    func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false) -> String {
         switch kind {
         case .currentLocation:
             return "current-location"
@@ -400,11 +425,11 @@ private extension MapPinItem {
             }
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
-            guard showsDiscoverLabel && showsTitleLabel else { return style.id }
+            guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: festival.title)
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
-            guard showsDiscoverLabel && showsTitleLabel else { return style.id }
+            guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: event.title)
         }
     }
@@ -632,8 +657,6 @@ private extension UIImage {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
-            let cg = context.cgContext
-            cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.22).cgColor)
 
             let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 0, width: bubbleWidth, height: bubbleHeight)
             let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 8)
@@ -677,8 +700,6 @@ private extension UIImage {
 
     static func drawCircularPinBody(fill: UIColor, symbol: String?, size: CGFloat, origin: CGPoint, context: UIGraphicsImageRendererContext) {
         let rect = CGRect(x: origin.x + 2, y: origin.y + 2, width: size - 4, height: size - 4)
-        let cg = context.cgContext
-        cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.28).cgColor)
         fill.setFill()
         UIBezierPath(ovalIn: rect).fill()
 
@@ -712,8 +733,6 @@ private extension UIImage {
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
             let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
-            let cg = context.cgContext
-            cg.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.26).cgColor)
 
             fill.setFill()
             UIBezierPath(ovalIn: rect).fill()

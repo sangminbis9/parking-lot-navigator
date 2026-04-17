@@ -26,6 +26,7 @@ struct MapHomeView: View {
         ZStack(alignment: .top) {
             KakaoParkingMapView(center: mapCenter, zoomLevel: mapZoomLevel, pins: pins) {
                 isSearchFocused = false
+                clearMapFocus()
             } onPinTap: { pin in
                 handlePinTap(pin)
             }
@@ -435,6 +436,12 @@ struct MapHomeView: View {
         hasUserFocusedMapTarget = true
         shouldCenterOnNextLocation = false
         moveMap(to: coordinate, zoomLevel: zoomLevel)
+    }
+
+    private func clearMapFocus() {
+        hasUserFocusedMapTarget = false
+        shouldCenterOnNextLocation = false
+        viewModel.clearMapFocus()
     }
 
     private func openMaps(name: String, latitude: Double, longitude: Double) {

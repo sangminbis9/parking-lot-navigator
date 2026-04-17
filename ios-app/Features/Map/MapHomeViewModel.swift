@@ -124,6 +124,15 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverItems(center: center)
     }
 
+    func clearMapFocus() {
+        selectedDestination = nil
+        selectedParkingLot = nil
+        selectedFestival = nil
+        selectedEvent = nil
+        destinations = []
+        parkingLots = []
+    }
+
     func setFestivalLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
         showsFestivalLayer = isVisible
         if !isVisible {
