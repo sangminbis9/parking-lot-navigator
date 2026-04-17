@@ -129,8 +129,15 @@ async function fetchNationalParkingItems(
     };
   } catch (error) {
     if (input.pageNo !== 1) throw error;
-    const fallbackItems = await fetchNationalParkingHtmlFallback();
-    if (fallbackItems.length === 0) throw error;
+    let fallbackItems: NationalParkingApiItem[] = [];
+    try {
+      fallbackItems = await fetchNationalParkingHtmlFallback();
+    } catch (fallbackError) {
+      throw new Error(`${errorMessage(error)}; HTML fallback failed: ${errorMessage(fallbackError)}`);
+    }
+    if (fallbackItems.length === 0) {
+      throw new Error(`${errorMessage(error)}; HTML fallback returned 0 rows`);
+    }
     return {
       items: fallbackItems.slice(0, input.numOfRows),
       totalCount: null
@@ -191,7 +198,9 @@ function extractItems(body: NationalParkingApiResponse): NationalParkingApiItem[
 }
 
 function parseNationalParkingHtml(html: string): NationalParkingApiItem[] {
-  const rows = html.match(/<tr class="contentsTr">[\s\S]*?<\/tr>/g) ?? [];
+  const rows = [
+    ...html.matchAll(/<tr[^>]*class=["'][^"']*\bcontentsTr\b[^"']*["'][^>]*>[\s\S]*?<\/tr>/gi)
+  ].map((match) => match[0]);
   return rows.map(parseNationalParkingTableRow).filter((item): item is NationalParkingApiItem => item !== null);
 }
 
@@ -432,4 +441,8 @@ function normalizeDate(value: unknown): string | null {
 
 function sanitizeBody(value: string): string {
   return value.replace(/\s+/g, " ").slice(0, 240);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
 }
