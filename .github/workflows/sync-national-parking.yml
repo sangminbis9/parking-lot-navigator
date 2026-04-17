@@ -1,0 +1,57 @@
+name: Sync national parking D1
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_start:
+        description: "First public-data page to sync"
+        required: true
+        default: "1"
+      page_end:
+        description: "Last public-data page to sync"
+        required: true
+        default: "1"
+      num_rows:
+        description: "Rows per page"
+        required: true
+        default: "500"
+      dry_run:
+        description: "Fetch and normalize without writing D1"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PUBLIC_DATA_SERVICE_KEY: ${{ secrets.PUBLIC_DATA_SERVICE_KEY }}
+      PAGE_START: ${{ inputs.page_start }}
+      PAGE_END: ${{ inputs.page_end }}
+      NUM_ROWS: ${{ inputs.num_rows }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply D1 schema
+        if: ${{ inputs.dry_run == false }}
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0001_parking_lots.sql
+
+      - name: Sync national parking
+        run: node worker-backend/scripts/sync-national-parking.mjs

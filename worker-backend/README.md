@@ -42,6 +42,14 @@ Sync one page into D1:
 curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-national-parking?pageNo=1&numOfRows=500"
 ```
 
+If Worker runtime cannot reach `data.go.kr`, run the GitHub Actions workflow instead:
+
+```text
+Actions -> Sync national parking D1 -> Run workflow
+```
+
+Start with `page_start=1`, `page_end=1`, `num_rows=500`, and `dry_run=true`. If the sample looks right, run again with `dry_run=false`.
+
 ## Local development
 
 ```powershell

@@ -7,6 +7,7 @@ dist/
 !.env.production.example
 worker-backend/.dev.vars
 worker-backend/.dev.vars.*
+worker-backend/.national-sync/
 ios-app/Config/Debug.xcconfig
 ios-app/Config/Release.xcconfig
 ios-app/*.xcodeproj/
