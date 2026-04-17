@@ -33,7 +33,9 @@ function preferRealLots(items: ParkingLot[]): ParkingLot[] {
 function mergeRawRecords(records: RawParkingRecord[]): RawParkingRecord[] {
   const byId = new Map<string, RawParkingRecord>();
   for (const record of records) {
-    const key = record.sourceParkingId || `${record.name}:${record.address ?? ""}`;
+    const key = record.sourceParkingId
+      ? `${record.source}:${record.sourceParkingId}`
+      : `${record.name}:${record.address ?? ""}`;
     const existing = byId.get(key);
     byId.set(key, existing ? mergeRecord(existing, record) : record);
   }

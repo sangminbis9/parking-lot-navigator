@@ -1,6 +1,7 @@
 import { config } from "../config/env.js";
 import type { ParkingProvider } from "../types/provider.js";
 import { CompositeParkingProvider } from "./CompositeParkingProvider.js";
+import { KakaoParkingProvider } from "./KakaoParkingProvider.js";
 import { MockParkingProvider } from "./MockParkingProvider.js";
 import { SeoulParkingMetadataProvider } from "./SeoulParkingMetadataProvider.js";
 import { SeoulRealtimeParkingProvider } from "./SeoulRealtimeParkingProvider.js";
@@ -15,7 +16,8 @@ export function createCompositeParkingProvider(): CompositeParkingProvider {
     providers.push(
       new SeoulRealtimeParkingProvider(config),
       new SeoulParkingMetadataProvider(config),
-      new TSKoreaParkingProvider(config)
+      new TSKoreaParkingProvider(config),
+      new KakaoParkingProvider(config)
     );
   }
   return new CompositeParkingProvider(providers);

@@ -2,7 +2,8 @@ export type ParkingSource =
   | "mock"
   | "seoul-realtime"
   | "seoul-metadata"
-  | "ts-korea";
+  | "ts-korea"
+  | "kakao-local";
 
 export type CongestionStatus = "available" | "moderate" | "busy" | "full" | "unknown";
 
