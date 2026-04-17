@@ -118,17 +118,21 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-            guard gesture.state == .began || gesture.state == .changed else { return }
+            guard gesture.state == .ended || gesture.state == .cancelled else { return }
             if gesture.scale > 1.06 {
-                suppressDiscoverLabelsAfterGesture = false
-                showAllDiscoverLabelsAfterZoomIn = true
-            } else if gesture.scale < 0.98 {
-                suppressDiscoverLabelsAfterGesture = true
-                showAllDiscoverLabelsAfterZoomIn = false
-            } else {
+                updateDiscoverLabelVisibility(suppressLabels: false, showAllLabels: true)
+            } else if gesture.scale < 0.94 {
+                updateDiscoverLabelVisibility(suppressLabels: true, showAllLabels: false)
+            }
+        }
+
+        private func updateDiscoverLabelVisibility(suppressLabels: Bool, showAllLabels: Bool) {
+            guard suppressDiscoverLabelsAfterGesture != suppressLabels ||
+                showAllDiscoverLabelsAfterZoomIn != showAllLabels else {
                 return
             }
-            renderedPinSnapshot = []
+            suppressDiscoverLabelsAfterGesture = suppressLabels
+            showAllDiscoverLabelsAfterZoomIn = showAllLabels
             render()
         }
 
