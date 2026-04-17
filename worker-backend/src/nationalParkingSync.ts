@@ -191,47 +191,57 @@ function extractItems(body: NationalParkingApiResponse): NationalParkingApiItem[
 }
 
 function parseNationalParkingHtml(html: string): NationalParkingApiItem[] {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .split(/\r?\n/)
-    .map((line) => line.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
-    .map(parseNationalParkingTextRow)
-    .filter((item): item is NationalParkingApiItem => item !== null);
+  const rows = html.match(/<tr class="contentsTr">[\s\S]*?<\/tr>/g) ?? [];
+  return rows.map(parseNationalParkingTableRow).filter((item): item is NationalParkingApiItem => item !== null);
 }
 
-function parseNationalParkingTextRow(line: string): NationalParkingApiItem | null {
-  const match = line.match(
-    /^(\d{3}-\d-\d{6})\s+(.+?)\s+(\S+)\s+(\S+)\s+(.+?)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+?)\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\d{2}:\d{2})\s+(\S+)\s+(\d+)\s+(\d+)(?:\s+(\d+)\s+(\d+))?.*?\s+(\d{2,3}-\d{3,4}-\d{4})\s+(\d{2}\.\d+)\s+(\d{3}\.\d+)\s+([YN])\s+(\d{4}-\d{2}-\d{2})$/
-  );
-  if (!match) return null;
-
+function parseNationalParkingTableRow(rowHtml: string): NationalParkingApiItem | null {
+  const cells = [...rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((match) => htmlCellText(match[1]));
+  if (cells.length < 32 || !cells[0] || !cells[1]) return null;
   return {
-    prkplceNo: match[1],
-    prkplceNm: match[2],
-    prkplceSe: match[3],
-    prkplceType: match[4],
-    rdnmadr: match[5],
-    prkcmprt: match[6],
-    feedingSe: match[7],
-    enforceSe: match[8],
-    operDay: match[9],
-    weekdayOperOpenHhmm: match[10],
-    weekdayOperColseHhmm: match[11],
-    satOperOperOpenHhmm: match[12],
-    satOperCloseHhmm: match[13],
-    holidayOperOpenHhmm: match[14],
-    holidayCloseOpenHhmm: match[15],
-    parkingchrgeInfo: match[16],
-    basicTime: match[17],
-    basicCharge: match[18],
-    addUnitTime: match[19],
-    addUnitCharge: match[20],
-    phoneNumber: match[21],
-    latitude: match[22],
-    longitude: match[23],
-    pwdbsPpkZoneYn: match[24],
-    referenceDate: match[25]
+    prkplceNo: cells[0],
+    prkplceNm: cells[1],
+    prkplceSe: cells[2],
+    prkplceType: cells[3],
+    rdnmadr: cells[4],
+    lnmadr: cells[5],
+    prkcmprt: cells[6],
+    feedingSe: cells[7],
+    enforceSe: cells[8],
+    operDay: cells[9],
+    weekdayOperOpenHhmm: cells[10],
+    weekdayOperColseHhmm: cells[11],
+    satOperOperOpenHhmm: cells[12],
+    satOperCloseHhmm: cells[13],
+    holidayOperOpenHhmm: cells[14],
+    holidayCloseOpenHhmm: cells[15],
+    parkingchrgeInfo: cells[16],
+    basicTime: cells[17],
+    basicCharge: cells[18],
+    addUnitTime: cells[19],
+    addUnitCharge: cells[20],
+    dayCmmtkt: cells[22],
+    monthCmmtkt: cells[23],
+    metpay: cells[24],
+    spcmnt: cells[25],
+    institutionNm: cells[26],
+    phoneNumber: cells[27],
+    latitude: cells[28],
+    longitude: cells[29],
+    pwdbsPpkZoneYn: cells[30],
+    referenceDate: cells[31]
   };
+}
+
+function htmlCellText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeNationalParkingLot(row: NationalParkingApiItem): NormalizedNationalParkingLot | null {
