@@ -136,7 +136,8 @@ async function fetchNationalParkingItems(
       throw new Error(`${errorMessage(error)}; HTML fallback failed: ${errorMessage(fallbackError)}`);
     }
     if (fallbackItems.length === 0) {
-      throw new Error(`${errorMessage(error)}; HTML fallback returned 0 rows`);
+      const fallbackDebug = await fetchNationalParkingHtmlDebug();
+      throw new Error(`${errorMessage(error)}; HTML fallback returned 0 rows; ${fallbackDebug}`);
     }
     return {
       items: fallbackItems.slice(0, input.numOfRows),
@@ -180,6 +181,28 @@ async function fetchNationalParkingHtmlFallback(): Promise<NationalParkingApiIte
   });
   if (!response.ok) return [];
   return parseNationalParkingHtml(await response.text());
+}
+
+async function fetchNationalParkingHtmlDebug(): Promise<string> {
+  try {
+    const response = await fetch(NATIONAL_PARKING_PAGE_URL, {
+      headers: {
+        Accept: "text/html,*/*",
+        "User-Agent": "ParkingLotNavigator/0.1"
+      }
+    });
+    const html = await response.text();
+    return [
+      `htmlStatus=${response.status}`,
+      `htmlLength=${html.length}`,
+      `contentsTr=${(html.match(/contentsTr/g) ?? []).length}`,
+      `td=${(html.match(/<td/gi) ?? []).length}`,
+      `hasDataset=${html.includes("15012896")}`,
+      `sample=${sanitizeBody(html)}`
+    ].join("; ");
+  } catch (error) {
+    return `htmlDebugError=${errorMessage(error)}`;
+  }
 }
 
 function ensureSuccess(body: NationalParkingApiResponse): void {
