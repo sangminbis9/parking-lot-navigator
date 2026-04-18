@@ -182,6 +182,9 @@ app.get("/parking/realtime", async (c) => {
     items = c.env.DB
       ? await queryRealtimeParkingCache(c.env.DB, query.lat, query.lng, options)
       : await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
+    if (items.length === 0 && c.env.DB) {
+      items = await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
+    }
   } catch (error) {
     console.error("realtime parking cache read failed", error);
     items = await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
