@@ -217,9 +217,8 @@ function normalizeNationalParkingLot(row) {
 }
 
 function buildSql(items) {
-  return [
-    "BEGIN TRANSACTION;",
-    ...items.map(
+  return items
+    .map(
       (item) => `
 INSERT INTO parking_lots (
   id,
@@ -284,9 +283,8 @@ ON CONFLICT(source, source_parking_id) DO UPDATE SET
   raw_payload = excluded.raw_payload,
   data_updated_at = excluded.data_updated_at,
   synced_at = excluded.synced_at;`
-    ),
-    "COMMIT;"
-  ].join("\n");
+    )
+    .join("\n");
 }
 
 function executeWrangler(filePath) {
