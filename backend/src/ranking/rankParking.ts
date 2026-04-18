@@ -1,6 +1,8 @@
 import type { ParkingLot, ParkingSearchOptions } from "@parking/shared-types";
 import { defaultRankingWeights, type RankingWeights } from "./rankingConfig.js";
 
+const DESTINATION_PARKING_THRESHOLD_METERS = 100;
+
 export function rankParkingLots(
   items: ParkingLot[],
   options: ParkingSearchOptions,
@@ -10,7 +12,7 @@ export function rankParkingLots(
     .filter((item) => !options.evOnly || item.supportsEv)
     .filter((item) => !options.accessibleOnly || item.supportsAccessible)
     .map((item) => ({ ...item, score: scoreParkingLot(item, options, weights) }))
-    .sort((a, b) => b.score - a.score);
+    .sort(compareParkingLots);
 }
 
 export function scoreParkingLot(
@@ -58,6 +60,17 @@ function availability(item: ParkingLot): number {
     default:
       return 0.2;
   }
+}
+
+function compareParkingLots(a: ParkingLot, b: ParkingLot): number {
+  const aAtDestination = isDestinationParking(a);
+  const bAtDestination = isDestinationParking(b);
+  if (aAtDestination !== bAtDestination) return aAtDestination ? -1 : 1;
+  return b.score - a.score;
+}
+
+function isDestinationParking(item: ParkingLot): boolean {
+  return item.distanceFromDestinationMeters <= DESTINATION_PARKING_THRESHOLD_METERS;
 }
 
 function clamp(value: number): number {

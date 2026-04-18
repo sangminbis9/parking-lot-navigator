@@ -2,6 +2,7 @@ import type { ParkingSearchOptions } from "@parking/shared-types";
 import type { ParkingProvider, RawParkingRecord } from "../types/provider.js";
 import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
+import { normalizeFeeSummaryText, normalizeOperatingHoursText } from "../formatting/parkingDisplayText.js";
 
 const MAX_D1_CANDIDATES = 500;
 const EARTH_RADIUS_METERS = 6371000;
@@ -112,8 +113,8 @@ function mapD1Row(row: D1ParkingLotRow): RawParkingRecord | null {
     congestionStatus: "unknown",
     realtimeAvailable: false,
     freshnessTimestamp: null,
-    operatingHours: row.operating_hours,
-    feeSummary: row.fee_summary,
+    operatingHours: normalizeOperatingHoursText(row.operating_hours),
+    feeSummary: normalizeFeeSummaryText(row.fee_summary),
     supportsEv: toBoolean(row.supports_ev),
     supportsAccessible: toBoolean(row.supports_accessible),
     isPublic: toBoolean(row.is_public),

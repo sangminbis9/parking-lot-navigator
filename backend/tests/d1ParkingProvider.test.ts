@@ -14,8 +14,8 @@ describe("D1ParkingProvider", () => {
         lat: 35.115,
         lng: 129.041,
         total_capacity: 120,
-        fee_summary: "paid",
-        operating_hours: "00:00-24:00",
+        fee_summary: "base 30min 1,000 KRW, extra 10min 500 KRW",
+        operating_hours: "weekday 00:00-24:00, sat 09:00-18:00",
         supports_ev: 1,
         supports_accessible: 0,
         is_public: 1,
@@ -61,6 +61,8 @@ describe("D1ParkingProvider", () => {
       address: "Busan road",
       totalCapacity: 120,
       realtimeAvailable: false,
+      feeSummary: "기본 30분 1,000원, 추가 10분 500원",
+      operatingHours: "평일 00:00-24:00, 토요일 09:00-18:00",
       supportsEv: true,
       isPublic: true
     });

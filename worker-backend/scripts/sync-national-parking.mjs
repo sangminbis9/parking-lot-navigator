@@ -393,10 +393,10 @@ function formatFeeSummary(row) {
   if (feeInfo?.includes("\ubb34\ub8cc")) return "\ubb34\ub8cc";
   const parts = [];
   if (feeInfo) parts.push(feeInfo);
-  if (basicTime !== null && basicCharge !== null) parts.push(`base ${basicTime}min ${basicCharge.toLocaleString("ko-KR")} KRW`);
-  if (addUnitTime !== null && addUnitCharge !== null) parts.push(`extra ${addUnitTime}min ${addUnitCharge.toLocaleString("ko-KR")} KRW`);
-  if (dayPass !== null) parts.push(`day ${dayPass.toLocaleString("ko-KR")} KRW`);
-  if (monthPass !== null) parts.push(`month ${monthPass.toLocaleString("ko-KR")} KRW`);
+  if (basicTime !== null && basicCharge !== null) parts.push(`기본 ${basicTime}분 ${basicCharge.toLocaleString("ko-KR")}원`);
+  if (addUnitTime !== null && addUnitCharge !== null) parts.push(`추가 ${addUnitTime}분 ${addUnitCharge.toLocaleString("ko-KR")}원`);
+  if (dayPass !== null) parts.push(`일 최대 ${dayPass.toLocaleString("ko-KR")}원`);
+  if (monthPass !== null) parts.push(`월 정기권 ${monthPass.toLocaleString("ko-KR")}원`);
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
@@ -405,9 +405,9 @@ function formatOperatingHours(row) {
   const saturday = formatRange(row.satOperOperOpenHhmm, row.satOperCloseHhmm);
   const holiday = formatRange(row.holidayOperOpenHhmm, row.holidayCloseOpenHhmm);
   const parts = [
-    weekday ? `weekday ${weekday}` : null,
-    saturday ? `sat ${saturday}` : null,
-    holiday ? `holiday ${holiday}` : null
+    weekday ? `평일 ${weekday}` : null,
+    saturday ? `토요일 ${saturday}` : null,
+    holiday ? `공휴일 ${holiday}` : null
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(", ") : clean(row.operDay);
 }
