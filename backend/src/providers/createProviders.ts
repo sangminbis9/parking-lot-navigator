@@ -12,6 +12,10 @@ import {
 } from "./PublicDataRealtimeParkingProviders.js";
 import { SeoulParkingMetadataProvider } from "./SeoulParkingMetadataProvider.js";
 import { SeoulRealtimeParkingProvider } from "./SeoulRealtimeParkingProvider.js";
+import {
+  SeoulHangangParkingProvider,
+  SeoulSeongdongIotParkingProvider
+} from "./SeoulSupplementalRealtimeParkingProviders.js";
 import { TSKoreaParkingProvider } from "./TSKoreaParkingProvider.js";
 
 export interface ProviderRuntime {
@@ -28,6 +32,8 @@ export function createCompositeParkingProvider(runtime: ProviderRuntime = {}): C
     providers.push(
       new SeoulRealtimeParkingProvider(config),
       new SeoulParkingMetadataProvider(config),
+      new SeoulSeongdongIotParkingProvider(config),
+      new SeoulHangangParkingProvider(config),
       new DaejeonRealtimeParkingProvider(config),
       new SuseongRealtimeParkingProvider(config),
       new KacAirportRealtimeParkingProvider(config),
@@ -48,6 +54,8 @@ export function createRealtimeParkingProvider(): CompositeParkingProvider {
   return new CompositeParkingProvider([
     new SeoulRealtimeParkingProvider(config),
     new SeoulParkingMetadataProvider(config),
+    new SeoulSeongdongIotParkingProvider(config),
+    new SeoulHangangParkingProvider(config),
     new DaejeonRealtimeParkingProvider(config),
     new SuseongRealtimeParkingProvider(config),
     new KacAirportRealtimeParkingProvider(config),

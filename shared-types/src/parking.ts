@@ -2,6 +2,8 @@ export type ParkingSource =
   | "mock"
   | "seoul-realtime"
   | "seoul-metadata"
+  | "seoul-seongdong-iot"
+  | "seoul-hangang-parking"
   | "daejeon-realtime"
   | "suseong-realtime"
   | "kac-airport-realtime"

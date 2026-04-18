@@ -46,7 +46,10 @@ function mergeKey(record: RawParkingRecord): string {
 }
 
 function isSeoulParkingSource(source: RawParkingRecord["source"]): boolean {
-  return source === "seoul-realtime" || source === "seoul-metadata";
+  return source === "seoul-realtime" ||
+    source === "seoul-metadata" ||
+    source === "seoul-seongdong-iot" ||
+    source === "seoul-hangang-parking";
 }
 
 function mergeRecord(a: RawParkingRecord, b: RawParkingRecord): RawParkingRecord {
