@@ -3,6 +3,9 @@ import type { ParkingProvider, RawParkingRecord } from "../types/provider.js";
 import type { AppConfig } from "../config/env.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
 
+const SEOUL_PAGE_SIZE = 1000;
+const SEOUL_MAX_ROWS = 10000;
+
 export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements ParkingProvider {
   readonly name = "seoul-realtime";
 
@@ -17,13 +20,11 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
     }
 
     try {
-      const body = await fetchSeoulJson<SeoulRealtimeResponse>(
+      const rows = await fetchAllSeoulRows<SeoulRealtimeResponse, SeoulRealtimeRow>(
         this.config,
         "GetParkingInfo",
-        1,
-        1000
+        (body) => body.GetParkingInfo
       );
-      const rows = body.GetParkingInfo?.row ?? [];
       this.markSuccess(rows.length > 0 ? 0.82 : 0.35);
       return rows.map(mapRealtimeRow).filter((item): item is RawParkingRecord => item !== null);
     } catch (error) {
@@ -35,6 +36,7 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
 
 interface SeoulRealtimeResponse {
   GetParkingInfo?: {
+    list_total_count?: number;
     row?: SeoulRealtimeRow[];
   };
 }
@@ -92,6 +94,32 @@ async function fetchSeoulJson<T>(
   const response = await fetch(url);
   if (!response.ok) throw new Error(`서울 열린데이터광장 호출 실패: ${response.status}`);
   return (await response.json()) as T;
+}
+
+async function fetchAllSeoulRows<TBody, TRow>(
+  config: AppConfig,
+  service: string,
+  extract: (body: TBody) => { list_total_count?: number; row?: TRow[] } | undefined
+): Promise<TRow[]> {
+  const firstBody = await fetchSeoulJson<TBody>(config, service, 1, SEOUL_PAGE_SIZE);
+  const firstResult = extract(firstBody);
+  const firstRows = firstResult?.row ?? [];
+  const totalCount = Math.min(firstResult?.list_total_count ?? firstRows.length, SEOUL_MAX_ROWS);
+  if (totalCount <= SEOUL_PAGE_SIZE) return firstRows;
+
+  const ranges: Array<[number, number]> = [];
+  for (let start = SEOUL_PAGE_SIZE + 1; start <= totalCount; start += SEOUL_PAGE_SIZE) {
+    ranges.push([start, Math.min(start + SEOUL_PAGE_SIZE - 1, totalCount)]);
+  }
+
+  const remaining = await Promise.all(
+    ranges.map(async ([start, end]) => {
+      const body = await fetchSeoulJson<TBody>(config, service, start, end);
+      return extract(body)?.row ?? [];
+    })
+  );
+
+  return [...firstRows, ...remaining.flat()];
 }
 
 function toNumber(value: unknown): number | null {
