@@ -190,8 +190,7 @@ struct MapHomeView: View {
                 tint: .green,
                 isOn: viewModel.showsRealtimeParkingLayer
             ) {
-                let realtimeCenter = locationProvider.coordinate ?? mapCenter
-                Task { await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: realtimeCenter) }
+                Task { await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter) }
             }
             layerToggle(
                 title: "\u{CD95}\u{C81C}",

@@ -6,7 +6,7 @@ import { distanceMeters } from "../../backend/src/services/geo.js";
 const KOREA_REALTIME_SYNC_CENTER = { lat: 36.35, lng: 127.8 };
 const KOREA_REALTIME_SYNC_RADIUS_METERS = 460000;
 const REALTIME_CACHE_MAX_AGE_SECONDS = 45 * 60;
-const REALTIME_CACHE_RESULT_LIMIT = 300;
+const REALTIME_CACHE_RESULT_LIMIT = 1000;
 
 export interface RealtimeCacheSyncResult {
   fetched: number;

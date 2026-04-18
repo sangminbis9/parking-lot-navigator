@@ -29,7 +29,7 @@ final class MapHomeViewModel: ObservableObject {
     private let localDiscoverRadiusMeters = 20_000
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
-    private let realtimeParkingRadiusMeters = 20_000
+    private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
@@ -76,7 +76,7 @@ final class MapHomeViewModel: ObservableObject {
         recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
         if showsRealtimeParkingLayer {
-            await loadRealtimeParkingLayer(center: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng))
+            await loadRealtimeParkingLayer()
         }
     }
 
@@ -173,19 +173,16 @@ final class MapHomeViewModel: ObservableObject {
             selectedParkingLot = nil
             return
         }
-        let targetCenter = selectedDestination.map {
-            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
-        } ?? center
-        await loadRealtimeParkingLayer(center: targetCenter)
+        await loadRealtimeParkingLayer()
     }
 
-    private func loadRealtimeParkingLayer(center: CLLocationCoordinate2D) async {
+    private func loadRealtimeParkingLayer() async {
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
             realtimeParkingLots = try await apiClient.realtimeParking(
-                lat: center.latitude,
-                lng: center.longitude,
+                lat: koreaDiscoverCenter.latitude,
+                lng: koreaDiscoverCenter.longitude,
                 radiusMeters: realtimeParkingRadiusMeters
             )
         } catch {
