@@ -301,8 +301,35 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private var bottomPanel: some View {
-        parkingPanel
+        if let selectedParkingLot = viewModel.selectedParkingLot,
+           !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
+            standaloneParkingPanel(parkingLot: selectedParkingLot)
+        } else {
+            parkingPanel
+        }
     }
+
+    private func standaloneParkingPanel(parkingLot: ParkingLot) -> some View {
+        StandaloneParkingMapCard(
+            parkingLot: parkingLot,
+            hasDestinationContext: viewModel.selectedDestination != nil,
+            onOpenMap: {
+                openMaps(name: parkingLot.name, latitude: parkingLot.lat, longitude: parkingLot.lng)
+            },
+            onDetail: {
+                guard let destination = viewModel.selectedDestination else { return }
+                router.showDetail(destination: destination, parkingLot: parkingLot)
+            },
+            onNavigate: {
+                guard let destination = viewModel.selectedDestination else {
+                    openMaps(name: parkingLot.name, latitude: parkingLot.lat, longitude: parkingLot.lng)
+                    return
+                }
+                router.startNavigation(destination: destination, parkingLot: parkingLot)
+            }
+        )
+    }
+
     @ViewBuilder
     private var parkingPanel: some View {
         if let destination = viewModel.selectedDestination {
@@ -594,6 +621,83 @@ private struct ParkingMapCard: View {
         case .unknown:
             return .secondary
         }
+    }
+}
+
+private struct StandaloneParkingMapCard: View {
+    let parkingLot: ParkingLot
+    let hasDestinationContext: Bool
+    let onOpenMap: () -> Void
+    let onDetail: () -> Void
+    let onNavigate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(parkingLot.name)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text(parkingLot.address)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                StatusBadge(
+                    text: parkingLot.displayStatus,
+                    kind: parkingLot.stale ? .warning : (parkingLot.realtimeAvailable ? .realtime : .neutral)
+                )
+            }
+
+            HStack(spacing: 8) {
+                parkingInfoPill(title: "가능", value: parkingLot.availableSpaces.map { "\($0)면" } ?? "정보 없음")
+                parkingInfoPill(title: "전체", value: parkingLot.totalCapacity.map { "\($0)면" } ?? "정보 없음")
+                parkingInfoPill(title: "요금", value: parkingLot.feeSummary ?? "정보 없음")
+            }
+
+            HStack {
+                if parkingLot.source.hasSuffix("realtime") {
+                    StatusBadge(text: "실시간", kind: .realtime)
+                }
+                StatusBadge(text: parkingLot.isPublic ? "공영" : "주차장", kind: .source)
+                Spacer()
+            }
+
+            HStack {
+                Button("지도 열기") { onOpenMap() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                if hasDestinationContext {
+                    Button("상세") { onDetail() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                Button("경로 보기") { onNavigate() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+    }
+
+    private func parkingInfoPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
