@@ -32,7 +32,6 @@ final class MapHomeViewModel: ObservableObject {
     private let realtimeParkingRadiusMeters = 70_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
-    private let realtimeParkingCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -76,6 +75,9 @@ final class MapHomeViewModel: ObservableObject {
         selectedEvent = nil
         recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
+        if showsRealtimeParkingLayer {
+            await loadRealtimeParkingLayer(center: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng))
+        }
     }
 
     func selectFestival(_ festival: Festival) async {
@@ -165,24 +167,25 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    func setRealtimeParkingLayerVisible(_ isVisible: Bool) async {
+    func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
         showsRealtimeParkingLayer = isVisible
         if !isVisible {
             selectedParkingLot = nil
             return
         }
-        if realtimeParkingLots.isEmpty {
-            await loadRealtimeParkingLayer()
-        }
+        let targetCenter = selectedDestination.map {
+            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
+        } ?? center
+        await loadRealtimeParkingLayer(center: targetCenter)
     }
 
-    private func loadRealtimeParkingLayer() async {
+    private func loadRealtimeParkingLayer(center: CLLocationCoordinate2D) async {
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
             realtimeParkingLots = try await apiClient.realtimeParking(
-                lat: realtimeParkingCenter.latitude,
-                lng: realtimeParkingCenter.longitude,
+                lat: center.latitude,
+                lng: center.longitude,
                 radiusMeters: realtimeParkingRadiusMeters
             )
         } catch {
