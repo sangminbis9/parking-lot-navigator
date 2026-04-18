@@ -11,6 +11,7 @@ export interface RealtimeCacheSyncResult {
   fetched: number;
   upserted: number;
   skipped: number;
+  pruned: number;
   generatedAt: string;
 }
 
@@ -43,8 +44,9 @@ export async function syncRealtimeParkingCache(
     await upsertRealtimeParking(db, item, generatedAt);
     upserted += 1;
   }
+  const pruned = await pruneUnseenRealtimeParking(db, generatedAt);
 
-  return { fetched: items.length, upserted, skipped, generatedAt };
+  return { fetched: items.length, upserted, skipped, pruned, generatedAt };
 }
 
 export async function queryRealtimeParkingCache(
@@ -156,6 +158,18 @@ async function upsertRealtimeParking(db: D1Database, item: ParkingLot, now: stri
       item.freshnessTimestamp ?? now
     )
     .run();
+}
+
+async function pruneUnseenRealtimeParking(db: D1Database, syncedAt: string): Promise<number> {
+  const result = await db
+    .prepare(
+      `DELETE FROM realtime_parking_status
+       WHERE source IN ('seoul-realtime', 'daejeon-realtime', 'kac-airport-realtime', 'incheon-airport-realtime')
+         AND last_seen_at < ?`
+    )
+    .bind(syncedAt)
+    .run();
+  return result.meta.changes ?? 0;
 }
 
 interface RealtimeParkingStatusRow {
