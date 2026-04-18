@@ -276,6 +276,8 @@ function mapDaejeonRow(row: DaejeonParkingRow): RawParkingRecord | null {
   const lat = toNumber(row.lat);
   const lng = toNumber(row.lon);
   if (lat === null || lng === null) return null;
+  const totalCapacity = normalizeCapacity(row.totalQty);
+  const availableSpaces = normalizeAvailableSpaces(row.resQty, totalCapacity);
   return {
     source: "daejeon-realtime",
     sourceParkingId: stableId(`${row.name}|${row.address ?? ""}|${lat}|${lng}`),
@@ -283,9 +285,9 @@ function mapDaejeonRow(row: DaejeonParkingRow): RawParkingRecord | null {
     address: row.address ?? null,
     lat,
     lng,
-    totalCapacity: toNumber(row.totalQty),
-    availableSpaces: toNumber(row.resQty),
-    realtimeAvailable: toNumber(row.resQty) !== null,
+    totalCapacity,
+    availableSpaces,
+    realtimeAvailable: availableSpaces !== null,
     freshnessTimestamp: new Date().toISOString(),
     operatingHours: formatDaejeonHours(row),
     feeSummary: formatFee(row.type, row.baseTime, row.baseRate, row.addTime, row.addRate),
@@ -392,6 +394,19 @@ function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(String(value).replace(/,/g, ""));
   return Number.isFinite(number) ? number : null;
+}
+
+function normalizeCapacity(value: unknown): number | null {
+  const capacity = toNumber(value);
+  return capacity !== null && capacity > 0 ? capacity : null;
+}
+
+function normalizeAvailableSpaces(value: unknown, totalCapacity: number | null): number | null {
+  const available = toNumber(value);
+  if (available === null || available < 0) return null;
+  if (totalCapacity !== null && available > totalCapacity) return null;
+  if (totalCapacity === null && available > 5000) return null;
+  return available;
 }
 
 function formatDaejeonHours(row: DaejeonParkingRow): string | null {

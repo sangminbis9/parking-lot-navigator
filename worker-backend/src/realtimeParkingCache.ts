@@ -150,7 +150,7 @@ async function upsertRealtimeParking(db: D1Database, item: ParkingLot, now: stri
       item.isPublic ? 1 : 0,
       item.isPrivate ? 1 : 0,
       item.displayStatus,
-      safeJson(item.rawSourcePayload),
+      null,
       now,
       now,
       item.freshnessTimestamp ?? now
@@ -224,7 +224,7 @@ function mapRealtimeStatusRow(row: RealtimeParkingStatusRow, lat: number, lng: n
         freshnessTimestamp: row.freshness_timestamp ?? row.last_seen_at
       }
     ],
-    rawSourcePayload: parseJson(row.raw_payload)
+    rawSourcePayload: undefined
   };
 }
 
@@ -296,23 +296,5 @@ function displayStatus(input: {
       return "만차 임박";
     default:
       return "실시간 정보 없음";
-  }
-}
-
-function safeJson(value: unknown): string | null {
-  if (value === undefined) return null;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseJson(value: string | null): unknown {
-  if (!value) return undefined;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
   }
 }
