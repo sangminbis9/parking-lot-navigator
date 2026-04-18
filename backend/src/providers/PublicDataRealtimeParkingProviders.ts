@@ -155,11 +155,7 @@ async function fetchDaejeonPage(
   config: AppConfig,
   pageNo: number
 ): Promise<{ rows: DaejeonParkingRow[]; totalCount: string | null }> {
-  const url = new URL("/6300000/pis/parkinglotIF", config.PUBLIC_DATA_BASE_URL);
-  url.searchParams.set("ServiceKey", config.PUBLIC_DATA_SERVICE_KEY ?? "");
-  url.searchParams.set("pageNo", String(pageNo));
-  url.searchParams.set("numOfRows", String(DAEJEON_PAGE_SIZE));
-  const text = await fetchText(url, "Daejeon realtime parking");
+  const text = await fetchDaejeonText(config, pageNo);
   return {
     rows: xmlItems(text).map((item) => ({
       name: xmlValue(item, "name"),
@@ -184,6 +180,41 @@ async function fetchDaejeonPage(
     })),
     totalCount: xmlValue(text, "totalCount")
   };
+}
+
+async function fetchDaejeonText(config: AppConfig, pageNo: number): Promise<string> {
+  const attempts = [
+    { url: new URL("/6300000/pis/parkinglotIF", config.PUBLIC_DATA_BASE_URL), keyParam: "ServiceKey" },
+    { url: new URL("/6300000/pis/parkinglotIF", config.PUBLIC_DATA_BASE_URL), keyParam: "serviceKey" },
+    { url: new URL("http://apis.data.go.kr/6300000/pis/parkinglotIF"), keyParam: "ServiceKey" },
+    { url: new URL("http://apis.data.go.kr/6300000/pis/parkinglotIF"), keyParam: "serviceKey" }
+  ];
+  let lastError: unknown;
+
+  for (const { url, keyParam } of attempts) {
+    url.searchParams.set(keyParam, config.PUBLIC_DATA_SERVICE_KEY ?? "");
+    url.searchParams.set("pageNo", String(pageNo));
+    url.searchParams.set("numOfRows", String(DAEJEON_PAGE_SIZE));
+    try {
+      const text = await fetchText(url, "Daejeon realtime parking");
+      ensureOpenApiXmlSuccess(text, "Daejeon realtime parking");
+      return text;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Daejeon realtime parking API failed.");
+}
+
+function ensureOpenApiXmlSuccess(xml: string, label: string): void {
+  const resultCode = xmlValue(xml, "resultCode");
+  if (resultCode && resultCode !== "00" && resultCode !== "0") {
+    throw new Error(`${label} API returned resultCode ${resultCode}: ${xmlValue(xml, "resultMsg") ?? "unknown error"}`);
+  }
+  if (!xml.includes("<item") && !xmlValue(xml, "totalCount")) {
+    throw new Error(`${label} API returned an unexpected XML body.`);
+  }
 }
 
 async function fetchKacAirportRows(config: AppConfig): Promise<KacAirportRow[]> {
@@ -317,11 +348,11 @@ function defaultFetchOptions(): RequestInit {
 }
 
 function xmlItems(xml: string): string[] {
-  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((match) => match[1] ?? "");
+  return [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/g)].map((match) => match[1] ?? "");
 }
 
 function xmlValue(xml: string, tag: string): string | undefined {
-  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+  const match = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`));
   return match?.[1] ? decodeXml(match[1].trim()) : undefined;
 }
 
