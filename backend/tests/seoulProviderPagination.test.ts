@@ -34,9 +34,10 @@ describe("Seoul realtime provider pagination", () => {
 
     const provider = new SeoulRealtimeParkingProvider(testConfig());
     const records = await provider.fetchNearby(37.5665, 126.978, { radiusMeters: 800 });
+    const realtimeUrls = requestedUrls.filter((url) => url.includes("/GetParkingInfo/"));
 
-    expect(requestedUrls).toHaveLength(2);
-    expect(requestedUrls[1]).toContain("/1001/1001/");
+    expect(realtimeUrls).toHaveLength(2);
+    expect(realtimeUrls[1]).toContain("/1001/1001/");
     expect(records.map((record) => record.sourceParkingId)).toEqual(["first", "second"]);
     expect(records.map((record) => record.availableSpaces)).toEqual([4, 6]);
   });
