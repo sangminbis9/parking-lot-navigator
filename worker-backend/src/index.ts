@@ -20,6 +20,8 @@ type Env = {
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
   SEOUL_OPEN_DATA_BASE_URL: string;
+  SEOUL_SEONGDONG_IOT_KEY?: string;
+  SEOUL_HANGANG_PARKING_KEY?: string;
   PUBLIC_DATA_SERVICE_KEY?: string;
   PUBLIC_DATA_ENV: "development" | "production";
   PUBLIC_DATA_BASE_URL: string;

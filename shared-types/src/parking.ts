@@ -2,6 +2,9 @@ export type ParkingSource =
   | "mock"
   | "seoul-realtime"
   | "seoul-metadata"
+  | "daejeon-realtime"
+  | "kac-airport-realtime"
+  | "incheon-airport-realtime"
   | "national-static"
   | "ts-korea"
   | "kakao-local";

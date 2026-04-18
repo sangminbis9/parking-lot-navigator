@@ -4,6 +4,11 @@ import { CompositeParkingProvider } from "./CompositeParkingProvider.js";
 import { D1ParkingProvider, type D1DatabaseLike } from "./D1ParkingProvider.js";
 import { KakaoParkingProvider } from "./KakaoParkingProvider.js";
 import { MockParkingProvider } from "./MockParkingProvider.js";
+import {
+  DaejeonRealtimeParkingProvider,
+  IncheonAirportRealtimeParkingProvider,
+  KacAirportRealtimeParkingProvider
+} from "./PublicDataRealtimeParkingProviders.js";
 import { SeoulParkingMetadataProvider } from "./SeoulParkingMetadataProvider.js";
 import { SeoulRealtimeParkingProvider } from "./SeoulRealtimeParkingProvider.js";
 import { TSKoreaParkingProvider } from "./TSKoreaParkingProvider.js";
@@ -22,6 +27,9 @@ export function createCompositeParkingProvider(runtime: ProviderRuntime = {}): C
     providers.push(
       new SeoulRealtimeParkingProvider(config),
       new SeoulParkingMetadataProvider(config),
+      new DaejeonRealtimeParkingProvider(config),
+      new KacAirportRealtimeParkingProvider(config),
+      new IncheonAirportRealtimeParkingProvider(config),
       ...nationalProviders,
       new TSKoreaParkingProvider(config),
       new KakaoParkingProvider(config)
@@ -37,6 +45,9 @@ export function createRealtimeParkingProvider(): CompositeParkingProvider {
 
   return new CompositeParkingProvider([
     new SeoulRealtimeParkingProvider(config),
-    new SeoulParkingMetadataProvider(config)
+    new SeoulParkingMetadataProvider(config),
+    new DaejeonRealtimeParkingProvider(config),
+    new KacAirportRealtimeParkingProvider(config),
+    new IncheonAirportRealtimeParkingProvider(config)
   ]);
 }

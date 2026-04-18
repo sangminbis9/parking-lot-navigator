@@ -23,6 +23,8 @@ const envSchema = z.object({
   KAKAO_LOCAL_BASE_URL: z.string().url().default("https://dapi.kakao.com"),
   SEOUL_OPEN_DATA_KEY: z.string().optional(),
   SEOUL_OPEN_DATA_BASE_URL: z.string().default("http://openapi.seoul.go.kr:8088"),
+  SEOUL_SEONGDONG_IOT_KEY: z.string().optional(),
+  SEOUL_HANGANG_PARKING_KEY: z.string().optional(),
   PUBLIC_DATA_SERVICE_KEY: z.string().optional(),
   PUBLIC_DATA_ENV: z.enum(["development", "production"]).default("development"),
   PUBLIC_DATA_BASE_URL: z.string().url().default("https://apis.data.go.kr")
