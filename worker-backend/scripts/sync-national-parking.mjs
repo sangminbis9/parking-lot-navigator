@@ -10,6 +10,7 @@ const DATABASE_NAME = "parking-lot-navigator";
 const OUTPUT_DIR = path.resolve("worker-backend", ".national-sync");
 const SQL_CHUNK_SIZE = 50;
 const OPEN_API_RETRIES = 2;
+const HTML_FALLBACK_RETRIES = 2;
 
 const serviceKey = requiredEnv("PUBLIC_DATA_SERVICE_KEY");
 const pageStart = positiveInt(process.env.PAGE_START, 1);
@@ -136,20 +137,20 @@ async function fetchOpenApiPage({ pageNo, numRows }) {
 
   const text = await response.text();
   try {
-    return JSON.parse(text);
+    return parseJsonBody(text);
   } catch {
     throw new Error(`National parking API returned non-JSON body: ${sanitizeBody(text)}`);
   }
 }
 
-async function fetchWithRetry(url, options) {
+async function fetchWithRetry(url, options, retries = OPEN_API_RETRIES) {
   let lastError = null;
-  for (let attempt = 0; attempt <= OPEN_API_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       return await fetch(url, options);
     } catch (error) {
       lastError = error;
-      if (attempt < OPEN_API_RETRIES) {
+      if (attempt < retries) {
         await sleep(750 * (attempt + 1));
       }
     }
@@ -158,12 +159,16 @@ async function fetchWithRetry(url, options) {
 }
 
 async function fetchHtmlFallback() {
-  const response = await fetch(HTML_FALLBACK_URL, {
-    headers: {
-      Accept: "text/html,*/*",
-      "User-Agent": "ParkingLotNavigator/0.1"
-    }
-  });
+  const response = await fetchWithRetry(
+    HTML_FALLBACK_URL,
+    {
+      headers: {
+        Accept: "text/html,*/*",
+        "User-Agent": "ParkingLotNavigator/0.1"
+      }
+    },
+    HTML_FALLBACK_RETRIES
+  );
   if (!response.ok) {
     throw new Error(`National parking HTML fallback failed: ${response.status}`);
   }
@@ -181,6 +186,20 @@ async function fetchHtmlFallback() {
     );
   }
   return items;
+}
+
+function parseJsonBody(text) {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(trimmed.slice(start, end + 1));
+    }
+    throw new Error("No JSON object found");
+  }
 }
 
 function ensureSuccess(body) {
