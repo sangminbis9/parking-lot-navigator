@@ -9,6 +9,7 @@ const HTML_FALLBACK_URL = "https://www.data.go.kr/data/15012896/standard.do";
 const DATABASE_NAME = "parking-lot-navigator";
 const OUTPUT_DIR = path.resolve("worker-backend", ".national-sync");
 const SQL_CHUNK_SIZE = 50;
+const OPEN_API_RETRIES = 2;
 
 const serviceKey = requiredEnv("PUBLIC_DATA_SERVICE_KEY");
 const pageStart = positiveInt(process.env.PAGE_START, 1);
@@ -110,12 +111,12 @@ async function fetchNationalParkingItems({ pageNo, numRows }) {
       source: "openapi"
     };
   } catch (error) {
-    if (pageNo !== 1) throw error;
-    console.warn(`OpenAPI failed on page 1, trying HTML fallback: ${errorMessage(error)}`);
+    console.warn(`OpenAPI failed on page ${pageNo}, trying HTML fallback: ${errorMessage(error)}`);
     const items = await fetchHtmlFallback();
+    const offset = (pageNo - 1) * numRows;
     return {
-      items: items.slice(0, numRows),
-      totalCount: null,
+      items: items.slice(offset, offset + numRows),
+      totalCount: items.length,
       source: "html-fallback"
     };
   }
@@ -123,7 +124,7 @@ async function fetchNationalParkingItems({ pageNo, numRows }) {
 
 async function fetchOpenApiPage({ pageNo, numRows }) {
   const url = `${API_BASE_URL}${API_PATH}?serviceKey=${serviceKeyQueryValue(serviceKey)}&pageNo=${pageNo}&numOfRows=${numRows}&type=json`;
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: {
       Accept: "application/json,text/plain,*/*",
       "User-Agent": "ParkingLotNavigator/0.1"
@@ -139,6 +140,21 @@ async function fetchOpenApiPage({ pageNo, numRows }) {
   } catch {
     throw new Error(`National parking API returned non-JSON body: ${sanitizeBody(text)}`);
   }
+}
+
+async function fetchWithRetry(url, options) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= OPEN_API_RETRIES; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < OPEN_API_RETRIES) {
+        await sleep(750 * (attempt + 1));
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function fetchHtmlFallback() {
@@ -458,4 +474,8 @@ function requiredEnv(name) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required.`);
   return value;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
