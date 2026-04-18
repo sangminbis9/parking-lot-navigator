@@ -3,6 +3,7 @@ export type ParkingSource =
   | "seoul-realtime"
   | "seoul-metadata"
   | "daejeon-realtime"
+  | "suseong-realtime"
   | "kac-airport-realtime"
   | "incheon-airport-realtime"
   | "national-static"

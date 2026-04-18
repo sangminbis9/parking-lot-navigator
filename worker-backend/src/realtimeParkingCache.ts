@@ -165,7 +165,7 @@ async function pruneUnseenRealtimeParking(db: D1Database, syncedAt: string): Pro
   const result = await db
     .prepare(
       `DELETE FROM realtime_parking_status
-       WHERE source IN ('seoul-realtime', 'daejeon-realtime', 'kac-airport-realtime', 'incheon-airport-realtime')
+       WHERE source IN ('seoul-realtime', 'daejeon-realtime', 'suseong-realtime', 'kac-airport-realtime', 'incheon-airport-realtime')
          AND last_seen_at < ?`
     )
     .bind(syncedAt)

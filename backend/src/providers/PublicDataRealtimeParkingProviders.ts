@@ -8,6 +8,10 @@ const DAEJEON_PAGE_SIZE = 50;
 const DAEJEON_MAX_ROWS = 1000;
 const DAEJEON_CENTER = { lat: 36.3504, lng: 127.3845 };
 const DAEJEON_SERVICE_RADIUS_METERS = 35000;
+const SUSEONG_PAGE_SIZE = 100;
+const SUSEONG_MAX_ROWS = 1000;
+const SUSEONG_CENTER = { lat: 35.8582, lng: 128.6306 };
+const SUSEONG_SERVICE_RADIUS_METERS = 18000;
 const AIRPORT_SERVICE_PADDING_METERS = 5000;
 const INCHEON_AIRPORT_CENTER = { lat: 37.4602, lng: 126.4407 };
 const INCHEON_AIRPORT_SERVICE_RADIUS_METERS = 10000;
@@ -34,6 +38,43 @@ export class DaejeonRealtimeParkingProvider extends BaseProviderHealth implement
       const mapped = rows
         .map(mapDaejeonRow)
         .filter((item): item is RawParkingRecord & { lat: number; lng: number } => Boolean(item?.lat && item.lng))
+        .filter((item) => distanceMeters(lat, lng, item.lat, item.lng) <= options.radiusMeters);
+      this.markSuccess(mapped.length > 0 ? 0.86 : 0.5);
+      return mapped;
+    } catch (error) {
+      this.markFailure(error);
+      return [];
+    }
+  }
+}
+
+export class SuseongRealtimeParkingProvider extends BaseProviderHealth implements ParkingProvider {
+  readonly name = "suseong-realtime";
+
+  constructor(private readonly config: AppConfig) {
+    super("suseong-realtime");
+  }
+
+  async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
+    if (!this.config.PUBLIC_DATA_SERVICE_KEY) {
+      this.markFailure(new Error("PUBLIC_DATA_SERVICE_KEY is not configured."));
+      return [];
+    }
+    if (!intersectsServiceArea(lat, lng, options.radiusMeters, SUSEONG_CENTER, SUSEONG_SERVICE_RADIUS_METERS)) {
+      this.markSuccess(0.6);
+      return [];
+    }
+
+    try {
+      const [statusRows, infoRows] = await Promise.all([
+        fetchAllSuseongRows(this.config, "/3460000/ParkingLotInfoService/parkingLotRtSttus", "Suseong realtime parking status"),
+        fetchAllSuseongRows(this.config, "/3460000/ParkingLotInfoService/parkingLotInfo", "Suseong parking info")
+      ]);
+      const infoById = new Map(infoRows.map((row) => [suseongId(row), row]).filter((entry): entry is [string, GenericJsonRow] => Boolean(entry[0])));
+      const mapped = statusRows
+        .map((row) => mapSuseongRow(row, infoById.get(suseongId(row) ?? "")))
+        .filter((item): item is RawParkingRecord & { lat: number; lng: number } => Boolean(item?.lat && item.lng))
+        .filter((item) => item.realtimeAvailable && item.availableSpaces !== null)
         .filter((item) => distanceMeters(lat, lng, item.lat, item.lng) <= options.radiusMeters);
       this.markSuccess(mapped.length > 0 ? 0.86 : 0.5);
       return mapped;
@@ -136,6 +177,8 @@ interface DaejeonParkingRow {
   operDay?: string;
 }
 
+type GenericJsonRow = Record<string, unknown>;
+
 interface KacAirportRow {
   aprEng?: string;
   aprKor?: string;
@@ -230,6 +273,48 @@ async function fetchDaejeonText(config: AppConfig, pageNo: number): Promise<stri
   throw lastError instanceof Error ? lastError : new Error("Daejeon realtime parking API failed.");
 }
 
+async function fetchAllSuseongRows(config: AppConfig, path: string, label: string): Promise<GenericJsonRow[]> {
+  const first = await fetchSuseongPage(config, path, label, 1);
+  const totalCount = Math.min(first.totalCount ?? first.rows.length, SUSEONG_MAX_ROWS);
+  if (totalCount <= SUSEONG_PAGE_SIZE) return first.rows;
+
+  const pages: number[] = [];
+  for (let page = 2; page <= Math.ceil(totalCount / SUSEONG_PAGE_SIZE); page += 1) {
+    pages.push(page);
+  }
+  const remaining = await Promise.all(pages.map((page) => fetchSuseongPage(config, path, label, page)));
+  return [...first.rows, ...remaining.flatMap((page) => page.rows)].slice(0, SUSEONG_MAX_ROWS);
+}
+
+async function fetchSuseongPage(
+  config: AppConfig,
+  path: string,
+  label: string,
+  pageNo: number
+): Promise<{ rows: GenericJsonRow[]; totalCount: number | null }> {
+  let lastError: unknown;
+  for (const keyParam of ["serviceKey", "ServiceKey"]) {
+    const url = new URL(path, config.PUBLIC_DATA_BASE_URL);
+    url.searchParams.set(keyParam, config.PUBLIC_DATA_SERVICE_KEY ?? "");
+    url.searchParams.set("pageNo", String(pageNo));
+    url.searchParams.set("numOfRows", String(SUSEONG_PAGE_SIZE));
+    url.searchParams.set("type", "json");
+    try {
+      const response = await fetch(url, defaultFetchOptions());
+      if (!response.ok) throw new Error(`${label} API failed: ${response.status}`);
+      const body = await response.json();
+      ensureOpenApiJsonSuccess(body, label);
+      return {
+        rows: jsonRows(body),
+        totalCount: jsonTotalCount(body)
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} API failed.`);
+}
+
 function ensureOpenApiXmlSuccess(xml: string, label: string): void {
   const resultCode = xmlValue(xml, "resultCode");
   if (resultCode && resultCode !== "00" && resultCode !== "0") {
@@ -237,6 +322,14 @@ function ensureOpenApiXmlSuccess(xml: string, label: string): void {
   }
   if (!xml.includes("<item") && !xmlValue(xml, "totalCount")) {
     throw new Error(`${label} API returned an unexpected XML body.`);
+  }
+}
+
+function ensureOpenApiJsonSuccess(body: unknown, label: string): void {
+  const resultCode = jsonString(body, ["response.header.resultCode", "resultCode", "code"]);
+  if (resultCode && resultCode !== "00" && resultCode !== "0") {
+    const message = jsonString(body, ["response.header.resultMsg", "resultMsg", "message"]) ?? "unknown error";
+    throw new Error(`${label} API returned resultCode ${resultCode}: ${message}`);
   }
 }
 
@@ -299,6 +392,59 @@ function mapDaejeonRow(row: DaejeonParkingRow): RawParkingRecord | null {
   };
 }
 
+function mapSuseongRow(statusRow: GenericJsonRow, infoRow?: GenericJsonRow): RawParkingRecord | null {
+  const row = { ...(infoRow ?? {}), ...statusRow };
+  const id = suseongId(row);
+  const name = firstString(row, ["pkltNm", "parkingLotNm", "parkingLotName", "prkplceNm", "name"]);
+  if (!id || !name) return null;
+  const lat = firstNumber(row, ["lat", "latitude", "la", "wgs84Lat", "y", "위도"]);
+  const lng = firstNumber(row, ["lng", "lon", "longitude", "lo", "wgs84Lon", "x", "경도"]);
+  if (lat === null || lng === null) return null;
+
+  const totalCapacity = normalizeCapacity(firstValue(row, [
+    "prkNoCmprt",
+    "totalCapacity",
+    "totPrkCnt",
+    "pkltTotCnt",
+    "parkingLotCo",
+    "parkingCmprt",
+    "totalCnt"
+  ]));
+  const availableSpaces = normalizeAvailableSpaces(firstValue(row, [
+    "rmndPrkCnt",
+    "avlblPrkCnt",
+    "availableSpaces",
+    "parkingAvailable",
+    "nowPrkCnt",
+    "emptyCnt",
+    "resQty"
+  ]), totalCapacity);
+  const parked = firstNumber(row, ["prkCnt", "usePrkCnt", "parkingIstay", "parkedCnt", "occupancyCnt"]);
+  const inferredAvailable =
+    availableSpaces ?? (totalCapacity !== null && parked !== null ? Math.max(0, totalCapacity - parked) : null);
+
+  return {
+    source: "suseong-realtime",
+    sourceParkingId: id,
+    name,
+    address: firstString(row, ["roadNmAddr", "rdnmadr", "lotnoAddr", "lnmadr", "address", "addr"]) ?? null,
+    lat,
+    lng,
+    totalCapacity,
+    availableSpaces: normalizeAvailableSpaces(inferredAvailable, totalCapacity),
+    congestionStatus: suseongCongestionStatus(row),
+    realtimeAvailable: inferredAvailable !== null,
+    freshnessTimestamp: parseSuseongTimestamp(row) ?? new Date().toISOString(),
+    operatingHours: formatSuseongHours(row),
+    feeSummary: formatSuseongFee(row),
+    supportsEv: positiveNumber(row, ["elecarCmprt", "evCmprt", "evChargerCnt", "electricCarCnt"]),
+    supportsAccessible: positiveNumber(row, ["hndcapCmprt", "disabledCmprt", "handicapCnt"]),
+    isPublic: !firstString(row, ["pkltSeCd", "prkplceSe", "parkingLotSe"])?.includes("민영"),
+    isPrivate: firstString(row, ["pkltSeCd", "prkplceSe", "parkingLotSe"])?.includes("민영") ?? false,
+    rawSourcePayload: { status: statusRow, info: infoRow ?? null }
+  };
+}
+
 function mapKacAirportRow(row: KacAirportRow): RawParkingRecord | null {
   const airport = airportByName(row.aprKor, row.aprEng);
   if (!airport || !row.parkingAirportCodeName) return null;
@@ -357,6 +503,53 @@ function mapIncheonAirportRow(row: IncheonAirportRow): RawParkingRecord | null {
   };
 }
 
+function suseongId(row: GenericJsonRow): string | null {
+  return firstString(row, ["pkltId", "parkingLotId", "prkplceNo", "prkplceId", "parkId", "id"]);
+}
+
+function suseongCongestionStatus(row: GenericJsonRow): RawParkingRecord["congestionStatus"] | null {
+  const status = firstString(row, ["congestionStatus", "prkStts", "prkStatus", "pkltStts", "status", "csStatus"]);
+  if (!status) return null;
+  if (status.includes("만차") || status.toLowerCase().includes("full")) return "full";
+  if (status.includes("혼잡") || status.includes("많음") || status.toLowerCase().includes("busy")) return "busy";
+  if (status.includes("보통") || status.toLowerCase().includes("moderate")) return "moderate";
+  if (status.includes("여유") || status.includes("원활") || status.toLowerCase().includes("available")) return "available";
+  return null;
+}
+
+function formatSuseongHours(row: GenericJsonRow): string | null {
+  const direct = firstString(row, ["operatingHours", "operTime", "operHr", "openTimeInfo"]);
+  if (direct) return direct;
+  const parts = [
+    formatHoursPart("평일", firstString(row, ["weekdayOperOpenHhmm", "weekdayOpenTime"]), firstString(row, ["weekdayOperCloseHhmm", "weekdayCloseTime"])),
+    formatHoursPart("토요일", firstString(row, ["satOperOpenHhmm", "satOpenTime"]), firstString(row, ["satOperCloseHhmm", "satCloseTime"])),
+    formatHoursPart("공휴일", firstString(row, ["holidayOperOpenHhmm", "holidayOpenTime"]), firstString(row, ["holidayOperCloseHhmm", "holidayCloseTime"]))
+  ].filter((item): item is string => Boolean(item));
+  return parts.length > 0 ? parts.join(", ") : firstString(row, ["operDay", "operatingDay"]);
+}
+
+function formatSuseongFee(row: GenericJsonRow): string | null {
+  const feeInfo = firstString(row, ["parkingchrgeInfo", "feeInfo", "chargeInfo", "basicChargeInfo"]);
+  if (feeInfo) return feeInfo;
+  const type = firstString(row, ["parkingchrgeInfo", "feeSe", "chargeSe", "feeType"]);
+  const baseMinutes = firstNumber(row, ["basicTime", "parkingBasicTime", "baseTime"]);
+  const baseFee = firstNumber(row, ["basicCharge", "parkingBasicCharge", "baseRate"]);
+  const addMinutes = firstNumber(row, ["addUnitTime", "addTime"]);
+  const addFee = firstNumber(row, ["addUnitCharge", "addRate"]);
+  if (type?.includes("무료")) return "무료";
+  if (baseFee === null || baseMinutes === null) return type ?? null;
+  const addText = addFee !== null && addMinutes !== null ? `, 추가 ${addMinutes}분 ${addFee.toLocaleString("ko-KR")}원` : "";
+  return `기본 ${baseMinutes}분 ${baseFee.toLocaleString("ko-KR")}원${addText}`;
+}
+
+function parseSuseongTimestamp(row: GenericJsonRow): string | null {
+  const value = firstString(row, ["dataDate", "baseDate", "baseDt", "updatedAt", "updateDate", "regDt"]);
+  if (!value) return null;
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const parsed = new Date(`${normalized}${/[zZ]|[+-]\d\d:?\d\d$/.test(normalized) ? "" : "+09:00"}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 async function fetchText(url: URL, label: string): Promise<string> {
   const response = await fetch(url, defaultFetchOptions());
   if (!response.ok) throw new Error(`${label} API failed: ${response.status}`);
@@ -388,6 +581,87 @@ function decodeXml(value: string): string {
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
+}
+
+function jsonRows(body: unknown): GenericJsonRow[] {
+  const candidates = [
+    pathValue(body, "response.body.items.item"),
+    pathValue(body, "response.body.items"),
+    pathValue(body, "body.items.item"),
+    pathValue(body, "body.items"),
+    pathValue(body, "items.item"),
+    pathValue(body, "items"),
+    pathValue(body, "data"),
+    pathValue(body, "list")
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate.filter(isJsonRow);
+    if (isJsonRow(candidate)) return [candidate];
+  }
+  return [];
+}
+
+function jsonTotalCount(body: unknown): number | null {
+  return firstNumberFromUnknown(body, [
+    "response.body.totalCount",
+    "response.body.totalCnt",
+    "response.body.totCnt",
+    "totalCount",
+    "totalCnt",
+    "totCnt"
+  ]);
+}
+
+function jsonString(body: unknown, paths: string[]): string | null {
+  for (const path of paths) {
+    const value = pathValue(body, path);
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number") return String(value);
+  }
+  return null;
+}
+
+function firstValue(row: GenericJsonRow, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return null;
+}
+
+function firstString(row: GenericJsonRow, keys: string[]): string | null {
+  const value = firstValue(row, keys);
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
+function firstNumber(row: GenericJsonRow, keys: string[]): number | null {
+  return toNumber(firstValue(row, keys));
+}
+
+function firstNumberFromUnknown(body: unknown, paths: string[]): number | null {
+  for (const path of paths) {
+    const number = toNumber(pathValue(body, path));
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function positiveNumber(row: GenericJsonRow, keys: string[]): boolean {
+  const value = firstNumber(row, keys);
+  return value !== null && value > 0;
+}
+
+function pathValue(body: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, key) => {
+    if (!isJsonRow(value)) return undefined;
+    return value[key];
+  }, body);
+}
+
+function isJsonRow(value: unknown): value is GenericJsonRow {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toNumber(value: unknown): number | null {
