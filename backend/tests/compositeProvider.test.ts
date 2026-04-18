@@ -50,6 +50,50 @@ describe("CompositeParkingProvider", () => {
 
     expect(items.map((item) => item.source)).toEqual(["mock"]);
   });
+
+  it("merges Seoul realtime availability with Seoul metadata coordinates", async () => {
+    const now = new Date().toISOString();
+    const provider = new CompositeParkingProvider([
+      new StaticProvider("seoul-realtime", [
+        {
+          source: "seoul-realtime",
+          sourceParkingId: "seoul-1",
+          name: "Seoul Realtime Parking",
+          totalCapacity: 100,
+          availableSpaces: 18,
+          realtimeAvailable: true,
+          freshnessTimestamp: now,
+          isPublic: true,
+          isPrivate: false
+        }
+      ]),
+      new StaticProvider("seoul-metadata", [
+        {
+          source: "seoul-metadata",
+          sourceParkingId: "seoul-1",
+          name: "Seoul Realtime Parking",
+          address: "Seoul",
+          lat: 37.5667,
+          lng: 126.9785,
+          totalCapacity: 100,
+          realtimeAvailable: false,
+          isPublic: true,
+          isPrivate: false
+        }
+      ])
+    ]);
+
+    const items = await provider.nearby(37.5665, 126.9780, { radiusMeters: 800 });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      source: "seoul-realtime",
+      sourceParkingId: "seoul-1",
+      availableSpaces: 18,
+      realtimeAvailable: true,
+      displayStatus: "실시간 18면"
+    });
+  });
 });
 
 class StaticProvider implements ParkingProvider {

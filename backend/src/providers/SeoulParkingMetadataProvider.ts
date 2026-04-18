@@ -66,7 +66,7 @@ function mapMetadataRow(row: SeoulMetadataRow): RawParkingRecord | null {
     lat: toNumber(row.LAT),
     lng: toNumber(row.LOT),
     totalCapacity: toNumber(row.TPKCT),
-    realtimeAvailable: row.PRK_NOW_INFO_PVSN_YN === "1",
+    realtimeAvailable: false,
     freshnessTimestamp: null,
     operatingHours: formatHours(row.WD_OPER_BGNG_TM, row.WD_OPER_END_TM),
     feeSummary: formatFee(row.PRK_CRG, row.PRK_HM, row.ADD_CRG, row.ADD_UNIT_TM_MNT, row.CHGD_FREE_NM),

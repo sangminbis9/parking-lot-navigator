@@ -33,13 +33,20 @@ function preferRealLots(items: ParkingLot[]): ParkingLot[] {
 function mergeRawRecords(records: RawParkingRecord[]): RawParkingRecord[] {
   const byId = new Map<string, RawParkingRecord>();
   for (const record of records) {
-    const key = record.sourceParkingId
-      ? `${record.source}:${record.sourceParkingId}`
-      : `${record.name}:${record.address ?? ""}`;
+    const key = mergeKey(record);
     const existing = byId.get(key);
     byId.set(key, existing ? mergeRecord(existing, record) : record);
   }
   return [...byId.values()];
+}
+
+function mergeKey(record: RawParkingRecord): string {
+  if (record.sourceParkingId && isSeoulParkingSource(record.source)) return `seoul:${record.sourceParkingId}`;
+  return record.sourceParkingId ? `${record.source}:${record.sourceParkingId}` : `${record.name}:${record.address ?? ""}`;
+}
+
+function isSeoulParkingSource(source: RawParkingRecord["source"]): boolean {
+  return source === "seoul-realtime" || source === "seoul-metadata";
 }
 
 function mergeRecord(a: RawParkingRecord, b: RawParkingRecord): RawParkingRecord {
