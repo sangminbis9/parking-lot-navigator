@@ -57,6 +57,23 @@ struct ParkingNearbyResponse: Codable {
     let generatedAt: String
 }
 
+struct RealtimeParkingCluster: Codable, Hashable, Identifiable {
+    let id: String
+    let lat: Double
+    let lng: Double
+    let count: Int
+    let availableSpaces: Int?
+    let totalCapacity: Int?
+    let congestionStatus: CongestionStatus
+}
+
+struct RealtimeParkingClustersResponse: Codable {
+    let destination: ParkingDestinationContext
+    let clusterMeters: Int
+    let clusters: [RealtimeParkingCluster]
+    let generatedAt: String
+}
+
 struct ParkingDestinationContext: Codable, Hashable {
     let lat: Double
     let lng: Double

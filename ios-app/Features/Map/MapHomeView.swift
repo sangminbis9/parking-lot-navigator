@@ -15,6 +15,7 @@ struct MapHomeView: View {
     @State private var didAutoCenterOnLocation = false
     @State private var hasUserFocusedMapTarget = false
     @State private var shouldCenterOnNextLocation = false
+    @State private var realtimeViewportTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
     init(apiClient: APIClientProtocol) {
@@ -29,6 +30,8 @@ struct MapHomeView: View {
                 clearMapFocus()
             } onPinTap: { pin in
                 handlePinTap(pin)
+            } onCameraIdle: { viewport in
+                handleCameraIdle(viewport)
             }
             .ignoresSafeArea(edges: .top)
 
@@ -123,13 +126,23 @@ struct MapHomeView: View {
             )
         })
         if viewModel.showsRealtimeParkingLayer {
-            items.append(contentsOf: viewModel.visibleRealtimeParkingLots.map { parkingLot in
-                MapPinItem(
-                    id: "realtime-parking-\(parkingLot.id)",
-                    coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
-                    kind: .parking(parkingLot)
-                )
-            })
+            if viewModel.shouldShowRealtimeClusters(zoomLevel: mapZoomLevel) {
+                items.append(contentsOf: viewModel.realtimeParkingClusters.map { cluster in
+                    MapPinItem(
+                        id: "realtime-cluster-\(cluster.id)",
+                        coordinate: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
+                        kind: .realtimeCluster(cluster)
+                    )
+                })
+            } else {
+                items.append(contentsOf: viewModel.visibleRealtimeParkingLots.map { parkingLot in
+                    MapPinItem(
+                        id: "realtime-parking-\(parkingLot.id)",
+                        coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
+                        kind: .parking(parkingLot)
+                    )
+                })
+            }
         }
         if viewModel.showsFestivalLayer {
             items.append(contentsOf: viewModel.festivals.map { festival in
@@ -190,7 +203,16 @@ struct MapHomeView: View {
                 tint: .green,
                 isOn: viewModel.showsRealtimeParkingLayer
             ) {
-                Task { await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter) }
+                Task {
+                    await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
+                    if viewModel.showsRealtimeParkingLayer {
+                        await viewModel.loadRealtimeParkingLayer(
+                            center: mapCenter,
+                            zoomLevel: mapZoomLevel,
+                            radiusMeters: visibleRadiusMeters(for: mapZoomLevel)
+                        )
+                    }
+                }
             }
             layerToggle(
                 title: "\u{CD95}\u{C81C}",
@@ -506,6 +528,8 @@ struct MapHomeView: View {
         case .parking(let parkingLot):
             viewModel.selectedParkingLot = parkingLot
             focusMap(to: pin.coordinate, zoomLevel: 17)
+        case .realtimeCluster:
+            focusMap(to: pin.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
         case .destination(let destination):
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
@@ -540,6 +564,31 @@ struct MapHomeView: View {
         }
         didAutoCenterOnLocation = true
         moveMap(to: coordinate, zoomLevel: 15)
+    }
+
+    private func handleCameraIdle(_ viewport: MapViewport) {
+        mapCenter = viewport.center
+        mapZoomLevel = viewport.zoomLevel
+        guard viewModel.showsRealtimeParkingLayer else { return }
+        realtimeViewportTask?.cancel()
+        realtimeViewportTask = Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            await viewModel.loadRealtimeParkingLayer(
+                center: viewport.center,
+                zoomLevel: viewport.zoomLevel,
+                radiusMeters: viewport.radiusMeters
+            )
+        }
+    }
+
+    private func visibleRadiusMeters(for zoomLevel: Int) -> Int {
+        if zoomLevel <= 7 { return 460_000 }
+        if zoomLevel <= 9 { return 220_000 }
+        if zoomLevel <= 11 { return 80_000 }
+        if zoomLevel <= 13 { return 25_000 }
+        if zoomLevel <= 15 { return 8_000 }
+        return 3_000
     }
 }
 

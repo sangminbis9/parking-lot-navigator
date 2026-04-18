@@ -9,6 +9,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let pins: [MapPinItem]
     let onTap: () -> Void
     let onPinTap: (MapPinItem) -> Void
+    let onCameraIdle: (MapViewport) -> Void
 
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
@@ -27,6 +28,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
+        context.coordinator.onCameraIdle = onCameraIdle
         view.addGestureRecognizer(tap)
         view.addGestureRecognizer(pinch)
         context.coordinator.createController(view)
@@ -40,6 +42,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.latestPins = pins
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
+        context.coordinator.onCameraIdle = onCameraIdle
         context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
     }
@@ -63,6 +66,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         var latestPins: [MapPinItem] = []
         var onTap: (() -> Void)?
         var onPinTap: ((MapPinItem) -> Void)?
+        var onCameraIdle: ((MapViewport) -> Void)?
 
         private weak var container: KMViewContainer?
         private var enginePrepared = false
@@ -73,6 +77,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var renderedPinSnapshot: [MapPinSnapshot] = []
         private var observers: [NSObjectProtocol] = []
         private var poiTapHandlers: [DisposableEventHandler] = []
+        private var cameraStoppedEventHandler: DisposableEventHandler?
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
         private var showAllDiscoverLabelsAfterZoomIn = false
@@ -106,6 +111,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
         func removeObservers() {
             observers.forEach { NotificationCenter.default.removeObserver($0) }
             observers = []
+            cameraStoppedEventHandler?.dispose()
+            cameraStoppedEventHandler = nil
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -161,6 +168,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             mapReady = true
             updateMapRect()
             configureLabelsIfNeeded()
+            configureCameraEventsIfNeeded()
             render()
         }
 
@@ -180,6 +188,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             guard mapReady, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
             updateMapRect()
             configureLabelsIfNeeded()
+            configureCameraEventsIfNeeded()
             if shouldMoveCamera {
                 suppressDiscoverLabelsAfterGesture = false
                 showAllDiscoverLabelsAfterZoomIn = false
@@ -267,10 +276,46 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(.systemOrange)))
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
+            manager.addPoiStyle(makeStyle(id: "realtime-cluster", image: .parkingCluster(count: 1, fill: .systemGreen)))
             for style in DiscoverPinStyle.allCases {
                 manager.addPoiStyle(makeStyle(id: style.id, image: .discoverPin(fill: style.fill, symbol: style.symbol)))
             }
             stylesReady = true
+        }
+
+        private func configureCameraEventsIfNeeded() {
+            guard cameraStoppedEventHandler == nil, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            cameraStoppedEventHandler = mapView.addCameraStoppedEventHandler(
+                target: self,
+                handler: KakaoParkingMapView.Coordinator.cameraStoppedHandler
+            )
+        }
+
+        func cameraStoppedHandler(_ param: CameraActionEventParam) {
+            guard let mapView = param.view as? KakaoMap else { return }
+            let viewport = viewport(for: mapView)
+            latestCamera = MapCameraTarget(coordinate: viewport.center, zoomLevel: viewport.zoomLevel)
+            renderedCamera = latestCamera
+            onCameraIdle?(viewport)
+        }
+
+        private func viewport(for mapView: KakaoMap) -> MapViewport {
+            let size = container?.bounds.size ?? mapView.viewRect.size
+            let width = max(size.width, 1)
+            let height = max(size.height, 1)
+            let centerPoint = CGPoint(x: width / 2, y: height / 2)
+            let cornerPoint = CGPoint(x: width - 1, y: height - 1)
+            let center = mapView.getPosition(centerPoint).wgsCoord
+            let corner = mapView.getPosition(cornerPoint).wgsCoord
+            let centerCoordinate = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude)
+            let cornerCoordinate = CLLocationCoordinate2D(latitude: corner.latitude, longitude: corner.longitude)
+            let radiusMeters = CLLocation(latitude: centerCoordinate.latitude, longitude: centerCoordinate.longitude)
+                .distance(from: CLLocation(latitude: cornerCoordinate.latitude, longitude: cornerCoordinate.longitude))
+            return MapViewport(
+                center: centerCoordinate,
+                zoomLevel: mapView.zoomLevel,
+                radiusMeters: max(Int(radiusMeters * 1.1), 800)
+            )
         }
 
         private func makeStyle(id: String, image: UIImage) -> PoiStyle {
@@ -293,6 +338,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 )
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
+                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
+                    registeredDynamicStyleIDs.insert(style.id)
+                }
+                if !registeredDynamicStyleIDs.contains(styleID),
+                   let style = pin.dynamicRealtimeClusterStyleIDAndImage(styleID: styleID) {
                     manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
                     registeredDynamicStyleIDs.insert(style.id)
                 }
@@ -353,6 +403,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 20
             case .parking:
                 return 10
+            case .realtimeCluster:
+                return 11
             case .festival:
                 return 12
             case .event:
@@ -369,6 +421,18 @@ private struct MapCameraTarget: Equatable {
     static func == (lhs: MapCameraTarget, rhs: MapCameraTarget) -> Bool {
         lhs.coordinate.isClose(to: rhs.coordinate) &&
             lhs.zoomLevel == rhs.zoomLevel
+    }
+}
+
+struct MapViewport: Equatable {
+    let center: CLLocationCoordinate2D
+    let zoomLevel: Int
+    let radiusMeters: Int
+
+    static func == (lhs: MapViewport, rhs: MapViewport) -> Bool {
+        lhs.center.isClose(to: rhs.center) &&
+            lhs.zoomLevel == rhs.zoomLevel &&
+            lhs.radiusMeters == rhs.radiusMeters
     }
 }
 
@@ -427,6 +491,8 @@ private extension MapPinItem {
                     return "parking-stale"
                 }
             }
+        case .realtimeCluster(let cluster):
+            return "realtime-cluster-\(cluster.count)-\(cluster.congestionStatus.rawValue)"
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
@@ -450,6 +516,29 @@ private extension MapPinItem {
             return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: event.title.shortMapLabel))
         default:
             return nil
+        }
+    }
+
+    func dynamicRealtimeClusterStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
+        guard case .realtimeCluster(let cluster) = kind,
+              styleID == "realtime-cluster-\(cluster.count)-\(cluster.congestionStatus.rawValue)" else {
+            return nil
+        }
+        return (styleID, .parkingCluster(count: cluster.count, fill: cluster.congestionStatus.clusterColor))
+    }
+}
+
+private extension CongestionStatus {
+    var clusterColor: UIColor {
+        switch self {
+        case .available:
+            return .systemGreen
+        case .moderate:
+            return .systemOrange
+        case .busy, .full:
+            return .systemRed
+        case .unknown:
+            return .systemGray
         }
     }
 }
@@ -638,6 +727,36 @@ private extension UIImage {
 
     static func parkingPin(_ color: UIColor) -> UIImage {
         parkingMarker(fill: color, size: 32, scale: mapPinScale)
+    }
+
+    static func parkingCluster(count: Int, fill: UIColor) -> UIImage {
+        let text = count >= 1_000 ? "999+" : "\(count)"
+        let size: CGFloat = count >= 100 ? 50 : 44
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * mapPinScale, height: size * mapPinScale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: mapPinScale, y: mapPinScale)
+            let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
+            fill.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+
+            UIColor.white.setStroke()
+            let outline = UIBezierPath(ovalIn: rect)
+            outline.lineWidth = 3
+            outline.stroke()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let fontSize: CGFloat = count >= 100 ? 14 : 16
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: text).draw(
+                in: CGRect(x: 0, y: (size - fontSize) / 2 - 2, width: size, height: fontSize + 6),
+                withAttributes: attributes
+            )
+        }
     }
 
     static func discoverPin(fill: UIColor, symbol: String, label: String? = nil) -> UIImage {

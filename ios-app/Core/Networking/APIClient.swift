@@ -4,6 +4,7 @@ protocol APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
+    func realtimeParkingClusters(lat: Double, lng: Double, radiusMeters: Int, clusterMeters: Int) async throws -> [RealtimeParkingCluster]
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
@@ -46,6 +47,18 @@ final class APIClient: APIClientProtocol {
         ]
         let response: ParkingNearbyResponse = try await get(components.url!)
         return response.items
+    }
+
+    func realtimeParkingClusters(lat: Double, lng: Double, radiusMeters: Int, clusterMeters: Int) async throws -> [RealtimeParkingCluster] {
+        var components = URLComponents(url: endpoint("parking/realtime/clusters"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
+            URLQueryItem(name: "clusterMeters", value: String(clusterMeters))
+        ]
+        let response: RealtimeParkingClustersResponse = try await get(components.url!)
+        return response.clusters
     }
 
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival] {
@@ -162,6 +175,20 @@ final class MockAPIClient: APIClientProtocol {
         try await nearbyParking(lat: lat, lng: lng, radiusMeters: radiusMeters).filter {
             $0.realtimeAvailable && $0.availableSpaces != nil
         }
+    }
+
+    func realtimeParkingClusters(lat: Double, lng: Double, radiusMeters: Int, clusterMeters: Int) async throws -> [RealtimeParkingCluster] {
+        [
+            RealtimeParkingCluster(
+                id: "mock-cluster",
+                lat: lat,
+                lng: lng,
+                count: 3,
+                availableSpaces: 25,
+                totalCapacity: 260,
+                congestionStatus: .moderate
+            )
+        ]
     }
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {

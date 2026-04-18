@@ -7,6 +7,7 @@ const KOREA_REALTIME_SYNC_CENTER = { lat: 36.35, lng: 127.8 };
 const KOREA_REALTIME_SYNC_RADIUS_METERS = 460000;
 const REALTIME_CACHE_MAX_AGE_SECONDS = 45 * 60;
 const REALTIME_CACHE_RESULT_LIMIT = 1000;
+const REALTIME_CLUSTER_RESULT_LIMIT = 5000;
 
 export interface RealtimeCacheSyncResult {
   fetched: number;
@@ -56,6 +57,16 @@ export async function queryRealtimeParkingCache(
   lng: number,
   options: ParkingSearchOptions
 ): Promise<ParkingLot[]> {
+  return queryRealtimeParkingCacheItems(db, lat, lng, options, REALTIME_CACHE_RESULT_LIMIT);
+}
+
+async function queryRealtimeParkingCacheItems(
+  db: D1Database,
+  lat: number,
+  lng: number,
+  options: ParkingSearchOptions,
+  limit: number
+): Promise<ParkingLot[]> {
   const radiusMeters = options.radiusMeters;
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
@@ -67,15 +78,15 @@ export async function queryRealtimeParkingCache(
        WHERE lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
          AND last_seen_at >= ?
-       LIMIT 1500`
+       LIMIT ?`
     )
-    .bind(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, minSeenAt)
+    .bind(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, minSeenAt, Math.max(limit + 500, limit))
     .all<RealtimeParkingStatusRow>();
 
   const items = (rows.results ?? [])
     .map((row) => mapRealtimeStatusRow(row, lat, lng))
     .filter((item) => item.distanceFromDestinationMeters <= radiusMeters);
-  return rankParkingLots(items, options).slice(0, REALTIME_CACHE_RESULT_LIMIT);
+  return rankParkingLots(items, options).slice(0, limit);
 }
 
 export async function queryRealtimeParkingClusters(
@@ -85,7 +96,7 @@ export async function queryRealtimeParkingClusters(
   options: ParkingSearchOptions,
   clusterMeters: number
 ): Promise<RealtimeParkingCluster[]> {
-  const items = await queryRealtimeParkingCache(db, lat, lng, options);
+  const items = await queryRealtimeParkingCacheItems(db, lat, lng, options, REALTIME_CLUSTER_RESULT_LIMIT);
   const latStep = clusterMeters / 111320;
   const lngStep = clusterMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
   const clusters = new Map<string, ParkingLot[]>();
