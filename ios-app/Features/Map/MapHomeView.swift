@@ -185,7 +185,7 @@ struct MapHomeView: View {
     private var discoverLayerToggles: some View {
         HStack(spacing: 8) {
             layerToggle(
-                title: "\u{C2E4}\u{C2DC}\u{AC04} \u{24C5}",
+                title: "\u{C2E4}\u{C2DC}\u{AC04}",
                 systemImage: "parkingsign.circle.fill",
                 tint: .green,
                 isOn: viewModel.showsRealtimeParkingLayer
