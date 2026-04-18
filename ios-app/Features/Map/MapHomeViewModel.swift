@@ -30,9 +30,10 @@ final class MapHomeViewModel: ObservableObject {
     private let localDiscoverRadiusMeters = 20_000
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
+    private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
-    private let realtimeClusterZoomThreshold = 13
+    private let realtimeClusterZoomThreshold = 11
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -81,7 +82,7 @@ final class MapHomeViewModel: ObservableObject {
         recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
         if showsRealtimeParkingLayer {
-            await loadRealtimeParkingLayer(center: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16, radiusMeters: 8_000)
+            await loadRealtimeParkingLayer()
         }
     }
 
@@ -182,39 +183,28 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    func loadRealtimeParkingLayer(center: CLLocationCoordinate2D, zoomLevel: Int, radiusMeters: Int) async {
+    func loadRealtimeParkingLayer() async {
         guard showsRealtimeParkingLayer else { return }
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
-            if shouldShowRealtimeClusters(zoomLevel: zoomLevel) {
-                realtimeParkingClusters = try await apiClient.realtimeParkingClusters(
-                    lat: center.latitude,
-                    lng: center.longitude,
-                    radiusMeters: radiusMeters,
-                    clusterMeters: clusterMeters(for: zoomLevel, radiusMeters: radiusMeters)
-                )
-                realtimeParkingLots = []
-                selectedParkingLot = nil
-            } else {
-                realtimeParkingLots = try await apiClient.realtimeParking(
-                    lat: center.latitude,
-                    lng: center.longitude,
-                    radiusMeters: radiusMeters
-                )
-                realtimeParkingClusters = []
-            }
+            async let lots = apiClient.realtimeParking(
+                lat: koreaDiscoverCenter.latitude,
+                lng: koreaDiscoverCenter.longitude,
+                radiusMeters: realtimeParkingRadiusMeters
+            )
+            async let clusters = apiClient.realtimeParkingClusters(
+                lat: koreaDiscoverCenter.latitude,
+                lng: koreaDiscoverCenter.longitude,
+                radiusMeters: realtimeParkingRadiusMeters,
+                clusterMeters: 45_000
+            )
+            realtimeParkingLots = try await lots
+            realtimeParkingClusters = try await clusters
         } catch {
             errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingRealtimeParking = false
-    }
-
-    private func clusterMeters(for zoomLevel: Int, radiusMeters: Int) -> Int {
-        if zoomLevel <= 8 { return 90_000 }
-        if zoomLevel <= 10 { return 45_000 }
-        if zoomLevel <= 12 { return 15_000 }
-        return max(1_000, min(8_000, radiusMeters / 8))
     }
 
     func loadInitialDiscoverLayers() async {
