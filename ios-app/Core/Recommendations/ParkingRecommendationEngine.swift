@@ -25,6 +25,11 @@ struct ParkingRecommendationEngine {
         parkingLots
             .map { recommendation(for: $0, destination: destination) }
             .sorted { lhs, rhs in
+                let lhsDestinationParking = isDestinationParking(lhs.parkingLot, for: destination)
+                let rhsDestinationParking = isDestinationParking(rhs.parkingLot, for: destination)
+                if lhsDestinationParking != rhsDestinationParking {
+                    return lhsDestinationParking
+                }
                 if lhs.score != rhs.score {
                     return lhs.score > rhs.score
                 }
@@ -243,6 +248,7 @@ struct ParkingRecommendationEngine {
 
     private func isDestinationParking(_ parkingLot: ParkingLot, for destination: Destination) -> Bool {
         guard parkingLot.distanceFromDestinationMeters <= 120 else { return false }
+        if parkingLot.distanceFromDestinationMeters <= 100 { return true }
         let destinationTokens = tokens(from: destination.name + " " + destination.address)
         let parkingTokens = tokens(from: parkingLot.name + " " + parkingLot.address)
         return !destinationTokens.isDisjoint(with: parkingTokens)

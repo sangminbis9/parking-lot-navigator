@@ -406,6 +406,7 @@ final class MapHomeViewModel: ObservableObject {
 
     func isDestinationParking(_ parkingLot: ParkingLot, for destination: Destination) -> Bool {
         guard parkingLot.distanceFromDestinationMeters <= 120 else { return false }
+        if parkingLot.distanceFromDestinationMeters <= 100 { return true }
         let destinationTokens = tokens(from: destination.name + " " + destination.address)
         let parkingTokens = tokens(from: parkingLot.name + " " + parkingLot.address)
         return !destinationTokens.isDisjoint(with: parkingTokens)
