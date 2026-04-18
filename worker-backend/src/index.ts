@@ -29,6 +29,7 @@ type Env = {
 type BackendModules = {
   searchDestination: typeof import("../../backend/src/services/destinationSearch.js").searchDestination;
   createCompositeParkingProvider: typeof import("../../backend/src/providers/createProviders.js").createCompositeParkingProvider;
+  createRealtimeParkingProvider: typeof import("../../backend/src/providers/createProviders.js").createRealtimeParkingProvider;
   createFestivalService: typeof import("../../backend/src/features/discover/festivals/festivalService.js").createFestivalService;
   createEventService: typeof import("../../backend/src/features/discover/events/eventService.js").createEventService;
   SearchHistoryService: typeof import("../../backend/src/features/analytics/searchHistoryService.js").SearchHistoryService;
@@ -38,6 +39,7 @@ type BackendModules = {
 type BackendRuntime = {
   searchDestination: BackendModules["searchDestination"];
   parkingProvider: ReturnType<BackendModules["createCompositeParkingProvider"]>;
+  realtimeParkingProvider: ReturnType<BackendModules["createRealtimeParkingProvider"]>;
   festivalService: ReturnType<BackendModules["createFestivalService"]>;
   eventService: ReturnType<BackendModules["createEventService"]>;
   searchHistoryService: InstanceType<BackendModules["SearchHistoryService"]>;
@@ -157,6 +159,19 @@ app.get("/parking/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
     providers: backend.parkingProvider.health(),
+    generatedAt: new Date().toISOString()
+  });
+});
+
+app.get("/parking/realtime", async (c) => {
+  const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
+  const backend = await loadBackend(c.env);
+  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
+  const items = (await backend.realtimeParkingProvider.nearby(query.lat, query.lng, { radiusMeters }))
+    .filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
+  return c.json({
+    destination: { lat: query.lat, lng: query.lng, radiusMeters },
+    items,
     generatedAt: new Date().toISOString()
   });
 });
@@ -304,7 +319,7 @@ async function loadBackend(env: Env): Promise<BackendRuntime> {
 async function importBackend(env: Env): Promise<BackendRuntime> {
   const [
     { searchDestination },
-    { createCompositeParkingProvider },
+    { createCompositeParkingProvider, createRealtimeParkingProvider },
     { createFestivalService },
     { createEventService },
     { SearchHistoryService },
@@ -321,6 +336,7 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
   return {
     searchDestination,
     parkingProvider: createCompositeParkingProvider({ d1: env.DB }),
+    realtimeParkingProvider: createRealtimeParkingProvider(),
     festivalService: createFestivalService(),
     eventService: createEventService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository)

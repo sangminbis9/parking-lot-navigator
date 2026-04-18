@@ -122,6 +122,15 @@ struct MapHomeView: View {
                 kind: .parking(parkingLot)
             )
         })
+        if viewModel.showsRealtimeParkingLayer {
+            items.append(contentsOf: viewModel.visibleRealtimeParkingLots.map { parkingLot in
+                MapPinItem(
+                    id: "realtime-parking-\(parkingLot.id)",
+                    coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
+                    kind: .parking(parkingLot)
+                )
+            })
+        }
         if viewModel.showsFestivalLayer {
             items.append(contentsOf: viewModel.festivals.map { festival in
                 MapPinItem(
@@ -176,6 +185,14 @@ struct MapHomeView: View {
     private var discoverLayerToggles: some View {
         HStack(spacing: 8) {
             layerToggle(
+                title: "\u{C2E4}\u{C2DC}\u{AC04} \u{24C5}",
+                systemImage: "parkingsign.circle.fill",
+                tint: .green,
+                isOn: viewModel.showsRealtimeParkingLayer
+            ) {
+                Task { await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer) }
+            }
+            layerToggle(
                 title: "\u{CD95}\u{C81C}",
                 systemImage: "sparkles",
                 tint: .purple,
@@ -191,7 +208,7 @@ struct MapHomeView: View {
             ) {
                 Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, center: mapCenter) }
             }
-            if viewModel.isLoadingDiscover {
+            if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                 ProgressView()
                     .controlSize(.small)
             }

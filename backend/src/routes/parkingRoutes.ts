@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config/env.js";
 import { MemoryCache } from "../cache/memoryCache.js";
-import { createCompositeParkingProvider } from "../providers/createProviders.js";
+import { createCompositeParkingProvider, createRealtimeParkingProvider } from "../providers/createProviders.js";
 
 const optionalBoolean = z
   .enum(["true", "false"])
@@ -20,6 +20,7 @@ const nearbySchema = z.object({
 });
 
 const provider = createCompositeParkingProvider();
+const realtimeProvider = createRealtimeParkingProvider();
 const cache = new MemoryCache<unknown>();
 
 export async function registerParkingRoutes(app: FastifyInstance) {
@@ -50,4 +51,22 @@ export async function registerParkingRoutes(app: FastifyInstance) {
     providers: provider.health(),
     generatedAt: new Date().toISOString()
   }));
+
+  app.get("/parking/realtime", async (request) => {
+    const query = nearbySchema.parse(request.query);
+    const radiusMeters = query.radiusMeters ?? config.DEFAULT_SEARCH_RADIUS_METERS;
+    const cacheKey = JSON.stringify({ realtime: true, lat: query.lat, lng: query.lng, radiusMeters });
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    const items = (await realtimeProvider.nearby(query.lat, query.lng, { radiusMeters }))
+      .filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
+    const response = {
+      destination: { lat: query.lat, lng: query.lng, radiusMeters },
+      items,
+      generatedAt: new Date().toISOString()
+    };
+    cache.set(cacheKey, response, config.CACHE_TTL_SECONDS);
+    return response;
+  });
 }

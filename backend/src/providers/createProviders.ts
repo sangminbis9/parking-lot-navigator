@@ -29,3 +29,14 @@ export function createCompositeParkingProvider(runtime: ProviderRuntime = {}): C
   }
   return new CompositeParkingProvider(providers);
 }
+
+export function createRealtimeParkingProvider(): CompositeParkingProvider {
+  if (config.PARKING_PROVIDER_MODE === "mock") {
+    return new CompositeParkingProvider([new MockParkingProvider()]);
+  }
+
+  return new CompositeParkingProvider([
+    new SeoulRealtimeParkingProvider(config),
+    new SeoulParkingMetadataProvider(config)
+  ]);
+}

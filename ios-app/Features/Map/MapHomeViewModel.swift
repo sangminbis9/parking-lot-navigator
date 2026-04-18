@@ -8,6 +8,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published var destinations: [Destination] = []
     @Published var selectedDestination: Destination?
     @Published var parkingLots: [ParkingLot] = []
+    @Published var realtimeParkingLots: [ParkingLot] = []
     @Published var festivals: [Festival] = []
     @Published var events: [FreeEvent] = []
     @Published var selectedParkingLot: ParkingLot?
@@ -15,10 +16,12 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedEvent: FreeEvent?
     @Published var showsFestivalLayer = true
     @Published var showsEventLayer = true
+    @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
     @Published var isLoadingParking = false
     @Published var isLoadingDiscover = false
+    @Published var isLoadingRealtimeParking = false
     @Published var errorMessage: String?
 
     private let apiClient: APIClientProtocol
@@ -26,8 +29,10 @@ final class MapHomeViewModel: ObservableObject {
     private let localDiscoverRadiusMeters = 20_000
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
+    private let realtimeParkingRadiusMeters = 70_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+    private let realtimeParkingCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -40,6 +45,11 @@ final class MapHomeViewModel: ObservableObject {
 
     var recommendedParkingLots: [ParkingLot] {
         parkingRecommendations.map(\.parkingLot)
+    }
+
+    var visibleRealtimeParkingLots: [ParkingLot] {
+        let activeParkingIDs = Set(parkingLots.map(\.id))
+        return realtimeParkingLots.filter { !activeParkingIDs.contains($0.id) }
     }
 
     func search() async {
@@ -153,6 +163,32 @@ final class MapHomeViewModel: ObservableObject {
         if events.isEmpty {
             await loadEvents(center: center)
         }
+    }
+
+    func setRealtimeParkingLayerVisible(_ isVisible: Bool) async {
+        showsRealtimeParkingLayer = isVisible
+        if !isVisible {
+            selectedParkingLot = nil
+            return
+        }
+        if realtimeParkingLots.isEmpty {
+            await loadRealtimeParkingLayer()
+        }
+    }
+
+    private func loadRealtimeParkingLayer() async {
+        isLoadingRealtimeParking = true
+        errorMessage = nil
+        do {
+            realtimeParkingLots = try await apiClient.realtimeParking(
+                lat: realtimeParkingCenter.latitude,
+                lng: realtimeParkingCenter.longitude,
+                radiusMeters: realtimeParkingRadiusMeters
+            )
+        } catch {
+            errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+        }
+        isLoadingRealtimeParking = false
     }
 
     func loadInitialDiscoverLayers() async {

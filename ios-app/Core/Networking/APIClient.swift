@@ -3,6 +3,7 @@ import Foundation
 protocol APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
+    func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
@@ -27,6 +28,17 @@ final class APIClient: APIClientProtocol {
 
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
         var components = URLComponents(url: endpoint("parking/nearby"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
+        ]
+        let response: ParkingNearbyResponse = try await get(components.url!)
+        return response.items
+    }
+
+    func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
+        var components = URLComponents(url: endpoint("parking/realtime"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
@@ -144,6 +156,12 @@ final class MockAPIClient: APIClientProtocol {
         [
             Festival(id: "mock-festival", title: "서울 빛 축제", subtitle: "도심 야간 산책형 축제", startDate: "2026-04-15", endDate: "2026-04-22", status: .ongoing, venueName: "서울광장", address: "서울 중구 세종대로 110", lat: lat + 0.001, lng: lng + 0.001, distanceMeters: 160, source: "mock", sourceUrl: nil, imageUrl: nil, tags: ["festival"])
         ]
+    }
+
+    func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
+        try await nearbyParking(lat: lat, lng: lng, radiusMeters: radiusMeters).filter {
+            $0.realtimeAvailable && $0.availableSpaces != nil
+        }
     }
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
