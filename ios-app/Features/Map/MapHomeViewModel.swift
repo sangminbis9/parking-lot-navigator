@@ -29,7 +29,7 @@ final class MapHomeViewModel: ObservableObject {
     private let localDiscoverRadiusMeters = 20_000
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
-    private let realtimeParkingRadiusMeters = 70_000
+    private let realtimeParkingRadiusMeters = 20_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 

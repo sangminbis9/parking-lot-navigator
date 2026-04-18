@@ -1,10 +1,13 @@
 import type { ParkingSearchOptions } from "@parking/shared-types";
 import type { ParkingProvider, RawParkingRecord } from "../types/provider.js";
 import type { AppConfig } from "../config/env.js";
+import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
 
 const SEOUL_PAGE_SIZE = 1000;
 const SEOUL_MAX_ROWS = 10000;
+const SEOUL_CENTER = { lat: 37.5665, lng: 126.9780 };
+const SEOUL_SERVICE_RADIUS_METERS = 45000;
 
 export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements ParkingProvider {
   readonly name = "seoul-realtime";
@@ -13,9 +16,13 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
     super("seoul-realtime");
   }
 
-  async fetchNearby(_lat: number, _lng: number, _options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
+  async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
     if (!this.config.SEOUL_OPEN_DATA_KEY) {
       this.markFailure(new Error("SEOUL_OPEN_DATA_KEY가 설정되지 않았습니다."));
+      return [];
+    }
+    if (!intersectsSeoulServiceArea(lat, lng, options.radiusMeters)) {
+      this.markSuccess(0.6);
       return [];
     }
 
@@ -32,6 +39,10 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
       return [];
     }
   }
+}
+
+function intersectsSeoulServiceArea(lat: number, lng: number, radiusMeters: number): boolean {
+  return distanceMeters(lat, lng, SEOUL_CENTER.lat, SEOUL_CENTER.lng) <= radiusMeters + SEOUL_SERVICE_RADIUS_METERS;
 }
 
 interface SeoulRealtimeResponse {

@@ -6,6 +6,11 @@ import { BaseProviderHealth } from "./BaseProviderHealth.js";
 
 const DAEJEON_PAGE_SIZE = 50;
 const DAEJEON_MAX_ROWS = 1000;
+const DAEJEON_CENTER = { lat: 36.3504, lng: 127.3845 };
+const DAEJEON_SERVICE_RADIUS_METERS = 35000;
+const AIRPORT_SERVICE_PADDING_METERS = 5000;
+const INCHEON_AIRPORT_CENTER = { lat: 37.4602, lng: 126.4407 };
+const INCHEON_AIRPORT_SERVICE_RADIUS_METERS = 10000;
 
 export class DaejeonRealtimeParkingProvider extends BaseProviderHealth implements ParkingProvider {
   readonly name = "daejeon-realtime";
@@ -17,6 +22,10 @@ export class DaejeonRealtimeParkingProvider extends BaseProviderHealth implement
   async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
     if (!this.config.PUBLIC_DATA_SERVICE_KEY) {
       this.markFailure(new Error("PUBLIC_DATA_SERVICE_KEY is not configured."));
+      return [];
+    }
+    if (!intersectsServiceArea(lat, lng, options.radiusMeters, DAEJEON_CENTER, DAEJEON_SERVICE_RADIUS_METERS)) {
+      this.markSuccess(0.6);
       return [];
     }
 
@@ -47,6 +56,10 @@ export class KacAirportRealtimeParkingProvider extends BaseProviderHealth implem
       this.markFailure(new Error("PUBLIC_DATA_SERVICE_KEY is not configured."));
       return [];
     }
+    if (!intersectsAnyKacAirport(lat, lng, options.radiusMeters)) {
+      this.markSuccess(0.6);
+      return [];
+    }
 
     try {
       const rows = await fetchKacAirportRows(this.config);
@@ -73,6 +86,16 @@ export class IncheonAirportRealtimeParkingProvider extends BaseProviderHealth im
   async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
     if (!this.config.PUBLIC_DATA_SERVICE_KEY) {
       this.markFailure(new Error("PUBLIC_DATA_SERVICE_KEY is not configured."));
+      return [];
+    }
+    if (!intersectsServiceArea(
+      lat,
+      lng,
+      options.radiusMeters,
+      INCHEON_AIRPORT_CENTER,
+      INCHEON_AIRPORT_SERVICE_RADIUS_METERS
+    )) {
+      this.markSuccess(0.6);
       return [];
     }
 
@@ -435,6 +458,16 @@ function offsetCoordinates(lat: number, lng: number, key: string): { lat: number
   };
 }
 
+function intersectsServiceArea(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  center: { lat: number; lng: number },
+  serviceRadiusMeters: number
+): boolean {
+  return distanceMeters(lat, lng, center.lat, center.lng) <= radiusMeters + serviceRadiusMeters;
+}
+
 const AIRPORTS = [
   { code: "GMP", names: ["김포", "GIMPO"], name: "김포국제공항", address: "서울 강서구 하늘길 112", lat: 37.5583, lng: 126.7906 },
   { code: "PUS", names: ["김해", "GIMHAE"], name: "김해국제공항", address: "부산 강서구 공항진입로 108", lat: 35.1795, lng: 128.9382 },
@@ -455,6 +488,12 @@ const AIRPORTS = [
 function airportByName(korean?: string, english?: string): (typeof AIRPORTS)[number] | undefined {
   const haystack = `${korean ?? ""} ${english ?? ""}`.toUpperCase();
   return AIRPORTS.find((airport) => airport.names.some((name) => haystack.includes(name.toUpperCase())));
+}
+
+function intersectsAnyKacAirport(lat: number, lng: number, radiusMeters: number): boolean {
+  return AIRPORTS.some((airport) =>
+    distanceMeters(lat, lng, airport.lat, airport.lng) <= radiusMeters + AIRPORT_SERVICE_PADDING_METERS
+  );
 }
 
 function incheonTerminalCoordinates(floor: string): { lat: number; lng: number; address: string } {
