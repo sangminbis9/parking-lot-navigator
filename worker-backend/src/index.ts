@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import type { ParkingLot } from "@parking/shared-types";
 import { z, ZodError } from "zod";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
+import {
+  queryRealtimeParkingCache,
+  queryRealtimeParkingClusters,
+  syncRealtimeParkingCache
+} from "./realtimeParkingCache.js";
 
 type Env = {
   DB?: D1Database;
@@ -63,6 +69,7 @@ const parkingNearbySchema = z.object({
   lat: z.coerce.number(),
   lng: z.coerce.number(),
   radiusMeters: z.coerce.number().optional(),
+  clusterMeters: z.coerce.number().min(250).max(50000).optional(),
   preferPublic: optionalBoolean,
   evOnly: optionalBoolean,
   accessibleOnly: optionalBoolean,
@@ -169,13 +176,59 @@ app.get("/parking/realtime", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
   const backend = await loadBackend(c.env);
   const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
-  const items = (await backend.realtimeParkingProvider.nearby(query.lat, query.lng, { radiusMeters }))
-    .filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
+  const options = { radiusMeters };
+  let items: ParkingLot[];
+  try {
+    items = c.env.DB
+      ? await queryRealtimeParkingCache(c.env.DB, query.lat, query.lng, options)
+      : await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
+  } catch (error) {
+    console.error("realtime parking cache read failed", error);
+    items = await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
+  }
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
     generatedAt: new Date().toISOString()
   });
+});
+
+app.get("/parking/realtime/clusters", async (c) => {
+  const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
+  const clusterMeters = query.clusterMeters ?? 5000;
+  const clusters = await queryRealtimeParkingClusters(
+    c.env.DB,
+    query.lat,
+    query.lng,
+    { radiusMeters },
+    clusterMeters
+  );
+  return c.json({
+    destination: { lat: query.lat, lng: query.lng, radiusMeters },
+    clusterMeters,
+    clusters,
+    generatedAt: new Date().toISOString()
+  });
+});
+
+app.post("/admin/sync-realtime-parking", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+
+  const backend = await loadBackend(c.env);
+  try {
+    const result = await syncRealtimeParkingCache(c.env.DB, backend.realtimeParkingProvider);
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
 });
 
 app.post("/analytics/search-history", async (c) => {
@@ -286,7 +339,24 @@ app.get("/admin/sync-national-parking/preview", async (c) => {
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
-export default app;
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    return app.fetch(request, env, ctx);
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (!env.DB) return;
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const backend = await loadBackend(env);
+          await syncRealtimeParkingCache(env.DB!, backend.realtimeParkingProvider);
+        } catch (error) {
+          console.error("realtime parking sync failed", error);
+        }
+      })()
+    );
+  }
+};
 
 function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams.entries());
@@ -310,6 +380,16 @@ function syncErrorResponse(error: unknown): { error: string; message: string } {
     error: "sync_failed",
     message: error instanceof Error ? error.message : "Unknown sync error"
   };
+}
+
+async function liveRealtimeParking(
+  provider: BackendRuntime["realtimeParkingProvider"],
+  lat: number,
+  lng: number,
+  options: { radiusMeters: number }
+): Promise<ParkingLot[]> {
+  return (await provider.nearby(lat, lng, options))
+    .filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
 }
 
 async function loadBackend(env: Env): Promise<BackendRuntime> {

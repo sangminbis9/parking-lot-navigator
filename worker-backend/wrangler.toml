@@ -21,6 +21,9 @@ PUBLIC_DATA_ENV = "production"
 PUBLIC_DATA_BASE_URL = "https://apis.data.go.kr"
 NATIONAL_PARKING_DATA_BASE_URL = "https://api.data.go.kr"
 
+[triggers]
+crons = ["*/5 * * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "parking-lot-navigator"
