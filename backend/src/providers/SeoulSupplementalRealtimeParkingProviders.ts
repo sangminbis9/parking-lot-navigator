@@ -18,12 +18,7 @@ const SEONGDONG_SERVICES = [
 ];
 
 const HANGANG_SERVICES = [
-  "TbRiverParkParking",
-  "TbHanriverParkParking",
-  "HanRiverParkParking",
-  "HangangParkParking",
-  "GetHanRiverParkParkingInfo",
-  "ListHangangParkParkingInfo"
+  "TbParkingInfoView"
 ];
 
 export class SeoulSeongdongIotParkingProvider extends BaseProviderHealth implements ParkingProvider {
@@ -34,7 +29,8 @@ export class SeoulSeongdongIotParkingProvider extends BaseProviderHealth impleme
   }
 
   async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
-    if (!this.config.SEOUL_SEONGDONG_IOT_KEY) {
+    const apiKey = this.config.SEOUL_SEONGDONG_IOT_KEY ?? this.config.SEOUL_OPEN_DATA_KEY;
+    if (!apiKey) {
       this.markFailure(new Error("SEOUL_SEONGDONG_IOT_KEY is not configured."));
       return [];
     }
@@ -46,7 +42,7 @@ export class SeoulSeongdongIotParkingProvider extends BaseProviderHealth impleme
     try {
       const rows = await fetchFirstWorkingSeoulService(
         this.config,
-        this.config.SEOUL_SEONGDONG_IOT_KEY,
+        apiKey,
         SEONGDONG_SERVICES,
         "Seongdong IoT parking"
       );
@@ -70,7 +66,8 @@ export class SeoulHangangParkingProvider extends BaseProviderHealth implements P
   }
 
   async fetchNearby(lat: number, lng: number, options: ParkingSearchOptions): Promise<RawParkingRecord[]> {
-    if (!this.config.SEOUL_HANGANG_PARKING_KEY) {
+    const apiKey = this.config.SEOUL_HANGANG_PARKING_KEY ?? this.config.SEOUL_OPEN_DATA_KEY;
+    if (!apiKey) {
       this.markFailure(new Error("SEOUL_HANGANG_PARKING_KEY is not configured."));
       return [];
     }
@@ -82,7 +79,7 @@ export class SeoulHangangParkingProvider extends BaseProviderHealth implements P
     try {
       const rows = await fetchFirstWorkingSeoulService(
         this.config,
-        this.config.SEOUL_HANGANG_PARKING_KEY,
+        apiKey,
         HANGANG_SERVICES,
         "Hangang parking"
       );
@@ -260,7 +257,7 @@ function seoulError(body: unknown): string | null {
 }
 
 function parkingName(row: JsonRow): string | null {
-  return stringByKey(row, ["PKLT_NM", "PARKING_NM", "PARKING_NAME", "PARK_NM", "NAME", "NM"]);
+  return stringByKey(row, ["PKLT_NM", "PKLT_TYPE", "PARKING_NM", "PARKING_NAME", "PARK_NM", "NAME", "NM"]);
 }
 
 function parkingAddress(row: JsonRow): string | null {
@@ -280,15 +277,28 @@ function timestamp(row: JsonRow): string | null {
 }
 
 function hours(row: JsonRow): string | null {
+  const weekdayStart = stringByKey(row, ["WD_OPER_BGNG_TM"]);
+  const weekdayEnd = stringByKey(row, ["WD_OPER_END_TM"]);
+  if (weekdayStart && weekdayEnd) return `${formatTime(weekdayStart)}-${formatTime(weekdayEnd)}`;
   return stringByKey(row, ["OPER_TIME", "USE_TIME", "WEEKDAY_USE_TIME", "WD_OPER_TIME"]);
 }
 
 function fee(row: JsonRow): string | null {
+  const baseCharge = numberByKey(row, ["BSC_CRG", "BSC_PRK_CRG"]);
+  const baseMinutes = numberByKey(row, ["BSC_HR", "BSC_PRK_HR"]);
+  const extraCharge = numberByKey(row, ["INTR_CRG", "ADD_PRK_CRG"]);
+  const extraMinutes = numberByKey(row, ["INTR_HR", "ADD_PRK_HR"]);
+  if (baseCharge !== null && baseMinutes !== null) {
+    const extraText = extraCharge !== null && extraMinutes !== null
+      ? `, 추가 ${extraMinutes}분 ${extraCharge.toLocaleString("ko-KR")}원`
+      : "";
+    return `기본 ${baseMinutes}분 ${baseCharge.toLocaleString("ko-KR")}원${extraText}`;
+  }
   return stringByKey(row, ["PARKING_FEE", "WEEKDAY_FEE", "FEE", "PAY"]);
 }
 
 function capacity(row: JsonRow): number | null {
-  return numberByKey(row, ["TPKCT", "CAPACITY", "TOTAL", "TOTAL_CNT", "PARKING_CNT", "PARKING_COUNT", "SPACE_CNT"]);
+  return numberByKey(row, ["TPKCT", "PRK_CNT", "CAPACITY", "TOTAL", "TOTAL_CNT", "PARKING_CNT", "PARKING_COUNT", "SPACE_CNT"]);
 }
 
 function available(row: JsonRow, totalCapacity: number | null): number | null {
@@ -300,8 +310,8 @@ function available(row: JsonRow, totalCapacity: number | null): number | null {
 
 function coordinate(row: JsonRow, kind: "lat" | "lng"): number | null {
   const direct = kind === "lat"
-    ? numberByKey(row, ["LAT", "LATITUDE", "Y", "WGS84_LAT"])
-    : numberByKey(row, ["LNG", "LON", "LONGITUDE", "LOT", "X", "WGS84_LON"]);
+    ? numberByKey(row, ["LAT", "LATITUDE", "PSTN_INFO_LAT", "Y", "WGS84_LAT"])
+    : numberByKey(row, ["LNG", "LON", "LONGITUDE", "LOT", "PSTN_INFO_LOT", "X", "WGS84_LON"]);
   if (direct !== null) return direct;
 
   const location = stringByKey(row, ["LOCATION", "POSITION", "COORDINATE", "COORDS", "POINT"]);
@@ -348,6 +358,13 @@ function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(String(value).replace(/,/g, ""));
   return Number.isFinite(number) && number !== 0 ? number : null;
+}
+
+function formatTime(value: string): string {
+  const compact = value.replace(/[^0-9]/g, "");
+  if (compact.length === 4) return `${compact.slice(0, 2)}:${compact.slice(2)}`;
+  if (/^\d{1,2}:\d{2}$/.test(value)) return value;
+  return value;
 }
 
 function stableId(value: string): string {
