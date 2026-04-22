@@ -6,11 +6,11 @@ Last updated: 2026-04-22
 
 - Branch: `master`
 - Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
-- Parking/festival/event clustering now uses screen-space cluster levels in the iOS map layer with iOS build number 68.
+- Realtime parking still uses screen-space clusters, while festival/event layers use overlap-collapsed pins with iOS build number 69.
 
 ## Completed This Session
 
-Festival/event clustering on the iOS Kakao map.
+Festival/event map display refinement on the iOS Kakao map.
 
 Touched files:
 
@@ -22,19 +22,13 @@ Touched files:
 
 Implemented behavior:
 
-- Parking, festival, and event clusters use the same zoom thresholds.
-- Zoom level `< 12`: show 96-point screen-space clusters.
-- Zoom level `12` to `14`: show 72-point screen-space clusters.
-- Zoom level `>= 15`: show individual pins.
-- Parking/festival/event clusters should not overlap when their cluster centers are close or identical.
-- Tapping a festival/event cluster should zoom in, similar to realtime parking clusters.
-- Parking/festival/event cluster calculation uses Web Mercator screen-space cells at the current zoom instead of fixed meter grids.
+- Festival/event numeric clusters were removed.
+- Festival/event layers now render actual pins.
+- Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out.
+- Overlapping festival/event pins separate with small offsets after zooming in.
+- Festival/event title labels only show at deep zoom.
 - Realtime parking display clusters are calculated client-side from the same loaded realtime lots used for individual pins, so counts stay aligned when zooming in.
-- Tapping a cluster advances one stage at a time: wide cluster to refined cluster, then refined cluster to individual pins.
-- Cluster markers render with dynamic count styles for festival and event layers.
-- Cluster markers are visually offset by layer, but tapping a cluster zooms toward the real cluster center.
-- Unit coverage was added for the shared cluster zoom thresholds and refined festival/event cluster grouping.
-- Cluster release was moved from zoom `14` to zoom `15`, and cluster taps now advance progressively through zoom `12`, `13`, `14`, then individual pins at `15`.
+- Realtime parking cluster release is back at zoom `14`.
 
 Validation:
 

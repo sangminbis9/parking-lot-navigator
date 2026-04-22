@@ -27,15 +27,11 @@ final class ParkingLotNavigatorTests: XCTestCase {
     }
 
     @MainActor
-    func testDiscoverClustersUseRealtimeZoomThreshold() {
+    func testRealtimeClustersUseReleaseZoomThreshold() {
         let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
 
         XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 13))
-        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 13))
-        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 14))
-        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 14))
-        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 15))
-        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 15))
+        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 14))
     }
 
     @MainActor
@@ -47,74 +43,5 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 13), 14)
         XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 14), 15)
         XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 15), 16)
-    }
-
-    @MainActor
-    func testFestivalClustersRefineAtCloserZoom() {
-        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
-        viewModel.festivals = [
-            makeFestival(id: "festival-1", lat: 37.0000, lng: 127.0000),
-            makeFestival(id: "festival-2", lat: 37.0100, lng: 127.0000),
-            makeFestival(id: "festival-3", lat: 37.0200, lng: 127.0000)
-        ]
-
-        XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])
-        XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 12).map(\.count).sorted(), [1, 1, 1])
-        XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 14).map(\.count).sorted(), [1, 1, 1])
-    }
-
-    @MainActor
-    func testEventClustersRefineAtCloserZoom() {
-        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
-        viewModel.events = [
-            makeEvent(id: "event-1", lat: 37.0000, lng: 127.0000),
-            makeEvent(id: "event-2", lat: 37.0100, lng: 127.0000),
-            makeEvent(id: "event-3", lat: 37.0200, lng: 127.0000)
-        ]
-
-        XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])
-        XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 12).map(\.count).sorted(), [1, 1, 1])
-        XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 14).map(\.count).sorted(), [1, 1, 1])
-    }
-
-    private func makeFestival(id: String, lat: Double, lng: Double) -> Festival {
-        Festival(
-            id: id,
-            title: id,
-            subtitle: nil,
-            startDate: "2026-04-22",
-            endDate: "2026-04-23",
-            status: .ongoing,
-            venueName: nil,
-            address: "Test address",
-            lat: lat,
-            lng: lng,
-            distanceMeters: 0,
-            source: "test",
-            sourceUrl: nil,
-            imageUrl: nil,
-            tags: []
-        )
-    }
-
-    private func makeEvent(id: String, lat: Double, lng: Double) -> FreeEvent {
-        FreeEvent(
-            id: id,
-            title: id,
-            eventType: "test",
-            startDate: "2026-04-22",
-            endDate: "2026-04-23",
-            status: .ongoing,
-            isFree: true,
-            venueName: nil,
-            address: "Test address",
-            lat: lat,
-            lng: lng,
-            distanceMeters: 0,
-            source: "test",
-            sourceUrl: nil,
-            imageUrl: nil,
-            shortDescription: nil
-        )
     }
 }

@@ -23,11 +23,11 @@ Last updated: 2026-04-22
 - Use D1 realtime cache for map-wide realtime display.
 - Sync cadence target: about 5 minutes.
 - Realtime toggle should show nationwide data, not only the current viewport.
-- Zoomed out map should show screen-space clusters; mid-zoom map should show tighter screen-space clusters; zoomed in map should show individual pins.
-- Parking/festival/event cluster thresholds:
+- Zoomed out realtime parking should show screen-space clusters; mid-zoom realtime parking should show tighter screen-space clusters; zoomed in realtime parking should show individual pins.
+- Realtime parking cluster thresholds:
   - Zoom level `< 12`: show 96-point screen-space clusters.
-  - Zoom level `12` to `14`: show 72-point screen-space clusters.
-  - Zoom level `>= 15`: show individual pins.
+  - Zoom level `12` to `13`: show 72-point screen-space clusters.
+  - Zoom level `>= 14`: show individual pins.
 
 ## Seoul Realtime Details
 
@@ -43,10 +43,9 @@ Last updated: 2026-04-22
 - Realtime parking clusters use the same zoom thresholds as parking realtime pins.
 - Cluster counts are calculated from each cluster's member items using the same screen-space clustering path as the next zoom state, so counts stay aligned when zooming in.
 - Festival/event layers are separate toggles.
-- Festival/event pins may show labels only when zoomed in or selected.
-- Festival/event clusters use the same zoom thresholds as parking clusters.
-- Zoomed-out parking, festival, and event clusters are offset by layer so same or nearby cluster centers do not render directly on top of one another.
-- Cluster release is delayed until zoom level `15` so tapping a refined cluster at zoom `13` first shows a tighter zoom `14` cluster state instead of immediately showing every individual pin in the new viewport.
+- Festival/event layers do not use numeric clustering. They render actual pins.
+- Festival/event pins hide title labels until deep zoom.
+- Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
 
 ## Build/Release
 

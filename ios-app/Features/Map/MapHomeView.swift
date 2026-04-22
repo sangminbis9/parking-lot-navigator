@@ -16,6 +16,8 @@ struct MapHomeView: View {
     @State private var hasUserFocusedMapTarget = false
     @State private var shouldCenterOnNextLocation = false
     @FocusState private var isSearchFocused: Bool
+    private let discoverOverlayReleaseZoomLevel = 15
+    private let discoverNameLabelZoomLevel = 17
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -146,64 +148,100 @@ struct MapHomeView: View {
                 })
             }
         }
-        if viewModel.showsFestivalLayer {
-            if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.festivalClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
-                    MapPinItem(
-                        id: "festival-cluster-\(cluster.id)",
-                        coordinate: clusterCoordinate(cluster.coordinate, layer: .festival),
-                        kind: .festivalCluster(cluster)
-                    )
-                })
-            } else {
-                items.append(contentsOf: viewModel.festivals.map { festival in
-                    MapPinItem(
-                        id: "festival-\(festival.id)",
-                        coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
-                        kind: .festival(festival),
-                        showsTitleLabel: viewModel.selectedFestival?.id == festival.id
-                    )
-                })
-            }
-        }
-        if viewModel.showsEventLayer {
-            if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.eventClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
-                    MapPinItem(
-                        id: "event-cluster-\(cluster.id)",
-                        coordinate: clusterCoordinate(cluster.coordinate, layer: .event),
-                        kind: .eventCluster(cluster)
-                    )
-                })
-            } else {
-                items.append(contentsOf: viewModel.events.map { event in
-                    MapPinItem(
-                        id: "event-\(event.id)",
-                        coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
-                        kind: .event(event),
-                        showsTitleLabel: viewModel.selectedEvent?.id == event.id
-                    )
-                })
-            }
-        }
+        items.append(contentsOf: discoverPins)
         return items
     }
 
     private enum ClusterLayer {
         case parking
-        case festival
-        case event
     }
 
     private func clusterCoordinate(_ coordinate: CLLocationCoordinate2D, layer: ClusterLayer) -> CLLocationCoordinate2D {
         switch layer {
         case .parking:
             return coordinate.offsetByMeters(east: 0, north: -7_000)
-        case .festival:
-            return coordinate.offsetByMeters(east: -7_000, north: 5_000)
-        case .event:
-            return coordinate.offsetByMeters(east: 7_000, north: 5_000)
         }
+    }
+
+    private var discoverPins: [MapPinItem] {
+        let sources = discoverSources
+        guard !sources.isEmpty else { return [] }
+
+        let groups = Dictionary(grouping: sources) { source in
+            discoverOverlayKey(for: source.coordinate, zoomLevel: mapZoomLevel)
+        }
+        let sortedGroups = groups.values
+            .map { $0.sorted { $0.id < $1.id } }
+            .sorted { ($0.first?.id ?? "") < ($1.first?.id ?? "") }
+
+        if mapZoomLevel < discoverOverlayReleaseZoomLevel {
+            return sortedGroups.compactMap { group in
+                group.first.map { source in
+                    mapPinItem(for: source, coordinate: source.coordinate)
+                }
+            }
+        }
+
+        return sortedGroups.flatMap { group in
+            group.enumerated().map { index, source in
+                mapPinItem(
+                    for: source,
+                    coordinate: discoverCoordinate(source.coordinate, index: index, count: group.count)
+                )
+            }
+        }
+    }
+
+    private var discoverSources: [DiscoverPinSource] {
+        var sources: [DiscoverPinSource] = []
+        if viewModel.showsFestivalLayer {
+            sources.append(contentsOf: viewModel.festivals.map { .festival($0) })
+        }
+        if viewModel.showsEventLayer {
+            sources.append(contentsOf: viewModel.events.map { .event($0) })
+        }
+        return sources
+    }
+
+    private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
+        switch source {
+        case .festival(let festival):
+            return MapPinItem(
+                id: "festival-\(festival.id)",
+                coordinate: coordinate,
+                kind: .festival(festival),
+                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
+            )
+        case .event(let event):
+            return MapPinItem(
+                id: "event-\(event.id)",
+                coordinate: coordinate,
+                kind: .event(event),
+                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
+            )
+        }
+    }
+
+    private func discoverCoordinate(_ coordinate: CLLocationCoordinate2D, index: Int, count: Int) -> CLLocationCoordinate2D {
+        guard count > 1 else { return coordinate }
+        let angle = (Double(index) / Double(count)) * 2 * Double.pi
+        let radius = max(7.0, 36.0 / pow(2.0, Double(max(mapZoomLevel - discoverOverlayReleaseZoomLevel, 0))))
+        return coordinate.offsetByMeters(east: cos(angle) * radius, north: sin(angle) * radius)
+    }
+
+    private func discoverOverlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
+        let point = mercatorPoint(for: coordinate, zoomLevel: zoomLevel)
+        let cellSize = zoomLevel < discoverOverlayReleaseZoomLevel ? 30.0 : 14.0
+        return "\(Int((point.x / cellSize).rounded())):\(Int((point.y / cellSize).rounded()))"
+    }
+
+    private func mercatorPoint(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> CGPoint {
+        let sinLatitude = sin(coordinate.latitude * .pi / 180)
+        let clampedSinLatitude = min(max(sinLatitude, -0.9999), 0.9999)
+        let mapSize = 256.0 * pow(2.0, Double(zoomLevel))
+        let x = (coordinate.longitude + 180.0) / 360.0 * mapSize
+        let y = (0.5 - log((1 + clampedSinLatitude) / (1 - clampedSinLatitude)) / (4 * .pi)) * mapSize
+        return CGPoint(x: x, y: y)
     }
     private var searchPanel: some View {
         HStack(spacing: 8) {
@@ -568,10 +606,6 @@ struct MapHomeView: View {
                 to: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
                 zoomLevel: nextClusterZoomLevel
             )
-        case .festivalCluster(let cluster):
-            focusMap(to: cluster.coordinate, zoomLevel: nextClusterZoomLevel)
-        case .eventCluster(let cluster):
-            focusMap(to: cluster.coordinate, zoomLevel: nextClusterZoomLevel)
         case .destination(let destination):
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
@@ -615,6 +649,29 @@ struct MapHomeView: View {
 
     private var nextClusterZoomLevel: Int {
         viewModel.nextClusterZoomLevel(after: mapZoomLevel)
+    }
+}
+
+private enum DiscoverPinSource {
+    case festival(Festival)
+    case event(FreeEvent)
+
+    var id: String {
+        switch self {
+        case .festival(let festival):
+            return "festival-\(festival.id)"
+        case .event(let event):
+            return "event-\(event.id)"
+        }
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        switch self {
+        case .festival(let festival):
+            return CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
+        case .event(let event):
+            return CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
+        }
     }
 }
 

@@ -36,7 +36,7 @@ final class MapHomeViewModel: ObservableObject {
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     private let refinedClusterZoomThreshold = 12
-    private let clusterReleaseZoomThreshold = 15
+    private let clusterReleaseZoomThreshold = 14
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -60,10 +60,6 @@ final class MapHomeViewModel: ObservableObject {
         zoomLevel < clusterReleaseZoomThreshold
     }
 
-    func shouldShowDiscoverClusters(zoomLevel: Int) -> Bool {
-        zoomLevel < clusterReleaseZoomThreshold
-    }
-
     func nextClusterZoomLevel(after zoomLevel: Int) -> Int {
         if zoomLevel < refinedClusterZoomThreshold {
             return refinedClusterZoomThreshold
@@ -76,26 +72,6 @@ final class MapHomeViewModel: ObservableObject {
 
     func realtimeParkingClustersForZoom(zoomLevel: Int) -> [RealtimeParkingCluster] {
         clusterRealtimeParkingItems(visibleRealtimeParkingLots, zoomLevel: zoomLevel)
-    }
-
-    func festivalClustersForZoom(zoomLevel: Int) -> [DiscoverCluster] {
-        clusterDiscoverItems(festivals, zoomLevel: zoomLevel) { festival in
-            DiscoverClusterItem(
-                id: festival.id,
-                title: festival.title,
-                coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
-            )
-        }
-    }
-
-    func eventClustersForZoom(zoomLevel: Int) -> [DiscoverCluster] {
-        clusterDiscoverItems(events, zoomLevel: zoomLevel) { event in
-            DiscoverClusterItem(
-                id: event.id,
-                title: event.title,
-                coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
-            )
-        }
     }
 
     func search() async {
@@ -516,31 +492,6 @@ final class MapHomeViewModel: ObservableObject {
             .filter { $0.count >= 2 && !$0.contains("주차") })
     }
 
-    private func clusterDiscoverItems<Item>(
-        _ items: [Item],
-        zoomLevel: Int,
-        makeClusterItem: (Item) -> DiscoverClusterItem
-    ) -> [DiscoverCluster] {
-        var groups: [String: [DiscoverClusterItem]] = [:]
-        for item in items.map(makeClusterItem) {
-            let key = clusterKey(for: item.coordinate, zoomLevel: zoomLevel)
-            groups[key, default: []].append(item)
-        }
-
-        return groups.map { key, clusterItems in
-            DiscoverCluster(
-                id: "\(zoomLevel):\(key):\(clusterItems.map(\.id).sorted().joined(separator: ","))",
-                coordinate: averageCoordinate(clusterItems.map(\.coordinate)),
-                count: clusterItems.count,
-                representativeTitle: clusterItems.first?.title ?? "",
-                memberIDs: clusterItems.map(\.id).sorted()
-            )
-        }
-        .sorted { lhs, rhs in
-            lhs.id < rhs.id
-        }
-    }
-
     private func clusterRealtimeParkingItems(
         _ items: [ParkingLot],
         zoomLevel: Int
@@ -591,13 +542,6 @@ final class MapHomeViewModel: ObservableObject {
         return CGPoint(x: x, y: y)
     }
 
-    private func averageCoordinate(_ coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D {
-        let count = max(Double(coordinates.count), 1)
-        let lat = coordinates.map(\.latitude).reduce(0, +) / count
-        let lng = coordinates.map(\.longitude).reduce(0, +) / count
-        return CLLocationCoordinate2D(latitude: lat, longitude: lng)
-    }
-
     private func average(_ values: [Double]) -> Double {
         values.reduce(0, +) / max(Double(values.count), 1)
     }
@@ -625,28 +569,12 @@ final class MapHomeViewModel: ObservableObject {
     }
 }
 
-struct DiscoverCluster: Identifiable {
-    let id: String
-    let coordinate: CLLocationCoordinate2D
-    let count: Int
-    let representativeTitle: String
-    let memberIDs: [String]
-}
-
-private struct DiscoverClusterItem {
-    let id: String
-    let title: String
-    let coordinate: CLLocationCoordinate2D
-}
-
 struct MapPinItem: Identifiable {
     enum Kind {
         case currentLocation
         case destination(Destination)
         case parking(ParkingLot)
         case realtimeCluster(RealtimeParkingCluster)
-        case festivalCluster(DiscoverCluster)
-        case eventCluster(DiscoverCluster)
         case festival(Festival)
         case event(FreeEvent)
     }
