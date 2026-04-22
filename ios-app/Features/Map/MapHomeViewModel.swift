@@ -31,8 +31,8 @@ final class MapHomeViewModel: ObservableObject {
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
     private let realtimeParkingRadiusMeters = 460_000
-    private let wideClusterMeters = 20_000
-    private let refinedClusterMeters = 5_000
+    private let wideClusterCellPoints = 96.0
+    private let refinedClusterCellPoints = 72.0
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     private let refinedClusterZoomThreshold = 12
@@ -65,12 +65,13 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func realtimeParkingClustersForZoom(zoomLevel: Int) -> [RealtimeParkingCluster] {
-        clusterRealtimeParkingItems(visibleRealtimeParkingLots, clusterMeters: clusterMeters(for: zoomLevel))
+        clusterRealtimeParkingItems(visibleRealtimeParkingLots, zoomLevel: zoomLevel)
     }
 
     func festivalClustersForZoom(zoomLevel: Int) -> [DiscoverCluster] {
-        clusterDiscoverItems(festivals, clusterMeters: clusterMeters(for: zoomLevel)) { festival in
+        clusterDiscoverItems(festivals, zoomLevel: zoomLevel) { festival in
             DiscoverClusterItem(
+                id: festival.id,
                 title: festival.title,
                 coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
             )
@@ -78,8 +79,9 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func eventClustersForZoom(zoomLevel: Int) -> [DiscoverCluster] {
-        clusterDiscoverItems(events, clusterMeters: clusterMeters(for: zoomLevel)) { event in
+        clusterDiscoverItems(events, zoomLevel: zoomLevel) { event in
             DiscoverClusterItem(
+                id: event.id,
                 title: event.title,
                 coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
             )
@@ -226,7 +228,7 @@ final class MapHomeViewModel: ObservableObject {
                 lat: koreaDiscoverCenter.latitude,
                 lng: koreaDiscoverCenter.longitude,
                 radiusMeters: realtimeParkingRadiusMeters,
-                clusterMeters: wideClusterMeters
+                clusterMeters: 20_000
             )
             realtimeParkingLots = try await lots
             realtimeParkingClusters = try await clusters
@@ -506,21 +508,22 @@ final class MapHomeViewModel: ObservableObject {
 
     private func clusterDiscoverItems<Item>(
         _ items: [Item],
-        clusterMeters: Int,
+        zoomLevel: Int,
         makeClusterItem: (Item) -> DiscoverClusterItem
     ) -> [DiscoverCluster] {
         var groups: [String: [DiscoverClusterItem]] = [:]
         for item in items.map(makeClusterItem) {
-            let key = clusterKey(for: item.coordinate, clusterMeters: clusterMeters)
+            let key = clusterKey(for: item.coordinate, zoomLevel: zoomLevel)
             groups[key, default: []].append(item)
         }
 
         return groups.map { key, clusterItems in
             DiscoverCluster(
-                id: "\(clusterMeters):\(key)",
+                id: "\(zoomLevel):\(key):\(clusterItems.map(\.id).sorted().joined(separator: ","))",
                 coordinate: averageCoordinate(clusterItems.map(\.coordinate)),
                 count: clusterItems.count,
-                representativeTitle: clusterItems.first?.title ?? ""
+                representativeTitle: clusterItems.first?.title ?? "",
+                memberIDs: clusterItems.map(\.id).sorted()
             )
         }
         .sorted { lhs, rhs in
@@ -530,13 +533,13 @@ final class MapHomeViewModel: ObservableObject {
 
     private func clusterRealtimeParkingItems(
         _ items: [ParkingLot],
-        clusterMeters: Int
+        zoomLevel: Int
     ) -> [RealtimeParkingCluster] {
         var groups: [String: [ParkingLot]] = [:]
         for item in items {
             let key = clusterKey(
                 for: CLLocationCoordinate2D(latitude: item.lat, longitude: item.lng),
-                clusterMeters: clusterMeters
+                zoomLevel: zoomLevel
             )
             groups[key, default: []].append(item)
         }
@@ -545,7 +548,7 @@ final class MapHomeViewModel: ObservableObject {
             let availableSpaces = sumNullable(clusterItems.map(\.availableSpaces))
             let totalCapacity = sumNullable(clusterItems.map(\.totalCapacity))
             return RealtimeParkingCluster(
-                id: "\(clusterMeters):\(key)",
+                id: "\(zoomLevel):\(key):\(clusterItems.map(\.id).sorted().joined(separator: ","))",
                 lat: average(clusterItems.map(\.lat)),
                 lng: average(clusterItems.map(\.lng)),
                 count: clusterItems.count,
@@ -559,14 +562,23 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    private func clusterMeters(for zoomLevel: Int) -> Int {
-        zoomLevel >= refinedClusterZoomThreshold ? refinedClusterMeters : wideClusterMeters
+    private func clusterCellPoints(for zoomLevel: Int) -> Double {
+        zoomLevel >= refinedClusterZoomThreshold ? refinedClusterCellPoints : wideClusterCellPoints
     }
 
-    private func clusterKey(for coordinate: CLLocationCoordinate2D, clusterMeters: Int) -> String {
-        let latStep = Double(clusterMeters) / 111_320.0
-        let lngStep = Double(clusterMeters) / max(40_000.0, 111_320.0 * cos(koreaDiscoverCenter.latitude * .pi / 180))
-        return "\(Int((coordinate.latitude / latStep).rounded())):\(Int((coordinate.longitude / lngStep).rounded()))"
+    private func clusterKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
+        let point = mercatorPoint(for: coordinate, zoomLevel: zoomLevel)
+        let cellSize = clusterCellPoints(for: zoomLevel)
+        return "\(Int((point.x / cellSize).rounded())):\(Int((point.y / cellSize).rounded()))"
+    }
+
+    private func mercatorPoint(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> CGPoint {
+        let sinLatitude = sin(coordinate.latitude * .pi / 180)
+        let clampedSinLatitude = min(max(sinLatitude, -0.9999), 0.9999)
+        let mapSize = 256.0 * pow(2.0, Double(zoomLevel))
+        let x = (coordinate.longitude + 180.0) / 360.0 * mapSize
+        let y = (0.5 - log((1 + clampedSinLatitude) / (1 - clampedSinLatitude)) / (4 * .pi)) * mapSize
+        return CGPoint(x: x, y: y)
     }
 
     private func averageCoordinate(_ coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D {
@@ -608,9 +620,11 @@ struct DiscoverCluster: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let count: Int
     let representativeTitle: String
+    let memberIDs: [String]
 }
 
 private struct DiscoverClusterItem {
+    let id: String
     let title: String
     let coordinate: CLLocationCoordinate2D
 }
