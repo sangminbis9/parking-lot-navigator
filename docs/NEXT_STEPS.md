@@ -6,7 +6,7 @@ Last updated: 2026-04-22
 
 - Branch: `master`
 - Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
-- Festival/event clustering was completed in the iOS map layer with iOS build number 63.
+- Parking/festival/event clustering now uses wide and refined cluster levels in the iOS map layer with iOS build number 65.
 
 ## Completed This Session
 
@@ -22,15 +22,17 @@ Touched files:
 
 Implemented behavior:
 
-- Parking, festival, and event clusters use the same zoom threshold.
-- Zoom level `< 12`: show clusters.
-- Zoom level `>= 12`: show individual pins.
+- Parking, festival, and event clusters use the same zoom thresholds.
+- Zoom level `< 12`: show 45 km clusters.
+- Zoom level `12` to `13`: show 12 km clusters.
+- Zoom level `>= 14`: show individual pins.
 - Parking/festival/event clusters should not overlap when their cluster centers are close or identical.
 - Tapping a festival/event cluster should zoom in, similar to realtime parking clusters.
-- Festival/event cluster calculation uses the same 45 km cluster size as realtime parking clusters.
+- Festival/event cluster calculation uses the same 45 km wide cluster size as realtime parking clusters, then refines to 12 km at mid zoom.
+- Realtime parking uses server-provided 45 km clusters when zoomed out and client-side 12 km clusters from loaded realtime lots at mid zoom.
 - Cluster markers render with dynamic count styles for festival and event layers.
 - Cluster markers are visually offset by layer, but tapping a cluster zooms toward the real cluster center.
-- Unit coverage was added for the shared cluster zoom threshold and basic festival/event cluster grouping.
+- Unit coverage was added for the shared cluster zoom thresholds and refined festival/event cluster grouping.
 
 Validation:
 

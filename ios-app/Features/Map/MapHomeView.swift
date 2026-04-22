@@ -126,7 +126,7 @@ struct MapHomeView: View {
         })
         if viewModel.showsRealtimeParkingLayer {
             if viewModel.shouldShowRealtimeClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.realtimeParkingClusters.map { cluster in
+                items.append(contentsOf: viewModel.realtimeParkingClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
                     MapPinItem(
                         id: "realtime-cluster-\(cluster.id)",
                         coordinate: clusterCoordinate(
@@ -148,7 +148,7 @@ struct MapHomeView: View {
         }
         if viewModel.showsFestivalLayer {
             if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.festivalClusters.map { cluster in
+                items.append(contentsOf: viewModel.festivalClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
                     MapPinItem(
                         id: "festival-cluster-\(cluster.id)",
                         coordinate: clusterCoordinate(cluster.coordinate, layer: .festival),
@@ -168,7 +168,7 @@ struct MapHomeView: View {
         }
         if viewModel.showsEventLayer {
             if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.eventClusters.map { cluster in
+                items.append(contentsOf: viewModel.eventClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
                     MapPinItem(
                         id: "event-cluster-\(cluster.id)",
                         coordinate: clusterCoordinate(cluster.coordinate, layer: .event),
