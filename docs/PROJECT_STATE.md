@@ -73,7 +73,7 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest work: add refined mid-zoom parking/festival/event clustering and bump iOS build to 65.
+- Latest work: narrow parking/festival/event cluster areas, align realtime cluster counts with loaded pins, and bump iOS build to 66.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`
 - `5af815e Fix Seoul supplemental parking mapping`

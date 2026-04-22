@@ -25,8 +25,8 @@ Last updated: 2026-04-22
 - Realtime toggle should show nationwide data, not only the current viewport.
 - Zoomed out map should show wide clusters; mid-zoom map should show narrower clusters; zoomed in map should show individual pins.
 - Parking/festival/event cluster thresholds:
-  - Zoom level `< 12`: show 45 km clusters.
-  - Zoom level `12` to `13`: show 12 km clusters.
+  - Zoom level `< 12`: show 20 km clusters.
+  - Zoom level `12` to `13`: show 5 km clusters.
   - Zoom level `>= 14`: show individual pins.
 
 ## Seoul Realtime Details
@@ -41,6 +41,7 @@ Last updated: 2026-04-22
 
 - Realtime parking toggle label should be simple and not duplicate the parking symbol.
 - Realtime parking clusters use the same zoom thresholds as parking realtime pins.
+- Realtime parking cluster counts are calculated from the same loaded realtime parking lots used for individual pins, so cluster counts stay aligned when zooming in.
 - Festival/event layers are separate toggles.
 - Festival/event pins may show labels only when zoomed in or selected.
 - Festival/event clusters use the same zoom thresholds as parking clusters.

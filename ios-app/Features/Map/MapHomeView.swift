@@ -566,12 +566,12 @@ struct MapHomeView: View {
         case .realtimeCluster(let cluster):
             focusMap(
                 to: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
-                zoomLevel: min(mapZoomLevel + 3, 15)
+                zoomLevel: nextClusterZoomLevel
             )
         case .festivalCluster(let cluster):
-            focusMap(to: cluster.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
+            focusMap(to: cluster.coordinate, zoomLevel: nextClusterZoomLevel)
         case .eventCluster(let cluster):
-            focusMap(to: cluster.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
+            focusMap(to: cluster.coordinate, zoomLevel: nextClusterZoomLevel)
         case .destination(let destination):
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
@@ -611,6 +611,16 @@ struct MapHomeView: View {
     private func handleCameraIdle(_ viewport: MapViewport) {
         mapCenter = viewport.center
         mapZoomLevel = viewport.zoomLevel
+    }
+
+    private var nextClusterZoomLevel: Int {
+        if mapZoomLevel < 12 {
+            return 12
+        }
+        if mapZoomLevel < 14 {
+            return 14
+        }
+        return min(mapZoomLevel + 1, 16)
     }
 }
 

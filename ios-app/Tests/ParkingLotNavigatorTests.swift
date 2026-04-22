@@ -41,8 +41,8 @@ final class ParkingLotNavigatorTests: XCTestCase {
         let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
         viewModel.festivals = [
             makeFestival(id: "festival-1", lat: 37.0000, lng: 127.0000),
-            makeFestival(id: "festival-2", lat: 37.1500, lng: 127.0000),
-            makeFestival(id: "festival-3", lat: 37.3000, lng: 127.0000)
+            makeFestival(id: "festival-2", lat: 37.0600, lng: 127.0000),
+            makeFestival(id: "festival-3", lat: 37.1200, lng: 127.0000)
         ]
 
         XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])
@@ -54,8 +54,8 @@ final class ParkingLotNavigatorTests: XCTestCase {
         let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
         viewModel.events = [
             makeEvent(id: "event-1", lat: 37.0000, lng: 127.0000),
-            makeEvent(id: "event-2", lat: 37.1500, lng: 127.0000),
-            makeEvent(id: "event-3", lat: 37.3000, lng: 127.0000)
+            makeEvent(id: "event-2", lat: 37.0600, lng: 127.0000),
+            makeEvent(id: "event-3", lat: 37.1200, lng: 127.0000)
         ]
 
         XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])

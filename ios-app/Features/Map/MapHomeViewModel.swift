@@ -31,8 +31,8 @@ final class MapHomeViewModel: ObservableObject {
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
     private let realtimeParkingRadiusMeters = 460_000
-    private let wideClusterMeters = 45_000
-    private let refinedClusterMeters = 12_000
+    private let wideClusterMeters = 20_000
+    private let refinedClusterMeters = 5_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     private let refinedClusterZoomThreshold = 12
@@ -65,10 +65,7 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func realtimeParkingClustersForZoom(zoomLevel: Int) -> [RealtimeParkingCluster] {
-        guard clusterMeters(for: zoomLevel) == refinedClusterMeters else {
-            return realtimeParkingClusters
-        }
-        return clusterRealtimeParkingItems(visibleRealtimeParkingLots, clusterMeters: refinedClusterMeters)
+        clusterRealtimeParkingItems(visibleRealtimeParkingLots, clusterMeters: clusterMeters(for: zoomLevel))
     }
 
     func festivalClustersForZoom(zoomLevel: Int) -> [DiscoverCluster] {
