@@ -129,7 +129,10 @@ struct MapHomeView: View {
                 items.append(contentsOf: viewModel.realtimeParkingClusters.map { cluster in
                     MapPinItem(
                         id: "realtime-cluster-\(cluster.id)",
-                        coordinate: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
+                        coordinate: clusterCoordinate(
+                            CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
+                            layer: .parking
+                        ),
                         kind: .realtimeCluster(cluster)
                     )
                 })
@@ -144,26 +147,63 @@ struct MapHomeView: View {
             }
         }
         if viewModel.showsFestivalLayer {
-            items.append(contentsOf: viewModel.festivals.map { festival in
-                MapPinItem(
-                    id: "festival-\(festival.id)",
-                    coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
-                    kind: .festival(festival),
-                    showsTitleLabel: viewModel.selectedFestival?.id == festival.id
-                )
-            })
+            if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
+                items.append(contentsOf: viewModel.festivalClusters.map { cluster in
+                    MapPinItem(
+                        id: "festival-cluster-\(cluster.id)",
+                        coordinate: clusterCoordinate(cluster.coordinate, layer: .festival),
+                        kind: .festivalCluster(cluster)
+                    )
+                })
+            } else {
+                items.append(contentsOf: viewModel.festivals.map { festival in
+                    MapPinItem(
+                        id: "festival-\(festival.id)",
+                        coordinate: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
+                        kind: .festival(festival),
+                        showsTitleLabel: viewModel.selectedFestival?.id == festival.id
+                    )
+                })
+            }
         }
         if viewModel.showsEventLayer {
-            items.append(contentsOf: viewModel.events.map { event in
-                MapPinItem(
-                    id: "event-\(event.id)",
-                    coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
-                    kind: .event(event),
-                    showsTitleLabel: viewModel.selectedEvent?.id == event.id
-                )
-            })
+            if viewModel.shouldShowDiscoverClusters(zoomLevel: mapZoomLevel) {
+                items.append(contentsOf: viewModel.eventClusters.map { cluster in
+                    MapPinItem(
+                        id: "event-cluster-\(cluster.id)",
+                        coordinate: clusterCoordinate(cluster.coordinate, layer: .event),
+                        kind: .eventCluster(cluster)
+                    )
+                })
+            } else {
+                items.append(contentsOf: viewModel.events.map { event in
+                    MapPinItem(
+                        id: "event-\(event.id)",
+                        coordinate: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
+                        kind: .event(event),
+                        showsTitleLabel: viewModel.selectedEvent?.id == event.id
+                    )
+                })
+            }
         }
         return items
+    }
+
+    private enum ClusterLayer {
+        case parking
+        case festival
+        case event
+    }
+
+    private func clusterCoordinate(_ coordinate: CLLocationCoordinate2D, layer: ClusterLayer) -> CLLocationCoordinate2D {
+        switch layer {
+        case .parking:
+            return coordinate.offsetByMeters(east: 0, north: -7_000)
+        case .festival:
+            return coordinate.offsetByMeters(east: -7_000, north: 5_000)
+        case .event:
+            return coordinate.offsetByMeters(east: 7_000, north: 5_000)
+        }
     }
     private var searchPanel: some View {
         HStack(spacing: 8) {
@@ -523,8 +563,15 @@ struct MapHomeView: View {
         case .parking(let parkingLot):
             viewModel.selectedParkingLot = parkingLot
             focusMap(to: pin.coordinate, zoomLevel: 17)
-        case .realtimeCluster:
-            focusMap(to: pin.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
+        case .realtimeCluster(let cluster):
+            focusMap(
+                to: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
+                zoomLevel: min(mapZoomLevel + 3, 15)
+            )
+        case .festivalCluster(let cluster):
+            focusMap(to: cluster.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
+        case .eventCluster(let cluster):
+            focusMap(to: cluster.coordinate, zoomLevel: min(mapZoomLevel + 3, 15))
         case .destination(let destination):
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
@@ -564,6 +611,14 @@ struct MapHomeView: View {
     private func handleCameraIdle(_ viewport: MapViewport) {
         mapCenter = viewport.center
         mapZoomLevel = viewport.zoomLevel
+    }
+}
+
+private extension CLLocationCoordinate2D {
+    func offsetByMeters(east: Double, north: Double) -> CLLocationCoordinate2D {
+        let latOffset = north / 111_320.0
+        let lngOffset = east / max(40_000.0, 111_320.0 * cos(latitude * .pi / 180))
+        return CLLocationCoordinate2D(latitude: latitude + latOffset, longitude: longitude + lngOffset)
     }
 }
 

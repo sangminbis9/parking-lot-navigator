@@ -25,4 +25,79 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertGreaterThan(recommendations.first?.score ?? 0, recommendations.last?.score ?? 0)
         XCTAssertFalse(recommendations.first?.reasons.isEmpty ?? true)
     }
+
+    @MainActor
+    func testDiscoverClustersUseRealtimeZoomThreshold() {
+        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
+
+        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 10))
+        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 10))
+        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 11))
+        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 11))
+    }
+
+    @MainActor
+    func testFestivalClustersGroupNearbyItems() {
+        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
+        viewModel.festivals = [
+            makeFestival(id: "festival-1", lat: 37.0000, lng: 127.0000),
+            makeFestival(id: "festival-2", lat: 37.0100, lng: 127.0100),
+            makeFestival(id: "festival-3", lat: 35.0000, lng: 129.0000)
+        ]
+
+        XCTAssertEqual(viewModel.festivalClusters.map(\.count).sorted(), [1, 2])
+    }
+
+    @MainActor
+    func testEventClustersGroupNearbyItems() {
+        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
+        viewModel.events = [
+            makeEvent(id: "event-1", lat: 37.0000, lng: 127.0000),
+            makeEvent(id: "event-2", lat: 37.0100, lng: 127.0100),
+            makeEvent(id: "event-3", lat: 35.0000, lng: 129.0000)
+        ]
+
+        XCTAssertEqual(viewModel.eventClusters.map(\.count).sorted(), [1, 2])
+    }
+
+    private func makeFestival(id: String, lat: Double, lng: Double) -> Festival {
+        Festival(
+            id: id,
+            title: id,
+            subtitle: nil,
+            startDate: "2026-04-22",
+            endDate: "2026-04-23",
+            status: .ongoing,
+            venueName: nil,
+            address: "Test address",
+            lat: lat,
+            lng: lng,
+            distanceMeters: 0,
+            source: "test",
+            sourceUrl: nil,
+            imageUrl: nil,
+            tags: []
+        )
+    }
+
+    private func makeEvent(id: String, lat: Double, lng: Double) -> FreeEvent {
+        FreeEvent(
+            id: id,
+            title: id,
+            eventType: "test",
+            startDate: "2026-04-22",
+            endDate: "2026-04-23",
+            status: .ongoing,
+            isFree: true,
+            venueName: nil,
+            address: "Test address",
+            lat: lat,
+            lng: lng,
+            distanceMeters: 0,
+            source: "test",
+            sourceUrl: nil,
+            imageUrl: nil,
+            shortDescription: nil
+        )
+    }
 }

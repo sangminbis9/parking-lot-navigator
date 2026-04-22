@@ -277,6 +277,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
             manager.addPoiStyle(makeStyle(id: "realtime-cluster", image: .parkingCluster(count: 1, fill: .systemGreen)))
+            manager.addPoiStyle(makeStyle(id: "festival-cluster", image: .discoverCluster(count: 1, fill: .systemPurple, symbol: "sparkles")))
+            manager.addPoiStyle(makeStyle(id: "event-cluster", image: .discoverCluster(count: 1, fill: .systemTeal, symbol: "calendar")))
             for style in DiscoverPinStyle.allCases {
                 manager.addPoiStyle(makeStyle(id: style.id, image: .discoverPin(fill: style.fill, symbol: style.symbol)))
             }
@@ -346,6 +348,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
                     manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
                     registeredDynamicStyleIDs.insert(style.id)
                 }
+                if !registeredDynamicStyleIDs.contains(styleID),
+                   let style = pin.dynamicDiscoverClusterStyleIDAndImage(styleID: styleID) {
+                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
+                    registeredDynamicStyleIDs.insert(style.id)
+                }
                 let option = PoiOptions(styleID: styleID, poiID: pin.poiID)
                 option.rank = rank(for: pin.kind)
                 option.clickable = true
@@ -405,6 +412,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 10
             case .realtimeCluster:
                 return 11
+            case .festivalCluster:
+                return 12
+            case .eventCluster:
+                return 12
             case .festival:
                 return 12
             case .event:
@@ -493,6 +504,10 @@ private extension MapPinItem {
             }
         case .realtimeCluster(let cluster):
             return "realtime-cluster-\(cluster.count)-\(cluster.congestionStatus.rawValue)"
+        case .festivalCluster(let cluster):
+            return "festival-cluster-\(cluster.count)"
+        case .eventCluster(let cluster):
+            return "event-cluster-\(cluster.count)"
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
@@ -525,6 +540,19 @@ private extension MapPinItem {
             return nil
         }
         return (styleID, .parkingCluster(count: cluster.count, fill: cluster.congestionStatus.clusterColor))
+    }
+
+    func dynamicDiscoverClusterStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
+        switch kind {
+        case .festivalCluster(let cluster):
+            guard styleID == "festival-cluster-\(cluster.count)" else { return nil }
+            return (styleID, .discoverCluster(count: cluster.count, fill: .systemPurple, symbol: "sparkles"))
+        case .eventCluster(let cluster):
+            guard styleID == "event-cluster-\(cluster.count)" else { return nil }
+            return (styleID, .discoverCluster(count: cluster.count, fill: .systemTeal, symbol: "calendar"))
+        default:
+            return nil
+        }
     }
 }
 
@@ -754,6 +782,47 @@ private extension UIImage {
             ]
             NSString(string: text).draw(
                 in: CGRect(x: 0, y: (size - fontSize) / 2 - 2, width: size, height: fontSize + 6),
+                withAttributes: attributes
+            )
+        }
+    }
+
+    static func discoverCluster(count: Int, fill: UIColor, symbol: String) -> UIImage {
+        let text = count >= 1_000 ? "999+" : "\(count)"
+        let size: CGFloat = count >= 100 ? 52 : 46
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * mapPinScale, height: size * mapPinScale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: mapPinScale, y: mapPinScale)
+            let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
+            fill.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+
+            UIColor.white.setStroke()
+            let outline = UIBezierPath(ovalIn: rect)
+            outline.lineWidth = 3
+            outline.stroke()
+
+            if let image = UIImage(systemName: symbol) {
+                let iconSize = size * 0.34
+                let iconRect = CGRect(
+                    x: (size - iconSize) / 2,
+                    y: size * 0.18,
+                    width: iconSize,
+                    height: iconSize
+                )
+                image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+            }
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let fontSize: CGFloat = count >= 100 ? 13 : 15
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: text).draw(
+                in: CGRect(x: 0, y: size * 0.52, width: size, height: fontSize + 5),
                 withAttributes: attributes
             )
         }

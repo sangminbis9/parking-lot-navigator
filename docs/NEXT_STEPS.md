@@ -5,10 +5,10 @@ Last updated: 2026-04-22
 ## Current Status
 
 - Branch: `master`
-- Last pushed commit: `6c3792f Fix Seoul provider pagination test`
-- There are local uncommitted iOS changes for festival/event clustering.
+- Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
+- Festival/event clustering was completed in the iOS map layer with iOS build number 63.
 
-## In Progress
+## Completed This Session
 
 Festival/event clustering on the iOS Kakao map.
 
@@ -17,32 +17,25 @@ Touched files:
 - `ios-app/Features/Map/KakaoParkingMapView.swift`
 - `ios-app/Features/Map/MapHomeView.swift`
 - `ios-app/Features/Map/MapHomeViewModel.swift`
+- `ios-app/Tests/ParkingLotNavigatorTests.swift`
+- `ios-app/project.yml`
 
-Desired behavior:
+Implemented behavior:
 
 - Parking, festival, and event clusters use the same zoom threshold.
 - Zoom level `< 11`: show clusters.
 - Zoom level `>= 11`: show individual pins.
 - Parking/festival/event clusters should not overlap when their cluster centers are close or identical.
 - Tapping a festival/event cluster should zoom in, similar to realtime parking clusters.
+- Festival/event cluster calculation uses the same 45 km cluster size as realtime parking clusters.
+- Cluster markers render with dynamic count styles for festival and event layers.
+- Cluster markers are visually offset by layer, but tapping a cluster zooms toward the real cluster center.
+- Unit coverage was added for the shared cluster zoom threshold and basic festival/event cluster grouping.
 
-Implementation direction already started:
+Validation:
 
-- `DiscoverCluster` model added in `MapHomeViewModel.swift`.
-- Festival/event cluster calculation added client-side using 45 km grid.
-- `MapPinItem.Kind` now includes `festivalCluster` and `eventCluster`.
-- `MapHomeView.swift` started switching festival/event pins to clusters at zoomed-out levels.
-- Cluster coordinates are offset by layer so parking/festival/event clusters do not sit directly on top of each other.
-- `KakaoParkingMapView.swift` started adding dynamic cluster styles for festival/event clusters.
-
-Before committing:
-
-- Review Swift compile correctness around the new `DiscoverCluster` and `MapPinItem.Kind` cases.
-- Make sure all `switch` statements over `MapPinItem.Kind` handle:
-  - `festivalCluster`
-  - `eventCluster`
-- Bump iOS build number once before commit.
-- Run whatever validation is available. If local toolchain is missing, at minimum run `git diff --check`.
+- Run `git diff --check` before committing.
+- Run local iOS tests/build if Xcode tooling is available; otherwise rely on CI/Codemagic for full iOS validation.
 
 ## After Worker Deploys
 
@@ -64,4 +57,3 @@ Use this at the start of a new Codex session:
 ```text
 Read docs/PROJECT_STATE.md, docs/DECISIONS.md, docs/NEXT_STEPS.md, and docs/API_RUNBOOK.md. Continue from the current repo state. Do not repeat or store real API keys/tokens.
 ```
-

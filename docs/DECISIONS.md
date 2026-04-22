@@ -40,7 +40,8 @@ Last updated: 2026-04-22
 - Realtime parking clusters use the same zoom threshold as parking realtime pins.
 - Festival/event layers are separate toggles.
 - Festival/event pins may show labels only when zoomed in or selected.
-- Ongoing work: add festival/event clusters using the same zoom threshold as parking clusters.
+- Festival/event clusters use the same zoom threshold as parking clusters.
+- Zoomed-out parking, festival, and event clusters are offset by layer so same or nearby cluster centers do not render directly on top of one another.
 
 ## Build/Release
 
@@ -48,4 +49,3 @@ Last updated: 2026-04-22
 - Codemagic/TestFlight is used for iOS build validation.
 - Backend tests run in CI/Codemagic.
 - Local Windows environment may not have `node`, `npm`, `swift`, or `xcodebuild`.
-

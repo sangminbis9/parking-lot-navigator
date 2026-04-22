@@ -73,9 +73,9 @@ Major parking providers:
 
 ## Recent Useful Commits
 
+- Latest work: finish festival/event map clustering and bump iOS build to 63.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`
 - `5af815e Fix Seoul supplemental parking mapping`
 - `1488442 Add Seoul supplemental parking providers`
 - `4eecc3a Keep realtime layer nationwide`
-
