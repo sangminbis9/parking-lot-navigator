@@ -34,7 +34,7 @@ final class MapHomeViewModel: ObservableObject {
     private let clusterMeters = 45_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
-    private let clusterZoomThreshold = 11
+    private let clusterZoomThreshold = 12
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient

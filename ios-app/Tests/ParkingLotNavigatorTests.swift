@@ -30,10 +30,10 @@ final class ParkingLotNavigatorTests: XCTestCase {
     func testDiscoverClustersUseRealtimeZoomThreshold() {
         let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
 
-        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 10))
-        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 10))
-        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 11))
-        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 11))
+        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 11))
+        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 11))
+        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 12))
+        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 12))
     }
 
     @MainActor

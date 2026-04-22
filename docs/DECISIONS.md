@@ -24,7 +24,7 @@ Last updated: 2026-04-22
 - Sync cadence target: about 5 minutes.
 - Realtime toggle should show nationwide data, not only the current viewport.
 - Zoomed out map should show clusters; zoomed in map should show individual pins.
-- Parking cluster zoom threshold: zoom level `< 11`.
+- Parking cluster zoom threshold: zoom level `< 12`.
 
 ## Seoul Realtime Details
 

@@ -23,8 +23,8 @@ Touched files:
 Implemented behavior:
 
 - Parking, festival, and event clusters use the same zoom threshold.
-- Zoom level `< 11`: show clusters.
-- Zoom level `>= 11`: show individual pins.
+- Zoom level `< 12`: show clusters.
+- Zoom level `>= 12`: show individual pins.
 - Parking/festival/event clusters should not overlap when their cluster centers are close or identical.
 - Tapping a festival/event cluster should zoom in, similar to realtime parking clusters.
 - Festival/event cluster calculation uses the same 45 km cluster size as realtime parking clusters.
