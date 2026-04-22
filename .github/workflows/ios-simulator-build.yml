@@ -1,0 +1,94 @@
+name: iOS Simulator Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  ios-simulator-build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
+      XCODE_SCHEME: ParkingLotNavigator
+      API_BASE_URL: https://api.example.com
+      APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
+      SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
+      APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
+      KAKAO_NATIVE_APP_KEY: ci-placeholder
+      NAVIGATION_PROVIDER: mock
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        run: npm run test --workspace backend
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate iOS config
+        shell: bash
+        run: |
+          XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          cat > ios-app/Config/Debug.xcconfig <<EOF
+          API_BASE_URL = $XCCONFIG_API_BASE_URL
+          APP_BUNDLE_ID = $APP_BUNDLE_ID
+          SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
+          APP_GROUP_ID = $APP_GROUP_ID
+          KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
+          NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          EOF
+          cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
+
+      - name: Generate Xcode project
+        working-directory: ios-app
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -resolvePackageDependencies
+
+      - name: Build for simulator
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
+            INFOPLIST_OUTPUT_FORMAT=XML \
+            build
+
+      - name: Run iOS unit tests
+        shell: bash
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -E 'iPhone (16|15|14)' | head -n 1 | sed -E 's/^[[:space:]]*([^()]*) .*/\1/' | xargs)
+          if [ -z "$DEVICE" ]; then
+            DEVICE="iPhone 16"
+          fi
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO \
+            APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
+            INFOPLIST_OUTPUT_FORMAT=XML \
+            test

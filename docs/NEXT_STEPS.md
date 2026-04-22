@@ -36,6 +36,7 @@ Validation:
 
 - Run `git diff --check` before committing.
 - Run local iOS tests/build if Xcode tooling is available; otherwise rely on CI/Codemagic for full iOS validation.
+- GitHub Actions now includes `iOS Simulator Build`, which runs backend tests, generates the Xcode project, builds the iOS app for simulator, and runs iOS unit tests.
 
 ## After Worker Deploys
 

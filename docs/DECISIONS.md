@@ -47,5 +47,6 @@ Last updated: 2026-04-22
 
 - When committing changes, bump iOS build number by one.
 - Codemagic/TestFlight is used for iOS build validation.
+- GitHub Actions also runs an iOS simulator validation workflow on pushes and pull requests.
 - Backend tests run in CI/Codemagic.
 - Local Windows environment may not have `node`, `npm`, `swift`, or `xcodebuild`.
