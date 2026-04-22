@@ -23,11 +23,8 @@ Last updated: 2026-04-22
 - Use D1 realtime cache for map-wide realtime display.
 - Sync cadence target: about 5 minutes.
 - Realtime toggle should show nationwide data, not only the current viewport.
-- Zoomed out realtime parking should show screen-space clusters; mid-zoom realtime parking should show tighter screen-space clusters; zoomed in realtime parking should show individual pins.
-- Realtime parking cluster thresholds:
-  - Zoom level `< 12`: show 96-point screen-space clusters.
-  - Zoom level `12` to `13`: show 72-point screen-space clusters.
-  - Zoom level `>= 14`: show individual pins.
+- Realtime parking pins render from the loaded realtime lot list instead of numeric server/app clusters.
+- Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
 
 ## Seoul Realtime Details
 
@@ -40,8 +37,6 @@ Last updated: 2026-04-22
 ## iOS Map Layer Decisions
 
 - Realtime parking toggle label should be simple and not duplicate the parking symbol.
-- Realtime parking clusters use the same zoom thresholds as parking realtime pins.
-- Cluster counts are calculated from each cluster's member items using the same screen-space clustering path as the next zoom state, so counts stay aligned when zooming in.
 - Festival/event layers are separate toggles.
 - Festival/event layers do not use numeric clustering. They render actual pins.
 - Festival/event pins hide title labels until deep zoom.

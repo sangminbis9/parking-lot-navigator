@@ -9,7 +9,6 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedDestination: Destination?
     @Published var parkingLots: [ParkingLot] = []
     @Published var realtimeParkingLots: [ParkingLot] = []
-    @Published var realtimeParkingClusters: [RealtimeParkingCluster] = []
     @Published var festivals: [Festival] = []
     @Published var events: [FreeEvent] = []
     @Published var selectedParkingLot: ParkingLot?
@@ -31,12 +30,8 @@ final class MapHomeViewModel: ObservableObject {
     private let seoulDiscoverRadiusMeters = 60_000
     private let nationwideDiscoverRadiusMeters = 450_000
     private let realtimeParkingRadiusMeters = 460_000
-    private let wideClusterCellPoints = 96.0
-    private let refinedClusterCellPoints = 72.0
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
-    private let refinedClusterZoomThreshold = 12
-    private let clusterReleaseZoomThreshold = 14
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -54,24 +49,6 @@ final class MapHomeViewModel: ObservableObject {
     var visibleRealtimeParkingLots: [ParkingLot] {
         let activeParkingIDs = Set(parkingLots.map(\.id))
         return realtimeParkingLots.filter { !activeParkingIDs.contains($0.id) }
-    }
-
-    func shouldShowRealtimeClusters(zoomLevel: Int) -> Bool {
-        zoomLevel < clusterReleaseZoomThreshold
-    }
-
-    func nextClusterZoomLevel(after zoomLevel: Int) -> Int {
-        if zoomLevel < refinedClusterZoomThreshold {
-            return refinedClusterZoomThreshold
-        }
-        if zoomLevel < clusterReleaseZoomThreshold {
-            return min(zoomLevel + 1, clusterReleaseZoomThreshold)
-        }
-        return min(zoomLevel + 1, 16)
-    }
-
-    func realtimeParkingClustersForZoom(zoomLevel: Int) -> [RealtimeParkingCluster] {
-        clusterRealtimeParkingItems(visibleRealtimeParkingLots, zoomLevel: zoomLevel)
     }
 
     func search() async {
@@ -195,7 +172,6 @@ final class MapHomeViewModel: ObservableObject {
         if !isVisible {
             selectedParkingLot = nil
             realtimeParkingLots = []
-            realtimeParkingClusters = []
             return
         }
     }
@@ -205,19 +181,11 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
-            async let lots = apiClient.realtimeParking(
+            realtimeParkingLots = try await apiClient.realtimeParking(
                 lat: koreaDiscoverCenter.latitude,
                 lng: koreaDiscoverCenter.longitude,
                 radiusMeters: realtimeParkingRadiusMeters
             )
-            async let clusters = apiClient.realtimeParkingClusters(
-                lat: koreaDiscoverCenter.latitude,
-                lng: koreaDiscoverCenter.longitude,
-                radiusMeters: realtimeParkingRadiusMeters,
-                clusterMeters: 20_000
-            )
-            realtimeParkingLots = try await lots
-            realtimeParkingClusters = try await clusters
         } catch {
             errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
@@ -492,81 +460,6 @@ final class MapHomeViewModel: ObservableObject {
             .filter { $0.count >= 2 && !$0.contains("주차") })
     }
 
-    private func clusterRealtimeParkingItems(
-        _ items: [ParkingLot],
-        zoomLevel: Int
-    ) -> [RealtimeParkingCluster] {
-        var groups: [String: [ParkingLot]] = [:]
-        for item in items {
-            let key = clusterKey(
-                for: CLLocationCoordinate2D(latitude: item.lat, longitude: item.lng),
-                zoomLevel: zoomLevel
-            )
-            groups[key, default: []].append(item)
-        }
-
-        return groups.map { key, clusterItems in
-            let availableSpaces = sumNullable(clusterItems.map(\.availableSpaces))
-            let totalCapacity = sumNullable(clusterItems.map(\.totalCapacity))
-            return RealtimeParkingCluster(
-                id: "\(zoomLevel):\(key):\(clusterItems.map(\.id).sorted().joined(separator: ","))",
-                lat: average(clusterItems.map(\.lat)),
-                lng: average(clusterItems.map(\.lng)),
-                count: clusterItems.count,
-                availableSpaces: availableSpaces,
-                totalCapacity: totalCapacity,
-                congestionStatus: inferCongestion(availableSpaces: availableSpaces, totalCapacity: totalCapacity)
-            )
-        }
-        .sorted { lhs, rhs in
-            lhs.id < rhs.id
-        }
-    }
-
-    private func clusterCellPoints(for zoomLevel: Int) -> Double {
-        zoomLevel >= refinedClusterZoomThreshold ? refinedClusterCellPoints : wideClusterCellPoints
-    }
-
-    private func clusterKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
-        let point = mercatorPoint(for: coordinate, zoomLevel: zoomLevel)
-        let cellSize = clusterCellPoints(for: zoomLevel)
-        return "\(Int((point.x / cellSize).rounded())):\(Int((point.y / cellSize).rounded()))"
-    }
-
-    private func mercatorPoint(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> CGPoint {
-        let sinLatitude = sin(coordinate.latitude * .pi / 180)
-        let clampedSinLatitude = min(max(sinLatitude, -0.9999), 0.9999)
-        let mapSize = 256.0 * pow(2.0, Double(zoomLevel))
-        let x = (coordinate.longitude + 180.0) / 360.0 * mapSize
-        let y = (0.5 - log((1 + clampedSinLatitude) / (1 - clampedSinLatitude)) / (4 * .pi)) * mapSize
-        return CGPoint(x: x, y: y)
-    }
-
-    private func average(_ values: [Double]) -> Double {
-        values.reduce(0, +) / max(Double(values.count), 1)
-    }
-
-    private func sumNullable(_ values: [Int?]) -> Int? {
-        let numericValues = values.compactMap { $0 }
-        guard !numericValues.isEmpty else { return nil }
-        return numericValues.reduce(0, +)
-    }
-
-    private func inferCongestion(availableSpaces: Int?, totalCapacity: Int?) -> CongestionStatus {
-        if let availableSpaces,
-           let totalCapacity,
-           totalCapacity > 0 {
-            let occupancyRate = 1 - Double(availableSpaces) / Double(totalCapacity)
-            if occupancyRate >= 0.98 { return .full }
-            if occupancyRate >= 0.85 { return .busy }
-            if occupancyRate >= 0.6 { return .moderate }
-            return .available
-        }
-        if let availableSpaces {
-            return availableSpaces <= 2 ? .busy : .available
-        }
-        return .unknown
-    }
 }
 
 struct MapPinItem: Identifiable {
@@ -574,7 +467,6 @@ struct MapPinItem: Identifiable {
         case currentLocation
         case destination(Destination)
         case parking(ParkingLot)
-        case realtimeCluster(RealtimeParkingCluster)
         case festival(Festival)
         case event(FreeEvent)
     }

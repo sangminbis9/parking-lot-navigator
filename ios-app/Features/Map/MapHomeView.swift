@@ -16,7 +16,7 @@ struct MapHomeView: View {
     @State private var hasUserFocusedMapTarget = false
     @State private var shouldCenterOnNextLocation = false
     @FocusState private var isSearchFocused: Bool
-    private let discoverOverlayReleaseZoomLevel = 15
+    private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
 
     init(apiClient: APIClientProtocol) {
@@ -127,66 +127,61 @@ struct MapHomeView: View {
             )
         })
         if viewModel.showsRealtimeParkingLayer {
-            if viewModel.shouldShowRealtimeClusters(zoomLevel: mapZoomLevel) {
-                items.append(contentsOf: viewModel.realtimeParkingClustersForZoom(zoomLevel: mapZoomLevel).map { cluster in
-                    MapPinItem(
-                        id: "realtime-cluster-\(cluster.id)",
-                        coordinate: clusterCoordinate(
-                            CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
-                            layer: .parking
-                        ),
-                        kind: .realtimeCluster(cluster)
-                    )
-                })
-            } else {
-                items.append(contentsOf: viewModel.visibleRealtimeParkingLots.map { parkingLot in
-                    MapPinItem(
-                        id: "realtime-parking-\(parkingLot.id)",
-                        coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
-                        kind: .parking(parkingLot)
-                    )
-                })
-            }
+            items.append(contentsOf: realtimeParkingPins)
         }
         items.append(contentsOf: discoverPins)
         return items
     }
 
-    private enum ClusterLayer {
-        case parking
+    private var realtimeParkingPins: [MapPinItem] {
+        let sources = viewModel.visibleRealtimeParkingLots.map { RealtimeParkingPinSource(parkingLot: $0) }
+        let groups = overlayGroups(sources)
+        if mapZoomLevel < overlayReleaseZoomLevel {
+            return groups.compactMap { group in
+                group.first.map { source in
+                    MapPinItem(id: "realtime-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot))
+                }
+            }
+        }
+
+        return groups.flatMap { group in
+            group.enumerated().map { index, source in
+                MapPinItem(
+                    id: "realtime-parking-\(source.parkingLot.id)",
+                    coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count),
+                    kind: .parking(source.parkingLot)
+                )
+            }
+        }
     }
 
-    private func clusterCoordinate(_ coordinate: CLLocationCoordinate2D, layer: ClusterLayer) -> CLLocationCoordinate2D {
-        switch layer {
-        case .parking:
-            return coordinate.offsetByMeters(east: 0, north: -7_000)
+    private func overlayGroups<Source: OverlayPinSource>(_ sources: [Source]) -> [[Source]] {
+        let groups = Dictionary(grouping: sources) { source in
+            overlayKey(for: source.coordinate, zoomLevel: mapZoomLevel)
         }
+        return groups.values
+            .map { $0.sorted { $0.id < $1.id } }
+            .sorted { ($0.first?.id ?? "") < ($1.first?.id ?? "") }
     }
 
     private var discoverPins: [MapPinItem] {
         let sources = discoverSources
         guard !sources.isEmpty else { return [] }
 
-        let groups = Dictionary(grouping: sources) { source in
-            discoverOverlayKey(for: source.coordinate, zoomLevel: mapZoomLevel)
-        }
-        let sortedGroups = groups.values
-            .map { $0.sorted { $0.id < $1.id } }
-            .sorted { ($0.first?.id ?? "") < ($1.first?.id ?? "") }
-
-        if mapZoomLevel < discoverOverlayReleaseZoomLevel {
-            return sortedGroups.compactMap { group in
+        let groups = overlayGroups(sources)
+        if mapZoomLevel < overlayReleaseZoomLevel {
+            return groups.compactMap { group in
                 group.first.map { source in
                     mapPinItem(for: source, coordinate: source.coordinate)
                 }
             }
         }
 
-        return sortedGroups.flatMap { group in
+        return groups.flatMap { group in
             group.enumerated().map { index, source in
                 mapPinItem(
                     for: source,
-                    coordinate: discoverCoordinate(source.coordinate, index: index, count: group.count)
+                    coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count)
                 )
             }
         }
@@ -222,16 +217,16 @@ struct MapHomeView: View {
         }
     }
 
-    private func discoverCoordinate(_ coordinate: CLLocationCoordinate2D, index: Int, count: Int) -> CLLocationCoordinate2D {
+    private func overlayCoordinate(_ coordinate: CLLocationCoordinate2D, index: Int, count: Int) -> CLLocationCoordinate2D {
         guard count > 1 else { return coordinate }
         let angle = (Double(index) / Double(count)) * 2 * Double.pi
-        let radius = max(7.0, 36.0 / pow(2.0, Double(max(mapZoomLevel - discoverOverlayReleaseZoomLevel, 0))))
+        let radius = max(7.0, 36.0 / pow(2.0, Double(max(mapZoomLevel - overlayReleaseZoomLevel, 0))))
         return coordinate.offsetByMeters(east: cos(angle) * radius, north: sin(angle) * radius)
     }
 
-    private func discoverOverlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
+    private func overlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
         let point = mercatorPoint(for: coordinate, zoomLevel: zoomLevel)
-        let cellSize = zoomLevel < discoverOverlayReleaseZoomLevel ? 30.0 : 14.0
+        let cellSize = zoomLevel < overlayReleaseZoomLevel ? 30.0 : 14.0
         return "\(Int((point.x / cellSize).rounded())):\(Int((point.y / cellSize).rounded()))"
     }
 
@@ -601,11 +596,6 @@ struct MapHomeView: View {
         case .parking(let parkingLot):
             viewModel.selectedParkingLot = parkingLot
             focusMap(to: pin.coordinate, zoomLevel: 17)
-        case .realtimeCluster(let cluster):
-            focusMap(
-                to: CLLocationCoordinate2D(latitude: cluster.lat, longitude: cluster.lng),
-                zoomLevel: nextClusterZoomLevel
-            )
         case .destination(let destination):
             focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
         case .currentLocation:
@@ -646,13 +636,26 @@ struct MapHomeView: View {
         mapCenter = viewport.center
         mapZoomLevel = viewport.zoomLevel
     }
+}
 
-    private var nextClusterZoomLevel: Int {
-        viewModel.nextClusterZoomLevel(after: mapZoomLevel)
+private protocol OverlayPinSource {
+    var id: String { get }
+    var coordinate: CLLocationCoordinate2D { get }
+}
+
+private struct RealtimeParkingPinSource: OverlayPinSource {
+    let parkingLot: ParkingLot
+
+    var id: String {
+        "realtime-parking-\(parkingLot.id)"
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng)
     }
 }
 
-private enum DiscoverPinSource {
+private enum DiscoverPinSource: OverlayPinSource {
     case festival(Festival)
     case event(FreeEvent)
 

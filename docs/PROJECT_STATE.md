@@ -73,7 +73,7 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest work: remove festival/event numeric clusters, use overlap-collapsed discover pins, and bump iOS build to 69.
+- Latest work: remove realtime/festival/event numeric clusters, use overlap-collapsed map pins, and bump iOS build to 70.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`
 - `5af815e Fix Seoul supplemental parking mapping`

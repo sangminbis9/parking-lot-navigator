@@ -26,22 +26,4 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertFalse(recommendations.first?.reasons.isEmpty ?? true)
     }
 
-    @MainActor
-    func testRealtimeClustersUseReleaseZoomThreshold() {
-        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
-
-        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 13))
-        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 14))
-    }
-
-    @MainActor
-    func testClusterTapZoomsProgressivelyUntilRelease() {
-        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
-
-        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 11), 12)
-        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 12), 13)
-        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 13), 14)
-        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 14), 15)
-        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 15), 16)
-    }
 }

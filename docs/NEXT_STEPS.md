@@ -6,7 +6,7 @@ Last updated: 2026-04-22
 
 - Branch: `master`
 - Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
-- Realtime parking still uses screen-space clusters, while festival/event layers use overlap-collapsed pins with iOS build number 69.
+- Realtime parking and festival/event layers use overlap-collapsed pins with iOS build number 70.
 
 ## Completed This Session
 
@@ -17,6 +17,8 @@ Touched files:
 - `ios-app/Features/Map/KakaoParkingMapView.swift`
 - `ios-app/Features/Map/MapHomeView.swift`
 - `ios-app/Features/Map/MapHomeViewModel.swift`
+- `ios-app/Core/Models/ParkingLot.swift`
+- `ios-app/Core/Networking/APIClient.swift`
 - `ios-app/Tests/ParkingLotNavigatorTests.swift`
 - `ios-app/project.yml`
 
@@ -27,8 +29,10 @@ Implemented behavior:
 - Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out.
 - Overlapping festival/event pins separate with small offsets after zooming in.
 - Festival/event title labels only show at deep zoom.
-- Realtime parking display clusters are calculated client-side from the same loaded realtime lots used for individual pins, so counts stay aligned when zooming in.
-- Realtime parking cluster release is back at zoom `14`.
+- Realtime parking numeric clusters were removed.
+- Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out.
+- Overlapping realtime parking pins separate with small offsets after zooming in.
+- The iOS app loads realtime parking lots directly and no longer requests realtime cluster data for map rendering.
 
 Validation:
 
