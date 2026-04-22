@@ -614,13 +614,7 @@ struct MapHomeView: View {
     }
 
     private var nextClusterZoomLevel: Int {
-        if mapZoomLevel < 12 {
-            return 12
-        }
-        if mapZoomLevel < 14 {
-            return 14
-        }
-        return min(mapZoomLevel + 1, 16)
+        viewModel.nextClusterZoomLevel(after: mapZoomLevel)
     }
 }
 

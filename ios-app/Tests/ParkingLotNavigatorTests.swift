@@ -32,8 +32,21 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
         XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 13))
         XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 13))
-        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 14))
-        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 14))
+        XCTAssertTrue(viewModel.shouldShowRealtimeClusters(zoomLevel: 14))
+        XCTAssertTrue(viewModel.shouldShowDiscoverClusters(zoomLevel: 14))
+        XCTAssertFalse(viewModel.shouldShowRealtimeClusters(zoomLevel: 15))
+        XCTAssertFalse(viewModel.shouldShowDiscoverClusters(zoomLevel: 15))
+    }
+
+    @MainActor
+    func testClusterTapZoomsProgressivelyUntilRelease() {
+        let viewModel = MapHomeViewModel(apiClient: MockAPIClient())
+
+        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 11), 12)
+        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 12), 13)
+        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 13), 14)
+        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 14), 15)
+        XCTAssertEqual(viewModel.nextClusterZoomLevel(after: 15), 16)
     }
 
     @MainActor
@@ -47,6 +60,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
         XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])
         XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 12).map(\.count).sorted(), [1, 1, 1])
+        XCTAssertEqual(viewModel.festivalClustersForZoom(zoomLevel: 14).map(\.count).sorted(), [1, 1, 1])
     }
 
     @MainActor
@@ -60,6 +74,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
         XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 11).map(\.count).sorted(), [3])
         XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 12).map(\.count).sorted(), [1, 1, 1])
+        XCTAssertEqual(viewModel.eventClustersForZoom(zoomLevel: 14).map(\.count).sorted(), [1, 1, 1])
     }
 
     private func makeFestival(id: String, lat: Double, lng: Double) -> Festival {

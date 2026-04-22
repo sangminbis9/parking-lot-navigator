@@ -36,7 +36,7 @@ final class MapHomeViewModel: ObservableObject {
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     private let refinedClusterZoomThreshold = 12
-    private let clusterReleaseZoomThreshold = 14
+    private let clusterReleaseZoomThreshold = 15
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -62,6 +62,16 @@ final class MapHomeViewModel: ObservableObject {
 
     func shouldShowDiscoverClusters(zoomLevel: Int) -> Bool {
         zoomLevel < clusterReleaseZoomThreshold
+    }
+
+    func nextClusterZoomLevel(after zoomLevel: Int) -> Int {
+        if zoomLevel < refinedClusterZoomThreshold {
+            return refinedClusterZoomThreshold
+        }
+        if zoomLevel < clusterReleaseZoomThreshold {
+            return min(zoomLevel + 1, clusterReleaseZoomThreshold)
+        }
+        return min(zoomLevel + 1, 16)
     }
 
     func realtimeParkingClustersForZoom(zoomLevel: Int) -> [RealtimeParkingCluster] {

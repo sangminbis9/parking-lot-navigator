@@ -6,7 +6,7 @@ Last updated: 2026-04-22
 
 - Branch: `master`
 - Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
-- Parking/festival/event clustering now uses screen-space cluster levels in the iOS map layer with iOS build number 67.
+- Parking/festival/event clustering now uses screen-space cluster levels in the iOS map layer with iOS build number 68.
 
 ## Completed This Session
 
@@ -24,8 +24,8 @@ Implemented behavior:
 
 - Parking, festival, and event clusters use the same zoom thresholds.
 - Zoom level `< 12`: show 96-point screen-space clusters.
-- Zoom level `12` to `13`: show 72-point screen-space clusters.
-- Zoom level `>= 14`: show individual pins.
+- Zoom level `12` to `14`: show 72-point screen-space clusters.
+- Zoom level `>= 15`: show individual pins.
 - Parking/festival/event clusters should not overlap when their cluster centers are close or identical.
 - Tapping a festival/event cluster should zoom in, similar to realtime parking clusters.
 - Parking/festival/event cluster calculation uses Web Mercator screen-space cells at the current zoom instead of fixed meter grids.
@@ -34,6 +34,7 @@ Implemented behavior:
 - Cluster markers render with dynamic count styles for festival and event layers.
 - Cluster markers are visually offset by layer, but tapping a cluster zooms toward the real cluster center.
 - Unit coverage was added for the shared cluster zoom thresholds and refined festival/event cluster grouping.
+- Cluster release was moved from zoom `14` to zoom `15`, and cluster taps now advance progressively through zoom `12`, `13`, `14`, then individual pins at `15`.
 
 Validation:
 
