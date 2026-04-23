@@ -7,7 +7,7 @@ Last updated: 2026-04-23
 - Branch: `master`
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 71.
+- iOS build number is 72.
 
 ## Completed This Session
 
@@ -40,6 +40,7 @@ Implemented behavior:
 - The map bottom panel now has `Parking` and `Event/Festival` tabs.
 - The event/festival tab shows a unified list with thumbnail images, type/status badges, venue/address text, date, and distance.
 - The event/festival list supports local search and distance/date/name sorting.
+- Event/festival list distance values and distance sorting use the user's current location when available.
 - Tapping a list row opens the existing detail sheet with a main image area.
 - The detail sheet map action stays in app, focuses the Kakao map on the selected item, sets it as the destination, loads nearby parking, and enables/loads realtime parking.
 

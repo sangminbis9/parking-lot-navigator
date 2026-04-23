@@ -206,8 +206,9 @@ struct MapHomeView: View {
 
     private var discoverListItems: [DiscoverListItem] {
         let query = discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let items = viewModel.festivals.map { DiscoverListItem.festival($0) } +
-            viewModel.events.map { DiscoverListItem.event($0) }
+        let referenceCoordinate = locationProvider.coordinate
+        let items = viewModel.festivals.map { DiscoverListItem.festival($0, referenceCoordinate: referenceCoordinate) } +
+            viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) }
         let filteredItems = query.isEmpty ? items : items.filter { $0.searchText.contains(query) }
         return filteredItems.sorted { lhs, rhs in
             switch discoverListSort {
@@ -769,7 +770,7 @@ private struct DiscoverListItem: Identifiable {
     let typeText: String
     let searchText: String
 
-    static func festival(_ festival: Festival) -> DiscoverListItem {
+    static func festival(_ festival: Festival, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
         DiscoverListItem(
             id: "festival-\(festival.id)",
             kind: .festival(festival),
@@ -778,7 +779,11 @@ private struct DiscoverListItem: Identifiable {
             dateText: "\(festival.startDate) - \(festival.endDate)",
             startDate: festival.startDate,
             statusText: festival.status.displayText,
-            distanceMeters: festival.distanceMeters,
+            distanceMeters: measuredDistanceMeters(
+                from: referenceCoordinate,
+                to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
+                fallback: festival.distanceMeters
+            ),
             imageUrl: festival.imageUrl,
             tint: .purple,
             symbol: "sparkles",
@@ -796,7 +801,7 @@ private struct DiscoverListItem: Identifiable {
         )
     }
 
-    static func event(_ event: FreeEvent) -> DiscoverListItem {
+    static func event(_ event: FreeEvent, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
         DiscoverListItem(
             id: "event-\(event.id)",
             kind: .event(event),
@@ -805,7 +810,11 @@ private struct DiscoverListItem: Identifiable {
             dateText: "\(event.startDate) - \(event.endDate)",
             startDate: event.startDate,
             statusText: event.status.displayText,
-            distanceMeters: event.distanceMeters,
+            distanceMeters: measuredDistanceMeters(
+                from: referenceCoordinate,
+                to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
+                fallback: event.distanceMeters
+            ),
             imageUrl: event.imageUrl,
             tint: .teal,
             symbol: "calendar",
@@ -821,6 +830,17 @@ private struct DiscoverListItem: Identifiable {
             .joined(separator: " ")
             .lowercased()
         )
+    }
+
+    private static func measuredDistanceMeters(
+        from referenceCoordinate: CLLocationCoordinate2D?,
+        to coordinate: CLLocationCoordinate2D,
+        fallback: Int
+    ) -> Int {
+        guard let referenceCoordinate else { return fallback }
+        let referenceLocation = CLLocation(latitude: referenceCoordinate.latitude, longitude: referenceCoordinate.longitude)
+        let itemLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        return Int(referenceLocation.distance(from: itemLocation).rounded())
     }
 
     var distanceText: String {

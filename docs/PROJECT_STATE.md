@@ -73,7 +73,7 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest work: add the iOS map event/festival list panel with search, sort, image thumbnails, in-app map focus, realtime parking loading, and bump iOS build to 71.
+- Latest work: add the iOS map event/festival list panel, then fix list distance sorting/display to use the user's current location when available, and bump iOS build to 72.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`
 - `5af815e Fix Seoul supplemental parking mapping`
