@@ -1,16 +1,17 @@
 # Next Steps
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## Current Status
 
 - Branch: `master`
-- Last pushed commit before this session: `6c3792f Fix Seoul provider pagination test`
-- Realtime parking and festival/event layers use overlap-collapsed pins with iOS build number 70.
+- Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
+- Realtime parking and festival/event layers use overlap-collapsed pins.
+- iOS build number is 71.
 
 ## Completed This Session
 
-Festival/event map display refinement on the iOS Kakao map.
+Festival/event map display and list refinement on the iOS Kakao map.
 
 Touched files:
 
@@ -21,6 +22,9 @@ Touched files:
 - `ios-app/Core/Networking/APIClient.swift`
 - `ios-app/Tests/ParkingLotNavigatorTests.swift`
 - `ios-app/project.yml`
+- `docs/PROJECT_STATE.md`
+- `docs/DECISIONS.md`
+- `docs/NEXT_STEPS.md`
 
 Implemented behavior:
 
@@ -33,6 +37,11 @@ Implemented behavior:
 - Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out.
 - Overlapping realtime parking pins separate with small offsets after zooming in.
 - The iOS app loads realtime parking lots directly and no longer requests realtime cluster data for map rendering.
+- The map bottom panel now has `Parking` and `Event/Festival` tabs.
+- The event/festival tab shows a unified list with thumbnail images, type/status badges, venue/address text, date, and distance.
+- The event/festival list supports local search and distance/date/name sorting.
+- Tapping a list row opens the existing detail sheet with a main image area.
+- The detail sheet map action stays in app, focuses the Kakao map on the selected item, sets it as the destination, loads nearby parking, and enables/loads realtime parking.
 
 Validation:
 
@@ -48,6 +57,7 @@ Validation:
 
 ## Backlog
 
+- Plan the next discovery phase for user-selected destinations, cities, events, festivals, realtime parking, and lodging in one combined nearby view.
 - Get exact Seongdong IoT Seoul Open Data service name/field map if the provider still returns no rows.
 - Add more regional realtime providers as approvals arrive.
 - Improve provider health/debug visibility without exposing secrets.

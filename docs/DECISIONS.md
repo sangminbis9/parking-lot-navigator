@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## Product Direction
 
@@ -41,6 +41,10 @@ Last updated: 2026-04-22
 - Festival/event layers do not use numeric clustering. They render actual pins.
 - Festival/event pins hide title labels until deep zoom.
 - Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
+- The map bottom panel uses tabs for parking recommendations and a unified event/festival list.
+- The event/festival list uses already-loaded local data for search and sorting; default sort is distance, with date and name options.
+- Event/festival detail "map view" actions stay inside the app, focus the Kakao map near zoom 16, set the item as the destination, load nearby parking, and enable/load realtime parking.
+- Lodging, city, and broader destination discovery belong to the next roadmap phase and are not part of the current list implementation.
 
 ## Build/Release
 

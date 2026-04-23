@@ -1,5 +1,6 @@
 import Combine
 import CoreLocation
+import Foundation
 import MapKit
 import SwiftUI
 
@@ -15,6 +16,9 @@ struct MapHomeView: View {
     @State private var didAutoCenterOnLocation = false
     @State private var hasUserFocusedMapTarget = false
     @State private var shouldCenterOnNextLocation = false
+    @State private var selectedPanelTab: MapPanelTab = .parking
+    @State private var discoverListQuery = ""
+    @State private var discoverListSort: DiscoverListSort = .distance
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -77,9 +81,10 @@ struct MapHomeView: View {
                 address: festival.address,
                 source: festival.source,
                 sourceUrl: festival.sourceUrl,
+                imageUrl: festival.imageUrl,
                 tint: .purple,
                 onOpenMap: {
-                    openMaps(name: festival.title, latitude: festival.lat, longitude: festival.lng)
+                    showDiscoverItemOnMap(.festival(festival))
                 },
                 onOpenSource: { url in
                     openURL(url)
@@ -96,9 +101,10 @@ struct MapHomeView: View {
                 address: event.address,
                 source: event.source,
                 sourceUrl: event.sourceUrl,
+                imageUrl: event.imageUrl,
                 tint: .teal,
                 onOpenMap: {
-                    openMaps(name: event.title, latitude: event.lat, longitude: event.lng)
+                    showDiscoverItemOnMap(.event(event))
                 },
                 onOpenSource: { url in
                     openURL(url)
@@ -196,6 +202,29 @@ struct MapHomeView: View {
             sources.append(contentsOf: viewModel.events.map { .event($0) })
         }
         return sources
+    }
+
+    private var discoverListItems: [DiscoverListItem] {
+        let query = discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let items = viewModel.festivals.map { DiscoverListItem.festival($0) } +
+            viewModel.events.map { DiscoverListItem.event($0) }
+        let filteredItems = query.isEmpty ? items : items.filter { $0.searchText.contains(query) }
+        return filteredItems.sorted { lhs, rhs in
+            switch discoverListSort {
+            case .distance:
+                if lhs.distanceMeters != rhs.distanceMeters {
+                    return lhs.distanceMeters < rhs.distanceMeters
+                }
+                return lhs.title < rhs.title
+            case .date:
+                if lhs.startDate != rhs.startDate {
+                    return lhs.startDate < rhs.startDate
+                }
+                return lhs.title < rhs.title
+            case .name:
+                return lhs.title < rhs.title
+            }
+        }
     }
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
@@ -391,11 +420,25 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private var bottomPanel: some View {
-        if let selectedParkingLot = viewModel.selectedParkingLot,
-           !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
-            standaloneParkingPanel(parkingLot: selectedParkingLot)
-        } else {
-            parkingPanel
+        VStack(spacing: 8) {
+            Picker("\u{C9C0}\u{B3C4} \u{C815}\u{BCF4}", selection: $selectedPanelTab) {
+                ForEach(MapPanelTab.allCases) { tab in
+                    Label(tab.title, systemImage: tab.systemImage).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            switch selectedPanelTab {
+            case .parking:
+                if let selectedParkingLot = viewModel.selectedParkingLot,
+                   !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
+                    standaloneParkingPanel(parkingLot: selectedParkingLot)
+                } else {
+                    parkingPanel
+                }
+            case .discover:
+                discoverListPanel
+            }
         }
     }
 
@@ -480,77 +523,6 @@ struct MapHomeView: View {
         }
     }
 
-    @ViewBuilder
-    private var festivalPanel: some View {
-        discoverPanel(title: "\u{CD95}\u{C81C}", items: viewModel.festivals, emptyText: "\u{ADFC}\u{CC98} \u{CD95}\u{C81C}\u{B97C} \u{CC3E}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}.") { festival in
-            DiscoverMapCard(
-                title: festival.title,
-                subtitle: festival.subtitle ?? festival.venueName ?? festival.address,
-                meta: "\(festival.status.displayText) - \(festival.distanceMeters)m",
-                tint: .purple,
-                isSelected: viewModel.selectedFestival?.id == festival.id
-            ) {
-                viewModel.selectedFestival = festival
-                viewModel.selectedEvent = nil
-                focusMap(to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng), zoomLevel: 16)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var eventPanel: some View {
-        discoverPanel(title: "\u{C774}\u{BCA4}\u{D2B8}", items: viewModel.events, emptyText: "\u{ADFC}\u{CC98} \u{BB34}\u{B8CC} \u{C774}\u{BCA4}\u{D2B8}\u{B97C} \u{CC3E}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}.") { event in
-            DiscoverMapCard(
-                title: event.title,
-                subtitle: event.shortDescription ?? event.venueName ?? event.address,
-                meta: "\(event.status.displayText) - \(event.distanceMeters)m",
-                tint: .teal,
-                isSelected: viewModel.selectedEvent?.id == event.id
-            ) {
-                viewModel.selectedEvent = event
-                viewModel.selectedFestival = nil
-                focusMap(to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng), zoomLevel: 16)
-            }
-        }
-    }
-
-    private func discoverPanel<Item: Identifiable, Content: View>(
-        title: String,
-        items: [Item],
-        emptyText: String,
-        @ViewBuilder content: @escaping (Item) -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                if viewModel.isLoadingDiscover {
-                    ProgressView()
-                }
-            }
-
-            if items.isEmpty && !viewModel.isLoadingDiscover {
-                Text(emptyText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(items) { item in
-                            content(item)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
-    }
-
     private func inlineError(_ message: String) -> some View {
         Text(message)
             .font(.subheadline)
@@ -585,6 +557,41 @@ struct MapHomeView: View {
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
 
+    private func openDiscoverDetail(_ item: DiscoverListItem) {
+        switch item.kind {
+        case .festival(let festival):
+            viewModel.selectedFestival = festival
+            viewModel.selectedEvent = nil
+        case .event(let event):
+            viewModel.selectedEvent = event
+            viewModel.selectedFestival = nil
+        }
+    }
+
+    private func showDiscoverItemOnMap(_ kind: DiscoverListItem.Kind) {
+        let coordinate: CLLocationCoordinate2D
+        switch kind {
+        case .festival(let festival):
+            coordinate = CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
+        case .event(let event):
+            coordinate = CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
+        }
+        selectedPanelTab = .parking
+        focusMap(to: coordinate, zoomLevel: 16)
+        Task {
+            switch kind {
+            case .festival(let festival):
+                await viewModel.selectFestival(festival)
+            case .event(let event):
+                await viewModel.selectEvent(event)
+            }
+            if !viewModel.showsRealtimeParkingLayer {
+                await viewModel.setRealtimeParkingLayerVisible(true, center: coordinate)
+            }
+            await viewModel.loadRealtimeParkingLayer()
+        }
+    }
+
     private func handlePinTap(_ pin: MapPinItem) {
         switch pin.kind {
         case .festival(let festival):
@@ -601,6 +608,66 @@ struct MapHomeView: View {
         case .currentLocation:
             focusMap(to: pin.coordinate, zoomLevel: 15)
         }
+    }
+
+    private var discoverListPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("\u{C774}\u{BCA4}\u{D2B8}\u{00B7}\u{CD95}\u{C81C}")
+                    .font(.headline)
+                Spacer()
+                if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}", text: $discoverListQuery)
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Picker("\u{C815}\u{B82C}", selection: $discoverListSort) {
+                ForEach(DiscoverListSort.allCases) { sort in
+                    Text(sort.title).tag(sort)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if discoverListItems.isEmpty && !viewModel.isLoadingDiscover {
+                Text(discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{D45C}\u{C2DC}\u{D560} \u{C774}\u{BCA4}\u{D2B8}\u{B098} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}." : "\u{AC80}\u{C0C9} \u{ACB0}\u{ACFC}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(discoverListItems) { item in
+                            DiscoverListRow(item: item) {
+                                openDiscoverDetail(item)
+                            }
+                            if item.id != discoverListItems.last?.id {
+                                Divider()
+                                    .padding(.leading, 92)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+        }
+        .padding(12)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
@@ -635,6 +702,133 @@ struct MapHomeView: View {
     private func handleCameraIdle(_ viewport: MapViewport) {
         mapCenter = viewport.center
         mapZoomLevel = viewport.zoomLevel
+    }
+}
+
+private enum MapPanelTab: String, CaseIterable, Identifiable {
+    case parking
+    case discover
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .parking:
+            return "\u{C8FC}\u{CC28}"
+        case .discover:
+            return "\u{C774}\u{BCA4}\u{D2B8}\u{00B7}\u{CD95}\u{C81C}"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .parking:
+            return "parkingsign.circle.fill"
+        case .discover:
+            return "sparkles"
+        }
+    }
+}
+
+private enum DiscoverListSort: String, CaseIterable, Identifiable {
+    case distance
+    case date
+    case name
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .distance:
+            return "\u{AC70}\u{B9AC}\u{C21C}"
+        case .date:
+            return "\u{B0A0}\u{C9DC}\u{C21C}"
+        case .name:
+            return "\u{C774}\u{B984}\u{C21C}"
+        }
+    }
+}
+
+private struct DiscoverListItem: Identifiable {
+    enum Kind {
+        case festival(Festival)
+        case event(FreeEvent)
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let dateText: String
+    let startDate: String
+    let statusText: String
+    let distanceMeters: Int
+    let imageUrl: String?
+    let tint: Color
+    let symbol: String
+    let typeText: String
+    let searchText: String
+
+    static func festival(_ festival: Festival) -> DiscoverListItem {
+        DiscoverListItem(
+            id: "festival-\(festival.id)",
+            kind: .festival(festival),
+            title: festival.title,
+            subtitle: festival.subtitle ?? festival.venueName ?? festival.address,
+            dateText: "\(festival.startDate) - \(festival.endDate)",
+            startDate: festival.startDate,
+            statusText: festival.status.displayText,
+            distanceMeters: festival.distanceMeters,
+            imageUrl: festival.imageUrl,
+            tint: .purple,
+            symbol: "sparkles",
+            typeText: "\u{CD95}\u{C81C}",
+            searchText: [
+                festival.title,
+                festival.subtitle,
+                festival.venueName,
+                festival.address,
+                festival.tags.joined(separator: " ")
+            ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+        )
+    }
+
+    static func event(_ event: FreeEvent) -> DiscoverListItem {
+        DiscoverListItem(
+            id: "event-\(event.id)",
+            kind: .event(event),
+            title: event.title,
+            subtitle: event.shortDescription ?? event.venueName ?? event.address,
+            dateText: "\(event.startDate) - \(event.endDate)",
+            startDate: event.startDate,
+            statusText: event.status.displayText,
+            distanceMeters: event.distanceMeters,
+            imageUrl: event.imageUrl,
+            tint: .teal,
+            symbol: "calendar",
+            typeText: event.eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : event.eventType,
+            searchText: [
+                event.title,
+                event.eventType,
+                event.venueName,
+                event.address,
+                event.shortDescription
+            ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+        )
+    }
+
+    var distanceText: String {
+        if distanceMeters >= 1_000 {
+            let kilometers = Double(distanceMeters) / 1_000
+            return String(format: "%.1fkm", kilometers)
+        }
+        return "\(distanceMeters)m"
     }
 }
 
@@ -855,40 +1049,99 @@ private extension DiscoverStatus {
     }
 }
 
-private struct DiscoverMapCard: View {
-    let title: String
-    let subtitle: String
-    let meta: String
-    let tint: Color
-    let isSelected: Bool
+private struct DiscoverListRow: View {
+    let item: DiscoverListItem
     let onSelect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(meta)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(tint)
-            Text(title)
-                .font(.headline)
-                .lineLimit(2)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+        Button(action: onSelect) {
+            HStack(alignment: .top, spacing: 12) {
+                DiscoverThumbnail(imageUrl: item.imageUrl, tint: item.tint, symbol: item.symbol, size: 72)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(item.typeText)
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(item.tint.opacity(0.14))
+                            .foregroundStyle(item.tint)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        Text(item.statusText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Text(item.distanceText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    Text(item.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Text(item.dateText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .padding(12)
-        .frame(width: 250, alignment: .leading)
-        .background(isSelected ? tint.opacity(0.12) : Color(.secondarySystemBackground))
+        .buttonStyle(.plain)
+    }
+}
+
+private struct DiscoverThumbnail: View {
+    let imageUrl: String?
+    let tint: Color
+    let symbol: String
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholder
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .background(tint.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? tint : .clear, lineWidth: 1.5)
-        )
-        .onTapGesture(perform: onSelect)
+    }
+
+    private var placeholder: some View {
+        Image(systemName: symbol)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 private struct DiscoverDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
     let title: String
     let subtitle: String?
     let statusText: String
@@ -897,64 +1150,70 @@ private struct DiscoverDetailSheet: View {
     let address: String
     let source: String
     let sourceUrl: String?
+    let imageUrl: String?
     let tint: Color
     let onOpenMap: () -> Void
     let onOpenSource: (URL) -> Void
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(statusText)
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(tint.opacity(0.14))
-                    .foregroundStyle(tint)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    DiscoverDetailImage(imageUrl: imageUrl, tint: tint)
 
-                Text(title)
-                    .font(.title3.weight(.bold))
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text(statusText)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(tint.opacity(0.14))
+                        .foregroundStyle(tint)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text(title)
+                        .font(.title3.weight(.bold))
                         .fixedSize(horizontal: false, vertical: true)
-                }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    detailRow(label: "\u{C77C}\u{C815}", value: dateText)
-                    if let venueName, !venueName.isEmpty {
-                        detailRow(label: "\u{C7A5}\u{C18C}", value: venueName)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    detailRow(label: "\u{C8FC}\u{C18C}", value: address)
-                    detailRow(label: "\u{CD9C}\u{CC98}", value: source)
-                }
 
-                HStack(spacing: 10) {
-                    Button {
-                        onOpenMap()
-                    } label: {
-                        Label("\u{C9C0}\u{B3C4} \u{C5F4}\u{AE30}", systemImage: "map")
-                            .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 8) {
+                        detailRow(label: "\u{C77C}\u{C815}", value: dateText)
+                        if let venueName, !venueName.isEmpty {
+                            detailRow(label: "\u{C7A5}\u{C18C}", value: venueName)
+                        }
+                        detailRow(label: "\u{C8FC}\u{C18C}", value: address)
+                        detailRow(label: "\u{CD9C}\u{CC98}", value: source)
                     }
-                    .buttonStyle(.borderedProminent)
 
-                    if let sourceUrl, let url = URL(string: sourceUrl) {
+                    HStack(spacing: 10) {
                         Button {
-                            onOpenSource(url)
+                            onOpenMap()
+                            dismiss()
                         } label: {
-                            Label("\u{C6D0}\u{BB38}", systemImage: "safari")
+                            Label("\u{B9F5}\u{C5D0}\u{C11C} \u{BCF4}\u{AE30}", systemImage: "map")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                    }
-                }
+                        .buttonStyle(.borderedProminent)
 
-                Spacer()
+                        if let sourceUrl, let url = URL(string: sourceUrl) {
+                            Button {
+                                onOpenSource(url)
+                            } label: {
+                                Label("\u{C6D0}\u{BB38}", systemImage: "safari")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(18)
             }
-            .padding(18)
             .navigationTitle("\u{C0C1}\u{C138} \u{C815}\u{BCF4}")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -969,6 +1228,47 @@ private struct DiscoverDetailSheet: View {
             Text(value)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct DiscoverDetailImage: View {
+    let imageUrl: String?
+    let tint: Color
+
+    var body: some View {
+        Group {
+            if let imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholder
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 180)
+        .background(tint.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            tint.opacity(0.12)
+            Image(systemName: "photo")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(tint)
         }
     }
 }
