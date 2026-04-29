@@ -6,6 +6,7 @@ protocol APIClientProtocol {
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
+    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
 }
@@ -73,6 +74,17 @@ final class APIClient: APIClientProtocol {
         return response.items
     }
 
+    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption] {
+        var components = URLComponents(url: endpoint("discover/lodging"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
+        ]
+        let response: DiscoverLodgingResponse = try await get(components.url!)
+        return response.items
+    }
+
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws {
         struct Payload: Encodable {
             let deviceId: String
@@ -119,7 +131,7 @@ final class APIClient: APIClientProtocol {
             }
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            AppLogger.networking.error("API 호출 실패: \(error.localizedDescription)")
+            AppLogger.networking.error("API call failed: \(error.localizedDescription)")
             throw error
         }
     }
@@ -139,22 +151,22 @@ final class APIClient: APIClientProtocol {
 final class MockAPIClient: APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination] {
         [
-            Destination(id: "dest-seoul-station", name: query.isEmpty ? "서울역" : query, address: "서울 중구 한강대로 405", lat: 37.5547, lng: 126.9706, source: "mock"),
-            Destination(id: "dest-cityhall", name: "서울시청", address: "서울 중구 세종대로 110", lat: 37.5663, lng: 126.9779, source: "mock")
+            Destination(id: "dest-seoul-station", name: query.isEmpty ? "Seoul Station" : query, address: "405 Hangang-daero, Jung-gu, Seoul", lat: 37.5547, lng: 126.9706, source: "mock"),
+            Destination(id: "dest-cityhall", name: "Seoul City Hall", address: "110 Sejong-daero, Jung-gu, Seoul", lat: 37.5663, lng: 126.9779, source: "mock")
         ]
     }
 
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
         [
-            ParkingLot(id: "mock:1", source: "mock", sourceParkingId: "1", name: "서울역 서부 공영주차장", address: "서울 용산구 청파로 378", lat: lat + 0.001, lng: lng - 0.001, distanceFromDestinationMeters: 180, totalCapacity: 120, availableSpaces: 18, occupancyRate: 0.85, congestionStatus: .available, realtimeAvailable: true, freshnessTimestamp: ISO8601DateFormatter().string(from: Date()), operatingHours: "24시간", feeSummary: "10분 500원", supportsEv: true, supportsAccessible: true, isPublic: true, isPrivate: false, stale: false, displayStatus: "실시간 18면", score: 0.91, provenance: []),
-            ParkingLot(id: "mock:2", source: "mock", sourceParkingId: "2", name: "목적지 민영주차장", address: "서울 중구 통일로 1", lat: lat - 0.001, lng: lng + 0.001, distanceFromDestinationMeters: 260, totalCapacity: 60, availableSpaces: nil, occupancyRate: nil, congestionStatus: .moderate, realtimeAvailable: true, freshnessTimestamp: ISO8601DateFormatter().string(from: Date()), operatingHours: "07:00-23:00", feeSummary: "30분 2,000원", supportsEv: false, supportsAccessible: false, isPublic: false, isPrivate: true, stale: false, displayStatus: "보통", score: 0.72, provenance: []),
-            ParkingLot(id: "mock:3", source: "mock", sourceParkingId: "3", name: "오래된 정보 공영주차장", address: "서울 중구 세종대로 110", lat: lat + 0.002, lng: lng + 0.001, distanceFromDestinationMeters: 420, totalCapacity: 80, availableSpaces: 7, occupancyRate: 0.91, congestionStatus: .busy, realtimeAvailable: false, freshnessTimestamp: ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -1200)), operatingHours: "09:00-22:00", feeSummary: "1시간 3,000원", supportsEv: false, supportsAccessible: true, isPublic: true, isPrivate: false, stale: true, displayStatus: "업데이트 지연 가능", score: 0.48, provenance: [])
+            ParkingLot(id: "mock:1", source: "mock", sourceParkingId: "1", name: "Seoul Station West Public Parking", address: "378 Cheongpa-ro, Yongsan-gu, Seoul", lat: lat + 0.001, lng: lng - 0.001, distanceFromDestinationMeters: 180, totalCapacity: 120, availableSpaces: 18, occupancyRate: 0.85, congestionStatus: .available, realtimeAvailable: true, freshnessTimestamp: ISO8601DateFormatter().string(from: Date()), operatingHours: "24 hours", feeSummary: "KRW 500 / 10 min", supportsEv: true, supportsAccessible: true, isPublic: true, isPrivate: false, stale: false, displayStatus: "Realtime 18 spaces", score: 0.91, provenance: []),
+            ParkingLot(id: "mock:2", source: "mock", sourceParkingId: "2", name: "Destination Private Parking", address: "1 Tongil-ro, Jung-gu, Seoul", lat: lat - 0.001, lng: lng + 0.001, distanceFromDestinationMeters: 260, totalCapacity: 60, availableSpaces: nil, occupancyRate: nil, congestionStatus: .moderate, realtimeAvailable: true, freshnessTimestamp: ISO8601DateFormatter().string(from: Date()), operatingHours: "07:00-23:00", feeSummary: "KRW 2,000 / 30 min", supportsEv: false, supportsAccessible: false, isPublic: false, isPrivate: true, stale: false, displayStatus: "Moderate", score: 0.72, provenance: []),
+            ParkingLot(id: "mock:3", source: "mock", sourceParkingId: "3", name: "Stale Public Parking", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.002, lng: lng + 0.001, distanceFromDestinationMeters: 420, totalCapacity: 80, availableSpaces: 7, occupancyRate: 0.91, congestionStatus: .busy, realtimeAvailable: false, freshnessTimestamp: ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -1200)), operatingHours: "09:00-22:00", feeSummary: "KRW 3,000 / hour", supportsEv: false, supportsAccessible: true, isPublic: true, isPrivate: false, stale: true, displayStatus: "Update may be delayed", score: 0.48, provenance: [])
         ]
     }
 
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival] {
         [
-            Festival(id: "mock-festival", title: "서울 빛 축제", subtitle: "도심 야간 산책형 축제", startDate: "2026-04-15", endDate: "2026-04-22", status: .ongoing, venueName: "서울광장", address: "서울 중구 세종대로 110", lat: lat + 0.001, lng: lng + 0.001, distanceMeters: 160, source: "mock", sourceUrl: nil, imageUrl: nil, tags: ["festival"])
+            Festival(id: "mock-festival", title: "Seoul Light Festival", subtitle: "Night walk festival", startDate: "2026-04-15", endDate: "2026-04-22", status: .ongoing, venueName: "Seoul Plaza", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.001, lng: lng + 0.001, distanceMeters: 160, source: "mock", sourceUrl: nil, imageUrl: nil, tags: ["festival"])
         ]
     }
 
@@ -166,7 +178,33 @@ final class MockAPIClient: APIClientProtocol {
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
         [
-            FreeEvent(id: "mock-event", title: "무료 시민 전시", eventType: "exhibition", startDate: "2026-04-15", endDate: "2026-04-20", status: .ongoing, isFree: true, venueName: "시민청", address: "서울 중구 세종대로 110", lat: lat + 0.0015, lng: lng - 0.001, distanceMeters: 190, source: "mock", sourceUrl: nil, imageUrl: nil, shortDescription: "누구나 관람할 수 있는 무료 공공 전시")
+            FreeEvent(id: "mock-event", title: "Free Civic Exhibition", eventType: "exhibition", startDate: "2026-04-15", endDate: "2026-04-20", status: .ongoing, isFree: true, venueName: "Citizens Hall", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.0015, lng: lng - 0.001, distanceMeters: 190, source: "mock", sourceUrl: nil, imageUrl: nil, shortDescription: "Free public exhibition")
+        ]
+    }
+
+    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption] {
+        [
+            LodgingOption(
+                id: "mock-lodging-hotel",
+                name: "City Stay Hotel",
+                lodgingType: "hotel",
+                address: "24 Namdaemun-ro, Jung-gu, Seoul",
+                lat: lat + 0.002,
+                lng: lng + 0.001,
+                distanceMeters: 240,
+                rating: 4.3,
+                reviewCount: 842,
+                imageUrl: nil,
+                source: "mock",
+                sourceUrl: nil,
+                lowestPriceText: "KRW 118,000",
+                lowestPricePlatform: "Booking.com",
+                offers: [
+                    LodgingPlatformOffer(platform: "Booking.com", priceText: "KRW 118,000", priceAmount: 118000, currency: "KRW", bookingUrl: nil, refundable: true, includesTaxesAndFees: true),
+                    LodgingPlatformOffer(platform: "Agoda", priceText: "KRW 124,000", priceAmount: 124000, currency: "KRW", bookingUrl: nil, refundable: nil, includesTaxesAndFees: false)
+                ],
+                amenities: ["parking", "wifi", "breakfast"]
+            )
         ]
     }
 

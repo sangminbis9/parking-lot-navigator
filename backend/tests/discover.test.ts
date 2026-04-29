@@ -26,6 +26,19 @@ describe("discover APIs", () => {
     await app.close();
   });
 
+  it("returns nearby lodging with platform offers", async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/discover/lodging?lat=37.5665&lng=126.9780&radiusMeters=3000"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.length).toBeGreaterThan(0);
+    expect(response.json().items[0].offers.length).toBeGreaterThan(0);
+    expect(response.json().items[0].lowestPriceText).toBeTruthy();
+    await app.close();
+  });
+
   it("records selected destinations without storing raw typed search streams", async () => {
     const app = await createApp();
     const created = await app.inject({

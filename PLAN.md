@@ -250,3 +250,30 @@ project-root/
 - 주차장 검색 반경 기본값: 800m, 설정으로 500m~1000m 조정 가능.
 - 랭킹 가중치 위치: backend `src/ranking/rankingConfig.ts`.
 - 민감 키 저장 위치: 백엔드 env 또는 로컬 비커밋 설정 파일, 클라이언트 하드코딩 금지.
+## 2026-04-29 direction update: destination companion flow
+
+### Final user flow first
+
+1. User chooses a destination or place.
+2. The app keeps the current plan: nearby parking recommendations and optional realtime parking layer.
+3. User turns on the `Lodging` map toggle beside realtime parking, festivals, and events.
+4. Lodging pins render in the same map-layer style as festivals and events.
+5. The bottom discovery list shows lodging, festivals, and events together with search and sorting.
+6. Lodging detail shows real lodging metadata first; booking-platform prices appear only when an OTA provider is approved.
+7. Opening a lodging item on the map recenters the app on that lodging and reloads nearby parking/realtime context.
+
+### Preserve the current plan
+
+- Keep the core `destination search -> parking recommendations -> detail/navigation` flow intact.
+- Treat lodging, festivals, events, and realtime parking as additive layers, not replacements for parking.
+- Keep lodging provider keys and any future price-fetching logic on the backend provider layer.
+- Use Korea Tourism Organization TourAPI lodging data as the first real lodging provider, with Kakao Local accommodation category search as fallback.
+- Before adding booking integrations, confirm API/affiliate terms, rate limits, caching rules, price freshness, and tax/fee display requirements.
+
+### Lodging comparison phase 1
+
+- `LodgingOption`: name, type, address, coordinate, distance, rating, image, optional lowest price text, optional lowest-price platform, amenities.
+- `LodgingPlatformOffer`: platform, price text, numeric price, currency, booking URL, refundable flag, tax/fee inclusion flag. Public domestic providers usually return no offers.
+- iOS: add a `Lodging` toggle next to realtime/festival/event toggles.
+- iOS: expand the event/festival discovery list to include lodging in the same row/detail pattern.
+- Backend: `/discover/lodging` uses server-side provider adapters. Phase 1 uses TourAPI lodging (`contentTypeId=32`) and Kakao Local lodging (`AD5`); Expedia, Booking, Agoda, HotelsCombined, or Trip.com can be layered later where terms allow.

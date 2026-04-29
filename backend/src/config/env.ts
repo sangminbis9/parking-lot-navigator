@@ -19,6 +19,16 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .transform((value) => value === "true")
     .default("true"),
+  LODGING_PROVIDER_ENABLED: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default("true"),
+  EXPEDIA_TRAVEL_REDIRECT_API_KEY: z.string().optional(),
+  EXPEDIA_TRAVEL_REDIRECT_PASSWORD: z.string().optional(),
+  EXPEDIA_TRAVEL_REDIRECT_AUTHORIZATION: z.string().optional(),
+  EXPEDIA_TRAVEL_REDIRECT_BASE_URL: z.string().url().default("https://apim.expedia.com"),
+  EXPEDIA_TRAVEL_REDIRECT_LOCALE: z.string().default("ko_KR"),
+  EXPEDIA_TRAVEL_REDIRECT_CURRENCY: z.string().default("KRW"),
   KAKAO_REST_API_KEY: z.string().optional(),
   KAKAO_LOCAL_BASE_URL: z.string().url().default("https://dapi.kakao.com"),
   SEOUL_OPEN_DATA_KEY: z.string().optional(),
@@ -46,6 +56,11 @@ export function assertProductionSecrets(cfg: AppConfig): string[] {
   }
   if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.EVENT_PROVIDER_ENABLED && !cfg.SEOUL_OPEN_DATA_KEY) {
     missing.push("SEOUL_OPEN_DATA_KEY");
+  }
+  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.LODGING_PROVIDER_ENABLED) {
+    if (!cfg.PUBLIC_DATA_SERVICE_KEY && !cfg.KAKAO_REST_API_KEY) {
+      missing.push("PUBLIC_DATA_SERVICE_KEY or KAKAO_REST_API_KEY");
+    }
   }
   return missing;
 }

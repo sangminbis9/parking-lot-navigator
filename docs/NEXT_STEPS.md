@@ -1,13 +1,13 @@
 # Next Steps
 
-Last updated: 2026-04-23
+Last updated: 2026-04-29
 
 ## Current Status
 
 - Branch: `master`
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 72.
+- iOS build number is 73.
 
 ## Completed This Session
 
@@ -58,7 +58,10 @@ Validation:
 
 ## Backlog
 
-- Plan the next discovery phase for user-selected destinations, cities, events, festivals, realtime parking, and lodging in one combined nearby view.
+- Final user flow to validate first: user selects a place -> map shows recommended parking -> user toggles lodging -> app shows nearby lodging pins and a unified discovery list -> lodging detail shows official/public lodging metadata -> "map view" recenters on that lodging and refreshes parking/realtime context.
+- Configure `PUBLIC_DATA_SERVICE_KEY` and `KAKAO_REST_API_KEY` in Worker secrets, then verify `/discover/lodging` against production.
+- Add an iOS date/guest selector only after an OTA booking-price provider is approved.
+- Add lodging price freshness and disclosure text before enabling any paid booking-price provider.
 - Get exact Seongdong IoT Seoul Open Data service name/field map if the provider still returns no rows.
 - Add more regional realtime providers as approvals arrive.
 - Improve provider health/debug visibility without exposing secrets.

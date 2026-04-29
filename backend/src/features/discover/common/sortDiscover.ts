@@ -8,3 +8,7 @@ export function sortByStatusThenDistance<T extends { status: DiscoverStatus; dis
     return a.distanceMeters - b.distanceMeters;
   });
 }
+
+export function sortByDistance<T extends { distanceMeters: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => a.distanceMeters - b.distanceMeters);
+}

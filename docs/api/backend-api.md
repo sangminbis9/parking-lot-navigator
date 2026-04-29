@@ -41,3 +41,44 @@
 ## GET /parking/providers/health
 
 provider 상태, 마지막 성공 시각, freshness, 오류 메시지를 반환합니다.
+## GET /discover/lodging
+
+Returns lodging options near a destination with normalized booking-platform offer candidates.
+
+Query:
+
+- `lat`: destination latitude
+- `lng`: destination longitude
+- `radiusMeters`: search radius, default `DEFAULT_DISCOVER_RADIUS_METERS`
+- `checkIn`: optional `YYYY-MM-DD`; reserved for future booking-price providers
+- `checkOut`: optional `YYYY-MM-DD`; reserved for future booking-price providers
+- `adults`: optional adult count; reserved for future booking-price providers
+- `rooms`: optional room count; reserved for future booking-price providers
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "tourapi:12345",
+      "name": "City Stay Hotel",
+      "lodgingType": "호텔",
+      "address": "서울특별시 중구 남대문로 24",
+      "lat": 37.5685,
+      "lng": 126.979,
+      "distanceMeters": 240,
+      "rating": null,
+      "reviewCount": null,
+      "imageUrl": null,
+      "source": "tourapi",
+      "sourceUrl": null,
+      "lowestPriceText": null,
+      "lowestPricePlatform": null,
+      "offers": [],
+      "amenities": ["전화 02-000-0000"]
+    }
+  ],
+  "generatedAt": "2026-04-29T00:00:00.000Z"
+}
+```

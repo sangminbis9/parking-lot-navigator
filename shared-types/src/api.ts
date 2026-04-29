@@ -1,6 +1,6 @@
 import type { ParkingLot } from "./parking.js";
 import type { DestinationCandidate } from "./destination.js";
-import type { Festival, FreeEvent } from "./discover.js";
+import type { Festival, FreeEvent, LodgingOption } from "./discover.js";
 
 export interface ApiErrorBody {
   error: {
@@ -45,5 +45,10 @@ export interface DiscoverFestivalsApiResponse {
 
 export interface DiscoverEventsApiResponse {
   items: FreeEvent[];
+  generatedAt: string;
+}
+
+export interface DiscoverLodgingApiResponse {
+  items: LodgingOption[];
   generatedAt: string;
 }
