@@ -22,6 +22,13 @@ type Env = {
   DISCOVER_CACHE_TTL_SECONDS: string;
   FESTIVAL_PROVIDER_ENABLED: string;
   EVENT_PROVIDER_ENABLED: string;
+  LODGING_PROVIDER_ENABLED: string;
+  EXPEDIA_TRAVEL_REDIRECT_API_KEY?: string;
+  EXPEDIA_TRAVEL_REDIRECT_PASSWORD?: string;
+  EXPEDIA_TRAVEL_REDIRECT_AUTHORIZATION?: string;
+  EXPEDIA_TRAVEL_REDIRECT_BASE_URL: string;
+  EXPEDIA_TRAVEL_REDIRECT_LOCALE: string;
+  EXPEDIA_TRAVEL_REDIRECT_CURRENCY: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -40,6 +47,7 @@ type BackendModules = {
   createRealtimeParkingProvider: typeof import("../../backend/src/providers/createProviders.js").createRealtimeParkingProvider;
   createFestivalService: typeof import("../../backend/src/features/discover/festivals/festivalService.js").createFestivalService;
   createEventService: typeof import("../../backend/src/features/discover/events/eventService.js").createEventService;
+  createLodgingService: typeof import("../../backend/src/features/discover/lodging/lodgingService.js").createLodgingService;
   SearchHistoryService: typeof import("../../backend/src/features/analytics/searchHistoryService.js").SearchHistoryService;
   searchHistoryRepository: typeof import("../../backend/src/features/analytics/SearchHistoryRepository.js").searchHistoryRepository;
 };
@@ -50,6 +58,7 @@ type BackendRuntime = {
   realtimeParkingProvider: ReturnType<BackendModules["createRealtimeParkingProvider"]>;
   festivalService: ReturnType<BackendModules["createFestivalService"]>;
   eventService: ReturnType<BackendModules["createEventService"]>;
+  lodgingService: ReturnType<BackendModules["createLodgingService"]>;
   searchHistoryService: InstanceType<BackendModules["SearchHistoryService"]>;
 };
 
@@ -82,7 +91,11 @@ const discoverQuerySchema = z.object({
   radiusMeters: z.coerce.number().optional(),
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
-  freeOnly: optionalBoolean
+  freeOnly: optionalBoolean,
+  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  adults: z.coerce.number().int().min(1).max(14).optional(),
+  rooms: z.coerce.number().int().min(1).max(8).optional()
 });
 
 const syncNationalParkingSchema = z.object({
@@ -283,10 +296,27 @@ app.get("/discover/events", async (c) => {
   return c.json({ items, generatedAt: new Date().toISOString() });
 });
 
+app.get("/discover/lodging", async (c) => {
+  const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
+  const backend = await loadBackend(c.env);
+  const items = await backend.lodgingService.nearby({
+    lat: query.lat,
+    lng: query.lng,
+    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+    ongoingOnly: query.ongoingOnly,
+    upcomingWithinDays: query.upcomingWithinDays ?? 30,
+    checkIn: query.checkIn,
+    checkOut: query.checkOut,
+    adults: query.adults,
+    rooms: query.rooms
+  });
+  return c.json({ items, generatedAt: new Date().toISOString() });
+});
+
 app.get("/discover/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
-    providers: [...backend.festivalService.health(), ...backend.eventService.health()],
+    providers: [...backend.festivalService.health(), ...backend.eventService.health(), ...backend.lodgingService.health()],
     generatedAt: new Date().toISOString()
   });
 });
@@ -407,6 +437,7 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     { createCompositeParkingProvider, createRealtimeParkingProvider },
     { createFestivalService },
     { createEventService },
+    { createLodgingService },
     { SearchHistoryService },
     { searchHistoryRepository }
   ] = await Promise.all([
@@ -414,6 +445,7 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     import("../../backend/src/providers/createProviders.js"),
     import("../../backend/src/features/discover/festivals/festivalService.js"),
     import("../../backend/src/features/discover/events/eventService.js"),
+    import("../../backend/src/features/discover/lodging/lodgingService.js"),
     import("../../backend/src/features/analytics/searchHistoryService.js"),
     import("../../backend/src/features/analytics/SearchHistoryRepository.js")
   ]);
@@ -424,6 +456,7 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     realtimeParkingProvider: createRealtimeParkingProvider(),
     festivalService: createFestivalService(),
     eventService: createEventService(),
+    lodgingService: createLodgingService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository)
   };
 }
