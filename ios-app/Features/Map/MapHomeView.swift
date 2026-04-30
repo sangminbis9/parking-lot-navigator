@@ -337,50 +337,53 @@ struct MapHomeView: View {
     }
 
     private var discoverLayerToggles: some View {
-        HStack(spacing: 8) {
-            layerToggle(
-                title: "\u{C2E4}\u{C2DC}\u{AC04}",
-                systemImage: "parkingsign.circle.fill",
-                tint: .green,
-                isOn: viewModel.showsRealtimeParkingLayer
-            ) {
-                Task {
-                    await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
-                    if viewModel.showsRealtimeParkingLayer {
-                        await viewModel.loadRealtimeParkingLayer()
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                layerToggle(
+                    title: "\u{C2E4}\u{C2DC}\u{AC04}",
+                    systemImage: "parkingsign.circle.fill",
+                    tint: .green,
+                    isOn: viewModel.showsRealtimeParkingLayer
+                ) {
+                    Task {
+                        await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
+                        if viewModel.showsRealtimeParkingLayer {
+                            await viewModel.loadRealtimeParkingLayer()
+                        }
                     }
                 }
+                layerToggle(
+                    title: "\u{CD95}\u{C81C}",
+                    systemImage: "sparkles",
+                    tint: .purple,
+                    isOn: viewModel.showsFestivalLayer
+                ) {
+                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, center: mapCenter) }
+                }
+                layerToggle(
+                    title: "\u{C774}\u{BCA4}\u{D2B8}",
+                    systemImage: "calendar",
+                    tint: .teal,
+                    isOn: viewModel.showsEventLayer
+                ) {
+                    Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, center: mapCenter) }
+                }
+                layerToggle(
+                    title: "\u{C219}\u{C18C}",
+                    systemImage: "bed.double.fill",
+                    tint: .indigo,
+                    isOn: viewModel.showsLodgingLayer
+                ) {
+                    Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, center: mapCenter) }
+                }
+                if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.horizontal, 4)
+                }
             }
-            layerToggle(
-                title: "\u{CD95}\u{C81C}",
-                systemImage: "sparkles",
-                tint: .purple,
-                isOn: viewModel.showsFestivalLayer
-            ) {
-                Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, center: mapCenter) }
-            }
-            layerToggle(
-                title: "\u{C774}\u{BCA4}\u{D2B8}",
-                systemImage: "calendar",
-                tint: .teal,
-                isOn: viewModel.showsEventLayer
-            ) {
-                Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, center: mapCenter) }
-            }
-            layerToggle(
-                title: "\u{C219}\u{C18C}",
-                systemImage: "bed.double.fill",
-                tint: .indigo,
-                isOn: viewModel.showsLodgingLayer
-            ) {
-                Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, center: mapCenter) }
-            }
-            if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
-                ProgressView()
-                    .controlSize(.small)
-            }
-            Spacer()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func layerToggle(
