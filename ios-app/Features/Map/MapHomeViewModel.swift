@@ -30,11 +30,8 @@ final class MapHomeViewModel: ObservableObject {
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
-    private let seoulDiscoverRadiusMeters = 60_000
-    private let nationwideDiscoverRadiusMeters = 450_000
     private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
-    private let seoulDiscoverCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -150,13 +147,13 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    func setExploreMode(_ mode: MapExploreMode, center: CLLocationCoordinate2D) async {
+    func setExploreMode(_ mode: MapExploreMode, viewport: MapViewport) async {
         exploreMode = mode
         selectedFestival = nil
         selectedEvent = nil
         selectedLodging = nil
         guard mode != .parking else { return }
-        await loadDiscoverItems(center: center)
+        await loadDiscoverItems(viewport: viewport)
     }
 
     func clearMapFocus() {
@@ -169,37 +166,31 @@ final class MapHomeViewModel: ObservableObject {
         parkingLots = []
     }
 
-    func setFestivalLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+    func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsFestivalLayer = isVisible
         if !isVisible {
             selectedFestival = nil
             return
         }
-        if festivals.isEmpty {
-            await loadFestivals(center: center)
-        }
+        await loadFestivals(viewport: viewport)
     }
 
-    func setEventLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+    func setEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsEventLayer = isVisible
         if !isVisible {
             selectedEvent = nil
             return
         }
-        if events.isEmpty {
-            await loadEvents(center: center)
-        }
+        await loadEvents(viewport: viewport)
     }
 
-    func setLodgingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+    func setLodgingLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsLodgingLayer = isVisible
         if !isVisible {
             selectedLodging = nil
             return
         }
-        if lodging.isEmpty {
-            await loadLodging(center: center)
-        }
+        await loadLodging(viewport: viewport)
     }
 
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
@@ -227,11 +218,11 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingRealtimeParking = false
     }
 
-    func loadInitialDiscoverLayers() async {
-        await loadInitialDiscoverLayersFromProviderDefaults()
+    func loadInitialDiscoverLayers(viewport: MapViewport) async {
+        await loadDiscoverLayers(viewport: viewport)
     }
 
-    private func loadInitialDiscoverLayersFromProviderDefaults() async {
+    func loadDiscoverLayers(viewport: MapViewport) async {
         isLoadingDiscover = true
         errorMessage = nil
         var failedLoads = 0
@@ -239,7 +230,7 @@ final class MapHomeViewModel: ObservableObject {
 
         if showsFestivalLayer {
             attemptedLoads += 1
-            switch await loadInitialFestivalLayer() {
+            switch await loadFestivalLayer(viewport: viewport) {
             case .success(let items):
                 festivals = items
             case .failure:
@@ -248,7 +239,7 @@ final class MapHomeViewModel: ObservableObject {
         }
         if showsEventLayer {
             attemptedLoads += 1
-            switch await loadInitialEventLayer() {
+            switch await loadEventLayer(viewport: viewport) {
             case .success(let items):
                 events = items
             case .failure:
@@ -257,7 +248,7 @@ final class MapHomeViewModel: ObservableObject {
         }
         if showsLodgingLayer {
             attemptedLoads += 1
-            switch await loadInitialLodgingLayer() {
+            switch await loadLodgingLayer(viewport: viewport) {
             case .success(let items):
                 lodging = items
             case .failure:
@@ -271,47 +262,7 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingDiscover = false
     }
 
-    func loadDiscoverLayers(center: CLLocationCoordinate2D) async {
-        isLoadingDiscover = true
-        errorMessage = nil
-        var failedLoads = 0
-        var attemptedLoads = 0
-
-        if showsFestivalLayer {
-            attemptedLoads += 1
-            switch await loadFestivalLayer(center: center) {
-            case .success(let items):
-                festivals = items
-            case .failure:
-                failedLoads += 1
-            }
-        }
-        if showsEventLayer {
-            attemptedLoads += 1
-            switch await loadEventLayer(center: center) {
-            case .success(let items):
-                events = items
-            case .failure:
-                failedLoads += 1
-            }
-        }
-        if showsLodgingLayer {
-            attemptedLoads += 1
-            switch await loadLodgingLayer(center: center) {
-            case .success(let items):
-                lodging = items
-            case .failure:
-                failedLoads += 1
-            }
-        }
-
-        if attemptedLoads > 0 && attemptedLoads == failedLoads {
-            errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
-        }
-        isLoadingDiscover = false
-    }
-
-    func loadDiscoverItems(center: CLLocationCoordinate2D) async {
+    func loadDiscoverItems(viewport: MapViewport) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
@@ -319,11 +270,11 @@ final class MapHomeViewModel: ObservableObject {
             case .parking:
                 break
             case .festivals:
-                festivals = try await discoverFestivals(center: center)
+                festivals = try await discoverFestivals(viewport: viewport)
             case .events:
-                events = try await discoverEvents(center: center)
+                events = try await discoverEvents(viewport: viewport)
             case .lodging:
-                lodging = try await discoverLodging(center: center)
+                lodging = try await discoverLodging(viewport: viewport)
             }
         } catch {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
@@ -331,141 +282,89 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingDiscover = false
     }
 
-    private func loadFestivals(center: CLLocationCoordinate2D) async {
+    private func loadFestivals(viewport: MapViewport) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
-            festivals = try await discoverFestivals(center: center)
+            festivals = try await discoverFestivals(viewport: viewport)
         } catch {
             errorMessage = "\u{CD95}\u{C81C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingDiscover = false
     }
 
-    private func loadEvents(center: CLLocationCoordinate2D) async {
+    private func loadEvents(viewport: MapViewport) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
-            events = try await discoverEvents(center: center)
+            events = try await discoverEvents(viewport: viewport)
         } catch {
             errorMessage = "\u{C774}\u{BCA4}\u{D2B8} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingDiscover = false
     }
 
-    private func loadLodging(center: CLLocationCoordinate2D) async {
+    private func loadLodging(viewport: MapViewport) async {
         isLoadingDiscover = true
         errorMessage = nil
         do {
-            lodging = try await discoverLodging(center: center)
+            lodging = try await discoverLodging(viewport: viewport)
         } catch {
             errorMessage = "\u{C219}\u{C18C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingDiscover = false
     }
 
-    private func discoverFestivals(center: CLLocationCoordinate2D) async throws -> [Festival] {
-        let nearby = try await apiClient.nearbyFestivals(
-            lat: center.latitude,
-            lng: center.longitude,
-            radiusMeters: localDiscoverRadiusMeters
-        )
-        if !nearby.isEmpty || center.isClose(to: koreaDiscoverCenter) {
-            return nearby
-        }
+    private func discoverFestivals(viewport: MapViewport) async throws -> [Festival] {
         return try await apiClient.nearbyFestivals(
-            lat: koreaDiscoverCenter.latitude,
-            lng: koreaDiscoverCenter.longitude,
-            radiusMeters: nationwideDiscoverRadiusMeters
+            lat: viewport.center.latitude,
+            lng: viewport.center.longitude,
+            radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
         )
     }
 
-    private func discoverEvents(center: CLLocationCoordinate2D) async throws -> [FreeEvent] {
+    private func discoverEvents(viewport: MapViewport) async throws -> [FreeEvent] {
         return try await apiClient.nearbyEvents(
-            lat: center.latitude,
-            lng: center.longitude,
-            radiusMeters: localDiscoverRadiusMeters
+            lat: viewport.center.latitude,
+            lng: viewport.center.longitude,
+            radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
         )
     }
 
-    private func discoverLodging(center: CLLocationCoordinate2D) async throws -> [LodgingOption] {
+    private func discoverLodging(viewport: MapViewport) async throws -> [LodgingOption] {
         return try await apiClient.nearbyLodging(
-            lat: center.latitude,
-            lng: center.longitude,
-            radiusMeters: localDiscoverRadiusMeters
+            lat: viewport.center.latitude,
+            lng: viewport.center.longitude,
+            radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
         )
     }
 
-    private func initialFestivals() async throws -> [Festival] {
-        return try await apiClient.nearbyFestivals(
-            lat: koreaDiscoverCenter.latitude,
-            lng: koreaDiscoverCenter.longitude,
-            radiusMeters: nationwideDiscoverRadiusMeters
-        )
-    }
-
-    private func initialEvents() async throws -> [FreeEvent] {
-        return try await apiClient.nearbyEvents(
-            lat: seoulDiscoverCenter.latitude,
-            lng: seoulDiscoverCenter.longitude,
-            radiusMeters: seoulDiscoverRadiusMeters
-        )
-    }
-
-    private func initialLodging() async throws -> [LodgingOption] {
-        return try await apiClient.nearbyLodging(
-            lat: seoulDiscoverCenter.latitude,
-            lng: seoulDiscoverCenter.longitude,
-            radiusMeters: seoulDiscoverRadiusMeters
-        )
-    }
-
-    private func loadInitialFestivalLayer() async -> Result<[Festival], Error> {
+    private func loadFestivalLayer(viewport: MapViewport) async -> Result<[Festival], Error> {
         do {
-            return .success(try await initialFestivals())
+            return .success(try await discoverFestivals(viewport: viewport))
         } catch {
             return .failure(error)
         }
     }
 
-    private func loadInitialEventLayer() async -> Result<[FreeEvent], Error> {
+    private func loadEventLayer(viewport: MapViewport) async -> Result<[FreeEvent], Error> {
         do {
-            return .success(try await initialEvents())
+            return .success(try await discoverEvents(viewport: viewport))
         } catch {
             return .failure(error)
         }
     }
 
-    private func loadInitialLodgingLayer() async -> Result<[LodgingOption], Error> {
+    private func loadLodgingLayer(viewport: MapViewport) async -> Result<[LodgingOption], Error> {
         do {
-            return .success(try await initialLodging())
+            return .success(try await discoverLodging(viewport: viewport))
         } catch {
             return .failure(error)
         }
     }
 
-    private func loadFestivalLayer(center: CLLocationCoordinate2D) async -> Result<[Festival], Error> {
-        do {
-            return .success(try await discoverFestivals(center: center))
-        } catch {
-            return .failure(error)
-        }
-    }
-
-    private func loadEventLayer(center: CLLocationCoordinate2D) async -> Result<[FreeEvent], Error> {
-        do {
-            return .success(try await discoverEvents(center: center))
-        } catch {
-            return .failure(error)
-        }
-    }
-
-    private func loadLodgingLayer(center: CLLocationCoordinate2D) async -> Result<[LodgingOption], Error> {
-        do {
-            return .success(try await discoverLodging(center: center))
-        } catch {
-            return .failure(error)
-        }
+    private func viewportDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
+        max(viewport.radiusMeters, localDiscoverRadiusMeters)
     }
 
     private func selectDiscoverDestination(

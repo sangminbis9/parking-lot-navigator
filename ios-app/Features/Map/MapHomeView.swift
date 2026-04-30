@@ -12,10 +12,17 @@ struct MapHomeView: View {
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
+    @State private var mapViewport = MapViewport(
+        center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
+        zoomLevel: 13,
+        radiusMeters: 20_000
+    )
     @State private var mapZoomLevel = 13
     @State private var didAutoCenterOnLocation = false
     @State private var hasUserFocusedMapTarget = false
     @State private var shouldCenterOnNextLocation = false
+    @State private var discoverRefreshTask: Task<Void, Never>?
+    @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var selectedPanelTab: MapPanelTab = .parking
     @State private var discoverListQuery = ""
     @State private var discoverListSort: DiscoverListSort = .distance
@@ -65,8 +72,12 @@ struct MapHomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             locationProvider.request()
-            await viewModel.loadInitialDiscoverLayers()
+            await viewModel.loadInitialDiscoverLayers(viewport: mapViewport)
+            lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
+        }
+        .onDisappear {
+            discoverRefreshTask?.cancel()
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
@@ -358,7 +369,7 @@ struct MapHomeView: View {
                     tint: .purple,
                     isOn: viewModel.showsFestivalLayer
                 ) {
-                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, center: mapCenter) }
+                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
                 }
                 layerToggle(
                     title: "\u{C774}\u{BCA4}\u{D2B8}",
@@ -366,7 +377,7 @@ struct MapHomeView: View {
                     tint: .teal,
                     isOn: viewModel.showsEventLayer
                 ) {
-                    Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, center: mapCenter) }
+                    Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
                 }
                 layerToggle(
                     title: "\u{C219}\u{C18C}",
@@ -374,7 +385,7 @@ struct MapHomeView: View {
                     tint: .indigo,
                     isOn: viewModel.showsLodgingLayer
                 ) {
-                    Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, center: mapCenter) }
+                    Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, viewport: mapViewport) }
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                     ProgressView()
@@ -770,7 +781,34 @@ struct MapHomeView: View {
 
     private func handleCameraIdle(_ viewport: MapViewport) {
         mapCenter = viewport.center
+        mapViewport = viewport
         mapZoomLevel = viewport.zoomLevel
+        scheduleVisibleDiscoverRefresh(for: viewport)
+    }
+
+    private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
+        guard viewModel.showsFestivalLayer || viewModel.showsEventLayer || viewModel.showsLodgingLayer else { return }
+        guard shouldRefreshDiscover(for: viewport) else { return }
+        discoverRefreshTask?.cancel()
+        discoverRefreshTask = Task {
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            await viewModel.loadDiscoverLayers(viewport: viewport)
+            await MainActor.run {
+                lastDiscoverRefreshViewport = viewport
+            }
+        }
+    }
+
+    private func shouldRefreshDiscover(for viewport: MapViewport) -> Bool {
+        guard let previous = lastDiscoverRefreshViewport else { return true }
+        if viewport.zoomLevel != previous.zoomLevel { return true }
+        let movedMeters = CLLocation(latitude: viewport.center.latitude, longitude: viewport.center.longitude)
+            .distance(from: CLLocation(latitude: previous.center.latitude, longitude: previous.center.longitude))
+        let movementThreshold = max(500, Double(viewport.radiusMeters) * 0.15)
+        if movedMeters > movementThreshold { return true }
+        let radiusDelta = abs(viewport.radiusMeters - previous.radiusMeters)
+        return radiusDelta > max(1_000, viewport.radiusMeters / 5)
     }
 }
 

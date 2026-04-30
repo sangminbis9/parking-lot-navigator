@@ -28,6 +28,7 @@ Phase 1 uses domestic lodging discovery APIs when `LODGING_PROVIDER_ENABLED=true
 - Fallback adapter: `KakaoLodgingProvider`, using Kakao Local category search with accommodation category `AD5`.
 - Why: both sources can show real nearby lodging names, addresses, coordinates, and basic contact/source metadata without OTA approval.
 - Refresh policy: server response cache via `DISCOVER_CACHE_TTL_SECONDS`; default is 6 hours because lodging location metadata is not second-level data.
+- Map behavior: iOS sends the current map viewport radius for lodging, festivals, and events. Lodging searches larger than one provider radius are split into cached 20 km tiles server-side.
 - Limitations: public domestic APIs do not provide live booking availability, room inventory, or cross-platform lowest prices. Expedia/Booking-style offers remain a future provider path if an OTA API is approved.
 
 ## Deferred
