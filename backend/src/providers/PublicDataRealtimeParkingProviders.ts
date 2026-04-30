@@ -244,7 +244,7 @@ async function fetchDaejeonPage(
       holidayCloseTime: xmlValue(item, "holidayCloseTime"),
       operDay: xmlValue(item, "operDay")
     })),
-    totalCount: xmlValue(text, "totalCount")
+    totalCount: xmlValue(text, "totalCount") ?? null
   };
 }
 
@@ -693,7 +693,7 @@ function formatDaejeonHours(row: DaejeonParkingRow): string | null {
   return row.operDay ?? null;
 }
 
-function formatHoursPart(label: string, open?: string, close?: string): string | null {
+function formatHoursPart(label: string, open?: string | null, close?: string | null): string | null {
   if (!open || !close) return null;
   return `${label} ${open}-${close}`;
 }

@@ -46,6 +46,8 @@ interface NationalParkingApiItem {
   rdnmadr?: string;
   lnmadr?: string;
   prkcmprt?: string | number;
+  feedingSe?: string;
+  enforceSe?: string;
   operDay?: string;
   weekdayOperOpenHhmm?: string;
   weekdayOperColseHhmm?: string;
