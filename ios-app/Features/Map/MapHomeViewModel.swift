@@ -30,6 +30,7 @@ final class MapHomeViewModel: ObservableObject {
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
+    private let lodgingDiscoverRadiusMeters = 60_000
     private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
 
@@ -335,7 +336,7 @@ final class MapHomeViewModel: ObservableObject {
         return try await apiClient.nearbyLodging(
             lat: viewport.center.latitude,
             lng: viewport.center.longitude,
-            radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
+            radiusMeters: lodgingDiscoverRadiusMeters(for: viewport)
         )
     }
 
@@ -365,6 +366,10 @@ final class MapHomeViewModel: ObservableObject {
 
     private func viewportDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
         max(viewport.radiusMeters, localDiscoverRadiusMeters)
+    }
+
+    private func lodgingDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
+        max(viewport.radiusMeters, lodgingDiscoverRadiusMeters)
     }
 
     private func selectDiscoverDestination(

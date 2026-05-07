@@ -369,6 +369,7 @@ struct MapHomeView: View {
                     tint: .purple,
                     isOn: viewModel.showsFestivalLayer
                 ) {
+                    selectedPanelTab = .discover
                     Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
                 }
                 layerToggle(
@@ -377,6 +378,7 @@ struct MapHomeView: View {
                     tint: .teal,
                     isOn: viewModel.showsEventLayer
                 ) {
+                    selectedPanelTab = .discover
                     Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
                 }
                 layerToggle(
@@ -385,6 +387,7 @@ struct MapHomeView: View {
                     tint: .indigo,
                     isOn: viewModel.showsLodgingLayer
                 ) {
+                    selectedPanelTab = .discover
                     Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, viewport: mapViewport) }
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
@@ -940,13 +943,12 @@ private struct DiscoverListItem: Identifiable {
     }
 
     static func lodging(_ lodging: LodgingOption, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
-        let priceText = lodging.lowestPriceText ?? "\u{C608}\u{C57D}\u{AC00} \u{BBF8}\u{C81C}\u{ACF5}"
-        let ratingText = lodging.ratingText
+        let summaryText = lodging.amenities.first ?? lodging.source
         return DiscoverListItem(
             id: "lodging-\(lodging.id)",
             kind: .lodging(lodging),
             title: lodging.name,
-            subtitle: "\(priceText) · \(ratingText)",
+            subtitle: lodging.address.isEmpty ? summaryText : lodging.address,
             dateText: lodging.lowestPricePlatform ?? lodging.source,
             startDate: "",
             statusText: lodging.lodgingType,
