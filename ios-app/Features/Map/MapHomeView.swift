@@ -732,7 +732,7 @@ private struct DiscoverListItem: Identifiable {
 
     static func festival(_ festival: Festival, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
         let themes = normalizedThemes(festival.tags)
-        DiscoverListItem(
+        return DiscoverListItem(
             id: "festival-\(festival.id)",
             kind: .festival(festival),
             title: festival.title,
@@ -770,7 +770,7 @@ private struct DiscoverListItem: Identifiable {
 
     static func event(_ event: FreeEvent, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
         let themes = normalizedThemes([event.eventType])
-        DiscoverListItem(
+        return DiscoverListItem(
             id: "event-\(event.id)",
             kind: .event(event),
             title: event.title,
