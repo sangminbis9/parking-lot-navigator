@@ -33,3 +33,6 @@ jobs:
         working-directory: worker-backend
         run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0002_realtime_parking_status.sql
 
+      - name: Apply discovery cache schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql

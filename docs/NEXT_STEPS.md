@@ -8,6 +8,7 @@ Last updated: 2026-04-29
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
 - Realtime parking and festival/event layers use overlap-collapsed pins.
 - iOS build number is 76.
+- Worker discovery and parking reads are moving to D1-only user endpoints with cron/admin sync for external provider calls.
 
 ## Completed This Session
 
@@ -52,14 +53,15 @@ Validation:
 
 ## After Worker Deploys
 
-- If realtime provider changes are deployed, run or wait for realtime cache sync.
-- Verify `/parking/realtime` and `/parking/realtime/clusters` behavior from the production Worker.
+- Apply D1 migrations, including `worker-backend/migrations/0003_discovery_items.sql`.
+- If realtime or discovery provider changes are deployed, run or wait for cron sync.
+- Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, `/discover/events`, `/discover/lodging`, and `/discover/clusters` behavior from the production Worker.
 - In app, verify realtime toggle after sync.
 
 ## Backlog
 
 - Final user flow to validate first: user selects a place -> map shows recommended parking -> user toggles lodging -> app shows nearby lodging pins and a unified discovery list -> lodging detail shows official/public lodging metadata -> "map view" recenters on that lodging and refreshes parking/realtime context.
-- Configure `PUBLIC_DATA_SERVICE_KEY` and `KAKAO_REST_API_KEY` in Worker secrets, then verify `/discover/lodging` against production.
+- Configure `PUBLIC_DATA_SERVICE_KEY`, `SEOUL_OPEN_DATA_KEY`, and `KAKAO_REST_API_KEY` in Worker secrets, then verify discovery admin sync and D1-backed `/discover/*` endpoints.
 - Add an iOS date/guest selector only after an OTA booking-price provider is approved.
 - Add lodging price freshness and disclosure text before enabling any paid booking-price provider.
 - Get exact Seongdong IoT Seoul Open Data service name/field map if the provider still returns no rows.

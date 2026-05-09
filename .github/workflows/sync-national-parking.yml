@@ -58,5 +58,10 @@ jobs:
         working-directory: worker-backend
         run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0002_realtime_parking_status.sql
 
+      - name: Apply discovery cache schema
+        if: ${{ inputs.dry_run == false }}
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql
+
       - name: Sync national parking
         run: node worker-backend/scripts/sync-national-parking.mjs

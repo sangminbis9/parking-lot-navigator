@@ -1,13 +1,20 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { ParkingLot } from "@parking/shared-types";
 import { z, ZodError } from "zod";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
+import {
+  queryDiscoveryClusters,
+  queryEventsFromCache,
+  queryFestivalsFromCache,
+  queryLodgingFromCache,
+  syncDiscoveryCache
+} from "./discoveryCache.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
   syncRealtimeParkingCache
 } from "./realtimeParkingCache.js";
+import { queryStaticParkingCache } from "./staticParkingCache.js";
 
 type Env = {
   DB?: D1Database;
@@ -17,6 +24,7 @@ type Env = {
   PARKING_PROVIDER_MODE: "mock" | "real" | "hybrid";
   DEFAULT_SEARCH_RADIUS_METERS: string;
   DEFAULT_DISCOVER_RADIUS_METERS: string;
+  DISCOVERY_LODGING_CENTERS_PER_RUN?: string;
   STALE_THRESHOLD_SECONDS: string;
   CACHE_TTL_SECONDS: string;
   DISCOVER_CACHE_TTL_SECONDS: string;
@@ -98,6 +106,19 @@ const discoverQuerySchema = z.object({
   rooms: z.coerce.number().int().min(1).max(8).optional()
 });
 
+const discoveryClusterSchema = z.object({
+  lat: z.coerce.number(),
+  lng: z.coerce.number(),
+  radiusMeters: z.coerce.number().optional(),
+  clusterMeters: z.coerce.number().min(250).max(100000).optional(),
+  types: z.string().optional()
+});
+
+const discoverySyncSchema = z.object({
+  kinds: z.string().optional(),
+  lodgingCentersPerRun: z.coerce.number().int().min(1).max(17).optional()
+});
+
 const syncNationalParkingSchema = z.object({
   pageNo: z.coerce.number().int().min(1).default(1),
   numOfRows: z.coerce.number().int().min(1).max(1000).default(500),
@@ -160,7 +181,7 @@ app.get("/search/destination", async (c) => {
 
 app.get("/parking/nearby", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
   const options = {
     radiusMeters,
@@ -169,7 +190,7 @@ app.get("/parking/nearby", async (c) => {
     accessibleOnly: query.accessibleOnly,
     bestWalkingDistanceBias: query.bestWalkingDistanceBias
   };
-  const items = await backend.parkingProvider.nearby(query.lat, query.lng, options);
+  const items = await queryStaticParkingCache(c.env.DB, query.lat, query.lng, options);
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
@@ -187,21 +208,10 @@ app.get("/parking/providers/health", async (c) => {
 
 app.get("/parking/realtime", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
   const options = { radiusMeters };
-  let items: ParkingLot[];
-  try {
-    items = c.env.DB
-      ? await queryRealtimeParkingCache(c.env.DB, query.lat, query.lng, options)
-      : await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
-    if (items.length === 0 && c.env.DB) {
-      items = await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
-    }
-  } catch (error) {
-    console.error("realtime parking cache read failed", error);
-    items = await liveRealtimeParking(backend.realtimeParkingProvider, query.lat, query.lng, options);
-  }
+  const items = await queryRealtimeParkingCache(c.env.DB, query.lat, query.lng, options);
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
@@ -271,10 +281,8 @@ app.get("/analytics/search-history/stats", async (c) => {
 
 app.get("/discover/festivals", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
-  const items = await backend.festivalService.nearby({
-    lat: query.lat,
-    lng: query.lng,
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
     radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
     upcomingWithinDays: query.upcomingWithinDays ?? 30
@@ -284,10 +292,8 @@ app.get("/discover/festivals", async (c) => {
 
 app.get("/discover/events", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
-  const items = await backend.eventService.nearby({
-    lat: query.lat,
-    lng: query.lng,
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const items = await queryEventsFromCache(c.env.DB, query.lat, query.lng, {
     radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
     upcomingWithinDays: query.upcomingWithinDays ?? 30,
@@ -298,19 +304,28 @@ app.get("/discover/events", async (c) => {
 
 app.get("/discover/lodging", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
-  const items = await backend.lodgingService.nearby({
-    lat: query.lat,
-    lng: query.lng,
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const items = await queryLodgingFromCache(c.env.DB, query.lat, query.lng, {
     radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30,
-    checkIn: query.checkIn,
-    checkOut: query.checkOut,
-    adults: query.adults,
-    rooms: query.rooms
+    upcomingWithinDays: query.upcomingWithinDays ?? 30
   });
   return c.json({ items, generatedAt: new Date().toISOString() });
+});
+
+app.get("/discover/clusters", async (c) => {
+  const query = discoveryClusterSchema.parse(queryObject(c.req.raw.url));
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const radiusMeters = query.radiusMeters ?? 460000;
+  const clusterMeters = query.clusterMeters ?? 20000;
+  const types = discoveryClusterTypes(query.types);
+  const clusters = await queryDiscoveryClusters(c.env.DB, types, query.lat, query.lng, { radiusMeters }, clusterMeters);
+  return c.json({
+    destination: { lat: query.lat, lng: query.lng, radiusMeters },
+    clusterMeters,
+    clusters,
+    generatedAt: new Date().toISOString()
+  });
 });
 
 app.get("/discover/providers/health", async (c) => {
@@ -370,29 +385,92 @@ app.get("/admin/sync-national-parking/preview", async (c) => {
   }
 });
 
+app.post("/admin/sync-discovery", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+
+  const query = discoverySyncSchema.parse(queryObject(c.req.raw.url));
+  const backend = await loadBackend(c.env);
+  try {
+    const result = await syncDiscoveryCache(c.env.DB, backend, discoverySyncKinds(query.kinds), {
+      lodgingCentersPerRun: query.lodgingCentersPerRun ?? discoveryLodgingCentersPerRun(c.env)
+    });
+    return c.json({ result, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
     return app.fetch(request, env, ctx);
   },
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     if (!env.DB) return;
-    ctx.waitUntil(
-      (async () => {
-        try {
-          const backend = await loadBackend(env);
-          await syncRealtimeParkingCache(env.DB!, backend.realtimeParkingProvider);
-        } catch (error) {
-          console.error("realtime parking sync failed", error);
-        }
-      })()
-    );
+    if (controller.cron === "* * * * *") {
+      ctx.waitUntil(syncRealtimeParkingScheduled(env));
+      return;
+    }
+    if (controller.cron === "0 * * * *") {
+      ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
+      return;
+    }
+    if (controller.cron === "0 18 * * *") {
+      ctx.waitUntil(syncDiscoveryScheduled(env, ["lodging"]));
+    }
   }
 };
 
+async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
+  try {
+    const backend = await loadBackend(env);
+    await syncRealtimeParkingCache(env.DB!, backend.realtimeParkingProvider);
+  } catch (error) {
+    console.error("realtime parking sync failed", error);
+  }
+}
+
+async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "events" | "lodging">): Promise<void> {
+  try {
+    const backend = await loadBackend(env);
+    await syncDiscoveryCache(env.DB!, backend, kinds, {
+      lodgingCentersPerRun: discoveryLodgingCentersPerRun(env)
+    });
+  } catch (error) {
+    console.error("discovery sync failed", error);
+  }
+}
+
 function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams.entries());
+}
+
+function discoveryClusterTypes(value: string | undefined): Array<"festival" | "event" | "lodging"> {
+  const allowed = new Set(["festival", "event", "lodging"]);
+  const types = (value ?? "festival,event,lodging")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item): item is "festival" | "event" | "lodging" => allowed.has(item));
+  return types.length > 0 ? types : ["festival", "event", "lodging"];
+}
+
+function discoverySyncKinds(value: string | undefined): Array<"festivals" | "events" | "lodging"> {
+  const allowed = new Set(["festivals", "events", "lodging"]);
+  const kinds = (value ?? "festivals,events,lodging")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item): item is "festivals" | "events" | "lodging" => allowed.has(item));
+  return kinds.length > 0 ? kinds : ["festivals", "events", "lodging"];
+}
+
+function discoveryLodgingCentersPerRun(env: Env): number {
+  const configured = Number(env.DISCOVERY_LODGING_CENTERS_PER_RUN ?? "4");
+  return Number.isFinite(configured) ? Math.max(1, Math.min(17, Math.trunc(configured))) : 4;
 }
 
 function authorizeAdminSync(request: Request, env: Env): Response | null {
@@ -413,16 +491,6 @@ function syncErrorResponse(error: unknown): { error: string; message: string } {
     error: "sync_failed",
     message: error instanceof Error ? error.message : "Unknown sync error"
   };
-}
-
-async function liveRealtimeParking(
-  provider: BackendRuntime["realtimeParkingProvider"],
-  lat: number,
-  lng: number,
-  options: { radiusMeters: number }
-): Promise<ParkingLot[]> {
-  return (await provider.nearby(lat, lng, options))
-    .filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
 }
 
 async function loadBackend(env: Env): Promise<BackendRuntime> {

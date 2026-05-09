@@ -28,6 +28,8 @@ Apply schema migrations after creating the database:
 ```powershell
 cd worker-backend
 pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0001_parking_lots.sql
+pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0002_realtime_parking_status.sql
+pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql
 ```
 
 Preview one national parking data page without writing to D1:
@@ -49,6 +51,19 @@ Actions -> Sync national parking D1 -> Run workflow
 ```
 
 Start with `page_start=1`, `page_end=1`, `num_rows=500`, and `dry_run=true`. If the sample looks right, run again with `dry_run=false`.
+
+Discovery data is synced by Cloudflare Cron and stored in D1:
+
+- Realtime parking: every minute (`* * * * *`)
+- Festivals and events: every hour (`0 * * * *`)
+- Lodging: once daily at 03:00 KST (`0 18 * * *` UTC)
+
+User-facing parking and discovery endpoints read from D1 only. External discovery providers are called only by cron or the admin sync endpoint:
+
+```powershell
+curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=festivals,events"
+curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=lodging&lodgingCentersPerRun=4"
+```
 
 ## Local development
 
@@ -75,4 +90,5 @@ After deployment, test:
 curl https://parking-lot-navigator-api.<your-subdomain>.workers.dev/health
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/providers/health"
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/festivals?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
+curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/clusters?lat=36.35&lng=127.80&radiusMeters=460000&clusterMeters=25000"
 ```

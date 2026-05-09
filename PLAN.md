@@ -267,6 +267,8 @@ project-root/
 - Keep the core `destination search -> parking recommendations -> detail/navigation` flow intact.
 - Treat lodging, festivals, events, and realtime parking as additive layers, not replacements for parking.
 - Keep lodging provider keys and any future price-fetching logic on the backend provider layer.
+- Run external parking/discovery provider calls from Cloudflare Worker cron or admin sync only; user-facing parking/discovery endpoints should read Cloudflare D1.
+- For national-scale map views, prefer D1-backed cluster or bounded responses instead of sending every stored record as an individual app pin.
 - Use Korea Tourism Organization TourAPI lodging data as the first real lodging provider, with Kakao Local accommodation category search as fallback.
 - Before adding booking integrations, confirm API/affiliate terms, rate limits, caching rules, price freshness, and tax/fee display requirements.
 
