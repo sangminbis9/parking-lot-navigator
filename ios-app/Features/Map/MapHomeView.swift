@@ -122,34 +122,6 @@ struct MapHomeView: View {
                 }
             )
         }
-        .sheet(item: $viewModel.selectedLodging) { lodging in
-            DiscoverDetailSheet(
-                title: lodging.name,
-                subtitle: lodging.lowestPriceText.map { price in
-                    if let platform = lodging.lowestPricePlatform {
-                        return "\(price) · \(platform)"
-                    }
-                    return price
-                },
-                statusText: lodging.lodgingType,
-                dateText: lodging.ratingText,
-                venueName: lodging.lowestPricePlatform,
-                address: lodging.address,
-                source: lodging.source,
-                sourceUrl: lodging.sourceUrl,
-                imageUrl: lodging.imageUrl,
-                tint: .indigo,
-                extraRows: lodging.offers.map { offer in
-                    DiscoverDetailExtraRow(label: offer.platform, value: offer.priceText)
-                },
-                onOpenMap: {
-                    showDiscoverItemOnMap(.lodging(lodging))
-                },
-                onOpenSource: { url in
-                    openURL(url)
-                }
-            )
-        }
     }
 
     private var pins: [MapPinItem] {
@@ -240,9 +212,6 @@ struct MapHomeView: View {
         if viewModel.showsEventLayer {
             sources.append(contentsOf: viewModel.events.map { .event($0) })
         }
-        if viewModel.showsLodgingLayer {
-            sources.append(contentsOf: viewModel.lodging.map { .lodging($0) })
-        }
         return sources
     }
 
@@ -250,8 +219,7 @@ struct MapHomeView: View {
         let query = discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let referenceCoordinate = locationProvider.coordinate
         let items = viewModel.festivals.map { DiscoverListItem.festival($0, referenceCoordinate: referenceCoordinate) } +
-            viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) } +
-            viewModel.lodging.map { DiscoverListItem.lodging($0, referenceCoordinate: referenceCoordinate) }
+            viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) }
         let filteredItems = query.isEmpty ? items : items.filter { $0.searchText.contains(query) }
         return filteredItems.sorted { lhs, rhs in
             switch discoverListSort {
@@ -285,13 +253,6 @@ struct MapHomeView: View {
                 id: "event-\(event.id)",
                 coordinate: coordinate,
                 kind: .event(event),
-                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
-            )
-        case .lodging(let lodging):
-            return MapPinItem(
-                id: "lodging-\(lodging.id)",
-                coordinate: coordinate,
-                kind: .lodging(lodging),
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
             )
         }
@@ -380,15 +341,6 @@ struct MapHomeView: View {
                 ) {
                     selectedPanelTab = .discover
                     Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
-                }
-                layerToggle(
-                    title: "\u{C219}\u{C18C}",
-                    systemImage: "bed.double.fill",
-                    tint: .indigo,
-                    isOn: viewModel.showsLodgingLayer
-                ) {
-                    selectedPanelTab = .discover
-                    Task { await viewModel.setLodgingLayerVisible(!viewModel.showsLodgingLayer, viewport: mapViewport) }
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                     ProgressView()
@@ -627,15 +579,9 @@ struct MapHomeView: View {
         case .festival(let festival):
             viewModel.selectedFestival = festival
             viewModel.selectedEvent = nil
-            viewModel.selectedLodging = nil
         case .event(let event):
             viewModel.selectedEvent = event
             viewModel.selectedFestival = nil
-            viewModel.selectedLodging = nil
-        case .lodging(let lodging):
-            viewModel.selectedLodging = lodging
-            viewModel.selectedFestival = nil
-            viewModel.selectedEvent = nil
         }
     }
 
@@ -646,8 +592,6 @@ struct MapHomeView: View {
             coordinate = CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
         case .event(let event):
             coordinate = CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
-        case .lodging(let lodging):
-            coordinate = CLLocationCoordinate2D(latitude: lodging.lat, longitude: lodging.lng)
         }
         selectedPanelTab = .parking
         focusMap(to: coordinate, zoomLevel: 16)
@@ -657,8 +601,6 @@ struct MapHomeView: View {
                 await viewModel.selectFestival(festival)
             case .event(let event):
                 await viewModel.selectEvent(event)
-            case .lodging(let lodging):
-                await viewModel.selectLodging(lodging)
             }
             if !viewModel.showsRealtimeParkingLayer {
                 await viewModel.setRealtimeParkingLayerVisible(true, center: coordinate)
@@ -675,9 +617,6 @@ struct MapHomeView: View {
         case .event(let event):
             focusMap(to: pin.coordinate, zoomLevel: 16)
             Task { await viewModel.selectEvent(event) }
-        case .lodging(let lodging):
-            focusMap(to: pin.coordinate, zoomLevel: 16)
-            Task { await viewModel.selectLodging(lodging) }
         case .parking(let parkingLot):
             viewModel.selectedParkingLot = parkingLot
             focusMap(to: pin.coordinate, zoomLevel: 17)
@@ -691,7 +630,7 @@ struct MapHomeView: View {
     private var discoverListPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("\u{C774}\u{BCA4}\u{D2B8}\u{00B7}\u{CD95}\u{C81C}\u{00B7}\u{C219}\u{C18C}")
+                Text("\u{C774}\u{BCA4}\u{D2B8}\u{00B7}\u{CD95}\u{C81C}")
                     .font(.headline)
                 Spacer()
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
@@ -761,10 +700,6 @@ struct MapHomeView: View {
             moveMap(to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng), zoomLevel: 12)
             return
         }
-        if viewModel.showsLodgingLayer, let lodging = viewModel.lodging.first {
-            didAutoCenterOnLocation = true
-            moveMap(to: CLLocationCoordinate2D(latitude: lodging.lat, longitude: lodging.lng), zoomLevel: 12)
-        }
     }
 
     private func handleLocationUpdate(_ coordinate: CLLocationCoordinate2D) {
@@ -790,7 +725,7 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        guard viewModel.showsFestivalLayer || viewModel.showsEventLayer || viewModel.showsLodgingLayer else { return }
+        guard viewModel.showsFestivalLayer || viewModel.showsEventLayer else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
         discoverRefreshTask = Task {
@@ -863,7 +798,6 @@ private struct DiscoverListItem: Identifiable {
     enum Kind {
         case festival(Festival)
         case event(FreeEvent)
-        case lodging(LodgingOption)
     }
 
     let id: String
@@ -942,40 +876,6 @@ private struct DiscoverListItem: Identifiable {
         )
     }
 
-    static func lodging(_ lodging: LodgingOption, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
-        let summaryText = lodging.amenities.first ?? lodging.source
-        return DiscoverListItem(
-            id: "lodging-\(lodging.id)",
-            kind: .lodging(lodging),
-            title: lodging.name,
-            subtitle: lodging.address.isEmpty ? summaryText : lodging.address,
-            dateText: lodging.lowestPricePlatform ?? lodging.source,
-            startDate: "",
-            statusText: lodging.lodgingType,
-            distanceMeters: measuredDistanceMeters(
-                from: referenceCoordinate,
-                to: CLLocationCoordinate2D(latitude: lodging.lat, longitude: lodging.lng),
-                fallback: lodging.distanceMeters
-            ),
-            imageUrl: lodging.imageUrl,
-            tint: .indigo,
-            symbol: "bed.double.fill",
-            typeText: "\u{C219}\u{C18C}",
-            searchText: [
-                lodging.name,
-                lodging.lodgingType,
-                lodging.address,
-                lodging.lowestPriceText,
-                lodging.lowestPricePlatform,
-                lodging.amenities.joined(separator: " "),
-                lodging.offers.map { "\($0.platform) \($0.priceText)" }.joined(separator: " ")
-            ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-        )
-    }
-
     private static func measuredDistanceMeters(
         from referenceCoordinate: CLLocationCoordinate2D?,
         to coordinate: CLLocationCoordinate2D,
@@ -1016,7 +916,6 @@ private struct RealtimeParkingPinSource: OverlayPinSource {
 private enum DiscoverPinSource: OverlayPinSource {
     case festival(Festival)
     case event(FreeEvent)
-    case lodging(LodgingOption)
 
     var id: String {
         switch self {
@@ -1024,8 +923,6 @@ private enum DiscoverPinSource: OverlayPinSource {
             return "festival-\(festival.id)"
         case .event(let event):
             return "event-\(event.id)"
-        case .lodging(let lodging):
-            return "lodging-\(lodging.id)"
         }
     }
 
@@ -1035,8 +932,6 @@ private enum DiscoverPinSource: OverlayPinSource {
             return CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
         case .event(let event):
             return CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
-        case .lodging(let lodging):
-            return CLLocationCoordinate2D(latitude: lodging.lat, longitude: lodging.lng)
         }
     }
 }
@@ -1215,18 +1110,6 @@ private extension DiscoverStatus {
         case .upcoming:
             return "\u{C608}\u{C815}"
         }
-    }
-}
-
-private extension LodgingOption {
-    var ratingText: String {
-        guard let rating else {
-            return "\u{D3C9}\u{C810} \u{C815}\u{BCF4} \u{C5C6}\u{C74C}"
-        }
-        if let reviewCount {
-            return String(format: "%.1f · %d reviews", rating, reviewCount)
-        }
-        return String(format: "%.1f", rating)
     }
 }
 

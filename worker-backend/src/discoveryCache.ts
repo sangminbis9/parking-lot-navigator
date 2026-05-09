@@ -1,19 +1,16 @@
-import type { Festival, FreeEvent, LodgingOption } from "@parking/shared-types";
+import type { Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 
-type DiscoveryType = "festival" | "event" | "lodging";
-type DiscoverySyncKind = "festivals" | "events" | "lodging";
+type DiscoveryType = "festival" | "event";
+type DiscoverySyncKind = "festivals" | "events";
 
 const DISCOVERY_RESULT_LIMIT = 1000;
 const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
 const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
   festival: 45,
-  event: 45,
-  lodging: 14
+  event: 45
 };
 const DISCOVERY_SYNC_RADIUS_METERS = 90000;
-const LODGING_SYNC_RADIUS_METERS = 80000;
-const DEFAULT_LODGING_CENTERS_PER_RUN = 4;
 
 const NATIONAL_DISCOVERY_CENTERS: Array<{ id: string; lat: number; lng: number }> = [
   { id: "seoul", lat: 37.5665, lng: 126.9780 },
@@ -55,7 +52,6 @@ export interface DiscoveryCluster {
 export interface DiscoverySyncRuntime {
   festivalService: { nearby(query: SyncDiscoverQuery): Promise<Festival[]> };
   eventService: { nearby(query: SyncDiscoverQuery): Promise<FreeEvent[]> };
-  lodgingService: { nearby(query: SyncDiscoverQuery): Promise<LodgingOption[]> };
 }
 
 export interface DiscoverySyncResult {
@@ -104,7 +100,7 @@ interface DiscoveryItemRow {
   data_updated_at: string | null;
 }
 
-type DiscoveryItem = Festival | FreeEvent | LodgingOption;
+type DiscoveryItem = Festival | FreeEvent;
 
 export async function queryFestivalsFromCache(
   db: D1Database,
@@ -124,16 +120,6 @@ export async function queryEventsFromCache(
 ): Promise<FreeEvent[]> {
   const rows = await queryDiscoveryRows(db, "event", lat, lng, options);
   return rows.map((row) => mapEventRow(row, lat, lng)).filter((item) => !options.freeOnly || item.isFree);
-}
-
-export async function queryLodgingFromCache(
-  db: D1Database,
-  lat: number,
-  lng: number,
-  options: DiscoveryQueryOptions
-): Promise<LodgingOption[]> {
-  const rows = await queryDiscoveryRows(db, "lodging", lat, lng, options);
-  return rows.map((row) => mapLodgingRow(row, lat, lng));
 }
 
 export async function queryDiscoveryClusters(
@@ -172,14 +158,13 @@ export async function queryDiscoveryClusters(
 export async function syncDiscoveryCache(
   db: D1Database,
   runtime: DiscoverySyncRuntime,
-  kinds: DiscoverySyncKind[],
-  options: { lodgingCentersPerRun?: number } = {}
+  kinds: DiscoverySyncKind[]
 ): Promise<DiscoverySyncResult[]> {
   const results: DiscoverySyncResult[] = [];
   for (const kind of kinds) {
     const run = await startSyncRun(db, `discover:${kind}`);
     try {
-      const result = await syncDiscoveryKind(db, runtime, kind, options);
+      const result = await syncDiscoveryKind(db, runtime, kind);
       await finishSyncRun(db, run.id, "success", result);
       results.push(result);
     } catch (error) {
@@ -201,23 +186,21 @@ export async function syncDiscoveryCache(
 async function syncDiscoveryKind(
   db: D1Database,
   runtime: DiscoverySyncRuntime,
-  kind: DiscoverySyncKind,
-  options: { lodgingCentersPerRun?: number }
+  kind: DiscoverySyncKind
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
-  const centers = await centersForKind(db, kind, options.lodgingCentersPerRun ?? DEFAULT_LODGING_CENTERS_PER_RUN);
+  const centers = centersForKind(kind);
   const batches = await Promise.all(
     centers.map((center) => {
       const query = {
         lat: center.lat,
         lng: center.lng,
-        radiusMeters: kind === "lodging" ? LODGING_SYNC_RADIUS_METERS : DISCOVERY_SYNC_RADIUS_METERS,
+        radiusMeters: DISCOVERY_SYNC_RADIUS_METERS,
         upcomingWithinDays: 365,
         freeOnly: kind === "events" ? true : undefined
       };
       if (kind === "festivals") return runtime.festivalService.nearby(query);
-      if (kind === "events") return runtime.eventService.nearby(query);
-      return runtime.lodgingService.nearby(query);
+      return runtime.eventService.nearby(query);
     })
   );
   const items = dedupeItems(batches.flat());
@@ -235,18 +218,9 @@ async function syncDiscoveryKind(
   return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, generatedAt };
 }
 
-async function centersForKind(
-  db: D1Database,
-  kind: DiscoverySyncKind,
-  lodgingCentersPerRun: number
-): Promise<Array<{ id: string; lat: number; lng: number }>> {
+function centersForKind(kind: DiscoverySyncKind): Array<{ id: string; lat: number; lng: number }> {
   if (kind === "events") return [SEOUL_DISCOVERY_CENTER];
-  if (kind === "festivals") return NATIONAL_DISCOVERY_CENTERS;
-  const centerCount = Math.min(lodgingCentersPerRun, NATIONAL_DISCOVERY_CENTERS.length);
-  const start = await nextCursor(db, "lodging_center_cursor", NATIONAL_DISCOVERY_CENTERS.length, centerCount);
-  return Array.from({ length: centerCount }, (_, index) => {
-    return NATIONAL_DISCOVERY_CENTERS[(start + index) % NATIONAL_DISCOVERY_CENTERS.length];
-  });
+  return NATIONAL_DISCOVERY_CENTERS;
 }
 
 async function queryDiscoveryRows(
@@ -352,36 +326,6 @@ async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt
 }
 
 function discoveryRow(item: DiscoveryItem, syncedAt: string) {
-  if ("name" in item) {
-    return {
-      id: `lodging:${item.id}`,
-      type: "lodging" as const,
-      source: item.source,
-      sourceItemId: item.id,
-      title: item.name,
-      subtitle: null,
-      categoryText: item.lodgingType,
-      startDate: null,
-      endDate: null,
-      status: null,
-      isFree: null,
-      venueName: item.lowestPricePlatform,
-      address: item.address,
-      lat: item.lat,
-      lng: item.lng,
-      rating: item.rating,
-      reviewCount: item.reviewCount,
-      lowestPriceText: item.lowestPriceText,
-      lowestPricePlatform: item.lowestPricePlatform,
-      sourceUrl: item.sourceUrl,
-      imageUrl: item.imageUrl,
-      tagsJson: null,
-      amenitiesJson: JSON.stringify(item.amenities),
-      offersJson: JSON.stringify(item.offers),
-      rawPayload: JSON.stringify(item),
-      dataUpdatedAt: syncedAt
-    };
-  }
   if ("eventType" in item) {
     return {
       id: `event:${item.id}`,
@@ -489,27 +433,6 @@ function mapEventRow(row: DiscoveryItemRow, lat: number, lng: number): FreeEvent
   };
 }
 
-function mapLodgingRow(row: DiscoveryItemRow, lat: number, lng: number): LodgingOption {
-  return {
-    id: row.source_item_id,
-    name: row.title,
-    lodgingType: row.category_text ?? "lodging",
-    address: row.address,
-    lat: row.lat,
-    lng: row.lng,
-    distanceMeters: distanceMeters(lat, lng, row.lat, row.lng),
-    rating: row.rating,
-    reviewCount: row.review_count,
-    imageUrl: row.image_url,
-    source: row.source,
-    sourceUrl: row.source_url,
-    lowestPriceText: row.lowest_price_text,
-    lowestPricePlatform: row.lowest_price_platform,
-    offers: parseJsonArray<LodgingOption["offers"][number]>(row.offers_json),
-    amenities: parseJsonArray<string>(row.amenities_json)
-  };
-}
-
 function rowPassesFilters(row: DiscoveryItemRow, options: DiscoveryQueryOptions): boolean {
   if (options.ongoingOnly && row.status !== "ongoing") return false;
   if (row.type === "event" && options.freeOnly && !row.is_free) return false;
@@ -531,26 +454,10 @@ function sortDiscoveryRows(a: DiscoveryItemRow, b: DiscoveryItemRow, lat: number
 function dedupeItems<T extends DiscoveryItem>(items: T[]): T[] {
   const selected = new Map<string, T>();
   for (const item of items) {
-    const type = "name" in item ? "lodging" : "eventType" in item ? "event" : "festival";
+    const type = "eventType" in item ? "event" : "festival";
     selected.set(`${type}:${item.source}:${item.id}`, item);
   }
   return [...selected.values()];
-}
-
-async function nextCursor(db: D1Database, key: string, modulo: number, step: number): Promise<number> {
-  const now = new Date().toISOString();
-  const row = await db.prepare("SELECT value FROM sync_state WHERE key = ?").bind(key).first<{ value: string }>();
-  const current = Number(row?.value ?? "0");
-  const next = (Number.isFinite(current) ? current + step : step) % modulo;
-  await db
-    .prepare(
-      `INSERT INTO sync_state (key, value, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-    )
-    .bind(key, String(next), now)
-    .run();
-  return Number.isFinite(current) ? current : 0;
 }
 
 async function startSyncRun(db: D1Database, syncType: string): Promise<{ id: string }> {
@@ -581,8 +488,7 @@ async function finishSyncRun(
 
 function typeForKind(kind: DiscoverySyncKind): DiscoveryType {
   if (kind === "festivals") return "festival";
-  if (kind === "events") return "event";
-  return "lodging";
+  return "event";
 }
 
 function parseJsonArray<T>(value: string | null): T[] {

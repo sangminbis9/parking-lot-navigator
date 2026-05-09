@@ -56,13 +56,11 @@ Discovery data is synced by Cloudflare Cron and stored in D1:
 
 - Realtime parking: every minute (`* * * * *`)
 - Festivals and events: every hour (`0 * * * *`)
-- Lodging: once daily at 03:00 KST (`0 18 * * *` UTC)
 
 User-facing parking and discovery endpoints read from D1 only. External discovery providers are called only by cron or the admin sync endpoint:
 
 ```powershell
 curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=festivals,events"
-curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=lodging&lodgingCentersPerRun=4"
 ```
 
 ## Local development

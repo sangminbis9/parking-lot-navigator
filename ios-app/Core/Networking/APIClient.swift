@@ -6,7 +6,6 @@ protocol APIClientProtocol {
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
-    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
 }
@@ -71,17 +70,6 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "freeOnly", value: "true")
         ]
         let response: DiscoverEventsResponse = try await get(components.url!)
-        return response.items
-    }
-
-    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption] {
-        var components = URLComponents(url: endpoint("discover/lodging"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "lat", value: String(lat)),
-            URLQueryItem(name: "lng", value: String(lng)),
-            URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
-        ]
-        let response: DiscoverLodgingResponse = try await get(components.url!)
         return response.items
     }
 
@@ -179,32 +167,6 @@ final class MockAPIClient: APIClientProtocol {
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
         [
             FreeEvent(id: "mock-event", title: "Free Civic Exhibition", eventType: "exhibition", startDate: "2026-04-15", endDate: "2026-04-20", status: .ongoing, isFree: true, venueName: "Citizens Hall", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.0015, lng: lng - 0.001, distanceMeters: 190, source: "mock", sourceUrl: nil, imageUrl: nil, shortDescription: "Free public exhibition")
-        ]
-    }
-
-    func nearbyLodging(lat: Double, lng: Double, radiusMeters: Int) async throws -> [LodgingOption] {
-        [
-            LodgingOption(
-                id: "mock-lodging-hotel",
-                name: "City Stay Hotel",
-                lodgingType: "hotel",
-                address: "24 Namdaemun-ro, Jung-gu, Seoul",
-                lat: lat + 0.002,
-                lng: lng + 0.001,
-                distanceMeters: 240,
-                rating: 4.3,
-                reviewCount: 842,
-                imageUrl: nil,
-                source: "mock",
-                sourceUrl: nil,
-                lowestPriceText: "KRW 118,000",
-                lowestPricePlatform: "Booking.com",
-                offers: [
-                    LodgingPlatformOffer(platform: "Booking.com", priceText: "KRW 118,000", priceAmount: 118000, currency: "KRW", bookingUrl: nil, refundable: true, includesTaxesAndFees: true),
-                    LodgingPlatformOffer(platform: "Agoda", priceText: "KRW 124,000", priceAmount: 124000, currency: "KRW", bookingUrl: nil, refundable: nil, includesTaxesAndFees: false)
-                ],
-                amenities: ["parking", "wifi", "breakfast"]
-            )
         ]
     }
 

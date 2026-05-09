@@ -73,7 +73,7 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest work: add the iOS map event/festival/lodging discovery layers, switch lodging discovery to domestic public/Kakao providers, and bump iOS build to 73.
+- Latest work: remove accommodation discovery/display paths and keep discovery focused on event/festival layers.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`
 - `5af815e Fix Seoul supplemental parking mapping`

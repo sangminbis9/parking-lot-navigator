@@ -401,8 +401,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 12
             case .event:
                 return 12
-            case .lodging:
-                return 12
             }
         }
     }
@@ -493,10 +491,6 @@ private extension MapPinItem {
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: event.title)
-        case .lodging(let lodging):
-            let style = DiscoverPinStyle.lodgingStyle(for: lodging)
-            guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
-            return style.labeledID(for: lodging.name)
         }
     }
 
@@ -510,10 +504,6 @@ private extension MapPinItem {
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard styleID == style.labeledID(for: event.title) else { return nil }
             return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: event.title.shortMapLabel))
-        case .lodging(let lodging):
-            let style = DiscoverPinStyle.lodgingStyle(for: lodging)
-            guard styleID == style.labeledID(for: lodging.name) else { return nil }
-            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: lodging.name.shortMapLabel))
         default:
             return nil
         }
@@ -548,9 +538,6 @@ private enum DiscoverPinStyle: CaseIterable {
     case eventEducation
     case eventMarket
     case eventSports
-    case lodgingDefault
-    case lodgingHotel
-    case lodgingGuesthouse
 
     var id: String {
         switch self {
@@ -576,12 +563,6 @@ private enum DiscoverPinStyle: CaseIterable {
             return "event-market"
         case .eventSports:
             return "event-sports"
-        case .lodgingDefault:
-            return "lodging-default"
-        case .lodgingHotel:
-            return "lodging-hotel"
-        case .lodgingGuesthouse:
-            return "lodging-guesthouse"
         }
     }
 
@@ -609,12 +590,6 @@ private enum DiscoverPinStyle: CaseIterable {
             return .systemBrown
         case .eventSports:
             return .systemCyan
-        case .lodgingDefault:
-            return .systemIndigo
-        case .lodgingHotel:
-            return .systemBlue
-        case .lodgingGuesthouse:
-            return .systemPurple
         }
     }
 
@@ -642,12 +617,6 @@ private enum DiscoverPinStyle: CaseIterable {
             return "bag.fill"
         case .eventSports:
             return "figure.run"
-        case .lodgingDefault:
-            return "bed.double.fill"
-        case .lodgingHotel:
-            return "building.2.fill"
-        case .lodgingGuesthouse:
-            return "house.fill"
         }
     }
 
@@ -701,19 +670,6 @@ private enum DiscoverPinStyle: CaseIterable {
         return .eventDefault
     }
 
-    static func lodgingStyle(for lodging: LodgingOption) -> DiscoverPinStyle {
-        let text = [lodging.name, lodging.lodgingType, lodging.address]
-            .joined(separator: " ")
-            .lowercased()
-
-        if text.containsAny(["guest", "hostel", "house", "\u{AC8C}\u{C2A4}\u{D2B8}", "\u{D638}\u{C2A4}\u{D154}"]) {
-            return .lodgingGuesthouse
-        }
-        if text.containsAny(["hotel", "\u{D638}\u{D154}", "resort"]) {
-            return .lodgingHotel
-        }
-        return .lodgingDefault
-    }
 }
 
 private extension String {

@@ -11,14 +11,11 @@ final class MapHomeViewModel: ObservableObject {
     @Published var realtimeParkingLots: [ParkingLot] = []
     @Published var festivals: [Festival] = []
     @Published var events: [FreeEvent] = []
-    @Published var lodging: [LodgingOption] = []
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedFestival: Festival?
     @Published var selectedEvent: FreeEvent?
-    @Published var selectedLodging: LodgingOption?
     @Published var showsFestivalLayer = true
     @Published var showsEventLayer = true
-    @Published var showsLodgingLayer = false
     @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
@@ -30,7 +27,6 @@ final class MapHomeViewModel: ObservableObject {
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
-    private let lodgingDiscoverRadiusMeters = 60_000
     private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
 
@@ -74,7 +70,6 @@ final class MapHomeViewModel: ObservableObject {
         parkingLots = []
         selectedFestival = nil
         selectedEvent = nil
-        selectedLodging = nil
         recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
         if showsRealtimeParkingLayer {
@@ -85,7 +80,6 @@ final class MapHomeViewModel: ObservableObject {
     func selectFestival(_ festival: Festival) async {
         selectedFestival = festival
         selectedEvent = nil
-        selectedLodging = nil
         await selectDiscoverDestination(
             id: "festival-\(festival.id)",
             name: festival.title,
@@ -101,7 +95,6 @@ final class MapHomeViewModel: ObservableObject {
     func selectEvent(_ event: FreeEvent) async {
         selectedEvent = event
         selectedFestival = nil
-        selectedLodging = nil
         await selectDiscoverDestination(
             id: "event-\(event.id)",
             name: event.title,
@@ -111,22 +104,6 @@ final class MapHomeViewModel: ObservableObject {
             source: event.source,
             rawCategory: event.eventType,
             normalizedCategory: "event"
-        )
-    }
-
-    func selectLodging(_ lodging: LodgingOption) async {
-        selectedLodging = lodging
-        selectedFestival = nil
-        selectedEvent = nil
-        await selectDiscoverDestination(
-            id: "lodging-\(lodging.id)",
-            name: lodging.name,
-            address: lodging.address,
-            lat: lodging.lat,
-            lng: lodging.lng,
-            source: lodging.source,
-            rawCategory: lodging.lodgingType,
-            normalizedCategory: "lodging"
         )
     }
 
@@ -152,7 +129,6 @@ final class MapHomeViewModel: ObservableObject {
         exploreMode = mode
         selectedFestival = nil
         selectedEvent = nil
-        selectedLodging = nil
         guard mode != .parking else { return }
         await loadDiscoverItems(viewport: viewport)
     }
@@ -162,7 +138,6 @@ final class MapHomeViewModel: ObservableObject {
         selectedParkingLot = nil
         selectedFestival = nil
         selectedEvent = nil
-        selectedLodging = nil
         destinations = []
         parkingLots = []
     }
@@ -183,15 +158,6 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         await loadEvents(viewport: viewport)
-    }
-
-    func setLodgingLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
-        showsLodgingLayer = isVisible
-        if !isVisible {
-            selectedLodging = nil
-            return
-        }
-        await loadLodging(viewport: viewport)
     }
 
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
@@ -247,16 +213,6 @@ final class MapHomeViewModel: ObservableObject {
                 failedLoads += 1
             }
         }
-        if showsLodgingLayer {
-            attemptedLoads += 1
-            switch await loadLodgingLayer(viewport: viewport) {
-            case .success(let items):
-                lodging = items
-            case .failure:
-                failedLoads += 1
-            }
-        }
-
         if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
             errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
         }
@@ -274,8 +230,6 @@ final class MapHomeViewModel: ObservableObject {
                 festivals = try await discoverFestivals(viewport: viewport)
             case .events:
                 events = try await discoverEvents(viewport: viewport)
-            case .lodging:
-                lodging = try await discoverLodging(viewport: viewport)
             }
         } catch {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
@@ -305,17 +259,6 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingDiscover = false
     }
 
-    private func loadLodging(viewport: MapViewport) async {
-        isLoadingDiscover = true
-        errorMessage = nil
-        do {
-            lodging = try await discoverLodging(viewport: viewport)
-        } catch {
-            errorMessage = "\u{C219}\u{C18C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
-        }
-        isLoadingDiscover = false
-    }
-
     private func discoverFestivals(viewport: MapViewport) async throws -> [Festival] {
         return try await apiClient.nearbyFestivals(
             lat: viewport.center.latitude,
@@ -329,14 +272,6 @@ final class MapHomeViewModel: ObservableObject {
             lat: viewport.center.latitude,
             lng: viewport.center.longitude,
             radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
-        )
-    }
-
-    private func discoverLodging(viewport: MapViewport) async throws -> [LodgingOption] {
-        return try await apiClient.nearbyLodging(
-            lat: viewport.center.latitude,
-            lng: viewport.center.longitude,
-            radiusMeters: lodgingDiscoverRadiusMeters(for: viewport)
         )
     }
 
@@ -356,20 +291,8 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    private func loadLodgingLayer(viewport: MapViewport) async -> Result<[LodgingOption], Error> {
-        do {
-            return .success(try await discoverLodging(viewport: viewport))
-        } catch {
-            return .failure(error)
-        }
-    }
-
     private func viewportDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
         max(viewport.radiusMeters, localDiscoverRadiusMeters)
-    }
-
-    private func lodgingDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
-        max(viewport.radiusMeters, lodgingDiscoverRadiusMeters)
     }
 
     private func selectDiscoverDestination(
@@ -439,7 +362,6 @@ struct MapPinItem: Identifiable {
         case parking(ParkingLot)
         case festival(Festival)
         case event(FreeEvent)
-        case lodging(LodgingOption)
     }
 
     let id: String

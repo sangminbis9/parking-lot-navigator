@@ -10,16 +10,11 @@ LOG_LEVEL = "info"
 PARKING_PROVIDER_MODE = "real"
 DEFAULT_SEARCH_RADIUS_METERS = "800"
 DEFAULT_DISCOVER_RADIUS_METERS = "20000"
-DISCOVERY_LODGING_CENTERS_PER_RUN = "4"
 STALE_THRESHOLD_SECONDS = "600"
 CACHE_TTL_SECONDS = "45"
 DISCOVER_CACHE_TTL_SECONDS = "21600"
 FESTIVAL_PROVIDER_ENABLED = "true"
 EVENT_PROVIDER_ENABLED = "true"
-LODGING_PROVIDER_ENABLED = "true"
-EXPEDIA_TRAVEL_REDIRECT_BASE_URL = "https://apim.expedia.com"
-EXPEDIA_TRAVEL_REDIRECT_LOCALE = "ko_KR"
-EXPEDIA_TRAVEL_REDIRECT_CURRENCY = "KRW"
 KAKAO_LOCAL_BASE_URL = "https://dapi.kakao.com"
 SEOUL_OPEN_DATA_BASE_URL = "http://openapi.seoul.go.kr:8088"
 PUBLIC_DATA_ENV = "production"
@@ -27,7 +22,7 @@ PUBLIC_DATA_BASE_URL = "https://apis.data.go.kr"
 NATIONAL_PARKING_DATA_BASE_URL = "https://api.data.go.kr"
 
 [triggers]
-crons = ["* * * * *", "0 * * * *", "0 18 * * *"]
+crons = ["* * * * *", "0 * * * *"]
 
 [[d1_databases]]
 binding = "DB"

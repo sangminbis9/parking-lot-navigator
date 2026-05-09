@@ -55,15 +55,12 @@ Validation:
 
 - Apply D1 migrations, including `worker-backend/migrations/0003_discovery_items.sql`.
 - If realtime or discovery provider changes are deployed, run or wait for cron sync.
-- Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, `/discover/events`, `/discover/lodging`, and `/discover/clusters` behavior from the production Worker.
+- Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, `/discover/events`, and `/discover/clusters` behavior from the production Worker.
 - In app, verify realtime toggle after sync.
 
 ## Backlog
 
-- Final user flow to validate first: user selects a place -> map shows recommended parking -> user toggles lodging -> app shows nearby lodging pins and a unified discovery list -> lodging detail shows official/public lodging metadata -> "map view" recenters on that lodging and refreshes parking/realtime context.
 - Configure `PUBLIC_DATA_SERVICE_KEY`, `SEOUL_OPEN_DATA_KEY`, and `KAKAO_REST_API_KEY` in Worker secrets, then verify discovery admin sync and D1-backed `/discover/*` endpoints.
-- Add an iOS date/guest selector only after an OTA booking-price provider is approved.
-- Add lodging price freshness and disclosure text before enabling any paid booking-price provider.
 - Get exact Seongdong IoT Seoul Open Data service name/field map if the provider still returns no rows.
 - Add more regional realtime providers as approvals arrive.
 - Improve provider health/debug visibility without exposing secrets.

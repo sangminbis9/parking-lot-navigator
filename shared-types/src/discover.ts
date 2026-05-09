@@ -37,35 +37,6 @@ export interface FreeEvent {
   shortDescription: string | null;
 }
 
-export interface LodgingPlatformOffer {
-  platform: string;
-  priceText: string;
-  priceAmount: number | null;
-  currency: string;
-  bookingUrl: string | null;
-  refundable: boolean | null;
-  includesTaxesAndFees: boolean;
-}
-
-export interface LodgingOption {
-  id: string;
-  name: string;
-  lodgingType: string;
-  address: string;
-  lat: number;
-  lng: number;
-  distanceMeters: number;
-  rating: number | null;
-  reviewCount: number | null;
-  imageUrl: string | null;
-  source: string;
-  sourceUrl: string | null;
-  lowestPriceText: string | null;
-  lowestPricePlatform: string | null;
-  offers: LodgingPlatformOffer[];
-  amenities: string[];
-}
-
 export interface DiscoverFestivalsResponse {
   items: Festival[];
   generatedAt: string;
@@ -73,10 +44,5 @@ export interface DiscoverFestivalsResponse {
 
 export interface DiscoverEventsResponse {
   items: FreeEvent[];
-  generatedAt: string;
-}
-
-export interface DiscoverLodgingResponse {
-  items: LodgingOption[];
   generatedAt: string;
 }

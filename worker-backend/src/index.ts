@@ -6,7 +6,6 @@ import {
   queryDiscoveryClusters,
   queryEventsFromCache,
   queryFestivalsFromCache,
-  queryLodgingFromCache,
   syncDiscoveryCache
 } from "./discoveryCache.js";
 import {
@@ -24,19 +23,11 @@ type Env = {
   PARKING_PROVIDER_MODE: "mock" | "real" | "hybrid";
   DEFAULT_SEARCH_RADIUS_METERS: string;
   DEFAULT_DISCOVER_RADIUS_METERS: string;
-  DISCOVERY_LODGING_CENTERS_PER_RUN?: string;
   STALE_THRESHOLD_SECONDS: string;
   CACHE_TTL_SECONDS: string;
   DISCOVER_CACHE_TTL_SECONDS: string;
   FESTIVAL_PROVIDER_ENABLED: string;
   EVENT_PROVIDER_ENABLED: string;
-  LODGING_PROVIDER_ENABLED: string;
-  EXPEDIA_TRAVEL_REDIRECT_API_KEY?: string;
-  EXPEDIA_TRAVEL_REDIRECT_PASSWORD?: string;
-  EXPEDIA_TRAVEL_REDIRECT_AUTHORIZATION?: string;
-  EXPEDIA_TRAVEL_REDIRECT_BASE_URL: string;
-  EXPEDIA_TRAVEL_REDIRECT_LOCALE: string;
-  EXPEDIA_TRAVEL_REDIRECT_CURRENCY: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -55,7 +46,6 @@ type BackendModules = {
   createRealtimeParkingProvider: typeof import("../../backend/src/providers/createProviders.js").createRealtimeParkingProvider;
   createFestivalService: typeof import("../../backend/src/features/discover/festivals/festivalService.js").createFestivalService;
   createEventService: typeof import("../../backend/src/features/discover/events/eventService.js").createEventService;
-  createLodgingService: typeof import("../../backend/src/features/discover/lodging/lodgingService.js").createLodgingService;
   SearchHistoryService: typeof import("../../backend/src/features/analytics/searchHistoryService.js").SearchHistoryService;
   searchHistoryRepository: typeof import("../../backend/src/features/analytics/SearchHistoryRepository.js").searchHistoryRepository;
 };
@@ -66,7 +56,6 @@ type BackendRuntime = {
   realtimeParkingProvider: ReturnType<BackendModules["createRealtimeParkingProvider"]>;
   festivalService: ReturnType<BackendModules["createFestivalService"]>;
   eventService: ReturnType<BackendModules["createEventService"]>;
-  lodgingService: ReturnType<BackendModules["createLodgingService"]>;
   searchHistoryService: InstanceType<BackendModules["SearchHistoryService"]>;
 };
 
@@ -99,11 +88,7 @@ const discoverQuerySchema = z.object({
   radiusMeters: z.coerce.number().optional(),
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
-  freeOnly: optionalBoolean,
-  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  adults: z.coerce.number().int().min(1).max(14).optional(),
-  rooms: z.coerce.number().int().min(1).max(8).optional()
+  freeOnly: optionalBoolean
 });
 
 const discoveryClusterSchema = z.object({
@@ -115,8 +100,7 @@ const discoveryClusterSchema = z.object({
 });
 
 const discoverySyncSchema = z.object({
-  kinds: z.string().optional(),
-  lodgingCentersPerRun: z.coerce.number().int().min(1).max(17).optional()
+  kinds: z.string().optional()
 });
 
 const syncNationalParkingSchema = z.object({
@@ -302,17 +286,6 @@ app.get("/discover/events", async (c) => {
   return c.json({ items, generatedAt: new Date().toISOString() });
 });
 
-app.get("/discover/lodging", async (c) => {
-  const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
-  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const items = await queryLodgingFromCache(c.env.DB, query.lat, query.lng, {
-    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
-    ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30
-  });
-  return c.json({ items, generatedAt: new Date().toISOString() });
-});
-
 app.get("/discover/clusters", async (c) => {
   const query = discoveryClusterSchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
@@ -331,7 +304,7 @@ app.get("/discover/clusters", async (c) => {
 app.get("/discover/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
-    providers: [...backend.festivalService.health(), ...backend.eventService.health(), ...backend.lodgingService.health()],
+    providers: [...backend.festivalService.health(), ...backend.eventService.health()],
     generatedAt: new Date().toISOString()
   });
 });
@@ -395,9 +368,7 @@ app.post("/admin/sync-discovery", async (c) => {
   const query = discoverySyncSchema.parse(queryObject(c.req.raw.url));
   const backend = await loadBackend(c.env);
   try {
-    const result = await syncDiscoveryCache(c.env.DB, backend, discoverySyncKinds(query.kinds), {
-      lodgingCentersPerRun: query.lodgingCentersPerRun ?? discoveryLodgingCentersPerRun(c.env)
-    });
+    const result = await syncDiscoveryCache(c.env.DB, backend, discoverySyncKinds(query.kinds));
     return c.json({ result, generatedAt: new Date().toISOString() });
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
@@ -420,9 +391,6 @@ export default {
       ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
       return;
     }
-    if (controller.cron === "0 18 * * *") {
-      ctx.waitUntil(syncDiscoveryScheduled(env, ["lodging"]));
-    }
   }
 };
 
@@ -435,12 +403,10 @@ async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
   }
 }
 
-async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "events" | "lodging">): Promise<void> {
+async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "events">): Promise<void> {
   try {
     const backend = await loadBackend(env);
-    await syncDiscoveryCache(env.DB!, backend, kinds, {
-      lodgingCentersPerRun: discoveryLodgingCentersPerRun(env)
-    });
+    await syncDiscoveryCache(env.DB!, backend, kinds);
   } catch (error) {
     console.error("discovery sync failed", error);
   }
@@ -450,27 +416,22 @@ function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams.entries());
 }
 
-function discoveryClusterTypes(value: string | undefined): Array<"festival" | "event" | "lodging"> {
-  const allowed = new Set(["festival", "event", "lodging"]);
-  const types = (value ?? "festival,event,lodging")
+function discoveryClusterTypes(value: string | undefined): Array<"festival" | "event"> {
+  const allowed = new Set(["festival", "event"]);
+  const types = (value ?? "festival,event")
     .split(",")
     .map((item) => item.trim())
-    .filter((item): item is "festival" | "event" | "lodging" => allowed.has(item));
-  return types.length > 0 ? types : ["festival", "event", "lodging"];
+    .filter((item): item is "festival" | "event" => allowed.has(item));
+  return types.length > 0 ? types : ["festival", "event"];
 }
 
-function discoverySyncKinds(value: string | undefined): Array<"festivals" | "events" | "lodging"> {
-  const allowed = new Set(["festivals", "events", "lodging"]);
-  const kinds = (value ?? "festivals,events,lodging")
+function discoverySyncKinds(value: string | undefined): Array<"festivals" | "events"> {
+  const allowed = new Set(["festivals", "events"]);
+  const kinds = (value ?? "festivals,events")
     .split(",")
     .map((item) => item.trim())
-    .filter((item): item is "festivals" | "events" | "lodging" => allowed.has(item));
-  return kinds.length > 0 ? kinds : ["festivals", "events", "lodging"];
-}
-
-function discoveryLodgingCentersPerRun(env: Env): number {
-  const configured = Number(env.DISCOVERY_LODGING_CENTERS_PER_RUN ?? "4");
-  return Number.isFinite(configured) ? Math.max(1, Math.min(17, Math.trunc(configured))) : 4;
+    .filter((item): item is "festivals" | "events" => allowed.has(item));
+  return kinds.length > 0 ? kinds : ["festivals", "events"];
 }
 
 function authorizeAdminSync(request: Request, env: Env): Response | null {
@@ -505,7 +466,6 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     { createCompositeParkingProvider, createRealtimeParkingProvider },
     { createFestivalService },
     { createEventService },
-    { createLodgingService },
     { SearchHistoryService },
     { searchHistoryRepository }
   ] = await Promise.all([
@@ -513,7 +473,6 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     import("../../backend/src/providers/createProviders.js"),
     import("../../backend/src/features/discover/festivals/festivalService.js"),
     import("../../backend/src/features/discover/events/eventService.js"),
-    import("../../backend/src/features/discover/lodging/lodgingService.js"),
     import("../../backend/src/features/analytics/searchHistoryService.js"),
     import("../../backend/src/features/analytics/SearchHistoryRepository.js")
   ]);
@@ -524,7 +483,6 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     realtimeParkingProvider: createRealtimeParkingProvider(),
     festivalService: createFestivalService(),
     eventService: createEventService(),
-    lodgingService: createLodgingService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository)
   };
 }
