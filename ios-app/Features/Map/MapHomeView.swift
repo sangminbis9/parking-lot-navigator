@@ -23,9 +23,10 @@ struct MapHomeView: View {
     @State private var shouldCenterOnNextLocation = false
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
-    @State private var selectedPanelTab: MapPanelTab = .parking
+    @State private var isDiscoverListPresented = false
     @State private var discoverListQuery = ""
     @State private var discoverListSort: DiscoverListSort = .distance
+    @State private var discoverFilters = DiscoverFilterState()
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -70,6 +71,21 @@ struct MapHomeView: View {
         }
         .navigationTitle("\u{C8FC}\u{CC28} \u{C9C0}\u{B3C4}")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $isDiscoverListPresented) {
+            DiscoverListPage(
+                items: discoverListItems,
+                isLoading: viewModel.isLoadingDiscover,
+                query: $discoverListQuery,
+                sort: $discoverListSort,
+                filters: $discoverFilters,
+                onSelect: { item in
+                    openDiscoverDetail(item)
+                },
+                onShowOnMap: { kind in
+                    showDiscoverItemOnMap(kind)
+                }
+            )
+        }
         .task {
             locationProvider.request()
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport)
@@ -216,27 +232,9 @@ struct MapHomeView: View {
     }
 
     private var discoverListItems: [DiscoverListItem] {
-        let query = discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let referenceCoordinate = locationProvider.coordinate
-        let items = viewModel.festivals.map { DiscoverListItem.festival($0, referenceCoordinate: referenceCoordinate) } +
+        return viewModel.festivals.map { DiscoverListItem.festival($0, referenceCoordinate: referenceCoordinate) } +
             viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) }
-        let filteredItems = query.isEmpty ? items : items.filter { $0.searchText.contains(query) }
-        return filteredItems.sorted { lhs, rhs in
-            switch discoverListSort {
-            case .distance:
-                if lhs.distanceMeters != rhs.distanceMeters {
-                    return lhs.distanceMeters < rhs.distanceMeters
-                }
-                return lhs.title < rhs.title
-            case .date:
-                if lhs.startDate != rhs.startDate {
-                    return lhs.startDate < rhs.startDate
-                }
-                return lhs.title < rhs.title
-            case .name:
-                return lhs.title < rhs.title
-            }
-        }
     }
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
@@ -330,7 +328,6 @@ struct MapHomeView: View {
                     tint: .purple,
                     isOn: viewModel.showsFestivalLayer
                 ) {
-                    selectedPanelTab = .discover
                     Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
                 }
                 layerToggle(
@@ -339,7 +336,6 @@ struct MapHomeView: View {
                     tint: .teal,
                     isOn: viewModel.showsEventLayer
                 ) {
-                    selectedPanelTab = .discover
                     Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
@@ -416,46 +412,46 @@ struct MapHomeView: View {
     }
 
     private var mapControls: some View {
-        HStack {
+        HStack(alignment: .bottom) {
             Spacer()
-            Button {
-                if let coordinate = locationProvider.coordinate {
-                    moveMap(to: coordinate, zoomLevel: 15)
-                } else {
-                    shouldCenterOnNextLocation = true
-                    locationProvider.request()
+            VStack(spacing: 10) {
+                Button {
+                    isDiscoverListPresented = true
+                } label: {
+                    Image(systemName: "list.bullet.rectangle.portrait.fill")
+                        .font(.headline)
+                        .frame(width: 48, height: 48)
                 }
-            } label: {
-                Image(systemName: "location.fill")
-                    .font(.headline)
-                    .frame(width: 42, height: 42)
+                .buttonStyle(.borderedProminent)
+                .clipShape(Circle())
+                .accessibilityLabel("\u{D0D0}\u{C0C9} \u{BAA9}\u{B85D} \u{C5F4}\u{AE30}")
+
+                Button {
+                    if let coordinate = locationProvider.coordinate {
+                        moveMap(to: coordinate, zoomLevel: 15)
+                    } else {
+                        shouldCenterOnNextLocation = true
+                        locationProvider.request()
+                    }
+                } label: {
+                    Image(systemName: "location.fill")
+                        .font(.headline)
+                        .frame(width: 42, height: 42)
+                }
+                .buttonStyle(.borderedProminent)
+                .clipShape(Circle())
+                .accessibilityLabel("\u{B0B4} \u{C704}\u{CE58}\u{B85C} \u{C774}\u{B3D9}")
             }
-            .buttonStyle(.borderedProminent)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 
     @ViewBuilder
     private var bottomPanel: some View {
-        VStack(spacing: 8) {
-            Picker("\u{C9C0}\u{B3C4} \u{C815}\u{BCF4}", selection: $selectedPanelTab) {
-                ForEach(MapPanelTab.allCases) { tab in
-                    Label(tab.title, systemImage: tab.systemImage).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            switch selectedPanelTab {
-            case .parking:
-                if let selectedParkingLot = viewModel.selectedParkingLot,
-                   !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
-                    standaloneParkingPanel(parkingLot: selectedParkingLot)
-                } else {
-                    parkingPanel
-                }
-            case .discover:
-                discoverListPanel
-            }
+        if let selectedParkingLot = viewModel.selectedParkingLot,
+           !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
+            standaloneParkingPanel(parkingLot: selectedParkingLot)
+        } else {
+            parkingPanel
         }
     }
 
@@ -593,7 +589,7 @@ struct MapHomeView: View {
         case .event(let event):
             coordinate = CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
         }
-        selectedPanelTab = .parking
+        isDiscoverListPresented = false
         focusMap(to: coordinate, zoomLevel: 16)
         Task {
             switch kind {
@@ -625,66 +621,6 @@ struct MapHomeView: View {
         case .currentLocation:
             focusMap(to: pin.coordinate, zoomLevel: 15)
         }
-    }
-
-    private var discoverListPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("\u{C774}\u{BCA4}\u{D2B8}\u{00B7}\u{CD95}\u{C81C}")
-                    .font(.headline)
-                Spacer()
-                if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}", text: $discoverListQuery)
-                    .textInputAutocapitalization(.never)
-                    .submitLabel(.search)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            Picker("\u{C815}\u{B82C}", selection: $discoverListSort) {
-                ForEach(DiscoverListSort.allCases) { sort in
-                    Text(sort.title).tag(sort)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            if discoverListItems.isEmpty && !viewModel.isLoadingDiscover {
-                Text(discoverListQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{D45C}\u{C2DC}\u{D560} \u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}." : "\u{AC80}\u{C0C9} \u{ACB0}\u{ACFC}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 12)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(discoverListItems) { item in
-                            DiscoverListRow(item: item) {
-                                openDiscoverDetail(item)
-                            }
-                            if item.id != discoverListItems.last?.id {
-                                Divider()
-                                    .padding(.leading, 92)
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: 320)
-            }
-        }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
@@ -750,35 +686,10 @@ struct MapHomeView: View {
     }
 }
 
-private enum MapPanelTab: String, CaseIterable, Identifiable {
-    case parking
-    case discover
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .parking:
-            return "\u{C8FC}\u{CC28}"
-        case .discover:
-            return "\u{D0D0}\u{C0C9}"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .parking:
-            return "parkingsign.circle.fill"
-        case .discover:
-            return "sparkles"
-        }
-    }
-}
-
 private enum DiscoverListSort: String, CaseIterable, Identifiable {
     case distance
     case date
-    case name
+    case popularity
 
     var id: String { rawValue }
 
@@ -788,8 +699,8 @@ private enum DiscoverListSort: String, CaseIterable, Identifiable {
             return "\u{AC70}\u{B9AC}\u{C21C}"
         case .date:
             return "\u{B0A0}\u{C9DC}\u{C21C}"
-        case .name:
-            return "\u{C774}\u{B984}\u{C21C}"
+        case .popularity:
+            return "\u{C778}\u{AE30}\u{C21C}"
         }
     }
 }
@@ -807,14 +718,20 @@ private struct DiscoverListItem: Identifiable {
     let dateText: String
     let startDate: String
     let statusText: String
+    let status: DiscoverStatus
     let distanceMeters: Int
     let imageUrl: String?
     let tint: Color
     let symbol: String
     let typeText: String
+    let sourceText: String
+    let regionText: String
+    let themes: [String]
+    let popularityScore: Int
     let searchText: String
 
     static func festival(_ festival: Festival, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
+        let themes = normalizedThemes(festival.tags)
         DiscoverListItem(
             id: "festival-\(festival.id)",
             kind: .festival(festival),
@@ -823,6 +740,7 @@ private struct DiscoverListItem: Identifiable {
             dateText: "\(festival.startDate) - \(festival.endDate)",
             startDate: festival.startDate,
             statusText: festival.status.displayText,
+            status: festival.status,
             distanceMeters: measuredDistanceMeters(
                 from: referenceCoordinate,
                 to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng),
@@ -832,11 +750,16 @@ private struct DiscoverListItem: Identifiable {
             tint: .purple,
             symbol: "sparkles",
             typeText: "\u{CD95}\u{C81C}",
+            sourceText: festival.source,
+            regionText: regionText(from: festival.address),
+            themes: themes,
+            popularityScore: popularityScore(hasImage: festival.imageUrl != nil, hasSourceUrl: festival.sourceUrl != nil, status: festival.status, themeCount: themes.count),
             searchText: [
                 festival.title,
                 festival.subtitle,
                 festival.venueName,
                 festival.address,
+                festival.source,
                 festival.tags.joined(separator: " ")
             ]
             .compactMap { $0 }
@@ -846,6 +769,7 @@ private struct DiscoverListItem: Identifiable {
     }
 
     static func event(_ event: FreeEvent, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
+        let themes = normalizedThemes([event.eventType])
         DiscoverListItem(
             id: "event-\(event.id)",
             kind: .event(event),
@@ -854,6 +778,7 @@ private struct DiscoverListItem: Identifiable {
             dateText: "\(event.startDate) - \(event.endDate)",
             startDate: event.startDate,
             statusText: event.status.displayText,
+            status: event.status,
             distanceMeters: measuredDistanceMeters(
                 from: referenceCoordinate,
                 to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
@@ -863,11 +788,16 @@ private struct DiscoverListItem: Identifiable {
             tint: .teal,
             symbol: "calendar",
             typeText: event.eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : event.eventType,
+            sourceText: event.source,
+            regionText: regionText(from: event.address),
+            themes: themes,
+            popularityScore: popularityScore(hasImage: event.imageUrl != nil, hasSourceUrl: event.sourceUrl != nil, status: event.status, themeCount: themes.count),
             searchText: [
                 event.title,
                 event.eventType,
                 event.venueName,
                 event.address,
+                event.source,
                 event.shortDescription
             ]
             .compactMap { $0 }
@@ -887,12 +817,348 @@ private struct DiscoverListItem: Identifiable {
         return Int(referenceLocation.distance(from: itemLocation).rounded())
     }
 
+    private static func normalizedThemes(_ values: [String]) -> [String] {
+        Array(Set(values.flatMap { value in
+            value
+                .split(whereSeparator: { [",", "/", "|", "\u{00B7}", " "].contains(String($0)) })
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }))
+        .sorted()
+    }
+
+    private static func regionText(from address: String) -> String {
+        let token = address
+            .split(separator: " ")
+            .first
+            .map(String.init) ?? "\u{C9C0}\u{C5ED} \u{C815}\u{BCF4} \u{C5C6}\u{C74C}"
+        if token.hasPrefix("\u{C11C}\u{C6B8}") { return "\u{C11C}\u{C6B8}" }
+        if token.hasPrefix("\u{BD80}\u{C0B0}") { return "\u{BD80}\u{C0B0}" }
+        if token.hasPrefix("\u{B300}\u{AD6C}") { return "\u{B300}\u{AD6C}" }
+        if token.hasPrefix("\u{C778}\u{CC9C}") { return "\u{C778}\u{CC9C}" }
+        if token.hasPrefix("\u{AD11}\u{C8FC}") { return "\u{AD11}\u{C8FC}" }
+        if token.hasPrefix("\u{B300}\u{C804}") { return "\u{B300}\u{C804}" }
+        if token.hasPrefix("\u{C6B8}\u{C0B0}") { return "\u{C6B8}\u{C0B0}" }
+        if token.hasPrefix("\u{C138}\u{C885}") { return "\u{C138}\u{C885}" }
+        if token.hasPrefix("\u{ACBD}\u{AE30}") { return "\u{ACBD}\u{AE30}" }
+        if token.hasPrefix("\u{AC15}\u{C6D0}") { return "\u{AC15}\u{C6D0}" }
+        if token.hasPrefix("\u{CDA9}\u{BD81}") || token.hasPrefix("\u{CDA9}\u{CCAD}\u{BD81}") { return "\u{CDA9}\u{BD81}" }
+        if token.hasPrefix("\u{CDA9}\u{B0A8}") || token.hasPrefix("\u{CDA9}\u{CCAD}\u{B0A8}") { return "\u{CDA9}\u{B0A8}" }
+        if token.hasPrefix("\u{C804}\u{BD81}") || token.hasPrefix("\u{C804}\u{B77C}\u{BD81}") { return "\u{C804}\u{BD81}" }
+        if token.hasPrefix("\u{C804}\u{B0A8}") || token.hasPrefix("\u{C804}\u{B77C}\u{B0A8}") { return "\u{C804}\u{B0A8}" }
+        if token.hasPrefix("\u{ACBD}\u{BD81}") || token.hasPrefix("\u{ACBD}\u{C0C1}\u{BD81}") { return "\u{ACBD}\u{BD81}" }
+        if token.hasPrefix("\u{ACBD}\u{B0A8}") || token.hasPrefix("\u{ACBD}\u{C0C1}\u{B0A8}") { return "\u{ACBD}\u{B0A8}" }
+        if token.hasPrefix("\u{C81C}\u{C8FC}") { return "\u{C81C}\u{C8FC}" }
+        return token
+    }
+
+    private static func popularityScore(hasImage: Bool, hasSourceUrl: Bool, status: DiscoverStatus, themeCount: Int) -> Int {
+        (status == .ongoing ? 40 : 0) + (hasImage ? 30 : 0) + (hasSourceUrl ? 20 : 0) + min(themeCount, 5) * 2
+    }
+
     var distanceText: String {
         if distanceMeters >= 1_000 {
             let kilometers = Double(distanceMeters) / 1_000
             return String(format: "%.1fkm", kilometers)
         }
         return "\(distanceMeters)m"
+    }
+
+    var isFestival: Bool {
+        if case .festival = kind { return true }
+        return false
+    }
+
+    var isEvent: Bool {
+        if case .event = kind { return true }
+        return false
+    }
+}
+
+private struct DiscoverFilterState: Equatable {
+    var showsFestivals = true
+    var showsEvents = true
+    var selectedSources: Set<String> = []
+    var selectedThemes: Set<String> = []
+    var selectedStatuses: Set<DiscoverStatus> = []
+    var selectedRegions: Set<String> = []
+
+    var hasDetailFilters: Bool {
+        !selectedSources.isEmpty || !selectedThemes.isEmpty || !selectedStatuses.isEmpty || !selectedRegions.isEmpty
+    }
+
+    func includes(_ item: DiscoverListItem) -> Bool {
+        if item.isFestival && !showsFestivals { return false }
+        if item.isEvent && !showsEvents { return false }
+        if !selectedSources.isEmpty && !selectedSources.contains(item.sourceText) { return false }
+        if !selectedThemes.isEmpty && Set(item.themes).isDisjoint(with: selectedThemes) { return false }
+        if !selectedStatuses.isEmpty && !selectedStatuses.contains(item.status) { return false }
+        if !selectedRegions.isEmpty && !selectedRegions.contains(item.regionText) { return false }
+        return true
+    }
+}
+
+private struct DiscoverListPage: View {
+    let items: [DiscoverListItem]
+    let isLoading: Bool
+    @Binding var query: String
+    @Binding var sort: DiscoverListSort
+    @Binding var filters: DiscoverFilterState
+    let onSelect: (DiscoverListItem) -> Void
+    let onShowOnMap: (DiscoverListItem.Kind) -> Void
+
+    @State private var showsFilters = false
+
+    private var filteredItems: [DiscoverListItem] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let searched = trimmedQuery.isEmpty ? items : items.filter { $0.searchText.contains(trimmedQuery) }
+        return searched
+            .filter { filters.includes($0) }
+            .sorted(by: sortItems)
+    }
+
+    private var sources: [String] {
+        uniqueValues(items.map(\.sourceText))
+    }
+
+    private var themes: [String] {
+        uniqueValues(items.flatMap(\.themes))
+    }
+
+    private var regions: [String] {
+        uniqueValues(items.map(\.regionText))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                DiscoverMascotHeader(itemCount: filteredItems.count)
+
+                HStack(spacing: 8) {
+                    discoverTypeChip(title: "\u{CD95}\u{C81C}", systemImage: "sparkles", tint: .purple, isOn: filters.showsFestivals) {
+                        filters.showsFestivals = !filters.showsFestivals
+                    }
+                    discoverTypeChip(title: "\u{C774}\u{BCA4}\u{D2B8}", systemImage: "calendar", tint: .teal, isOn: filters.showsEvents) {
+                        filters.showsEvents = !filters.showsEvents
+                    }
+                    Spacer(minLength: 0)
+                    Menu {
+                        Picker("\u{C815}\u{B82C}", selection: $sort) {
+                            ForEach(DiscoverListSort.allCases) { sort in
+                                Text(sort.title).tag(sort)
+                            }
+                        }
+                    } label: {
+                        Label(sort.title, systemImage: "arrow.up.arrow.down")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}", text: $query)
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.search)
+                    if !query.isEmpty {
+                        Button {
+                            query = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+
+            if filteredItems.isEmpty && !isLoading {
+                VStack(spacing: 10) {
+                    Image("FestivalMascot")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 132, height: 132)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{D45C}\u{C2DC}\u{D560} \u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}" : "\u{AC80}\u{C0C9} \u{ACB0}\u{ACFC}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(filteredItems) { item in
+                        DiscoverListRow(item: item) {
+                            onSelect(item)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                onShowOnMap(item.kind)
+                            } label: {
+                                Label("\u{C9C0}\u{B3C4}", systemImage: "map")
+                            }
+                            .tint(.blue)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .overlay(alignment: .top) {
+                    if isLoading {
+                        ProgressView()
+                            .padding(.top, 8)
+                    }
+                }
+            }
+        }
+        .navigationTitle("\u{D0D0}\u{C0C9}")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showsFilters = true
+                } label: {
+                    Image(systemName: filters.hasDetailFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityLabel("\u{D544}\u{D130}")
+            }
+        }
+        .sheet(isPresented: $showsFilters) {
+            DiscoverFilterSheet(filters: $filters, sources: sources, themes: themes, regions: regions)
+        }
+    }
+
+    private func discoverTypeChip(title: String, systemImage: String, tint: Color, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(isOn ? tint.opacity(0.16) : Color(.secondarySystemBackground))
+                .foregroundStyle(isOn ? tint : .secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sortItems(_ lhs: DiscoverListItem, _ rhs: DiscoverListItem) -> Bool {
+        switch sort {
+        case .distance:
+            if lhs.distanceMeters != rhs.distanceMeters {
+                return lhs.distanceMeters < rhs.distanceMeters
+            }
+            return lhs.title < rhs.title
+        case .date:
+            if lhs.startDate != rhs.startDate {
+                return lhs.startDate < rhs.startDate
+            }
+            return lhs.title < rhs.title
+        case .popularity:
+            if lhs.popularityScore != rhs.popularityScore {
+                return lhs.popularityScore > rhs.popularityScore
+            }
+            if lhs.status != rhs.status {
+                return lhs.status == .ongoing
+            }
+            return lhs.title < rhs.title
+        }
+    }
+
+    private func uniqueValues(_ values: [String]) -> [String] {
+        Array(Set(values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+    }
+}
+
+private struct DiscoverFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var filters: DiscoverFilterState
+    let sources: [String]
+    let themes: [String]
+    let regions: [String]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("\u{C8FC}\u{AD00}\u{C0AC}/\u{CD9C}\u{CC98}") {
+                    multiSelectRows(values: sources, selection: $filters.selectedSources)
+                }
+                Section("\u{CD95}\u{C81C} \u{D14C}\u{B9C8}") {
+                    multiSelectRows(values: themes, selection: $filters.selectedThemes)
+                }
+                Section("\u{B0A0}\u{C9DC}") {
+                    statusRow(status: .ongoing)
+                    statusRow(status: .upcoming)
+                }
+                Section("\u{C9C0}\u{C5ED}") {
+                    multiSelectRows(values: regions, selection: $filters.selectedRegions)
+                }
+            }
+            .navigationTitle("\u{D544}\u{D130}")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("\u{CD08}\u{AE30}\u{D654}") {
+                        filters.selectedSources = []
+                        filters.selectedThemes = []
+                        filters.selectedStatuses = []
+                        filters.selectedRegions = []
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("\u{C644}\u{B8CC}") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private func multiSelectRows(values: [String], selection: Binding<Set<String>>) -> some View {
+        if values.isEmpty {
+            Text("\u{C120}\u{D0DD}\u{D560} \u{D56D}\u{BAA9}\u{C774} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}.")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(values, id: \.self) { value in
+                Toggle(value, isOn: binding(for: value, in: selection))
+            }
+        }
+    }
+
+    private func statusRow(status: DiscoverStatus) -> some View {
+        Toggle(status.displayText, isOn: Binding(
+            get: { filters.selectedStatuses.contains(status) },
+            set: { isOn in
+                var statuses = filters.selectedStatuses
+                if isOn {
+                    statuses.insert(status)
+                } else {
+                    statuses.remove(status)
+                }
+                filters.selectedStatuses = statuses
+            }
+        ))
+    }
+
+    private func binding(for value: String, in selection: Binding<Set<String>>) -> Binding<Bool> {
+        Binding(
+            get: { selection.wrappedValue.contains(value) },
+            set: { isOn in
+                var values = selection.wrappedValue
+                if isOn {
+                    values.insert(value)
+                } else {
+                    values.remove(value)
+                }
+                selection.wrappedValue = values
+            }
+        )
     }
 }
 
@@ -1052,29 +1318,29 @@ private struct StandaloneParkingMapCard: View {
             }
 
             HStack(spacing: 8) {
-                parkingInfoPill(title: "가능", value: parkingLot.availableSpaces.map { "\($0)면" } ?? "정보 없음")
-                parkingInfoPill(title: "전체", value: parkingLot.totalCapacity.map { "\($0)면" } ?? "정보 없음")
-                parkingInfoPill(title: "요금", value: parkingLot.feeSummary ?? "정보 없음")
+                parkingInfoPill(title: "\u{AC00}\u{B2A5}", value: parkingLot.availableSpaces.map { "\($0)\u{BA74}" } ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
+                parkingInfoPill(title: "\u{C804}\u{CCB4}", value: parkingLot.totalCapacity.map { "\($0)\u{BA74}" } ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
+                parkingInfoPill(title: "\u{C694}\u{AE08}", value: parkingLot.feeSummary ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
             }
 
             HStack {
                 if parkingLot.source.hasSuffix("realtime") {
-                    StatusBadge(text: "실시간", kind: .realtime)
+                    StatusBadge(text: "\u{C2E4}\u{C2DC}\u{AC04}", kind: .realtime)
                 }
-                StatusBadge(text: parkingLot.isPublic ? "공영" : "주차장", kind: .source)
+                StatusBadge(text: parkingLot.isPublic ? "\u{ACF5}\u{C601}" : "\u{C8FC}\u{CC28}\u{C7A5}", kind: .source)
                 Spacer()
             }
 
             HStack {
-                Button("지도 열기") { onOpenMap() }
+                Button("\u{C9C0}\u{B3C4} \u{C5F4}\u{AE30}") { onOpenMap() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 if hasDestinationContext {
-                    Button("상세") { onDetail() }
+                    Button("\u{C0C1}\u{C138}") { onDetail() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
-                Button("경로 보기") { onNavigate() }
+                Button("\u{ACBD}\u{B85C} \u{BCF4}\u{AE30}") { onNavigate() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }
@@ -1101,7 +1367,6 @@ private struct StandaloneParkingMapCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
-
 private extension DiscoverStatus {
     var displayText: String {
         switch self {
@@ -1110,6 +1375,45 @@ private extension DiscoverStatus {
         case .upcoming:
             return "\u{C608}\u{C815}"
         }
+    }
+}
+
+private struct DiscoverMascotHeader: View {
+    let itemCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image("FestivalMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\u{C624}\u{B298} \u{AC00}\u{BCFC} \u{B9CC}\u{D55C} \u{D0D0}\u{C0C9}")
+                    .font(.headline)
+                Text("\u{CD95}\u{C81C}\u{C640} \u{C774}\u{BCA4}\u{D2B8} \(itemCount)\u{AC1C}\u{B97C} \u{C548}\u{B0B4}\u{D560}\u{AC8C}\u{C694}.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 1.0, green: 0.96, blue: 0.86),
+                    Color(red: 0.90, green: 0.98, blue: 0.97)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
