@@ -220,10 +220,10 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func loadInitialDiscoverLayers(viewport: MapViewport) async {
-        await loadDiscoverLayers(viewport: viewport)
+        await loadDiscoverLayers(viewport: viewport, showsError: false)
     }
 
-    func loadDiscoverLayers(viewport: MapViewport) async {
+    func loadDiscoverLayers(viewport: MapViewport, showsError: Bool = false) async {
         isLoadingDiscover = true
         errorMessage = nil
         var failedLoads = 0
@@ -257,7 +257,7 @@ final class MapHomeViewModel: ObservableObject {
             }
         }
 
-        if attemptedLoads > 0 && attemptedLoads == failedLoads {
+        if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
             errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
         }
         isLoadingDiscover = false

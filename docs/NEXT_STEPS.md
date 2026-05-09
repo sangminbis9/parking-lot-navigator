@@ -7,7 +7,7 @@ Last updated: 2026-04-29
 - Branch: `master`
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 76.
+- iOS build number is 77.
 - Worker discovery and parking reads are moving to D1-only user endpoints with cron/admin sync for external provider calls.
 
 ## Completed This Session
