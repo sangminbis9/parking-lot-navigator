@@ -49,8 +49,7 @@ struct MapHomeView: View {
             .ignoresSafeArea(edges: .top)
 
             VStack(spacing: 10) {
-                searchPanel
-                discoverLayerToggles
+                homeMapHeader
                 if !viewModel.destinations.isEmpty {
                     destinationResults
                 }
@@ -69,7 +68,7 @@ struct MapHomeView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
         }
-        .navigationTitle("\u{C8FC}\u{CC28} \u{C9C0}\u{B3C4}")
+        .navigationTitle("축제 지도")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $isDiscoverListPresented) {
             DiscoverListPage(
@@ -277,11 +276,65 @@ struct MapHomeView: View {
         let y = (0.5 - log((1 + clampedSinLatitude) / (1 - clampedSinLatitude)) / (4 * .pi)) * mapSize
         return CGPoint(x: x, y: y)
     }
+    private var homeMapHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                Image("FestivalMascotMain")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 58, height: 58)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("오늘 갈 축제를 찾아볼까요?")
+                        .font(.headline)
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text("지도에서 축제와 주차를 함께 확인해요.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("\(discoverListItems.count)")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(FestivalDesign.teal)
+                    .frame(width: 42, height: 42)
+                    .background(FestivalDesign.tealSoft)
+                    .clipShape(Circle())
+                    .accessibilityLabel("탐색 항목 \(discoverListItems.count)개")
+            }
+
+            searchPanel
+            discoverLayerToggles
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [
+                    FestivalDesign.surface.opacity(0.98),
+                    FestivalDesign.cream.opacity(0.86),
+                    FestivalDesign.tealSoft.opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 18, y: 8)
+    }
+
     private var searchPanel: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(FestivalDesign.teal)
-            TextField("\u{BAA9}\u{C801}\u{C9C0}, \u{C8FC}\u{C18C}, \u{C7A5}\u{C18C}\u{BA85}\u{C744} \u{C785}\u{B825}", text: $viewModel.query)
+            TextField("축제, 장소, 주소 검색", text: $viewModel.query)
                 .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
@@ -289,35 +342,47 @@ struct MapHomeView: View {
                     isSearchFocused = false
                     Task { await viewModel.search() }
                 }
-            if viewModel.isSearching {
-                ProgressView()
-            } else {
-                Button("\u{AC80}\u{C0C9}") {
-                    isSearchFocused = false
-                    Task { await viewModel.search() }
+
+            Button {
+                isSearchFocused = false
+                Task { await viewModel.search() }
+            } label: {
+                Group {
+                    if viewModel.isSearching {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.right")
+                            .font(.subheadline.weight(.bold))
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FestivalDesign.teal)
-                .controlSize(.small)
+                .frame(width: 34, height: 34)
+                .background(FestivalDesign.teal)
+                .foregroundStyle(.white)
+                .clipShape(Circle())
             }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isSearching)
+            .accessibilityLabel("검색")
         }
-        .padding(12)
-        .background(FestivalDesign.surface.opacity(0.94))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(FestivalDesign.surface)
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.13), radius: 10, y: 4)
     }
 
     private var discoverLayerToggles: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 layerToggle(
-                    title: "\u{C2E4}\u{C2DC}\u{AC04}",
+                    title: "주차",
                     systemImage: "parkingsign.circle.fill",
-                    tint: .green,
+                    tint: FestivalDesign.parkingBlue,
                     isOn: viewModel.showsRealtimeParkingLayer
                 ) {
                     Task {
@@ -328,17 +393,17 @@ struct MapHomeView: View {
                     }
                 }
                 layerToggle(
-                    title: "\u{CD95}\u{C81C}",
+                    title: "축제",
                     systemImage: "sparkles",
-                    tint: .purple,
+                    tint: FestivalDesign.coral,
                     isOn: viewModel.showsFestivalLayer
                 ) {
                     Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
                 }
                 layerToggle(
-                    title: "\u{C774}\u{BCA4}\u{D2B8}",
+                    title: "이벤트",
                     systemImage: "calendar",
-                    tint: .teal,
+                    tint: FestivalDesign.teal,
                     isOn: viewModel.showsEventLayer
                 ) {
                     Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
@@ -362,16 +427,17 @@ struct MapHomeView: View {
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(isOn ? tint.opacity(0.18) : FestivalDesign.surface.opacity(0.94))
-                .foregroundStyle(isOn ? tint : .secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
+                .foregroundStyle(isOn ? .white : FestivalDesign.navy.opacity(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isOn ? tint.opacity(0.35) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                        .stroke(isOn ? Color.white.opacity(0.25) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
                 )
+                .shadow(color: isOn ? tint.opacity(0.22) : .clear, radius: 7, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityValue(isOn ? "\u{CF1C}\u{C9D0}" : "\u{AEBC}\u{C9D0}")
@@ -428,14 +494,9 @@ struct MapHomeView: View {
                 Button {
                     isDiscoverListPresented = true
                 } label: {
-                    Image(systemName: "list.bullet.rectangle.portrait.fill")
-                        .font(.headline)
-                        .frame(width: 48, height: 48)
+                    MapFloatingIcon(systemName: "list.bullet.rectangle.portrait.fill", tint: FestivalDesign.teal, size: 48)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FestivalDesign.teal)
-                .clipShape(Circle())
-                .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 8, y: 3)
+                .buttonStyle(.plain)
                 .accessibilityLabel("\u{D0D0}\u{C0C9} \u{BAA9}\u{B85D} \u{C5F4}\u{AE30}")
 
                 Button {
@@ -446,14 +507,9 @@ struct MapHomeView: View {
                         locationProvider.request()
                     }
                 } label: {
-                    Image(systemName: "location.fill")
-                        .font(.headline)
-                        .frame(width: 42, height: 42)
+                    MapFloatingIcon(systemName: "location.fill", tint: FestivalDesign.parkingBlue, size: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FestivalDesign.parkingBlue)
-                .clipShape(Circle())
-                .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 8, y: 3)
+                .buttonStyle(.plain)
                 .accessibilityLabel("\u{B0B4} \u{C704}\u{CE58}\u{B85C} \u{C774}\u{B3D9}")
             }
         }
@@ -465,8 +521,60 @@ struct MapHomeView: View {
            !viewModel.parkingLots.contains(where: { $0.id == selectedParkingLot.id }) {
             standaloneParkingPanel(parkingLot: selectedParkingLot)
         } else {
-            parkingPanel
+            if viewModel.selectedDestination != nil {
+                parkingPanel
+            } else {
+                homeDiscoveryPanel
+            }
         }
+    }
+
+    private var homeDiscoveryPanel: some View {
+        HStack(spacing: 12) {
+            Image("FestivalMascotGuide")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("주변 축제부터 둘러보세요")
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    Button {
+                        isDiscoverListPresented = true
+                    } label: {
+                        Label("탐색 목록", systemImage: "sparkles")
+                    }
+                    .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.teal, isFilled: true))
+
+                    Button {
+                        if let first = discoverListItems.first {
+                            showDiscoverItemOnMap(first.kind)
+                        }
+                    } label: {
+                        Label("추천 보기", systemImage: "mappin.and.ellipse")
+                    }
+                    .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.coral, isFilled: false))
+                    .disabled(discoverListItems.isEmpty)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(FestivalDesign.surface.opacity(0.97))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 14, y: 7)
     }
 
     private func standaloneParkingPanel(parkingLot: ParkingLot) -> some View {
@@ -914,6 +1022,60 @@ private struct DiscoverFilterState: Equatable {
         if !selectedStatuses.isEmpty && !selectedStatuses.contains(item.status) { return false }
         if !selectedRegions.isEmpty && !selectedRegions.contains(item.regionText) { return false }
         return true
+    }
+}
+
+private struct MapFloatingIcon: View {
+    let systemName: String
+    let tint: Color
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.38, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(
+                ZStack {
+                    Circle()
+                        .fill(tint)
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.22), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            )
+            .overlay(
+                Circle()
+                    .stroke(.white.opacity(0.85), lineWidth: 2)
+            )
+            .shadow(color: FestivalDesign.navy.opacity(0.22), radius: 10, y: 4)
+    }
+}
+
+private struct HomeMapPillButtonStyle: ButtonStyle {
+    let tint: Color
+    let isFilled: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.bold))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(isFilled ? tint : tint.opacity(0.12))
+            .foregroundStyle(isFilled ? .white : tint)
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    .stroke(isFilled ? .white.opacity(0.2) : tint.opacity(0.25), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
     }
 }
 
