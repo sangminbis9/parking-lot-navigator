@@ -44,13 +44,21 @@ struct AppRootView: View {
             .environmentObject(router)
             .tabItem { Label("검색", systemImage: "magnifyingglass") }
 
-            RecentsView()
-                .environmentObject(router)
-                .tabItem { Label("최근", systemImage: "clock") }
-
-            FavoritesView()
-                .environmentObject(router)
-                .tabItem { Label("즐겨찾기", systemImage: "star") }
+            NavigationStack(path: $router.path) {
+                FavoritesView()
+                    .navigationDestination(for: AppRoute.self) { route in
+                        switch route {
+                        case .parkingResults(let destination):
+                            ParkingResultsView(destination: destination, apiClient: apiClient)
+                        case .parkingDetail(let destination, let parkingLot):
+                            ParkingDetailView(destination: destination, parkingLot: parkingLot)
+                        case .navigation(let destination, let parkingLot):
+                            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
+                        }
+                    }
+            }
+            .environmentObject(router)
+            .tabItem { Label("즐겨찾기", systemImage: "star") }
 
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
