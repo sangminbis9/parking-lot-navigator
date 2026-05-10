@@ -34,7 +34,7 @@ struct StatusBadge: View {
         switch kind {
         case .realtime: return FestivalDesign.teal
         case .warning: return FestivalDesign.coral
-        case .neutral: return .secondary
+        case .neutral: return FestivalDesign.secondaryText
         case .source: return FestivalDesign.parkingBlue
         }
     }
@@ -48,7 +48,7 @@ struct LoadingStateView: View {
             ProgressView()
             Text(text)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -64,7 +64,7 @@ struct FailureStateView: View {
                 .font(.headline)
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
             Button("다시 시도", action: retry)
                 .buttonStyle(.borderedProminent)

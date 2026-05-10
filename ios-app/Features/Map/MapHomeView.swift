@@ -440,7 +440,7 @@ struct MapHomeView: View {
                                     .foregroundStyle(FestivalDesign.navy)
                                 Text(destination.address)
                                     .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(FestivalDesign.secondaryText)
                                     .lineLimit(2)
                             }
                             Spacer()
@@ -530,7 +530,7 @@ struct MapHomeView: View {
                     }
                     Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
 
                     HStack(spacing: 8) {
@@ -612,7 +612,7 @@ struct MapHomeView: View {
                             .foregroundStyle(FestivalDesign.navy)
                         Text(destination.address)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FestivalDesign.secondaryText)
                             .lineLimit(1)
                     }
                     Spacer()
@@ -624,7 +624,7 @@ struct MapHomeView: View {
                 if viewModel.recommendedParkingLots.isEmpty && !viewModel.isLoadingParking {
                     Text("\u{C8FC}\u{BCC0} \u{C8FC}\u{CC28}\u{C7A5}\u{C744} \u{CC3E}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
@@ -1155,7 +1155,7 @@ private struct DiscoverListPage: View {
                             query = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(FestivalDesign.secondaryText)
                         }
                         .buttonStyle(.plain)
                     }
@@ -1184,7 +1184,7 @@ private struct DiscoverListPage: View {
                         .multilineTextAlignment(.center)
                     Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{C9C0}\u{B3C4}\u{B97C} \u{C870}\u{AE08} \u{C6C0}\u{C9C1}\u{C774}\u{AC70}\u{B098} \u{D544}\u{D130}\u{B97C} \u{C904}\u{C5EC}\u{BCF4}\u{C138}\u{C694}." : "\u{B2E4}\u{B978} \u{C774}\u{B984}\u{C774}\u{B098} \u{C7A5}\u{C18C}\u{B85C} \u{B2E4}\u{C2DC} \u{CC3E}\u{C544}\u{BCFC}\u{AC8C}\u{C694}.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                 }
@@ -1241,7 +1241,7 @@ private struct DiscoverListPage: View {
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
                 .background(isOn ? tint.opacity(0.16) : FestivalDesign.surface)
-                .foregroundStyle(isOn ? tint : .secondary)
+                .foregroundStyle(isOn ? tint : FestivalDesign.secondaryText)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
@@ -1328,7 +1328,7 @@ private struct DiscoverFilterSheet: View {
     private func multiSelectRows(values: [String], selection: Binding<Set<String>>) -> some View {
         if values.isEmpty {
             Text("\u{C120}\u{D0DD}\u{D560} \u{D56D}\u{BAA9}\u{C774} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
         } else {
             ForEach(values, id: \.self) { value in
                 Toggle(value, isOn: binding(for: value, in: selection))
@@ -1438,7 +1438,7 @@ private struct ParkingMapCard: View {
                 }
                 Text("\(parkingLot.distanceFromDestinationMeters)m")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                 Spacer()
             }
 
@@ -1452,7 +1452,7 @@ private struct ParkingMapCard: View {
                     .foregroundStyle(FestivalDesign.teal)
                 Text(recommendation.primaryReason)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
             }
             Text(parkingLot.displayStatus)
@@ -1460,7 +1460,7 @@ private struct ParkingMapCard: View {
                 .foregroundStyle(statusColor)
             Text(parkingLot.feeSummary ?? "\u{C694}\u{AE08} \u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
                 .lineLimit(1)
 
             HStack {
@@ -1495,7 +1495,7 @@ private struct ParkingMapCard: View {
         case .busy, .full:
             return FestivalDesign.coral
         case .unknown:
-            return .secondary
+            return FestivalDesign.secondaryText
         }
     }
 }
@@ -1517,7 +1517,7 @@ private struct StandaloneParkingMapCard: View {
                         .lineLimit(2)
                     Text(parkingLot.address)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
                 Spacer()
@@ -1572,7 +1572,7 @@ private struct StandaloneParkingMapCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
@@ -1612,7 +1612,7 @@ private struct DiscoverMascotHeader: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text("\u{CD95}\u{C81C}\u{C640} \u{C774}\u{BCA4}\u{D2B8} \(itemCount)\u{AC1C}\u{B97C} \u{C548}\u{B0B4}\u{D560}\u{AC8C}\u{C694}.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
@@ -1658,7 +1658,7 @@ private struct DiscoverListRow: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     Text(item.statusText)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(item.status == .ongoing ? FestivalDesign.coral : .secondary)
+                        .foregroundStyle(item.status == .ongoing ? FestivalDesign.coral : FestivalDesign.secondaryText)
                     Spacer(minLength: 0)
                     Text(item.distanceText)
                         .font(.caption.weight(.semibold))
@@ -1672,12 +1672,12 @@ private struct DiscoverListRow: View {
 
                 Text(item.subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
 
                 Text(item.dateText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
             }
 
             Button(action: onShowOnMap) {
@@ -1784,7 +1784,7 @@ private struct DiscoverDetailSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                         Text(source)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FestivalDesign.secondaryText)
                         Spacer(minLength: 0)
                     }
 
@@ -1796,7 +1796,7 @@ private struct DiscoverDetailSheet: View {
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FestivalDesign.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -1851,7 +1851,7 @@ private struct DiscoverDetailSheet: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
                 .font(.subheadline)
                 .foregroundStyle(FestivalDesign.navy)
@@ -1877,7 +1877,7 @@ private struct DiscoverDetailMascotTip: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text("\u{C9C0}\u{B3C4}\u{C5D0}\u{C11C} \u{C704}\u{CE58}\u{B97C} \u{D655}\u{C778}\u{D558}\u{ACE0}, \u{D544}\u{C694}\u{D558}\u{BA74} \u{C8FC}\u{BCC0} \u{C8FC}\u{CC28}\u{B85C} \u{C774}\u{C5B4}\u{AC00}\u{C138}\u{C694}.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

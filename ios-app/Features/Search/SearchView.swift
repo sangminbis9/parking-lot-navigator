@@ -107,7 +107,7 @@ struct SearchView: View {
             if destinations.isEmpty {
                 Text("표시할 목적지가 없습니다")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
                     .festivalCard()
@@ -142,7 +142,7 @@ private struct SearchMascotHeader: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text("장소를 고르면 근처 주차까지 이어서 안내합니다.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
             Spacer()
@@ -177,7 +177,7 @@ struct DestinationRow: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text(destination.address)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
             Spacer()

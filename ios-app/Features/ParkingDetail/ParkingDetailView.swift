@@ -44,7 +44,7 @@ struct ParkingDetailView: View {
                         .foregroundStyle(FestivalDesign.navy)
                     Text(parkingLot.address)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 Spacer()
             }
@@ -65,7 +65,7 @@ struct ParkingDetailView: View {
                 .foregroundStyle(FestivalDesign.navy)
             HStack {
                 Text("추천 점수")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                 Spacer()
                 Text("\(recommendation.scorePercent)점")
                     .font(.headline)
@@ -137,7 +137,7 @@ struct ParkingDetailView: View {
     private func detailRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)
                 .font(.subheadline.weight(.semibold))

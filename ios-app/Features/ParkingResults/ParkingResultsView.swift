@@ -67,7 +67,7 @@ struct ParkingResultsView: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text("상세 화면에서 경로와 실시간 정보를 이어서 확인할 수 있어요.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .multilineTextAlignment(.center)
             }
             .padding()
@@ -99,7 +99,7 @@ private struct ParkingGuideHeader: View {
                     .lineLimit(2)
                 Text(destination.address)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
                 StatusBadge(text: "반경 800m", kind: .source)
             }
@@ -127,7 +127,7 @@ struct ParkingLotRow: View {
                         .lineLimit(2)
                     Text(parkingLot.address)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
                 Spacer()
@@ -137,7 +137,7 @@ struct ParkingLotRow: View {
                         .foregroundStyle(FestivalDesign.teal)
                     Text("\(parkingLot.distanceFromDestinationMeters)m")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
 

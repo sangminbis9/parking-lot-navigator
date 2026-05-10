@@ -36,7 +36,7 @@ struct SettingsView: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text("축제 탐색과 주차 추천에 쓰이는 연결 정보를 확인합니다.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -78,7 +78,7 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
             Text("실시간 정보는 제공처 갱신 지연과 현장 상황에 따라 다를 수 있습니다.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
         }
         .padding(14)
         .festivalCard()
@@ -110,7 +110,7 @@ struct SettingsView: View {
                     }
                     Text("품질 점수 \(provider.qualityScore, specifier: "%.2f")")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                     if let error = provider.lastError {
                         Text(error)
                             .font(.caption)
@@ -136,7 +136,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(FestivalDesign.navy)

@@ -11,6 +11,7 @@ enum FestivalDesign {
     static let teal = Color(red: 0.17, green: 0.65, blue: 0.64)
     static let tealSoft = Color(red: 0.87, green: 0.96, blue: 0.94)
     static let navy = Color(red: 0.15, green: 0.21, blue: 0.27)
+    static let secondaryText = Color(red: 0.36, green: 0.39, blue: 0.42)
     static let parkingBlue = Color(red: 0.20, green: 0.42, blue: 0.78)
     static let parkingSoft = Color(red: 0.89, green: 0.94, blue: 1.0)
 
@@ -33,7 +34,7 @@ enum FestivalDesign {
         case .busy, .full:
             return coral
         case .unknown:
-            return .secondary
+            return secondaryText
         }
     }
 

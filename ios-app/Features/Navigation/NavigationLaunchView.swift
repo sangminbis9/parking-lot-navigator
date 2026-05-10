@@ -47,11 +47,11 @@ struct NavigationLaunchView: View {
                     .foregroundStyle(FestivalDesign.navy)
                 Text(parkingLot.address)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
                 Text("\(destination.name) 방문 전 경로를 확인해요.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FestivalDesign.secondaryText)
             }
             Spacer()
         }
@@ -111,7 +111,7 @@ struct NavigationLaunchView: View {
 
             Text("앱에서는 경로를 미리 확인하고, 실제 이동 전 안내는 선택한 지도 앱에서 시작합니다.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
         }
         .padding(14)
         .festivalCard()
@@ -120,7 +120,7 @@ struct NavigationLaunchView: View {
     private func infoRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)
                 .font(.subheadline.weight(.semibold))
