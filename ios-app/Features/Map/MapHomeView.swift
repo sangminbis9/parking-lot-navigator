@@ -279,41 +279,13 @@ struct MapHomeView: View {
         return CGPoint(x: x, y: y)
     }
     private var homeMapHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                Image("FestivalMascotMain")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 58, height: 58)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("오늘 갈 축제를 찾아볼까요?")
-                        .font(.headline)
-                        .foregroundStyle(FestivalDesign.navy)
-                    Text("지도에서 축제와 주차를 함께 확인해요.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 0)
-
-                Text("\(discoverListItems.count)")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(FestivalDesign.teal)
-                    .frame(width: 42, height: 42)
-                    .background(FestivalDesign.tealSoft)
-                    .clipShape(Circle())
-                    .accessibilityLabel("탐색 항목 \(discoverListItems.count)개")
-            }
-
+        VStack(alignment: .leading, spacing: 9) {
             searchPanel
             discoverLayerToggles
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .background(
             LinearGradient(
                 colors: [
@@ -543,9 +515,19 @@ struct MapHomeView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("주변 축제부터 둘러보세요")
-                        .font(.headline)
-                        .foregroundStyle(FestivalDesign.navy)
+                    HStack(spacing: 8) {
+                        Text("주변 축제부터 둘러보세요")
+                            .font(.headline)
+                            .foregroundStyle(FestivalDesign.navy)
+                        Text("\(discoverListItems.count)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(FestivalDesign.teal)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(FestivalDesign.tealSoft)
+                            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                            .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(discoverListItems.count)개")
+                    }
                     Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
