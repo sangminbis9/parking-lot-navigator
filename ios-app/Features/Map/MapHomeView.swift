@@ -58,7 +58,7 @@ struct MapHomeView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.top, 12)
+            .padding(.top, 8)
 
             VStack {
                 Spacer()
@@ -68,8 +68,7 @@ struct MapHomeView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
         }
-        .navigationTitle("축제 지도")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $isDiscoverListPresented) {
             DiscoverListPage(
                 items: discoverListItems,
