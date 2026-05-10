@@ -18,58 +18,47 @@ struct AppRootView: View {
 
     var body: some View {
         TabView {
-            NavigationStack(path: $router.path) {
+            routedStack {
                 MapHomeView(apiClient: apiClient)
-                    .navigationDestination(for: AppRoute.self) { route in
-                        switch route {
-                        case .parkingResults(let destination):
-                            ParkingResultsView(destination: destination, apiClient: apiClient)
-                        case .parkingDetail(let destination, let parkingLot):
-                            ParkingDetailView(destination: destination, parkingLot: parkingLot)
-                        case .navigation(let destination, let parkingLot):
-                            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
-                        }
-                    }
             }
-            .environmentObject(router)
             .tabItem { Label("지도", systemImage: "map") }
 
-            NavigationStack(path: $router.path) {
+            routedStack {
                 SearchView(apiClient: apiClient)
-                    .navigationDestination(for: AppRoute.self) { route in
-                        switch route {
-                        case .parkingResults(let destination):
-                            ParkingResultsView(destination: destination, apiClient: apiClient)
-                        case .parkingDetail(let destination, let parkingLot):
-                            ParkingDetailView(destination: destination, parkingLot: parkingLot)
-                        case .navigation(let destination, let parkingLot):
-                            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
-                        }
-                    }
             }
-            .environmentObject(router)
             .tabItem { Label("검색", systemImage: "magnifyingglass") }
 
-            NavigationStack(path: $router.path) {
+            routedStack {
                 FavoritesView()
-                    .navigationDestination(for: AppRoute.self) { route in
-                        switch route {
-                        case .parkingResults(let destination):
-                            ParkingResultsView(destination: destination, apiClient: apiClient)
-                        case .parkingDetail(let destination, let parkingLot):
-                            ParkingDetailView(destination: destination, parkingLot: parkingLot)
-                        case .navigation(let destination, let parkingLot):
-                            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
-                        }
-                    }
             }
-            .environmentObject(router)
             .tabItem { Label("즐겨찾기", systemImage: "star") }
 
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
         }
         .tint(FestivalDesign.teal)
+    }
+
+    private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        NavigationStack(path: $router.path) {
+            content()
+                .navigationDestination(for: AppRoute.self) { route in
+                    routeDestination(for: route)
+                }
+        }
+        .environmentObject(router)
+    }
+
+    @ViewBuilder
+    private func routeDestination(for route: AppRoute) -> some View {
+        switch route {
+        case .parkingResults(let destination):
+            ParkingResultsView(destination: destination, apiClient: apiClient)
+        case .parkingDetail(let destination, let parkingLot):
+            ParkingDetailView(destination: destination, parkingLot: parkingLot)
+        case .navigation(let destination, let parkingLot):
+            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
+        }
     }
 
     private static func configureTabBarAppearance() {

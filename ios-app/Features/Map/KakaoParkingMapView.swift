@@ -181,7 +181,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         @objc func authenticationFailed(_ errorCode: Int, desc: String) {
-            print("KakaoMapsSDK authentication failed: \(errorCode) \(desc)")
+            AppLogger.app.error("KakaoMapsSDK authentication failed: \(errorCode, privacy: .public) \(desc, privacy: .public)")
         }
 
         func render() {
