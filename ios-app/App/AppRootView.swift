@@ -55,6 +55,7 @@ struct AppRootView: View {
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
         }
+        .tint(FestivalDesign.teal)
     }
 }
 

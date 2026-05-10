@@ -8,7 +8,7 @@ Last updated: 2026-05-10
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
 - Product direction is festival/event discovery first, with parking/realtime as support for visiting selected destinations.
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 80 in `ios-app/project.yml`.
+- iOS build number is 81 in `ios-app/project.yml`.
 - Worker discovery and parking reads are moving to D1-only user endpoints with cron/admin sync for external provider calls.
 - Latest TestFlight publish attempt failed because the IPA still contained build number 79. App Store Connect already has build 79, so the next Codemagic build must publish build 80 or higher.
 
@@ -35,6 +35,7 @@ Implemented behavior:
 - A ticket-shaped festival mascot was split into app-ready asset catalog image sets.
 - Transparent mascot variants were added for main, icon, jump, guide, and night states.
 - The iOS map/search/discovery UI now uses the mascot direction and festival palette.
+- Search, parking results, parking detail, route preview, floating map controls, and map pin colors now share the festival design direction.
 - Discovery empty states, detail imagery, and header/tip surfaces use mascot artwork.
 - Festival/event numeric clusters were removed.
 - Festival/event layers now render actual pins.

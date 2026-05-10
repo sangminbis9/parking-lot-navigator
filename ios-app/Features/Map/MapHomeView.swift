@@ -390,11 +390,12 @@ struct MapHomeView: View {
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(FestivalDesign.coral)
                                 .padding(.top, 2)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(destination.name)
                                     .font(.headline)
+                                    .foregroundStyle(FestivalDesign.navy)
                                 Text(destination.address)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
@@ -411,9 +412,13 @@ struct MapHomeView: View {
             }
         }
         .frame(maxHeight: 230)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        .background(FestivalDesign.surface.opacity(0.96))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.12), radius: 10, y: 4)
     }
 
     private var mapControls: some View {
@@ -428,7 +433,9 @@ struct MapHomeView: View {
                         .frame(width: 48, height: 48)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(FestivalDesign.teal)
                 .clipShape(Circle())
+                .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 8, y: 3)
                 .accessibilityLabel("\u{D0D0}\u{C0C9} \u{BAA9}\u{B85D} \u{C5F4}\u{AE30}")
 
                 Button {
@@ -444,7 +451,9 @@ struct MapHomeView: View {
                         .frame(width: 42, height: 42)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(FestivalDesign.parkingBlue)
                 .clipShape(Circle())
+                .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 8, y: 3)
                 .accessibilityLabel("\u{B0B4} \u{C704}\u{CE58}\u{B85C} \u{C774}\u{B3D9}")
             }
         }
@@ -489,6 +498,7 @@ struct MapHomeView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(destination.name)
                             .font(.headline)
+                            .foregroundStyle(FestivalDesign.navy)
                         Text(destination.address)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -535,10 +545,10 @@ struct MapHomeView: View {
                 }
             }
             .padding(12)
-            .background(FestivalDesign.surface.opacity(0.96))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(FestivalDesign.surface.opacity(0.97))
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                     .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
             )
             .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 12, y: 6)
@@ -551,8 +561,8 @@ struct MapHomeView: View {
             .foregroundStyle(.white)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.88))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(FestivalDesign.coral.opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 
     private func moveMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
@@ -1257,8 +1267,8 @@ private struct ParkingMapCard: View {
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.16))
-                        .foregroundStyle(.green)
+                        .background(FestivalDesign.teal.opacity(0.16))
+                        .foregroundStyle(FestivalDesign.teal)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 Text("\(parkingLot.distanceFromDestinationMeters)m")
@@ -1269,11 +1279,12 @@ private struct ParkingMapCard: View {
 
             Text(parkingLot.name)
                 .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
                 .lineLimit(2)
             HStack(spacing: 6) {
                 Text("\u{CD94}\u{CC9C} \(recommendation.scorePercent)\u{C810}")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(FestivalDesign.teal)
                 Text(recommendation.primaryReason)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1290,31 +1301,34 @@ private struct ParkingMapCard: View {
             HStack {
                 Button("\u{C0C1}\u{C138}") { onDetail() }
                     .buttonStyle(.bordered)
+                    .tint(FestivalDesign.navy)
                     .controlSize(.small)
                 Button("\u{ACBD}\u{B85C} \u{BCF4}\u{AE30}") { onNavigate() }
                     .buttonStyle(.borderedProminent)
+                    .tint(FestivalDesign.teal)
                     .controlSize(.small)
             }
         }
         .padding(12)
         .frame(width: 250, alignment: .leading)
-        .background(isSelected ? Color.blue.opacity(0.10) : Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? FestivalDesign.tealSoft : FestivalDesign.surface)
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(isSelected ? FestivalDesign.teal : FestivalDesign.creamDeep.opacity(0.35), lineWidth: isSelected ? 1.5 : 1)
         )
+        .shadow(color: FestivalDesign.navy.opacity(0.06), radius: 7, y: 3)
         .onTapGesture(perform: onSelect)
     }
 
     private var statusColor: Color {
         switch parkingLot.congestionStatus {
         case .available:
-            return .green
+            return FestivalDesign.teal
         case .moderate:
-            return .orange
+            return FestivalDesign.lantern
         case .busy, .full:
-            return .red
+            return FestivalDesign.coral
         case .unknown:
             return .secondary
         }
@@ -1334,6 +1348,7 @@ private struct StandaloneParkingMapCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(parkingLot.name)
                         .font(.headline)
+                        .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)
                     Text(parkingLot.address)
                         .font(.caption)
@@ -1364,21 +1379,28 @@ private struct StandaloneParkingMapCard: View {
             HStack {
                 Button("\u{C9C0}\u{B3C4} \u{C5F4}\u{AE30}") { onOpenMap() }
                     .buttonStyle(.bordered)
+                    .tint(FestivalDesign.navy)
                     .controlSize(.small)
                 if hasDestinationContext {
                     Button("\u{C0C1}\u{C138}") { onDetail() }
                         .buttonStyle(.bordered)
+                        .tint(FestivalDesign.navy)
                         .controlSize(.small)
                 }
                 Button("\u{ACBD}\u{B85C} \u{BCF4}\u{AE30}") { onNavigate() }
                     .buttonStyle(.borderedProminent)
+                    .tint(FestivalDesign.teal)
                     .controlSize(.small)
             }
         }
         .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+        .background(FestivalDesign.surface.opacity(0.97))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 12, y: 6)
     }
 
     private func parkingInfoPill(title: String, value: String) -> some View {
@@ -1393,8 +1415,8 @@ private struct StandaloneParkingMapCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(FestivalDesign.cream.opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 }
 private extension DiscoverStatus {
@@ -1406,18 +1428,6 @@ private extension DiscoverStatus {
             return "\u{C608}\u{C815}"
         }
     }
-}
-
-private enum FestivalDesign {
-    static let background = Color(red: 1.0, green: 0.99, blue: 0.96)
-    static let surface = Color.white
-    static let cream = Color(red: 1.0, green: 0.95, blue: 0.78)
-    static let creamDeep = Color(red: 0.92, green: 0.86, blue: 0.74)
-    static let coral = Color(red: 1.0, green: 0.50, blue: 0.40)
-    static let lantern = Color(red: 1.0, green: 0.78, blue: 0.22)
-    static let teal = Color(red: 0.17, green: 0.65, blue: 0.64)
-    static let tealSoft = Color(red: 0.87, green: 0.96, blue: 0.94)
-    static let navy = Color(red: 0.15, green: 0.21, blue: 0.27)
 }
 
 private struct DiscoverMascotHeader: View {

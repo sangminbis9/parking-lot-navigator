@@ -272,9 +272,9 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
             manager.addPoiStyle(makeStyle(id: "current-location", image: .currentLocationPin))
             manager.addPoiStyle(makeStyle(id: "destination", image: .destinationPin))
-            manager.addPoiStyle(makeStyle(id: "parking-available", image: .parkingPin(.systemGreen)))
-            manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(.systemOrange)))
-            manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(.systemRed)))
+            manager.addPoiStyle(makeStyle(id: "parking-available", image: .parkingPin(FestivalDesign.uiTeal)))
+            manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(FestivalDesign.uiLantern)))
+            manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(FestivalDesign.uiCoral)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
             for style in DiscoverPinStyle.allCases {
                 manager.addPoiStyle(makeStyle(id: style.id, image: .discoverPin(fill: style.fill, symbol: style.symbol)))
@@ -515,11 +515,11 @@ private extension CongestionStatus {
     var clusterColor: UIColor {
         switch self {
         case .available:
-            return .systemGreen
+            return FestivalDesign.uiTeal
         case .moderate:
-            return .systemOrange
+            return FestivalDesign.uiLantern
         case .busy, .full:
-            return .systemRed
+            return FestivalDesign.uiCoral
         case .unknown:
             return .systemGray
         }
@@ -569,27 +569,27 @@ private enum DiscoverPinStyle: CaseIterable {
     var fill: UIColor {
         switch self {
         case .festivalDefault:
-            return .systemPurple
+            return FestivalDesign.uiCoral
         case .festivalNight:
-            return .systemIndigo
+            return FestivalDesign.uiNavy
         case .festivalNature:
-            return .systemGreen
+            return FestivalDesign.uiTeal
         case .festivalFood:
-            return .systemOrange
+            return FestivalDesign.uiLantern
         case .festivalPerformance:
-            return .systemPink
+            return UIColor(red: 0.93, green: 0.33, blue: 0.54, alpha: 1)
         case .eventDefault:
-            return .systemTeal
+            return FestivalDesign.uiTeal
         case .eventExhibition:
-            return .systemMint
+            return UIColor(red: 0.40, green: 0.70, blue: 0.82, alpha: 1)
         case .eventPerformance:
-            return .systemRed
+            return FestivalDesign.uiCoral
         case .eventEducation:
-            return .systemBlue
+            return FestivalDesign.uiParkingBlue
         case .eventMarket:
-            return .systemBrown
+            return UIColor(red: 0.66, green: 0.45, blue: 0.24, alpha: 1)
         case .eventSports:
-            return .systemCyan
+            return UIColor(red: 0.12, green: 0.55, blue: 0.74, alpha: 1)
         }
     }
 
@@ -702,11 +702,11 @@ private extension UIImage {
     static var mapPinScale: CGFloat { 0.5 }
 
     static var currentLocationPin: UIImage {
-        circularPin(fill: .systemBlue, symbol: nil, size: 28, scale: mapPinScale)
+        circularPin(fill: FestivalDesign.uiParkingBlue, symbol: nil, size: 28, scale: mapPinScale)
     }
 
     static var destinationPin: UIImage {
-        circularPin(fill: .systemRed, symbol: "flag.fill", size: 38, scale: mapPinScale)
+        circularPin(fill: FestivalDesign.uiCoral, symbol: "flag.fill", size: 38, scale: mapPinScale)
     }
 
     static func parkingPin(_ color: UIColor) -> UIImage {

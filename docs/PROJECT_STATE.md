@@ -96,7 +96,7 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest local work: apply festival mascot direction to iOS map/discovery UI and bump iOS build number to 80.
+- Latest local work: apply festival mascot direction across iOS search, parking, navigation, map overlays, and bump iOS build number to 81.
 - Latest work: remove accommodation discovery/display paths and keep discovery focused on event/festival layers.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`

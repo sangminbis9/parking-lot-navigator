@@ -23,19 +23,19 @@ struct StatusBadge: View {
 
     private var background: Color {
         switch kind {
-        case .realtime: return .green.opacity(0.16)
-        case .warning: return .red.opacity(0.12)
-        case .neutral: return .gray.opacity(0.14)
-        case .source: return .blue.opacity(0.12)
+        case .realtime: return FestivalDesign.teal.opacity(0.16)
+        case .warning: return FestivalDesign.coral.opacity(0.14)
+        case .neutral: return FestivalDesign.cream.opacity(0.45)
+        case .source: return FestivalDesign.parkingSoft
         }
     }
 
     private var foreground: Color {
         switch kind {
-        case .realtime: return .green
-        case .warning: return .red
+        case .realtime: return FestivalDesign.teal
+        case .warning: return FestivalDesign.coral
         case .neutral: return .secondary
-        case .source: return .blue
+        case .source: return FestivalDesign.parkingBlue
         }
     }
 }

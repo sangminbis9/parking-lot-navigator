@@ -10,53 +10,123 @@ struct NavigationLaunchView: View {
     @State private var estimatedTravelTimeSeconds: TimeInterval?
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(parkingLot.name)
-                        .font(.title2.weight(.bold))
-                    Text(parkingLot.address)
-                        .foregroundStyle(.secondary)
-                    Text("목적지 \(destination.name) 주변 선택 주차장까지의 경로 미리보기입니다.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                headerCard
 
-            Section("경로 미리보기") {
                 NavigationRoutePreview(destination: destination, parkingLot: parkingLot)
                     .frame(height: 260)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                            .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+                    )
 
-                LabeledContent("직선 거리", value: "\(parkingLot.distanceFromDestinationMeters)m")
-                if let estimatedDistanceMeters {
-                    LabeledContent("예상 주행 거리", value: formattedDistance(estimatedDistanceMeters))
-                }
-                if let estimatedTravelTimeSeconds {
-                    LabeledContent("예상 시간", value: formattedDuration(estimatedTravelTimeSeconds))
-                }
+                routeInfoCard
+                parkingInfoCard
+                actionCard
             }
-
-            Section("주차 정보") {
-                LabeledContent("실시간 상태", value: parkingLot.displayStatus)
-                LabeledContent("가능 대수", value: parkingLot.availableSpaces.map(String.init) ?? "정보 없음")
-                LabeledContent("요금", value: parkingLot.feeSummary ?? "정보 없음")
-            }
-
-            Section {
-                Button("Apple 지도에서 열기") {
-                    openInAppleMaps()
-                }
-                Button("카카오내비로 열기") {
-                    openKakaoNavi()
-                }
-                .buttonStyle(.borderedProminent)
-            } footer: {
-                Text("앱 안에서는 경로를 미리 확인하고, 실제 턴바이턴 운전 안내는 외부 내비 앱으로 시작합니다.")
-            }
+            .padding(16)
         }
+        .background(FestivalDesign.background.ignoresSafeArea())
         .navigationTitle("경로 미리보기")
         .task { await loadRouteEstimate() }
+    }
+
+    private var headerCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image("FestivalMascotJump")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 58, height: 58)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(parkingLot.name)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Text(parkingLot.address)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Text("\(destination.name) 방문 전 경로를 확인해요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private var routeInfoCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("경로 정보")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            infoRow("직선 거리", "\(parkingLot.distanceFromDestinationMeters)m")
+            if let estimatedDistanceMeters {
+                infoRow("예상 주행 거리", formattedDistance(estimatedDistanceMeters))
+            }
+            if let estimatedTravelTimeSeconds {
+                infoRow("예상 시간", formattedDuration(estimatedTravelTimeSeconds))
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private var parkingInfoCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("주차 정보")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            infoRow("실시간 상태", parkingLot.displayStatus)
+            infoRow("가능 대수", parkingLot.availableSpaces.map(String.init) ?? "정보 없음")
+            infoRow("요금", parkingLot.feeSummary ?? "정보 없음")
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private var actionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                openInAppleMaps()
+            } label: {
+                Label("Apple 지도에서 열기", systemImage: "map")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(FestivalDesign.navy)
+
+            Button {
+                openKakaoNavi()
+            } label: {
+                Label("카카오내비로 열기", systemImage: "location.north.line.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(FestivalDesign.teal)
+
+            Text("앱에서는 경로를 미리 확인하고, 실제 이동 전 안내는 선택한 지도 앱에서 시작합니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(FestivalDesign.navy)
+                .multilineTextAlignment(.trailing)
+        }
     }
 
     private func loadRouteEstimate() async {
@@ -145,8 +215,8 @@ private struct NavigationRoutePreview: View {
 
     private var pins: [PreviewPin] {
         [
-            PreviewPin(id: "destination", coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), tint: .red),
-            PreviewPin(id: "parking", coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng), tint: .blue)
+            PreviewPin(id: "destination", coordinate: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), tint: FestivalDesign.coral),
+            PreviewPin(id: "parking", coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng), tint: FestivalDesign.parkingBlue)
         ]
     }
 }
@@ -173,7 +243,7 @@ private struct PreviewPinView: View {
                     Circle()
                         .stroke(.white, lineWidth: 1.25)
                 )
-                .shadow(color: .black.opacity(0.26), radius: 2, y: 1)
+                .shadow(color: FestivalDesign.navy.opacity(0.24), radius: 2, y: 1)
 
             Triangle()
                 .fill(pin.tint)
