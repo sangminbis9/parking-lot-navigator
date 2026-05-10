@@ -1,18 +1,20 @@
 # Next Steps
 
-Last updated: 2026-04-29
+Last updated: 2026-05-10
 
 ## Current Status
 
 - Branch: `master`
 - Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
+- Product direction is festival/event discovery first, with parking/realtime as support for visiting selected destinations.
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 77.
+- iOS build number is 80 in `ios-app/project.yml`.
 - Worker discovery and parking reads are moving to D1-only user endpoints with cron/admin sync for external provider calls.
+- Latest TestFlight publish attempt failed because the IPA still contained build number 79. App Store Connect already has build 79, so the next Codemagic build must publish build 80 or higher.
 
 ## Completed This Session
 
-Festival/event map display and list refinement on the iOS Kakao map.
+Festival/event map display, mascot branding, and list/detail refinement on the iOS Kakao map.
 
 Touched files:
 
@@ -29,6 +31,11 @@ Touched files:
 
 Implemented behavior:
 
+- The app direction was updated from parking-first to festival/event-first.
+- A ticket-shaped festival mascot was split into app-ready asset catalog image sets.
+- Transparent mascot variants were added for main, icon, jump, guide, and night states.
+- The iOS map/search/discovery UI now uses the mascot direction and festival palette.
+- Discovery empty states, detail imagery, and header/tip surfaces use mascot artwork.
 - Festival/event numeric clusters were removed.
 - Festival/event layers now render actual pins.
 - Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out.
@@ -38,7 +45,7 @@ Implemented behavior:
 - Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out.
 - Overlapping realtime parking pins separate with small offsets after zooming in.
 - The iOS app loads realtime parking lots directly and no longer requests realtime cluster data for map rendering.
-- The map bottom panel now has `Parking` and `Event/Festival` tabs.
+- The map and discovery surfaces prioritize event/festival exploration while keeping parking recommendations available around a selected destination.
 - The event/festival tab shows a unified list with thumbnail images, type/status badges, venue/address text, date, and distance.
 - The event/festival list supports local search and distance/date/name sorting.
 - Event/festival list distance values and distance sorting use the user's current location when available.
@@ -47,6 +54,7 @@ Implemented behavior:
 
 Validation:
 
+- Before the next Codemagic/TestFlight run, confirm the publish log says `Version code: 80` or higher.
 - Run `git diff --check` before committing.
 - Run local iOS tests/build if Xcode tooling is available; otherwise rely on CI/Codemagic for full iOS validation.
 - GitHub Actions now includes `iOS Simulator Build`, which runs backend tests, generates the Xcode project, builds the iOS app for simulator, and runs iOS unit tests.

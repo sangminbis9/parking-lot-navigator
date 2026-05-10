@@ -280,7 +280,7 @@ struct MapHomeView: View {
     private var searchPanel: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FestivalDesign.teal)
             TextField("\u{BAA9}\u{C801}\u{C9C0}, \u{C8FC}\u{C18C}, \u{C7A5}\u{C18C}\u{BA85}\u{C744} \u{C785}\u{B825}", text: $viewModel.query)
                 .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
@@ -297,13 +297,18 @@ struct MapHomeView: View {
                     Task { await viewModel.search() }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(FestivalDesign.teal)
                 .controlSize(.small)
             }
         }
         .padding(12)
-        .background(.regularMaterial)
+        .background(FestivalDesign.surface.opacity(0.94))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.13), radius: 10, y: 4)
     }
 
     private var discoverLayerToggles: some View {
@@ -360,12 +365,12 @@ struct MapHomeView: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(isOn ? tint.opacity(0.18) : Color(.secondarySystemBackground))
+                .background(isOn ? tint.opacity(0.18) : FestivalDesign.surface.opacity(0.94))
                 .foregroundStyle(isOn ? tint : .secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isOn ? tint.opacity(0.35) : .clear, lineWidth: 1)
+                        .stroke(isOn ? tint.opacity(0.35) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -530,9 +535,13 @@ struct MapHomeView: View {
                 }
             }
             .padding(12)
-            .background(.regularMaterial)
+            .background(FestivalDesign.surface.opacity(0.96))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 12, y: 6)
         }
     }
 
@@ -929,6 +938,10 @@ private struct DiscoverListPage: View {
         uniqueValues(items.map(\.regionText))
     }
 
+    private var emptyStateMascotName: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "FestivalMascotNight" : "FestivalMascotJump"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
@@ -953,11 +966,12 @@ private struct DiscoverListPage: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
+                    .tint(FestivalDesign.teal)
                 }
 
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FestivalDesign.teal)
                     TextField("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}", text: $query)
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
@@ -973,41 +987,53 @@ private struct DiscoverListPage: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
-                .background(Color(.secondarySystemBackground))
+                .background(FestivalDesign.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+                )
             }
             .padding(14)
-            .background(Color(.systemBackground))
+            .background(FestivalDesign.background)
 
             if filteredItems.isEmpty && !isLoading {
-                VStack(spacing: 10) {
-                    Image("FestivalMascot")
+                VStack(spacing: 12) {
+                    Image(emptyStateMascotName)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 132, height: 132)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .frame(width: 150, height: 150)
                     Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{D45C}\u{C2DC}\u{D560} \u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}" : "\u{AC80}\u{C0C9} \u{ACB0}\u{ACFC}\u{AC00} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}")
-                        .font(.subheadline)
+                        .font(.headline)
+                        .foregroundStyle(FestivalDesign.navy)
+                        .multilineTextAlignment(.center)
+                    Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "\u{C9C0}\u{B3C4}\u{B97C} \u{C870}\u{AE08} \u{C6C0}\u{C9C1}\u{C774}\u{AC70}\u{B098} \u{D544}\u{D130}\u{B97C} \u{C904}\u{C5EC}\u{BCF4}\u{C138}\u{C694}." : "\u{B2E4}\u{B978} \u{C774}\u{B984}\u{C774}\u{B098} \u{C7A5}\u{C18C}\u{B85C} \u{B2E4}\u{C2DC} \u{CC3E}\u{C544}\u{BCFC}\u{AC8C}\u{C694}.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(FestivalDesign.background)
             } else {
-                List {
-                    ForEach(filteredItems) { item in
-                        DiscoverListRow(item: item) {
-                            onSelect(item)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                onShowOnMap(item.kind)
-                            } label: {
-                                Label("\u{C9C0}\u{B3C4}", systemImage: "map")
-                            }
-                            .tint(.blue)
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(filteredItems) { item in
+                            DiscoverListRow(
+                                item: item,
+                                onSelect: {
+                                    onSelect(item)
+                                },
+                                onShowOnMap: {
+                                    onShowOnMap(item.kind)
+                                }
+                            )
                         }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
                 }
-                .listStyle(.plain)
+                .background(FestivalDesign.background)
                 .overlay(alignment: .top) {
                     if isLoading {
                         ProgressView()
@@ -1039,9 +1065,13 @@ private struct DiscoverListPage: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 8)
-                .background(isOn ? tint.opacity(0.16) : Color(.secondarySystemBackground))
+                .background(isOn ? tint.opacity(0.16) : FestivalDesign.surface)
                 .foregroundStyle(isOn ? tint : .secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isOn ? tint.opacity(0.28) : FestivalDesign.creamDeep.opacity(0.42), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
     }
@@ -1378,21 +1408,33 @@ private extension DiscoverStatus {
     }
 }
 
+private enum FestivalDesign {
+    static let background = Color(red: 1.0, green: 0.99, blue: 0.96)
+    static let surface = Color.white
+    static let cream = Color(red: 1.0, green: 0.95, blue: 0.78)
+    static let creamDeep = Color(red: 0.92, green: 0.86, blue: 0.74)
+    static let coral = Color(red: 1.0, green: 0.50, blue: 0.40)
+    static let lantern = Color(red: 1.0, green: 0.78, blue: 0.22)
+    static let teal = Color(red: 0.17, green: 0.65, blue: 0.64)
+    static let tealSoft = Color(red: 0.87, green: 0.96, blue: 0.94)
+    static let navy = Color(red: 0.15, green: 0.21, blue: 0.27)
+}
+
 private struct DiscoverMascotHeader: View {
     let itemCount: Int
 
     var body: some View {
         HStack(spacing: 12) {
-            Image("FestivalMascot")
+            Image("FestivalMascotGuide")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 58, height: 58)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("\u{C624}\u{B298} \u{AC00}\u{BCFC} \u{B9CC}\u{D55C} \u{D0D0}\u{C0C9}")
                     .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
                 Text("\u{CD95}\u{C81C}\u{C640} \u{C774}\u{BCA4}\u{D2B8} \(itemCount)\u{AC1C}\u{B97C} \u{C548}\u{B0B4}\u{D560}\u{AC8C}\u{C694}.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1406,64 +1448,85 @@ private struct DiscoverMascotHeader: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(red: 1.0, green: 0.96, blue: 0.86),
-                    Color(red: 0.90, green: 0.98, blue: 0.97)
+                    FestivalDesign.cream.opacity(0.92),
+                    FestivalDesign.tealSoft
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+        )
     }
 }
 
 private struct DiscoverListRow: View {
     let item: DiscoverListItem
     let onSelect: () -> Void
+    let onShowOnMap: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(alignment: .top, spacing: 12) {
-                DiscoverThumbnail(imageUrl: item.imageUrl, tint: item.tint, symbol: item.symbol, size: 72)
+        HStack(alignment: .top, spacing: 12) {
+            DiscoverThumbnail(imageUrl: item.imageUrl, tint: item.tint, symbol: item.symbol, size: 76)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(item.typeText)
-                            .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(item.tint.opacity(0.14))
-                            .foregroundStyle(item.tint)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                        Text(item.statusText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                        Text(item.distanceText)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-
-                    Text(item.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Text(item.dateText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(item.typeText)
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(item.tint.opacity(0.14))
+                        .foregroundStyle(item.tint)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    Text(item.statusText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(item.status == .ongoing ? FestivalDesign.coral : .secondary)
+                    Spacer(minLength: 0)
+                    Text(item.distanceText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FestivalDesign.teal)
                 }
+
+                Text(item.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
+
+                Text(item.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(item.dateText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
+
+            Button(action: onShowOnMap) {
+                Image(systemName: "map")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 32, height: 32)
+                    .background(FestivalDesign.teal.opacity(0.12))
+                    .foregroundStyle(FestivalDesign.teal)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\u{C9C0}\u{B3C4}\u{C5D0}\u{C11C} \u{BCF4}\u{AE30}")
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(FestivalDesign.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(FestivalDesign.creamDeep.opacity(0.42), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.06), radius: 8, y: 3)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 }
 
@@ -1495,7 +1558,13 @@ private struct DiscoverThumbnail: View {
             }
         }
         .frame(width: size, height: size)
-        .background(tint.opacity(0.12))
+        .background(
+            LinearGradient(
+                colors: [tint.opacity(0.15), FestivalDesign.cream.opacity(0.45)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -1530,16 +1599,23 @@ private struct DiscoverDetailSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     DiscoverDetailImage(imageUrl: imageUrl, tint: tint)
 
-                    Text(statusText)
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(tint.opacity(0.14))
-                        .foregroundStyle(tint)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    HStack(spacing: 8) {
+                        Text(statusText)
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(tint.opacity(0.14))
+                            .foregroundStyle(tint)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        Text(source)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
 
                     Text(title)
                         .font(.title3.weight(.bold))
+                        .foregroundStyle(FestivalDesign.navy)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let subtitle, !subtitle.isEmpty {
@@ -1548,6 +1624,8 @@ private struct DiscoverDetailSheet: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    DiscoverDetailMascotTip(tint: tint)
 
                     VStack(alignment: .leading, spacing: 8) {
                         detailRow(label: "\u{C77C}\u{C815}", value: dateText)
@@ -1570,6 +1648,7 @@ private struct DiscoverDetailSheet: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(FestivalDesign.teal)
 
                         if let sourceUrl, let url = URL(string: sourceUrl) {
                             Button {
@@ -1579,6 +1658,7 @@ private struct DiscoverDetailSheet: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .tint(FestivalDesign.navy)
                         }
                     }
 
@@ -1599,8 +1679,40 @@ private struct DiscoverDetailSheet: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.subheadline)
+                .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+private struct DiscoverDetailMascotTip: View {
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image("FestivalMascotGuide")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 62, height: 62)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\u{D589}\u{C0AC}\u{C7A5} \u{B3C4}\u{CC29}\u{AE4C}\u{C9C0} \u{AC19}\u{C774} \u{BCFC}\u{AC8C}\u{C694}")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("\u{C9C0}\u{B3C4}\u{C5D0}\u{C11C} \u{C704}\u{CE58}\u{B97C} \u{D655}\u{C778}\u{D558}\u{ACE0}, \u{D544}\u{C694}\u{D558}\u{BA74} \u{C8FC}\u{BCC0} \u{C8FC}\u{CC28}\u{B85C} \u{C774}\u{C5B4}\u{AC00}\u{C138}\u{C694}.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 
@@ -1638,16 +1750,24 @@ private struct DiscoverDetailImage: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 180)
-        .background(tint.opacity(0.12))
+        .background(
+            LinearGradient(
+                colors: [tint.opacity(0.14), FestivalDesign.cream.opacity(0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var placeholder: some View {
         ZStack {
-            tint.opacity(0.12)
-            Image(systemName: "photo")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(tint)
+            tint.opacity(0.08)
+            Image("FestivalMascotIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 126, height: 126)
+                .accessibilityHidden(true)
         }
     }
 }

@@ -1,15 +1,25 @@
 # Decisions
 
-Last updated: 2026-04-29
+Last updated: 2026-05-10
 
 ## Product Direction
 
-- Expand from Seoul-centered parking recommendations to nationwide parking recommendations.
-- Preserve the existing core flow: destination search -> nearby parking recommendations.
-- Expand the app toward a destination companion flow: choose a place, then compare nearby parking and event/festival options without leaving the map context.
+- Shift the main app experience from realtime parking to local festival/event discovery.
+- Keep parking recommendations as a practical support flow after the user chooses a destination, event, or festival.
+- Preserve the existing parking flow as a secondary path: destination search -> nearby parking recommendations.
+- Continue expanding from Seoul-centered parking recommendations to nationwide parking recommendations.
+- Build the app as a destination companion: choose an event/festival/place, then compare nearby parking without leaving the map context.
 - Keep realtime parking as a map toggle, off by default.
 - Use Cloudflare Worker as production backend.
 - Use Cloudflare D1 for normalized parking data and realtime cache.
+
+## Brand/UI Direction
+
+- Use the ticket-shaped festival mascot as the recognizable app character.
+- Prefer mascot-led empty states, guide/tip surfaces, detail placeholders, and friendly discovery moments.
+- The mascot can change pose/form by context, but should remain clearly the same character.
+- Figma is the design reference source, but implementation should keep SwiftUI structure maintainable and app-native.
+- The visual tone should feel like a festival/event guide rather than a parking utility.
 
 ## Data Strategy
 
@@ -50,6 +60,8 @@ Last updated: 2026-04-29
 ## Build/Release
 
 - When committing changes, bump iOS build number by one.
+- Before TestFlight upload, confirm Codemagic's publish log shows a `Version code` higher than the previous App Store Connect build.
+- A publish attempt on 2026-05-09 failed because the uploaded IPA still had build number 79 while App Store Connect already had build 79.
 - Codemagic/TestFlight is used for iOS build validation.
 - GitHub Actions also runs an iOS simulator validation workflow on pushes and pull requests.
 - Backend tests run in CI/Codemagic.
