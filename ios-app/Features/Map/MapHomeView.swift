@@ -24,6 +24,7 @@ struct MapHomeView: View {
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var isDiscoverListPresented = false
+    @State private var isHomeDiscoveryPanelDismissed = false
     @State private var discoverListQuery = ""
     @State private var discoverListSort: DiscoverListSort = .distance
     @State private var discoverFilters = DiscoverFilterState()
@@ -50,15 +51,17 @@ struct MapHomeView: View {
 
             VStack(spacing: 10) {
                 homeMapHeader
-                if !viewModel.destinations.isEmpty {
-                    destinationResults
+                VStack(spacing: 10) {
+                    if !viewModel.destinations.isEmpty {
+                        destinationResults
+                    }
+                    if let errorMessage = viewModel.errorMessage {
+                        inlineError(errorMessage)
+                    }
                 }
-                if let errorMessage = viewModel.errorMessage {
-                    inlineError(errorMessage)
-                }
+                .padding(.horizontal, 14)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
+            .padding(.top, 0)
 
             VStack {
                 Spacer()
@@ -308,7 +311,9 @@ struct MapHomeView: View {
             searchPanel
             discoverLayerToggles
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
         .background(
             LinearGradient(
                 colors: [
@@ -320,12 +325,12 @@ struct MapHomeView: View {
                 endPoint: .bottomTrailing
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
-        )
-        .shadow(color: FestivalDesign.navy.opacity(0.16), radius: 18, y: 8)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(FestivalDesign.creamDeep.opacity(0.45))
+                .frame(height: 1)
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.12), radius: 12, y: 5)
     }
 
     private var searchPanel: some View {
@@ -522,51 +527,68 @@ struct MapHomeView: View {
         } else {
             if viewModel.selectedDestination != nil {
                 parkingPanel
-            } else {
+            } else if !isHomeDiscoveryPanelDismissed {
                 homeDiscoveryPanel
             }
         }
     }
 
     private var homeDiscoveryPanel: some View {
-        HStack(spacing: 12) {
-            Image("FestivalMascotGuide")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 64, height: 64)
-                .accessibilityHidden(true)
+        ZStack(alignment: .topTrailing) {
+            HStack(spacing: 12) {
+                Image("FestivalMascotGuide")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 64, height: 64)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("주변 축제부터 둘러보세요")
-                    .font(.headline)
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("주변 축제부터 둘러보세요")
+                        .font(.headline)
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
 
-                HStack(spacing: 8) {
-                    Button {
-                        isDiscoverListPresented = true
-                    } label: {
-                        Label("탐색 목록", systemImage: "sparkles")
-                    }
-                    .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.teal, isFilled: true))
-
-                    Button {
-                        if let first = discoverListItems.first {
-                            showDiscoverItemOnMap(first.kind)
+                    HStack(spacing: 8) {
+                        Button {
+                            isDiscoverListPresented = true
+                        } label: {
+                            Label("탐색 목록", systemImage: "sparkles")
                         }
-                    } label: {
-                        Label("추천 보기", systemImage: "mappin.and.ellipse")
+                        .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.teal, isFilled: true))
+
+                        Button {
+                            if let first = discoverListItems.first {
+                                showDiscoverItemOnMap(first.kind)
+                            }
+                        } label: {
+                            Label("추천 보기", systemImage: "mappin.and.ellipse")
+                        }
+                        .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.coral, isFilled: false))
+                        .disabled(discoverListItems.isEmpty)
                     }
-                    .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.coral, isFilled: false))
-                    .disabled(discoverListItems.isEmpty)
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(14)
+            .padding(.trailing, 20)
+
+            Button {
+                isHomeDiscoveryPanelDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(FestivalDesign.navy.opacity(0.62))
+                    .frame(width: 28, height: 28)
+                    .background(FestivalDesign.cream.opacity(0.55))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .accessibilityLabel("안내 카드 닫기")
         }
-        .padding(14)
         .background(FestivalDesign.surface.opacity(0.97))
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
         .overlay(

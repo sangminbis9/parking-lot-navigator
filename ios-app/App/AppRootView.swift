@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AppRoute: Hashable {
     case parkingResults(Destination)
@@ -9,6 +10,11 @@ enum AppRoute: Hashable {
 struct AppRootView: View {
     let apiClient: APIClientProtocol
     @StateObject private var router = Router()
+
+    init(apiClient: APIClientProtocol) {
+        self.apiClient = apiClient
+        Self.configureTabBarAppearance()
+    }
 
     var body: some View {
         TabView {
@@ -64,6 +70,28 @@ struct AppRootView: View {
                 .tabItem { Label("설정", systemImage: "gear") }
         }
         .tint(FestivalDesign.teal)
+    }
+
+    private static func configureTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(FestivalDesign.surface)
+        appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
+
+        let selectedColor = UIColor(FestivalDesign.teal)
+        let normalColor = UIColor(FestivalDesign.navy.opacity(0.56))
+        let selectedAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: selectedColor]
+        let normalAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: normalColor]
+
+        [appearance.stackedLayoutAppearance, appearance.inlineLayoutAppearance, appearance.compactInlineLayoutAppearance].forEach { item in
+            item.selected.iconColor = selectedColor
+            item.selected.titleTextAttributes = selectedAttributes
+            item.normal.iconColor = normalColor
+            item.normal.titleTextAttributes = normalAttributes
+        }
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 }
 
