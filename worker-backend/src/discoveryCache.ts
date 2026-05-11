@@ -264,7 +264,10 @@ async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt
         source_url, image_url, tags_json, amenities_json, offers_json, raw_payload,
         data_updated_at, first_seen_at, last_seen_at, synced_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(type, source, source_item_id) DO UPDATE SET
+      ON CONFLICT(id) DO UPDATE SET
+        type = excluded.type,
+        source = excluded.source,
+        source_item_id = excluded.source_item_id,
         title = excluded.title,
         subtitle = excluded.subtitle,
         category_text = excluded.category_text,
