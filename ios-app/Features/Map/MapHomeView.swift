@@ -1288,82 +1288,222 @@ private struct DiscoverFilterSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("\u{C8FC}\u{AD00}\u{C0AC}/\u{CD9C}\u{CC98}") {
-                    multiSelectRows(values: sources, selection: $filters.selectedSources)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    filterHero
+                    filterSection(title: "주관사/출처", values: sources, selection: $filters.selectedSources)
+                    filterSection(title: "축제 테마", values: themes, selection: $filters.selectedThemes)
+                    statusSection
+                    filterSection(title: "지역", values: regions, selection: $filters.selectedRegions)
                 }
-                Section("\u{CD95}\u{C81C} \u{D14C}\u{B9C8}") {
-                    multiSelectRows(values: themes, selection: $filters.selectedThemes)
-                }
-                Section("\u{B0A0}\u{C9DC}") {
-                    statusRow(status: .ongoing)
-                    statusRow(status: .upcoming)
-                }
-                Section("\u{C9C0}\u{C5ED}") {
-                    multiSelectRows(values: regions, selection: $filters.selectedRegions)
-                }
+                .padding(16)
             }
+            .background(FestivalDesign.background.ignoresSafeArea())
             .navigationTitle("\u{D544}\u{D130}")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("\u{CD08}\u{AE30}\u{D654}") {
-                        filters.selectedSources = []
-                        filters.selectedThemes = []
-                        filters.selectedStatuses = []
-                        filters.selectedRegions = []
+                        resetFilters()
                     }
+                    .foregroundStyle(FestivalDesign.coral)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("\u{C644}\u{B8CC}") {
                         dismiss()
                     }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(FestivalDesign.teal)
                 }
             }
         }
         .presentationDetents([.medium, .large])
     }
 
-    @ViewBuilder
-    private func multiSelectRows(values: [String], selection: Binding<Set<String>>) -> some View {
-        if values.isEmpty {
-            Text("\u{C120}\u{D0DD}\u{D560} \u{D56D}\u{BAA9}\u{C774} \u{C5C6}\u{C2B5}\u{B2C8}\u{B2E4}.")
-                .foregroundStyle(FestivalDesign.secondaryText)
-        } else {
-            ForEach(values, id: \.self) { value in
-                Toggle(value, isOn: binding(for: value, in: selection))
+    private var filterHero: some View {
+        HStack(spacing: 12) {
+            Image("FestivalMascotIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 58, height: 58)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("보고 싶은 축제만 골라볼게요")
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("출처, 테마, 날짜, 지역을 조합해서 지도와 목록을 좁힙니다.")
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [FestivalDesign.cream.opacity(0.9), FestivalDesign.tealSoft],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+        )
+    }
+
+    private func filterSection(title: String, values: [String], selection: Binding<Set<String>>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+
+            if values.isEmpty {
+                Text("선택할 항목이 없습니다.")
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(FestivalDesign.cream.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            } else {
+                FlowLayout(spacing: 8, rowSpacing: 8) {
+                    ForEach(values, id: \.self) { value in
+                        FilterChip(
+                            title: value,
+                            isSelected: selection.wrappedValue.contains(value),
+                            tint: FestivalDesign.teal
+                        ) {
+                            toggle(value, in: selection)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("날짜")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+
+            HStack(spacing: 8) {
+                statusChip(status: .ongoing, tint: FestivalDesign.coral)
+                statusChip(status: .upcoming, tint: FestivalDesign.teal)
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private func statusChip(status: DiscoverStatus, tint: Color) -> some View {
+        FilterChip(
+            title: status.displayText,
+            isSelected: filters.selectedStatuses.contains(status),
+            tint: tint
+        ) {
+            if filters.selectedStatuses.contains(status) {
+                filters.selectedStatuses.remove(status)
+            } else {
+                filters.selectedStatuses.insert(status)
             }
         }
     }
 
-    private func statusRow(status: DiscoverStatus) -> some View {
-        Toggle(status.displayText, isOn: Binding(
-            get: { filters.selectedStatuses.contains(status) },
-            set: { isOn in
-                var statuses = filters.selectedStatuses
-                if isOn {
-                    statuses.insert(status)
-                } else {
-                    statuses.remove(status)
-                }
-                filters.selectedStatuses = statuses
-            }
-        ))
+    private func toggle(_ value: String, in selection: Binding<Set<String>>) {
+        var values = selection.wrappedValue
+        if values.contains(value) {
+            values.remove(value)
+        } else {
+            values.insert(value)
+        }
+        selection.wrappedValue = values
     }
 
-    private func binding(for value: String, in selection: Binding<Set<String>>) -> Binding<Bool> {
-        Binding(
-            get: { selection.wrappedValue.contains(value) },
-            set: { isOn in
-                var values = selection.wrappedValue
-                if isOn {
-                    values.insert(value)
-                } else {
-                    values.remove(value)
+    private func resetFilters() {
+        filters.selectedSources = []
+        filters.selectedThemes = []
+        filters.selectedStatuses = []
+        filters.selectedRegions = []
+    }
+}
+
+private struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.weight(.bold))
                 }
-                selection.wrappedValue = values
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
             }
-        )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(isSelected ? tint : FestivalDesign.cream.opacity(0.38))
+            .foregroundStyle(isSelected ? .white : FestivalDesign.navy)
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    .stroke(isSelected ? .white.opacity(0.22) : FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat
+    var rowSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 320
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
