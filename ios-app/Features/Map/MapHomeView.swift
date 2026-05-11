@@ -407,7 +407,7 @@ struct MapHomeView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
-                .foregroundStyle(isOn ? .white : FestivalDesign.navy.opacity(0.72))
+                .foregroundStyle(isOn ? .white : FestivalDesign.secondaryText)
                 .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
@@ -562,7 +562,7 @@ struct MapHomeView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(FestivalDesign.navy.opacity(0.62))
+                    .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(width: 28, height: 28)
                     .background(FestivalDesign.cream.opacity(0.55))
                     .clipShape(Circle())
