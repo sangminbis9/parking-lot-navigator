@@ -50,6 +50,7 @@ Important tables:
 
 - `parking_lots`: nationwide/static parking index.
 - `realtime_parking_status`: realtime parking cache.
+- `discovery_items`: cached festivals and events shown on the map.
 
 ## Sync
 
@@ -65,6 +66,14 @@ Realtime cache sync:
 - Manual endpoint: `POST /admin/sync-realtime-parking`
 - Requires `Authorization: Bearer <SYNC_ADMIN_TOKEN>`.
 - Do not paste or store the real token in docs.
+
+Discovery cache sync:
+
+- Worker cron runs every hour.
+- Worker deploys from `master` run a post-deploy discovery refresh when GitHub secret `SYNC_ADMIN_TOKEN` is configured.
+- Manual GitHub Action: `Sync discovery D1`.
+- Manual endpoint: `POST /admin/sync-discovery?kinds=festivals,events`
+- The iOS app reads `/discover/festivals` and `/discover/events` from D1, so newly added discovery providers will not appear in map pins until this sync has run at least once after deployment.
 
 ## Known Public API Notes
 
@@ -86,4 +95,3 @@ Public Data Portal:
 - If tools are missing locally, rely on CI/Codemagic for full build/test.
 - Always run `git diff --check` before committing when possible.
 - Bump iOS build number before committing app-related changes.
-

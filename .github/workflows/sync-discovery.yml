@@ -1,0 +1,30 @@
+name: Sync discovery D1
+
+on:
+  workflow_dispatch:
+    inputs:
+      kinds:
+        description: "Discovery kinds to sync"
+        required: true
+        default: "festivals,events"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYNC_ADMIN_TOKEN: ${{ secrets.SYNC_ADMIN_TOKEN }}
+      KINDS: ${{ inputs.kinds }}
+    steps:
+      - name: Validate sync secret
+        run: |
+          if [ -z "$SYNC_ADMIN_TOKEN" ]; then
+            echo "SYNC_ADMIN_TOKEN secret is required."
+            exit 1
+          fi
+
+      - name: Sync discovery cache
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
+            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-discovery?kinds=${KINDS}"

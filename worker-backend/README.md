@@ -62,11 +62,18 @@ Discovery data is synced by Cloudflare Cron and stored in D1:
 
 - Realtime parking: every minute (`* * * * *`)
 - Festivals and events: every hour (`0 * * * *`)
+- Worker deploys from `master` refresh the discovery cache after deployment when the GitHub `SYNC_ADMIN_TOKEN` secret is configured.
 
 User-facing parking and discovery endpoints read from D1 only. External discovery providers are called only by cron or the admin sync endpoint:
 
 ```powershell
 curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=festivals,events"
+```
+
+You can also trigger the same refresh from GitHub Actions:
+
+```text
+Actions -> Sync discovery D1 -> Run workflow
 ```
 
 ## Local development
