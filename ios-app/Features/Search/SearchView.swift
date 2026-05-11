@@ -11,6 +11,7 @@ struct SearchView: View {
     @State private var query = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @FocusState private var isSearchFocused: Bool
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
@@ -49,6 +50,7 @@ struct SearchView: View {
                     } else {
                         ForEach(filteredItems) { item in
                             Button {
+                                isSearchFocused = false
                                 destinationStore.addRecent(item.destination)
                                 router.showResults(for: item.destination, presentation: item.presentation)
                             } label: {
@@ -60,9 +62,14 @@ struct SearchView: View {
                         }
                     }
                 }
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded {
+                    isSearchFocused = false
+                })
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(FestivalDesign.background.ignoresSafeArea())
         .navigationTitle("축제")
         .navigationBarTitleDisplayMode(.inline)
@@ -125,6 +132,7 @@ struct SearchView: View {
                 prompt: Text("축제, 이벤트, 장소 검색")
                     .foregroundColor(FestivalDesign.secondaryText)
             )
+            .focused($isSearchFocused)
             .textInputAutocapitalization(.never)
             .submitLabel(.search)
 

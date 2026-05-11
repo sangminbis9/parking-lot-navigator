@@ -413,6 +413,7 @@ struct MapHomeView: View {
             LazyVStack(spacing: 0) {
                 ForEach(viewModel.destinations) { destination in
                     Button {
+                        isSearchFocused = false
                         destinationStore.addRecent(destination)
                         focusMap(
                             to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
@@ -443,6 +444,10 @@ struct MapHomeView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
+        .simultaneousGesture(TapGesture().onEnded {
+            isSearchFocused = false
+        })
         .frame(maxHeight: 230)
         .background(FestivalDesign.surface.opacity(0.96))
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
@@ -1082,6 +1087,7 @@ private struct DiscoverListPage: View {
     let onShowOnMap: (DiscoverListItem.Kind) -> Void
 
     @State private var showsFilters = false
+    @FocusState private var isQueryFocused: Bool
 
     private var filteredItems: [DiscoverListItem] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1143,6 +1149,7 @@ private struct DiscoverListPage: View {
                         prompt: Text("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}")
                             .foregroundColor(FestivalDesign.secondaryText)
                     )
+                        .focused($isQueryFocused)
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
                     if !query.isEmpty {
@@ -1192,9 +1199,11 @@ private struct DiscoverListPage: View {
                             DiscoverListRow(
                                 item: item,
                                 onSelect: {
+                                    isQueryFocused = false
                                     onSelect(item)
                                 },
                                 onShowOnMap: {
+                                    isQueryFocused = false
                                     onShowOnMap(item.kind)
                                 }
                             )
@@ -1203,6 +1212,10 @@ private struct DiscoverListPage: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(TapGesture().onEnded {
+                    isQueryFocused = false
+                })
                 .background(FestivalDesign.background)
                 .overlay(alignment: .top) {
                     if isLoading {
