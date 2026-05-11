@@ -234,6 +234,16 @@ private struct DiscoverTabItem: Identifiable {
     let presentation: DiscoverPresentation
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
+        let smartTags = DiscoverTagBuilder.festivalTags(
+            title: festival.title,
+            subtitle: festival.subtitle,
+            venueName: festival.venueName,
+            address: festival.address,
+            startDate: festival.startDate,
+            source: festival.source,
+            rawTags: festival.tags
+        )
+
         DiscoverTabItem(
             id: "festival-\(festival.id)",
             kind: .festival(festival),
@@ -252,7 +262,7 @@ private struct DiscoverTabItem: Identifiable {
                 festival.venueName,
                 festival.address,
                 festival.source,
-                festival.tags.joined(separator: " ")
+                smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: Destination(
                 id: "festival-\(festival.id)",
@@ -261,7 +271,7 @@ private struct DiscoverTabItem: Identifiable {
                 lat: festival.lat,
                 lng: festival.lng,
                 source: festival.source,
-                rawCategory: festival.tags.joined(separator: ","),
+                rawCategory: smartTags.joined(separator: ","),
                 normalizedCategory: "festival"
             ),
             presentation: DiscoverPresentation(
@@ -274,12 +284,22 @@ private struct DiscoverTabItem: Identifiable {
                 typeText: "축제",
                 source: festival.source,
                 imageUrl: festival.imageUrl,
-                tags: festival.tags
+                tags: smartTags
             )
         )
     }
 
     static func event(_ event: FreeEvent) -> DiscoverTabItem {
+        let smartTags = DiscoverTagBuilder.eventTags(
+            title: event.title,
+            eventType: event.eventType,
+            description: event.shortDescription,
+            venueName: event.venueName,
+            address: event.address,
+            startDate: event.startDate,
+            source: event.source
+        )
+
         DiscoverTabItem(
             id: "event-\(event.id)",
             kind: .event(event),
@@ -298,7 +318,8 @@ private struct DiscoverTabItem: Identifiable {
                 event.venueName,
                 event.address,
                 event.source,
-                event.shortDescription
+                event.shortDescription,
+                smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: Destination(
                 id: "event-\(event.id)",
@@ -307,7 +328,7 @@ private struct DiscoverTabItem: Identifiable {
                 lat: event.lat,
                 lng: event.lng,
                 source: event.source,
-                rawCategory: event.eventType,
+                rawCategory: smartTags.joined(separator: ","),
                 normalizedCategory: "event"
             ),
             presentation: DiscoverPresentation(
@@ -320,7 +341,7 @@ private struct DiscoverTabItem: Identifiable {
                 typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
                 source: event.source,
                 imageUrl: event.imageUrl,
-                tags: [event.eventType].filter { !$0.isEmpty }
+                tags: smartTags
             )
         )
     }

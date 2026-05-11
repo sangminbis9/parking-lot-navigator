@@ -235,9 +235,7 @@ private struct DiscoverDescriptionCard: View {
     }
 
     private var normalizedTags: [String] {
-        let baseTags = presentation.tags
-        let fallback = presentation.typeText.isEmpty ? [] : [presentation.typeText]
-        return Array(Set((baseTags.isEmpty ? fallback : baseTags).map { tag in
+        Array(Set(presentation.tags.map { tag in
             tag
                 .replacingOccurrences(of: "#", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
