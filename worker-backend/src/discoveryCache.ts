@@ -1,4 +1,4 @@
-import type { Festival, FreeEvent } from "@parking/shared-types";
+import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 
 type DiscoveryType = "festival" | "event";
@@ -196,8 +196,7 @@ async function syncDiscoveryKind(
         lat: center.lat,
         lng: center.lng,
         radiusMeters: DISCOVERY_SYNC_RADIUS_METERS,
-        upcomingWithinDays: 365,
-        freeOnly: kind === "events" ? true : undefined
+        upcomingWithinDays: 365
       };
       if (kind === "festivals") return runtime.festivalService.nearby(query);
       return runtime.eventService.nearby(query);
@@ -219,7 +218,7 @@ async function syncDiscoveryKind(
 }
 
 function centersForKind(kind: DiscoverySyncKind): Array<{ id: string; lat: number; lng: number }> {
-  if (kind === "events") return [SEOUL_DISCOVERY_CENTER];
+  if (kind === "events") return NATIONAL_DISCOVERY_CENTERS;
   return NATIONAL_DISCOVERY_CENTERS;
 }
 
@@ -345,7 +344,7 @@ function discoveryRow(item: DiscoveryItem, syncedAt: string) {
       lng: item.lng,
       rating: null,
       reviewCount: null,
-      lowestPriceText: null,
+      lowestPriceText: item.price ?? null,
       lowestPricePlatform: null,
       sourceUrl: item.sourceUrl,
       imageUrl: item.imageUrl,
@@ -417,6 +416,8 @@ function mapEventRow(row: DiscoveryItemRow, lat: number, lng: number): FreeEvent
     id: row.source_item_id,
     title: row.title,
     eventType: row.category_text ?? "event",
+    category: eventCategory(row.category_text),
+    sourceId: row.source_item_id,
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
     status: row.status ?? "upcoming",
@@ -429,8 +430,16 @@ function mapEventRow(row: DiscoveryItemRow, lat: number, lng: number): FreeEvent
     source: row.source,
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
-    shortDescription: row.subtitle
+    shortDescription: row.subtitle,
+    price: row.lowest_price_text,
+    region: null,
+    updatedAt: row.data_updated_at ?? undefined
   };
+}
+
+function eventCategory(value: string | null): EventCategory {
+  const allowed: EventCategory[] = ["festival", "performance", "exhibition", "culture", "local_event", "other"];
+  return allowed.includes(value as EventCategory) ? (value as EventCategory) : "other";
 }
 
 function rowPassesFilters(row: DiscoveryItemRow, options: DiscoveryQueryOptions): boolean {

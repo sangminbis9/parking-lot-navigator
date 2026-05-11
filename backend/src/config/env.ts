@@ -27,7 +27,13 @@ const envSchema = z.object({
   SEOUL_HANGANG_PARKING_KEY: z.string().optional(),
   PUBLIC_DATA_SERVICE_KEY: z.string().optional(),
   PUBLIC_DATA_ENV: z.enum(["development", "production"]).default("development"),
-  PUBLIC_DATA_BASE_URL: z.string().url().default("https://apis.data.go.kr")
+  PUBLIC_DATA_BASE_URL: z.string().url().default("https://apis.data.go.kr"),
+  CULTURE_PORTAL_API_KEY: z.string().optional(),
+  KOPIS_API_KEY: z.string().optional(),
+  KOPIS_BASE_URL: z.string().url().default("http://www.kopis.or.kr"),
+  KCISA_428_API_KEY: z.string().optional(),
+  KCISA_196_API_KEY: z.string().optional(),
+  KCISA_BASE_URL: z.string().url().default("https://api.kcisa.kr")
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -45,7 +51,14 @@ export function assertProductionSecrets(cfg: AppConfig): string[] {
     missing.push("PUBLIC_DATA_SERVICE_KEY");
   }
   if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.EVENT_PROVIDER_ENABLED && !cfg.SEOUL_OPEN_DATA_KEY) {
-    missing.push("SEOUL_OPEN_DATA_KEY");
+    const hasAnyEventProvider =
+      cfg.SEOUL_OPEN_DATA_KEY ||
+      cfg.CULTURE_PORTAL_API_KEY ||
+      cfg.PUBLIC_DATA_SERVICE_KEY ||
+      cfg.KOPIS_API_KEY ||
+      cfg.KCISA_428_API_KEY ||
+      cfg.KCISA_196_API_KEY;
+    if (!hasAnyEventProvider) missing.push("SEOUL_OPEN_DATA_KEY or an event provider API key");
   }
   return missing;
 }

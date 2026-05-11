@@ -208,7 +208,7 @@ struct MapHomeView: View {
 
     private var discoverSources: [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
-        if viewModel.showsFestivalLayer {
+        if viewModel.showsEventLayer {
             sources.append(contentsOf: viewModel.festivals.map { .festival($0) })
         }
         if viewModel.showsEventLayer {
@@ -346,7 +346,7 @@ struct MapHomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 7) {
                 layerToggle(
-                    title: "주차",
+                    title: "\u{C8FC}\u{CC28}",
                     systemImage: "parkingsign.circle.fill",
                     tint: FestivalDesign.parkingBlue,
                     isOn: viewModel.showsRealtimeParkingLayer
@@ -359,15 +359,7 @@ struct MapHomeView: View {
                     }
                 }
                 layerToggle(
-                    title: "축제",
-                    systemImage: "sparkles",
-                    tint: FestivalDesign.coral,
-                    isOn: viewModel.showsFestivalLayer
-                ) {
-                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
-                }
-                layerToggle(
-                    title: "이벤트",
+                    title: "\u{C774}\u{BCA4}\u{D2B8}",
                     systemImage: "calendar",
                     tint: FestivalDesign.teal,
                     isOn: viewModel.showsEventLayer
@@ -751,7 +743,7 @@ struct MapHomeView: View {
     private func centerOnInitialDiscoverPinIfNeeded() {
         guard !didAutoCenterOnLocation else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
-        if viewModel.showsFestivalLayer, let festival = viewModel.festivals.first {
+        if viewModel.showsEventLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true
             moveMap(to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng), zoomLevel: 12)
             return
@@ -786,7 +778,7 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        guard viewModel.showsFestivalLayer || viewModel.showsEventLayer else { return }
+        guard viewModel.showsEventLayer else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
         discoverRefreshTask = Task {
@@ -849,6 +841,7 @@ private struct DiscoverListItem: Identifiable {
     let tint: Color
     let symbol: String
     let typeText: String
+    let category: DiscoverCategory
     let sourceText: String
     let regionText: String
     let themes: [String]
@@ -875,6 +868,7 @@ private struct DiscoverListItem: Identifiable {
             tint: .purple,
             symbol: "sparkles",
             typeText: "\u{CD95}\u{C81C}",
+            category: .festival,
             sourceText: festival.source,
             regionText: regionText(from: festival.address),
             themes: themes,
@@ -895,6 +889,7 @@ private struct DiscoverListItem: Identifiable {
 
     static func event(_ event: FreeEvent, referenceCoordinate: CLLocationCoordinate2D?) -> DiscoverListItem {
         let themes = normalizedThemes([event.eventType])
+        let category = DiscoverCategory.from(category: event.category, fallback: event.eventType, isFestival: false)
         return DiscoverListItem(
             id: "event-\(event.id)",
             kind: .event(event),
@@ -910,9 +905,10 @@ private struct DiscoverListItem: Identifiable {
                 fallback: event.distanceMeters
             ),
             imageUrl: event.imageUrl,
-            tint: .teal,
-            symbol: "calendar",
-            typeText: event.eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : event.eventType,
+            tint: category.tint,
+            symbol: category.systemImage,
+            typeText: category.title,
+            category: category,
             sourceText: event.source,
             regionText: regionText(from: event.address),
             themes: themes,
@@ -1001,8 +997,7 @@ private struct DiscoverListItem: Identifiable {
 }
 
 private struct DiscoverFilterState: Equatable {
-    var showsFestivals = true
-    var showsEvents = true
+    var selectedCategory: DiscoverCategory = .all
     var selectedSources: Set<String> = []
     var selectedThemes: Set<String> = []
     var selectedStatuses: Set<DiscoverStatus> = []
@@ -1013,13 +1008,72 @@ private struct DiscoverFilterState: Equatable {
     }
 
     func includes(_ item: DiscoverListItem) -> Bool {
-        if item.isFestival && !showsFestivals { return false }
-        if item.isEvent && !showsEvents { return false }
+        if selectedCategory != .all && item.category != selectedCategory { return false }
         if !selectedSources.isEmpty && !selectedSources.contains(item.sourceText) { return false }
         if !selectedThemes.isEmpty && Set(item.themes).isDisjoint(with: selectedThemes) { return false }
         if !selectedStatuses.isEmpty && !selectedStatuses.contains(item.status) { return false }
         if !selectedRegions.isEmpty && !selectedRegions.contains(item.regionText) { return false }
         return true
+    }
+}
+
+private enum DiscoverCategory: String, CaseIterable, Identifiable {
+    case all
+    case festival
+    case performance
+    case exhibition
+    case culture
+    case localEvent
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "\u{C804}\u{CCB4}"
+        case .festival: return "\u{CD95}\u{C81C}"
+        case .performance: return "\u{ACF5}\u{C5F0}"
+        case .exhibition: return "\u{C804}\u{C2DC}"
+        case .culture: return "\u{BB38}\u{D654}\u{D589}\u{C0AC}"
+        case .localEvent: return "\u{C9C0}\u{C5ED}\u{D589}\u{C0AC}"
+        case .other: return "\u{AE30}\u{D0C0}"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "square.grid.2x2"
+        case .festival: return "sparkles"
+        case .performance: return "theatermasks.fill"
+        case .exhibition: return "paintpalette.fill"
+        case .culture: return "calendar"
+        case .localEvent: return "mappin.and.ellipse"
+        case .other: return "ellipsis.circle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .all: return FestivalDesign.teal
+        case .festival: return FestivalDesign.coral
+        case .performance: return .pink
+        case .exhibition: return .cyan
+        case .culture: return FestivalDesign.teal
+        case .localEvent: return FestivalDesign.lantern
+        case .other: return FestivalDesign.secondaryText
+        }
+    }
+
+    static func from(category: String?, fallback: String, isFestival: Bool) -> DiscoverCategory {
+        if isFestival { return .festival }
+        switch (category ?? fallback).lowercased() {
+        case "festival": return .festival
+        case "performance": return .performance
+        case "exhibition": return .exhibition
+        case "culture": return .culture
+        case "local_event", "local-event", "local event": return .localEvent
+        default: return .other
+        }
     }
 }
 
@@ -1118,13 +1172,21 @@ private struct DiscoverListPage: View {
             VStack(spacing: 10) {
                 DiscoverMascotHeader(itemCount: filteredItems.count)
 
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(DiscoverCategory.allCases) { category in
+                            discoverTypeChip(
+                                title: category.title,
+                                systemImage: category.systemImage,
+                                tint: category.tint,
+                                isOn: filters.selectedCategory == category
+                            ) {
+                                filters.selectedCategory = category
+                            }
+                        }
+                    }
+                }
                 HStack(spacing: 8) {
-                    discoverTypeChip(title: "\u{CD95}\u{C81C}", systemImage: "sparkles", tint: .purple, isOn: filters.showsFestivals) {
-                        filters.showsFestivals = !filters.showsFestivals
-                    }
-                    discoverTypeChip(title: "\u{C774}\u{BCA4}\u{D2B8}", systemImage: "calendar", tint: .teal, isOn: filters.showsEvents) {
-                        filters.showsEvents = !filters.showsEvents
-                    }
                     Spacer(minLength: 0)
                     Menu {
                         Picker("\u{C815}\u{B82C}", selection: $sort) {
@@ -1434,6 +1496,7 @@ private struct DiscoverFilterSheet: View {
     }
 
     private func resetFilters() {
+        filters.selectedCategory = .all
         filters.selectedSources = []
         filters.selectedThemes = []
         filters.selectedStatuses = []

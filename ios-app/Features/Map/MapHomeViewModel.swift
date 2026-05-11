@@ -14,7 +14,6 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedFestival: Festival?
     @Published var selectedEvent: FreeEvent?
-    @Published var showsFestivalLayer = true
     @Published var showsEventLayer = true
     @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
@@ -142,22 +141,14 @@ final class MapHomeViewModel: ObservableObject {
         parkingLots = []
     }
 
-    func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
-        showsFestivalLayer = isVisible
-        if !isVisible {
-            selectedFestival = nil
-            return
-        }
-        await loadFestivals(viewport: viewport)
-    }
-
     func setEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsEventLayer = isVisible
         if !isVisible {
+            selectedFestival = nil
             selectedEvent = nil
             return
         }
-        await loadEvents(viewport: viewport)
+        await loadDiscoverLayers(viewport: viewport)
     }
 
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
@@ -195,7 +186,7 @@ final class MapHomeViewModel: ObservableObject {
         var failedLoads = 0
         var attemptedLoads = 0
 
-        if showsFestivalLayer {
+        if showsEventLayer {
             attemptedLoads += 1
             switch await loadFestivalLayer(viewport: viewport) {
             case .success(let items):

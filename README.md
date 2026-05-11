@@ -56,7 +56,7 @@ Mac이 없다면 Codemagic으로 빌드합니다. 자세한 절차는 `docs/rele
 
 ## 실제 API 연결 방법
 
-- 백엔드 `.env`에 `KAKAO_REST_API_KEY`, `SEOUL_OPEN_DATA_KEY`, `PUBLIC_DATA_SERVICE_KEY`를 넣습니다.
+- 백엔드 `.env`에 `KAKAO_REST_API_KEY`, `SEOUL_OPEN_DATA_KEY`, `PUBLIC_DATA_SERVICE_KEY`, `KOPIS_API_KEY`, `KCISA_428_API_KEY`, `KCISA_196_API_KEY`를 넣습니다. 문화포털 키가 공공데이터포털 키와 다르면 `CULTURE_PORTAL_API_KEY`도 넣습니다.
 - `PARKING_PROVIDER_MODE=hybrid`로 설정하면 mock과 실제 provider를 함께 사용합니다.
 - `PARKING_PROVIDER_MODE=real`은 실제 provider만 사용합니다. 키 또는 계정 승인이 없으면 provider health가 `down`으로 표시됩니다.
 - iOS 앱에는 민감한 REST 키를 넣지 않습니다.

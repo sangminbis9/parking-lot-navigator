@@ -42,7 +42,7 @@ export async function registerDiscoverRoutes(app: FastifyInstance) {
       radiusMeters: query.radiusMeters ?? config.DEFAULT_DISCOVER_RADIUS_METERS,
       ongoingOnly: query.ongoingOnly,
       upcomingWithinDays: query.upcomingWithinDays ?? 30,
-      freeOnly: query.freeOnly ?? true
+      freeOnly: query.freeOnly ?? false
     });
     return { items, generatedAt: new Date().toISOString() };
   });

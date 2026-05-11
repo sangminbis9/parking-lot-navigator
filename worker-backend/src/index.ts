@@ -37,6 +37,12 @@ type Env = {
   PUBLIC_DATA_SERVICE_KEY?: string;
   PUBLIC_DATA_ENV: "development" | "production";
   PUBLIC_DATA_BASE_URL: string;
+  CULTURE_PORTAL_API_KEY?: string;
+  KOPIS_API_KEY?: string;
+  KOPIS_BASE_URL: string;
+  KCISA_428_API_KEY?: string;
+  KCISA_196_API_KEY?: string;
+  KCISA_BASE_URL: string;
   NATIONAL_PARKING_DATA_BASE_URL?: string;
 };
 
@@ -281,7 +287,7 @@ app.get("/discover/events", async (c) => {
     radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
     upcomingWithinDays: query.upcomingWithinDays ?? 30,
-    freeOnly: query.freeOnly ?? true
+    freeOnly: query.freeOnly ?? false
   });
   return c.json({ items, generatedAt: new Date().toISOString() });
 });

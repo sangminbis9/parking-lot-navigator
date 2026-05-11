@@ -36,6 +36,8 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let id: String
     let title: String
     let eventType: String
+    let category: String?
+    let sourceId: String?
     let startDate: String
     let endDate: String
     let status: DiscoverStatus
@@ -49,6 +51,9 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let sourceUrl: String?
     let imageUrl: String?
     let shortDescription: String?
+    let price: String?
+    let region: String?
+    let updatedAt: String?
 }
 
 struct DiscoverPresentation: Hashable {

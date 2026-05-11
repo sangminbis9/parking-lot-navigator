@@ -10,15 +10,17 @@ Phase 1 uses Korea Tourism Organization TourAPI through data.go.kr when `FESTIVA
 - Refresh policy: Cloudflare Worker cron syncs festival data into D1 every hour. User-facing `/discover/festivals` reads D1 only.
 - Limitations: coverage and images depend on TourAPI publication quality. Source detail links should be added only after the final official URL pattern is verified.
 
-## Free events
+## Events
 
-Phase 1 uses Seoul Open Data cultural event information when `EVENT_PROVIDER_ENABLED=true` and `SEOUL_OPEN_DATA_KEY` is configured.
+The event layer uses Seoul Open Data plus national culture/event providers when `EVENT_PROVIDER_ENABLED=true`.
 
 - Endpoint adapter: `SeoulCultureEventProvider`
 - Candidate source: Seoul Open Data `culturalEventInfo`, served from `http://openapi.seoul.go.kr:8088/{KEY}/json/culturalEventInfo/...`.
 - Why: official structured city data for cultural events with title, date, venue, fee text, image/link fields, and coordinate fields.
-- Refresh policy: Cloudflare Worker cron syncs event data into D1 every hour. User-facing `/discover/events` reads D1 only.
-- Limitations: strongest coverage is Seoul. Free status is inferred from official fee text, so ambiguous rows are excluded when `freeOnly=true`.
+- Additional adapters: `CulturePortalEventProvider`, `KopisEventProvider`, and `KcisaCultureEventProvider`.
+- Additional sources: Culture Portal public performance displays, KOPIS performance list, KCISA API id 428 (`meta16/getkopis07`), and KCISA API id 196 (`meta4/getKCPG0504`).
+- Refresh policy: Cloudflare Worker cron syncs festival and event data into D1 every hour. User-facing `/discover/events` reads D1 only.
+- Limitations: some KOPIS/KCISA rows provide venue text rather than coordinates. The backend resolves these with Kakao Local when `KAKAO_REST_API_KEY` is available; unresolved rows are omitted from map pins.
 
 ## Deferred
 

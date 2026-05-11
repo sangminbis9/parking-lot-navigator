@@ -40,7 +40,7 @@ struct AppRootView: View {
             routedStack {
                 SearchView(apiClient: apiClient)
             }
-            .tabItem { Label("축제", systemImage: "sparkles") }
+            .tabItem { Label("\u{C774}\u{BCA4}\u{D2B8}", systemImage: "sparkles") }
             .tag(AppTab.discover)
 
             routedStack {

@@ -25,7 +25,13 @@ const config: AppConfig = {
   SEOUL_OPEN_DATA_BASE_URL: "http://openapi.seoul.go.kr:8088",
   PUBLIC_DATA_SERVICE_KEY: "test-public",
   PUBLIC_DATA_ENV: "development",
-  PUBLIC_DATA_BASE_URL: "https://apis.data.go.kr"
+  PUBLIC_DATA_BASE_URL: "https://apis.data.go.kr",
+  CULTURE_PORTAL_API_KEY: "test-culture",
+  KOPIS_API_KEY: "test-kopis",
+  KOPIS_BASE_URL: "http://www.kopis.or.kr",
+  KCISA_428_API_KEY: "test-kcisa-428",
+  KCISA_196_API_KEY: "test-kcisa-196",
+  KCISA_BASE_URL: "https://api.kcisa.kr"
 };
 
 describe("public data realtime parking providers", () => {

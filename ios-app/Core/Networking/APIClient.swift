@@ -66,8 +66,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
-            URLQueryItem(name: "upcomingWithinDays", value: "30"),
-            URLQueryItem(name: "freeOnly", value: "true")
+            URLQueryItem(name: "upcomingWithinDays", value: "30")
         ]
         let response: DiscoverEventsResponse = try await get(components.url!)
         return response.items
@@ -166,7 +165,7 @@ final class MockAPIClient: APIClientProtocol {
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
         [
-            FreeEvent(id: "mock-event", title: "Free Civic Exhibition", eventType: "exhibition", startDate: "2026-04-15", endDate: "2026-04-20", status: .ongoing, isFree: true, venueName: "Citizens Hall", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.0015, lng: lng - 0.001, distanceMeters: 190, source: "mock", sourceUrl: nil, imageUrl: nil, shortDescription: "Free public exhibition")
+            FreeEvent(id: "mock-event", title: "Free Civic Exhibition", eventType: "exhibition", category: "exhibition", sourceId: "mock-event", startDate: "2026-04-15", endDate: "2026-04-20", status: .ongoing, isFree: true, venueName: "Citizens Hall", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.0015, lng: lng - 0.001, distanceMeters: 190, source: "mock", sourceUrl: nil, imageUrl: nil, shortDescription: "Free public exhibition", price: nil, region: nil, updatedAt: nil)
         ]
     }
 

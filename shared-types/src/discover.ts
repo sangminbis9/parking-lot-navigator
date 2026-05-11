@@ -1,4 +1,5 @@
 export type DiscoverStatus = "ongoing" | "upcoming";
+export type EventCategory = "festival" | "performance" | "exhibition" | "culture" | "local_event" | "other";
 
 export interface Festival {
   id: string;
@@ -22,6 +23,8 @@ export interface FreeEvent {
   id: string;
   title: string;
   eventType: string;
+  category?: EventCategory;
+  sourceId?: string;
   startDate: string;
   endDate: string;
   status: DiscoverStatus;
@@ -35,6 +38,9 @@ export interface FreeEvent {
   sourceUrl: string | null;
   imageUrl: string | null;
   shortDescription: string | null;
+  price?: string | null;
+  region?: string | null;
+  updatedAt?: string;
 }
 
 export interface DiscoverFestivalsResponse {

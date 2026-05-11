@@ -74,10 +74,15 @@ function normalizeSeoulEvent(row: SeoulCultureEventRow, query: DiscoverQuery): F
     lat,
     lng,
     distanceMeters: distanceMeters(query.lat, query.lng, lat, lng),
-    source: "seoul-open-data",
+    source: "seoul_open_data",
+    category: "culture",
+    sourceId: hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`),
     sourceUrl: row.ORG_LINK ?? null,
     imageUrl: row.MAIN_IMG ?? null,
-    shortDescription: row.ORG_NAME ?? null
+    shortDescription: row.ORG_NAME ?? null,
+    price: feeText || null,
+    region: row.GUNAME ?? null,
+    updatedAt: row.RGSTDATE ?? new Date().toISOString()
   };
 }
 

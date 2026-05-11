@@ -18,8 +18,14 @@ cd worker-backend
 pnpm exec wrangler secret put KAKAO_REST_API_KEY
 pnpm exec wrangler secret put SEOUL_OPEN_DATA_KEY
 pnpm exec wrangler secret put PUBLIC_DATA_SERVICE_KEY
+pnpm exec wrangler secret put CULTURE_PORTAL_API_KEY
+pnpm exec wrangler secret put KOPIS_API_KEY
+pnpm exec wrangler secret put KCISA_428_API_KEY
+pnpm exec wrangler secret put KCISA_196_API_KEY
 pnpm exec wrangler secret put SYNC_ADMIN_TOKEN
 ```
+
+`CULTURE_PORTAL_API_KEY` can be omitted when the Culture Portal API is approved for the same data.go.kr key stored in `PUBLIC_DATA_SERVICE_KEY`.
 
 Create the D1 database in Cloudflare Dashboard or with Wrangler, then keep the `DB` binding in `wrangler.toml`.
 
@@ -88,5 +94,6 @@ After deployment, test:
 curl https://parking-lot-navigator-api.<your-subdomain>.workers.dev/health
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/providers/health"
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/festivals?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
+curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/events?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/clusters?lat=36.35&lng=127.80&radiusMeters=460000&clusterMeters=25000"
 ```
