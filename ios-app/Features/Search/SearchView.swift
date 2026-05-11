@@ -1,139 +1,73 @@
+import CoreLocation
 import SwiftUI
 
 struct SearchView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var destinationStore: DestinationStore
-    @StateObject private var viewModel: SearchViewModel
+    @State private var festivals: [Festival] = []
+    @State private var events: [FreeEvent] = []
+    @State private var query = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
 
-    init(apiClient: APIClientProtocol) {
-        self.apiClient = apiClient
-        _viewModel = StateObject(wrappedValue: SearchViewModel(apiClient: apiClient))
-    }
+    private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
+    private let discoverRadiusMeters = 460_000
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                SearchMascotHeader()
+                discoverHeader
                 searchCard
 
-                if let suggestion = viewModel.clipboardSuggestion {
-                    clipboardSuggestionCard(suggestion)
-                }
-
-                if viewModel.isLoading {
-                    LoadingStateView(text: "목적지를 찾는 중입니다")
-                        .frame(height: 120)
+                if isLoading {
+                    LoadingStateView(text: "축제와 이벤트를 불러오는 중입니다")
+                        .frame(height: 130)
                         .padding()
                         .festivalCard()
                 }
 
-                if let errorMessage = viewModel.errorMessage {
-                    FailureStateView(message: errorMessage) { Task { await viewModel.search() } }
-                        .festivalCard()
+                if let errorMessage {
+                    FailureStateView(message: errorMessage) {
+                        Task { await loadDiscoverItems() }
+                    }
+                    .festivalCard()
                 }
 
-                destinationSection(title: "검색 결과", destinations: viewModel.destinations) { destination in
-                    destinationStore.addRecent(destination)
-                    router.showResults(for: destination)
-                }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("축제와 이벤트")
+                            .font(.headline)
+                            .foregroundStyle(FestivalDesign.navy)
+                        Spacer()
+                        StatusBadge(text: "\(filteredItems.count)개", kind: .source)
+                    }
 
-                if !destinationStore.recents.isEmpty {
-                    destinationSection(title: "최근 목적지", destinations: Array(destinationStore.recents.prefix(5))) { destination in
-                        router.showResults(for: destination)
+                    if filteredItems.isEmpty && !isLoading {
+                        emptyState
+                    } else {
+                        ForEach(filteredItems) { item in
+                            Button {
+                                destinationStore.addRecent(item.destination)
+                                router.showResults(for: item.destination)
+                            } label: {
+                                DiscoverTabRow(item: item)
+                                    .padding(12)
+                                    .festivalCard()
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("축제 목적지 검색")
-        .onAppear {
-            viewModel.onAppear(appGroupID: AppConfiguration.current.appGroupID)
-        }
+        .navigationTitle("축제")
+        .task { await loadDiscoverItemsIfNeeded() }
     }
 
-    private var searchCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(FestivalDesign.teal)
-            TextField(
-                "",
-                text: $viewModel.query,
-                prompt: Text("축제, 장소, 주소를 입력")
-                    .foregroundStyle(FestivalDesign.secondaryText)
-            )
-                .textInputAutocapitalization(.never)
-                .submitLabel(.search)
-                .onSubmit { Task { await viewModel.search() } }
-            Button {
-                Task { await viewModel.search() }
-            } label: {
-                Image(systemName: "arrow.right")
-                    .font(.headline)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(FestivalDesign.teal)
-            .controlSize(.small)
-        }
-        .padding(12)
-        .festivalCard()
-    }
-
-    private func clipboardSuggestionCard(_ suggestion: String) -> some View {
-        Button {
-            viewModel.useClipboardSuggestion()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "doc.on.clipboard")
-                    .foregroundStyle(FestivalDesign.coral)
-                Text(suggestion)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FestivalDesign.navy)
-                    .lineLimit(2)
-                Spacer()
-            }
-            .padding(12)
-            .festivalCard()
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func destinationSection(
-        title: String,
-        destinations: [Destination],
-        onSelect: @escaping (Destination) -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(FestivalDesign.navy)
-
-            if destinations.isEmpty {
-                Text("표시할 목적지가 없습니다")
-                    .font(.subheadline)
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .festivalCard()
-            } else {
-                ForEach(destinations) { destination in
-                    Button {
-                        onSelect(destination)
-                    } label: {
-                        DestinationRow(destination: destination)
-                            .padding(12)
-                            .festivalCard()
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-}
-
-private struct SearchMascotHeader: View {
-    var body: some View {
+    private var discoverHeader: some View {
         HStack(spacing: 12) {
             Image("FestivalMascotGuide")
                 .resizable()
@@ -142,10 +76,10 @@ private struct SearchMascotHeader: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("오늘 갈 축제를 찾아볼게요")
+                Text("지금 가볼 만한 축제")
                     .font(.headline)
                     .foregroundStyle(FestivalDesign.navy)
-                Text("장소를 고르면 근처 주차까지 이어서 안내합니다.")
+                Text("목록에서 장소를 고르면 근처 주차장을 바로 추천합니다.")
                     .font(.subheadline)
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
@@ -165,6 +99,254 @@ private struct SearchMascotHeader: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
+    }
+
+    private var searchCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(FestivalDesign.teal)
+            TextField(
+                "",
+                text: $query,
+                prompt: Text("축제, 이벤트, 장소 검색")
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            )
+            .textInputAutocapitalization(.never)
+            .submitLabel(.search)
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .festivalCard()
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image("FestivalMascotNight")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 132, height: 132)
+                .accessibilityHidden(true)
+            Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "표시할 축제가 없습니다" : "검색 결과가 없습니다")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            Text("검색어를 바꾸거나 잠시 후 다시 확인해 주세요.")
+                .font(.subheadline)
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 30)
+        .festivalCard()
+    }
+
+    private var allItems: [DiscoverTabItem] {
+        festivals.map(DiscoverTabItem.festival) + events.map(DiscoverTabItem.event)
+    }
+
+    private var filteredItems: [DiscoverTabItem] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let items = trimmed.isEmpty ? allItems : allItems.filter { $0.searchText.contains(trimmed) }
+        return items.sorted {
+            if $0.status != $1.status { return $0.status == .ongoing }
+            if $0.startDate != $1.startDate { return $0.startDate < $1.startDate }
+            return $0.title < $1.title
+        }
+    }
+
+    private func loadDiscoverItemsIfNeeded() async {
+        guard festivals.isEmpty && events.isEmpty else { return }
+        await loadDiscoverItems()
+    }
+
+    private func loadDiscoverItems() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            async let festivalItems = apiClient.nearbyFestivals(
+                lat: koreaCenter.latitude,
+                lng: koreaCenter.longitude,
+                radiusMeters: discoverRadiusMeters
+            )
+            async let eventItems = apiClient.nearbyEvents(
+                lat: koreaCenter.latitude,
+                lng: koreaCenter.longitude,
+                radiusMeters: discoverRadiusMeters
+            )
+            festivals = try await festivalItems
+            events = try await eventItems
+        } catch {
+            errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
+        }
+        isLoading = false
+    }
+}
+
+private struct DiscoverTabItem: Identifiable {
+    enum Kind {
+        case festival(Festival)
+        case event(FreeEvent)
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let address: String
+    let dateText: String
+    let startDate: String
+    let status: DiscoverStatus
+    let typeText: String
+    let source: String
+    let imageUrl: String?
+    let searchText: String
+    let destination: Destination
+
+    static func festival(_ festival: Festival) -> DiscoverTabItem {
+        DiscoverTabItem(
+            id: "festival-\(festival.id)",
+            kind: .festival(festival),
+            title: festival.title,
+            subtitle: festival.subtitle ?? festival.venueName ?? festival.address,
+            address: festival.address,
+            dateText: "\(festival.startDate) - \(festival.endDate)",
+            startDate: festival.startDate,
+            status: festival.status,
+            typeText: "축제",
+            source: festival.source,
+            imageUrl: festival.imageUrl,
+            searchText: [
+                festival.title,
+                festival.subtitle,
+                festival.venueName,
+                festival.address,
+                festival.source,
+                festival.tags.joined(separator: " ")
+            ].compactMap { $0 }.joined(separator: " ").lowercased(),
+            destination: Destination(
+                id: "festival-\(festival.id)",
+                name: festival.title,
+                address: festival.address,
+                lat: festival.lat,
+                lng: festival.lng,
+                source: festival.source,
+                rawCategory: festival.tags.joined(separator: ","),
+                normalizedCategory: "festival"
+            )
+        )
+    }
+
+    static func event(_ event: FreeEvent) -> DiscoverTabItem {
+        DiscoverTabItem(
+            id: "event-\(event.id)",
+            kind: .event(event),
+            title: event.title,
+            subtitle: event.shortDescription ?? event.venueName ?? event.address,
+            address: event.address,
+            dateText: "\(event.startDate) - \(event.endDate)",
+            startDate: event.startDate,
+            status: event.status,
+            typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
+            source: event.source,
+            imageUrl: event.imageUrl,
+            searchText: [
+                event.title,
+                event.eventType,
+                event.venueName,
+                event.address,
+                event.source,
+                event.shortDescription
+            ].compactMap { $0 }.joined(separator: " ").lowercased(),
+            destination: Destination(
+                id: "event-\(event.id)",
+                name: event.title,
+                address: event.address,
+                lat: event.lat,
+                lng: event.lng,
+                source: event.source,
+                rawCategory: event.eventType,
+                normalizedCategory: "event"
+            )
+        )
+    }
+}
+
+private struct DiscoverTabRow: View {
+    let item: DiscoverTabItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            DiscoverTabThumbnail(imageUrl: item.imageUrl, isFestival: item.typeText == "축제")
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    StatusBadge(text: item.typeText, kind: .source)
+                    StatusBadge(text: item.status.displayText, kind: item.status == .ongoing ? .realtime : .neutral)
+                }
+                Text(item.title)
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
+                Text(item.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(2)
+                Text(item.dateText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(FestivalDesign.teal)
+                Text(item.address)
+                    .font(.caption)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct DiscoverTabThumbnail: View {
+    let imageUrl: String?
+    let isFestival: Bool
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    (isFestival ? FestivalDesign.coral : FestivalDesign.teal).opacity(0.15),
+                    FestivalDesign.cream.opacity(0.48)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            if let imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Image("FestivalMascotIcon")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(14)
+                    }
+                }
+            } else {
+                Image("FestivalMascotIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(14)
+            }
+        }
+        .frame(width: 82, height: 82)
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 }
 

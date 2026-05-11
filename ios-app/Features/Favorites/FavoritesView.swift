@@ -12,22 +12,11 @@ struct FavoritesView: View {
                 if store.favorites.isEmpty {
                     emptyState
                 } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("저장한 목적지")
-                            .font(.headline)
-                            .foregroundStyle(FestivalDesign.navy)
+                    destinationSection(title: "저장한 목적지", destinations: store.favorites)
+                }
 
-                        ForEach(store.favorites) { destination in
-                            Button {
-                                router.showResults(for: destination)
-                            } label: {
-                                DestinationRow(destination: destination)
-                                    .padding(12)
-                                    .festivalCard()
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                if !store.recents.isEmpty {
+                    destinationSection(title: "최근 목적지", destinations: Array(store.recents.prefix(5)))
                 }
             }
             .padding(16)
@@ -90,5 +79,24 @@ struct FavoritesView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 34)
         .festivalCard()
+    }
+
+    private func destinationSection(title: String, destinations: [Destination]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+
+            ForEach(destinations) { destination in
+                Button {
+                    router.showResults(for: destination)
+                } label: {
+                    DestinationRow(destination: destination)
+                        .padding(12)
+                        .festivalCard()
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }

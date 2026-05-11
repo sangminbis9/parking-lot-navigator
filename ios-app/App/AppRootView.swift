@@ -7,9 +7,21 @@ enum AppRoute: Hashable {
     case navigation(Destination, ParkingLot)
 }
 
+enum AppTab: Hashable {
+    case map
+    case discover
+    case favorites
+    case settings
+}
+
+final class AppTabRouter: ObservableObject {
+    @Published var selectedTab: AppTab = .map
+}
+
 struct AppRootView: View {
     let apiClient: APIClientProtocol
     @StateObject private var router = Router()
+    @StateObject private var tabRouter = AppTabRouter()
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -17,26 +29,34 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tabRouter.selectedTab) {
             routedStack {
                 MapHomeView(apiClient: apiClient)
             }
             .tabItem { Label("지도", systemImage: "map") }
+            .tag(AppTab.map)
 
             routedStack {
                 SearchView(apiClient: apiClient)
             }
-            .tabItem { Label("검색", systemImage: "magnifyingglass") }
+            .tabItem { Label("축제", systemImage: "sparkles") }
+            .tag(AppTab.discover)
 
             routedStack {
                 FavoritesView()
             }
             .tabItem { Label("즐겨찾기", systemImage: "star") }
+            .tag(AppTab.favorites)
 
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
+                .tag(AppTab.settings)
         }
         .tint(FestivalDesign.coral)
+        .environmentObject(tabRouter)
+        .onChange(of: tabRouter.selectedTab) { _ in
+            router.path.removeAll()
+        }
     }
 
     private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {

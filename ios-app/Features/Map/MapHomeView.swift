@@ -8,6 +8,7 @@ struct MapHomeView: View {
     let apiClient: APIClientProtocol
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var router: Router
+    @EnvironmentObject private var tabRouter: AppTabRouter
     @EnvironmentObject private var destinationStore: DestinationStore
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
@@ -23,7 +24,6 @@ struct MapHomeView: View {
     @State private var shouldCenterOnNextLocation = false
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
-    @State private var isDiscoverListPresented = false
     @State private var isHomeDiscoveryPanelDismissed = false
     @State private var discoverListQuery = ""
     @State private var discoverListSort: DiscoverListSort = .distance
@@ -72,21 +72,6 @@ struct MapHomeView: View {
             .padding(.bottom, 12)
         }
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(isPresented: $isDiscoverListPresented) {
-            DiscoverListPage(
-                items: discoverListItems,
-                isLoading: viewModel.isLoadingDiscover,
-                query: $discoverListQuery,
-                sort: $discoverListSort,
-                filters: $discoverFilters,
-                onSelect: { item in
-                    openDiscoverDetail(item)
-                },
-                onShowOnMap: { kind in
-                    showDiscoverItemOnMap(kind)
-                }
-            )
-        }
         .task {
             locationProvider.request()
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport)
@@ -473,7 +458,7 @@ struct MapHomeView: View {
             Spacer()
             VStack(spacing: 10) {
                 Button {
-                    isDiscoverListPresented = true
+                    tabRouter.selectedTab = .discover
                 } label: {
                     MapFloatingIcon(systemName: "list.bullet.rectangle.portrait.fill", tint: FestivalDesign.teal, size: 48)
                 }
@@ -540,7 +525,7 @@ struct MapHomeView: View {
 
                     HStack(spacing: 8) {
                         Button {
-                            isDiscoverListPresented = true
+                            tabRouter.selectedTab = .discover
                         } label: {
                             Label("탐색 목록", systemImage: "sparkles")
                         }
@@ -724,7 +709,7 @@ struct MapHomeView: View {
         case .event(let event):
             coordinate = CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
         }
-        isDiscoverListPresented = false
+        tabRouter.selectedTab = .map
         focusMap(to: coordinate, zoomLevel: 16)
         Task {
             switch kind {
