@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var router: Router
+    @EnvironmentObject private var tabRouter: AppTabRouter
     @EnvironmentObject private var destinationStore: DestinationStore
     @State private var festivals: [Festival] = []
     @State private var events: [FreeEvent] = []
@@ -49,7 +50,7 @@ struct SearchView: View {
                         ForEach(filteredItems) { item in
                             Button {
                                 destinationStore.addRecent(item.destination)
-                                router.showResults(for: item.destination)
+                                router.showResults(for: item.destination, presentation: item.presentation)
                             } label: {
                                 DiscoverTabRow(item: item)
                                     .padding(12)
@@ -64,7 +65,20 @@ struct SearchView: View {
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .navigationTitle("축제")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            applyPendingDiscoverFilter()
+        }
+        .onChange(of: tabRouter.discoverFilterQuery) { _ in
+            applyPendingDiscoverFilter()
+        }
         .task { await loadDiscoverItemsIfNeeded() }
+    }
+
+    private func applyPendingDiscoverFilter() {
+        guard let filter = tabRouter.discoverFilterQuery else { return }
+        query = filter
+        tabRouter.discoverFilterQuery = nil
     }
 
     private var discoverHeader: some View {
@@ -209,6 +223,7 @@ private struct DiscoverTabItem: Identifiable {
     let imageUrl: String?
     let searchText: String
     let destination: Destination
+    let presentation: DiscoverPresentation
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
         DiscoverTabItem(
@@ -240,6 +255,18 @@ private struct DiscoverTabItem: Identifiable {
                 source: festival.source,
                 rawCategory: festival.tags.joined(separator: ","),
                 normalizedCategory: "festival"
+            ),
+            presentation: DiscoverPresentation(
+                title: festival.title,
+                subtitle: festival.subtitle,
+                dateText: "\(festival.startDate) - \(festival.endDate)",
+                venueName: festival.venueName,
+                address: festival.address,
+                status: festival.status,
+                typeText: "축제",
+                source: festival.source,
+                imageUrl: festival.imageUrl,
+                tags: festival.tags
             )
         )
     }
@@ -274,6 +301,18 @@ private struct DiscoverTabItem: Identifiable {
                 source: event.source,
                 rawCategory: event.eventType,
                 normalizedCategory: "event"
+            ),
+            presentation: DiscoverPresentation(
+                title: event.title,
+                subtitle: event.shortDescription,
+                dateText: "\(event.startDate) - \(event.endDate)",
+                venueName: event.venueName,
+                address: event.address,
+                status: event.status,
+                typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
+                source: event.source,
+                imageUrl: event.imageUrl,
+                tags: [event.eventType].filter { !$0.isEmpty }
             )
         )
     }

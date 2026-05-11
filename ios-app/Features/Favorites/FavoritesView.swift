@@ -23,6 +23,7 @@ struct FavoritesView: View {
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .navigationTitle("즐겨찾기")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var favoritesHeader: some View {

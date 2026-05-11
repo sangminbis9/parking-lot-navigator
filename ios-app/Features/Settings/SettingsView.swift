@@ -18,6 +18,7 @@ struct SettingsView: View {
             }
             .background(FestivalDesign.background.ignoresSafeArea())
             .navigationTitle("설정")
+            .navigationBarTitleDisplayMode(.inline)
             .task { await load() }
         }
     }

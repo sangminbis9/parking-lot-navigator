@@ -51,6 +51,19 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let shortDescription: String?
 }
 
+struct DiscoverPresentation: Hashable {
+    let title: String
+    let subtitle: String?
+    let dateText: String
+    let venueName: String?
+    let address: String
+    let status: DiscoverStatus
+    let typeText: String
+    let source: String
+    let imageUrl: String?
+    let tags: [String]
+}
+
 struct DiscoverFestivalsResponse: Codable {
     let items: [Festival]
     let generatedAt: String

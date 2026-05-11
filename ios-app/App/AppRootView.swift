@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 enum AppRoute: Hashable {
-    case parkingResults(Destination)
+    case parkingResults(Destination, DiscoverPresentation?)
     case parkingDetail(Destination, ParkingLot)
     case navigation(Destination, ParkingLot)
 }
@@ -16,6 +16,7 @@ enum AppTab: Hashable {
 
 final class AppTabRouter: ObservableObject {
     @Published var selectedTab: AppTab = .map
+    @Published var discoverFilterQuery: String?
 }
 
 struct AppRootView: View {
@@ -72,8 +73,8 @@ struct AppRootView: View {
     @ViewBuilder
     private func routeDestination(for route: AppRoute) -> some View {
         switch route {
-        case .parkingResults(let destination):
-            ParkingResultsView(destination: destination, apiClient: apiClient)
+        case .parkingResults(let destination, let presentation):
+            ParkingResultsView(destination: destination, apiClient: apiClient, presentation: presentation)
         case .parkingDetail(let destination, let parkingLot):
             ParkingDetailView(destination: destination, parkingLot: parkingLot)
         case .navigation(let destination, let parkingLot):
@@ -130,8 +131,8 @@ struct AppRootView: View {
 final class Router: ObservableObject {
     @Published var path: [AppRoute] = []
 
-    func showResults(for destination: Destination) {
-        path.append(.parkingResults(destination))
+    func showResults(for destination: Destination, presentation: DiscoverPresentation? = nil) {
+        path.append(.parkingResults(destination, presentation))
     }
 
     func showDetail(destination: Destination, parkingLot: ParkingLot) {
