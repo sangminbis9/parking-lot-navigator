@@ -355,7 +355,7 @@ private struct DiscoverTabItem: Identifiable {
             rawTags: festival.tags
         )
 
-        DiscoverTabItem(
+        return DiscoverTabItem(
             id: "festival-\(festival.id)",
             kind: .festival(festival),
             title: festival.title,
@@ -413,7 +413,7 @@ private struct DiscoverTabItem: Identifiable {
             source: event.source
         )
 
-        DiscoverTabItem(
+        return DiscoverTabItem(
             id: "event-\(event.id)",
             kind: .event(event),
             title: event.title,
