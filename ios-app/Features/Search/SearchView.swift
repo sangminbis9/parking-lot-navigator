@@ -57,7 +57,12 @@ struct SearchView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(FestivalDesign.teal)
-            TextField("축제, 장소, 주소를 입력", text: $viewModel.query)
+            TextField(
+                "",
+                text: $viewModel.query,
+                prompt: Text("축제, 장소, 주소를 입력")
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            )
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
                 .onSubmit { Task { await viewModel.search() } }

@@ -310,7 +310,12 @@ struct MapHomeView: View {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(FestivalDesign.teal)
-            TextField("축제, 장소, 주소 검색", text: $viewModel.query)
+            TextField(
+                "",
+                text: $viewModel.query,
+                prompt: Text("축제, 장소, 주소 검색")
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            )
                 .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
@@ -1147,7 +1152,12 @@ private struct DiscoverListPage: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(FestivalDesign.teal)
-                    TextField("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}", text: $query)
+                    TextField(
+                        "",
+                        text: $query,
+                        prompt: Text("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}")
+                            .foregroundStyle(FestivalDesign.secondaryText)
+                    )
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
                     if !query.isEmpty {

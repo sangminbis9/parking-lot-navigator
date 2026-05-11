@@ -36,7 +36,7 @@ struct AppRootView: View {
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
         }
-        .tint(FestivalDesign.teal)
+        .tint(FestivalDesign.coral)
     }
 
     private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -67,8 +67,8 @@ struct AppRootView: View {
         appearance.backgroundColor = UIColor(FestivalDesign.surface)
         appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
 
-        let selectedColor = UIColor(FestivalDesign.teal)
-        let normalColor = UIColor(FestivalDesign.navy.opacity(0.56))
+        let selectedColor = UIColor(FestivalDesign.coral)
+        let normalColor = UIColor(FestivalDesign.secondaryText)
         let selectedAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: selectedColor]
         let normalAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: normalColor]
 
@@ -81,6 +81,29 @@ struct AppRootView: View {
 
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+        configureNavigationBarAppearance()
+    }
+
+    private static func configureNavigationBarAppearance() {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(FestivalDesign.surface)
+        appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
+
+        let titleColor = UIColor(FestivalDesign.coral)
+        appearance.titleTextAttributes = [
+            .foregroundColor: titleColor,
+            .font: UIFont.systemFont(ofSize: 17, weight: .bold)
+        ]
+        appearance.largeTitleTextAttributes = [
+            .foregroundColor: titleColor,
+            .font: UIFont.systemFont(ofSize: 34, weight: .bold)
+        ]
+
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().tintColor = titleColor
     }
 }
 
