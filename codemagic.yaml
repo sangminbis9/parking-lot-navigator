@@ -38,6 +38,7 @@ workflows:
       - name: iOS 설정 파일 생성
         script: |
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-96}}}"
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
@@ -45,6 +46,7 @@ workflows:
           APP_GROUP_ID = $APP_GROUP_ID
           KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
           NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          CURRENT_PROJECT_VERSION = $APP_BUILD_NUMBER
           EOF
           cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
       - name: Xcode 프로젝트 생성
@@ -97,6 +99,7 @@ workflows:
       - name: iOS Release 설정 파일 생성
         script: |
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-96}}}"
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
@@ -104,6 +107,7 @@ workflows:
           APP_GROUP_ID = $APP_GROUP_ID
           KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
           NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          CURRENT_PROJECT_VERSION = $APP_BUILD_NUMBER
           EOF
           cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
       - name: Xcode 프로젝트 생성
