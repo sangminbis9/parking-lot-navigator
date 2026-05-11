@@ -143,7 +143,7 @@ struct ParkingLotRow: View {
 
             Text(recommendation.primaryReason)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(FestivalDesign.navy)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -157,6 +157,6 @@ struct ParkingLotRow: View {
                 }
             }
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(FestivalDesign.navy)
     }
 }

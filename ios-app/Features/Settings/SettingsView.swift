@@ -75,7 +75,7 @@ struct SettingsView: View {
                 .foregroundStyle(FestivalDesign.navy)
             Text("Kakao Local, 서울 열린데이터광장, data.go.kr provider를 백엔드에서 통합합니다.")
                 .font(.subheadline)
-                .foregroundStyle(.primary)
+                .foregroundStyle(FestivalDesign.navy)
             Text("실시간 정보는 제공처 갱신 지연과 현장 상황에 따라 다를 수 있습니다.")
                 .font(.subheadline)
                 .foregroundStyle(FestivalDesign.secondaryText)
