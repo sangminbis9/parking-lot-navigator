@@ -3,6 +3,15 @@ import Foundation
 enum DiscoverStatus: String, Codable, Hashable {
     case ongoing
     case upcoming
+
+    var displayText: String {
+        switch self {
+        case .ongoing:
+            return "\u{C9C4}\u{D589} \u{C911}"
+        case .upcoming:
+            return "\u{C608}\u{C815}"
+        }
+    }
 }
 
 struct Festival: Codable, Hashable, Identifiable {

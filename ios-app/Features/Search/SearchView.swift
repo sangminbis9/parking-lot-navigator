@@ -109,7 +109,7 @@ struct SearchView: View {
                 "",
                 text: $query,
                 prompt: Text("축제, 이벤트, 장소 검색")
-                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .foregroundColor(FestivalDesign.secondaryText)
             )
             .textInputAutocapitalization(.never)
             .submitLabel(.search)

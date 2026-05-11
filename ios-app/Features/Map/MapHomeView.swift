@@ -299,7 +299,7 @@ struct MapHomeView: View {
                 "",
                 text: $viewModel.query,
                 prompt: Text("축제, 장소, 주소 검색")
-                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .foregroundColor(FestivalDesign.secondaryText)
             )
                 .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
@@ -1141,7 +1141,7 @@ private struct DiscoverListPage: View {
                         "",
                         text: $query,
                         prompt: Text("\u{C774}\u{B984}, \u{C7A5}\u{C18C}, \u{C720}\u{D615} \u{AC80}\u{C0C9}")
-                            .foregroundStyle(FestivalDesign.secondaryText)
+                            .foregroundColor(FestivalDesign.secondaryText)
                     )
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
@@ -1717,16 +1717,6 @@ private struct StandaloneParkingMapCard: View {
         .padding(.vertical, 6)
         .background(FestivalDesign.cream.opacity(0.42))
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-    }
-}
-private extension DiscoverStatus {
-    var displayText: String {
-        switch self {
-        case .ongoing:
-            return "\u{C9C4}\u{D589} \u{C911}"
-        case .upcoming:
-            return "\u{C608}\u{C815}"
-        }
     }
 }
 
