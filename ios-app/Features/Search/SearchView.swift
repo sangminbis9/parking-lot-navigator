@@ -55,17 +55,19 @@ struct SearchView: View {
                     if filteredItems.isEmpty && !isLoading {
                         emptyState
                     } else {
-                        ForEach(filteredItems) { item in
-                            Button {
-                                isSearchFocused = false
-                                destinationStore.addRecent(item.destination)
-                                router.showResults(for: item.destination, presentation: item.presentation)
-                            } label: {
-                                DiscoverTabRow(item: item)
-                                    .padding(12)
-                                    .festivalCard()
+                        LazyVStack(spacing: 10) {
+                            ForEach(filteredItems) { item in
+                                Button {
+                                    isSearchFocused = false
+                                    destinationStore.addRecent(item.destination)
+                                    router.showResults(for: item.destination, presentation: item.presentation)
+                                } label: {
+                                    DiscoverTabRow(item: item)
+                                        .padding(12)
+                                        .festivalCard()
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }

@@ -31,6 +31,7 @@ struct MapHomeView: View {
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
+    private let maxDiscoverPins = 250
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -214,13 +215,35 @@ struct MapHomeView: View {
         if viewModel.showsEventLayer {
             sources.append(contentsOf: viewModel.events.map { .event($0) })
         }
+        guard sources.count > maxDiscoverPins else { return sources }
+        let center = mapCenter
         return sources
+            .sorted {
+                $0.coordinate.distanceMeters(to: center) < $1.coordinate.distanceMeters(to: center)
+            }
+            .prefix(maxDiscoverPins)
+            .map { $0 }
     }
 
     private var discoverListItems: [DiscoverListItem] {
         let referenceCoordinate = locationProvider.coordinate
         return viewModel.festivals.map { DiscoverListItem.festival($0, referenceCoordinate: referenceCoordinate) } +
             viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) }
+    }
+
+    private var discoverItemCount: Int {
+        viewModel.festivals.count + viewModel.events.count
+    }
+
+    private var firstDiscoverListItem: DiscoverListItem? {
+        let referenceCoordinate = locationProvider.coordinate
+        if let festival = viewModel.festivals.first {
+            return DiscoverListItem.festival(festival, referenceCoordinate: referenceCoordinate)
+        }
+        if let event = viewModel.events.first {
+            return DiscoverListItem.event(event, referenceCoordinate: referenceCoordinate)
+        }
+        return nil
     }
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
@@ -506,14 +529,14 @@ struct MapHomeView: View {
                         Text("주변 축제부터 둘러보세요")
                             .font(.headline)
                             .foregroundStyle(FestivalDesign.navy)
-                        Text("\(discoverListItems.count)")
+                        Text("\(discoverItemCount)")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(FestivalDesign.teal)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(FestivalDesign.tealSoft)
                             .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
-                            .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(discoverListItems.count)개")
+                            .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(discoverItemCount)개")
                     }
                     Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
                         .font(.caption)
@@ -529,14 +552,14 @@ struct MapHomeView: View {
                         .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.teal, isFilled: true))
 
                         Button {
-                            if let first = discoverListItems.first {
+                            if let first = firstDiscoverListItem {
                                 showDiscoverItemOnMap(first.kind)
                             }
                         } label: {
                             Label("추천 보기", systemImage: "mappin.and.ellipse")
                         }
                         .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.coral, isFilled: false))
-                        .disabled(discoverListItems.isEmpty)
+                        .disabled(discoverItemCount == 0)
                     }
                 }
                 Spacer(minLength: 0)
@@ -1619,6 +1642,11 @@ private enum DiscoverPinSource: OverlayPinSource {
 }
 
 private extension CLLocationCoordinate2D {
+    func distanceMeters(to other: CLLocationCoordinate2D) -> CLLocationDistance {
+        CLLocation(latitude: latitude, longitude: longitude)
+            .distance(from: CLLocation(latitude: other.latitude, longitude: other.longitude))
+    }
+
     func offsetByMeters(east: Double, north: Double) -> CLLocationCoordinate2D {
         let latOffset = north / 111_320.0
         let lngOffset = east / max(40_000.0, 111_320.0 * cos(latitude * .pi / 180))
