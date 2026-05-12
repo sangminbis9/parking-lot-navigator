@@ -31,7 +31,6 @@ struct MapHomeView: View {
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
-    private let maxDiscoverPins = 250
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -215,14 +214,7 @@ struct MapHomeView: View {
         if viewModel.showsEventLayer {
             sources.append(contentsOf: viewModel.events.map { .event($0) })
         }
-        guard sources.count > maxDiscoverPins else { return sources }
-        let center = mapCenter
         return sources
-            .sorted {
-                $0.coordinate.distanceMeters(to: center) < $1.coordinate.distanceMeters(to: center)
-            }
-            .prefix(maxDiscoverPins)
-            .map { $0 }
     }
 
     private var discoverListItems: [DiscoverListItem] {
@@ -1642,11 +1634,6 @@ private enum DiscoverPinSource: OverlayPinSource {
 }
 
 private extension CLLocationCoordinate2D {
-    func distanceMeters(to other: CLLocationCoordinate2D) -> CLLocationDistance {
-        CLLocation(latitude: latitude, longitude: longitude)
-            .distance(from: CLLocation(latitude: other.latitude, longitude: other.longitude))
-    }
-
     func offsetByMeters(east: Double, north: Double) -> CLLocationCoordinate2D {
         let latOffset = north / 111_320.0
         let lngOffset = east / max(40_000.0, 111_320.0 * cos(latitude * .pi / 180))

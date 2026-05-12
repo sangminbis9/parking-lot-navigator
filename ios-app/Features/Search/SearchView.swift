@@ -15,10 +15,13 @@ struct SearchView: View {
     @State private var sort: DiscoverTabSort = .date
     @State private var filters = DiscoverTabFilters()
     @State private var showsFilters = false
+    @State private var visibleItemCount = 20
+    @State private var loadTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
+    private let pageSize = 20
 
     var body: some View {
         ScrollView {
@@ -36,7 +39,7 @@ struct SearchView: View {
 
                 if let errorMessage {
                     FailureStateView(message: errorMessage) {
-                        Task { await loadDiscoverItems() }
+                        startDiscoverLoad(force: true)
                     }
                     .festivalCard()
                 }
@@ -56,7 +59,7 @@ struct SearchView: View {
                         emptyState
                     } else {
                         LazyVStack(spacing: 10) {
-                            ForEach(filteredItems) { item in
+                            ForEach(visibleItems) { item in
                                 Button {
                                     isSearchFocused = false
                                     destinationStore.addRecent(item.destination)
@@ -67,6 +70,15 @@ struct SearchView: View {
                                         .festivalCard()
                                 }
                                 .buttonStyle(.plain)
+                            }
+
+                            if visibleItems.count < filteredItems.count {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .onAppear {
+                                        loadMoreVisibleItems()
+                                    }
                             }
                         }
                     }
@@ -84,9 +96,35 @@ struct SearchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             applyPendingDiscoverFilter()
+            startDiscoverLoad()
+        }
+        .onDisappear {
+            if tabRouter.selectedTab != .discover {
+                unloadDiscoverItems()
+            }
+        }
+        .onChange(of: tabRouter.selectedTab) { selectedTab in
+            if selectedTab == .discover {
+                applyPendingDiscoverFilter()
+                startDiscoverLoad()
+            } else {
+                unloadDiscoverItems()
+            }
         }
         .onChange(of: tabRouter.discoverFilterQuery) { _ in
             applyPendingDiscoverFilter()
+        }
+        .onChange(of: query) { _ in
+            resetVisibleItems()
+        }
+        .onChange(of: selectedKind) { _ in
+            resetVisibleItems()
+        }
+        .onChange(of: sort) { _ in
+            resetVisibleItems()
+        }
+        .onChange(of: filters) { _ in
+            resetVisibleItems()
         }
         .sheet(isPresented: $showsFilters) {
             DiscoverTabFilterSheet(
@@ -96,7 +134,6 @@ struct SearchView: View {
                 regions: availableRegions
             )
         }
-        .task { await loadDiscoverItemsIfNeeded() }
     }
 
     private func applyPendingDiscoverFilter() {
@@ -272,6 +309,10 @@ struct SearchView: View {
         return scoped.sorted(by: sort.sort)
     }
 
+    private var visibleItems: [DiscoverTabItem] {
+        Array(filteredItems.prefix(visibleItemCount))
+    }
+
     private var availableSources: [String] {
         uniqueValues(allItems.map(\.source))
     }
@@ -295,9 +336,32 @@ struct SearchView: View {
         Array(Set(values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
     }
 
-    private func loadDiscoverItemsIfNeeded() async {
-        guard festivals.isEmpty && events.isEmpty else { return }
-        await loadDiscoverItems()
+    private func startDiscoverLoad(force: Bool = false) {
+        guard tabRouter.selectedTab == .discover else { return }
+        guard force || (festivals.isEmpty && events.isEmpty) else { return }
+        loadTask?.cancel()
+        loadTask = Task { @MainActor in
+            await loadDiscoverItems()
+        }
+    }
+
+    private func unloadDiscoverItems() {
+        loadTask?.cancel()
+        loadTask = nil
+        festivals = []
+        events = []
+        errorMessage = nil
+        isLoading = false
+        resetVisibleItems()
+    }
+
+    private func resetVisibleItems() {
+        visibleItemCount = pageSize
+    }
+
+    private func loadMoreVisibleItems() {
+        guard visibleItemCount < filteredItems.count else { return }
+        visibleItemCount = min(visibleItemCount + pageSize, filteredItems.count)
     }
 
     private func loadDiscoverItems() async {
@@ -314,11 +378,17 @@ struct SearchView: View {
                 lng: koreaCenter.longitude,
                 radiusMeters: discoverRadiusMeters
             )
-            festivals = try await festivalItems
-            events = try await eventItems
+            let loadedFestivals = try await festivalItems
+            let loadedEvents = try await eventItems
+            guard !Task.isCancelled, tabRouter.selectedTab == .discover else { return }
+            festivals = loadedFestivals
+            events = loadedEvents
+            resetVisibleItems()
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
         }
+        guard !Task.isCancelled else { return }
         isLoading = false
     }
 }
