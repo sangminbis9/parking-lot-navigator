@@ -427,15 +427,7 @@ private struct DiscoverTabItem: Identifiable {
     let regionText: String
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
-        let smartTags = DiscoverTagBuilder.festivalTags(
-            title: festival.title,
-            subtitle: festival.subtitle,
-            venueName: festival.venueName,
-            address: festival.address,
-            startDate: festival.startDate,
-            source: festival.source,
-            rawTags: festival.tags
-        )
+        let smartTags = festival.discoverTags
 
         return DiscoverTabItem(
             id: "festival-\(festival.id)",
@@ -457,26 +449,22 @@ private struct DiscoverTabItem: Identifiable {
                 festival.source,
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
-            destination: Destination(
-                id: "festival-\(festival.id)",
-                name: festival.title,
-                address: festival.address,
-                lat: festival.lat,
-                lng: festival.lng,
-                source: festival.source,
-                rawCategory: smartTags.joined(separator: ","),
-                normalizedCategory: "festival"
-            ),
+            destination: festival.discoverDestination,
             presentation: DiscoverPresentation(
                 title: festival.title,
                 subtitle: festival.subtitle,
+                description: festival.subtitle,
                 dateText: "\(festival.startDate) - \(festival.endDate)",
                 venueName: festival.venueName,
                 address: festival.address,
                 status: festival.status,
                 typeText: "축제",
                 source: festival.source,
+                sourceUrl: festival.sourceUrl,
                 imageUrl: festival.imageUrl,
+                price: nil,
+                region: nil,
+                updatedAt: nil,
                 tags: smartTags
             ),
             tags: smartTags,
@@ -485,15 +473,7 @@ private struct DiscoverTabItem: Identifiable {
     }
 
     static func event(_ event: FreeEvent) -> DiscoverTabItem {
-        let smartTags = DiscoverTagBuilder.eventTags(
-            title: event.title,
-            eventType: event.eventType,
-            description: event.shortDescription,
-            venueName: event.venueName,
-            address: event.address,
-            startDate: event.startDate,
-            source: event.source
-        )
+        let smartTags = event.discoverTags
 
         return DiscoverTabItem(
             id: "event-\(event.id)",
@@ -516,26 +496,22 @@ private struct DiscoverTabItem: Identifiable {
                 event.shortDescription,
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
-            destination: Destination(
-                id: "event-\(event.id)",
-                name: event.title,
-                address: event.address,
-                lat: event.lat,
-                lng: event.lng,
-                source: event.source,
-                rawCategory: smartTags.joined(separator: ","),
-                normalizedCategory: "event"
-            ),
+            destination: event.discoverDestination,
             presentation: DiscoverPresentation(
                 title: event.title,
                 subtitle: event.shortDescription,
+                description: event.shortDescription,
                 dateText: "\(event.startDate) - \(event.endDate)",
                 venueName: event.venueName,
                 address: event.address,
                 status: event.status,
                 typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
                 source: event.source,
+                sourceUrl: event.sourceUrl,
                 imageUrl: event.imageUrl,
+                price: event.price,
+                region: event.region,
+                updatedAt: event.updatedAt,
                 tags: smartTags
             ),
             tags: smartTags,

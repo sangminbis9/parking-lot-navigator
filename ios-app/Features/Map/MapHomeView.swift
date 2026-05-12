@@ -545,7 +545,7 @@ struct MapHomeView: View {
 
                         Button {
                             if let first = firstDiscoverListItem {
-                                showDiscoverItemOnMap(first.kind)
+                                openDiscoverResults(first.kind)
                             }
                         } label: {
                             Label("추천 보기", systemImage: "mappin.and.ellipse")
@@ -703,13 +703,17 @@ struct MapHomeView: View {
     }
 
     private func openDiscoverDetail(_ item: DiscoverListItem) {
-        switch item.kind {
+        openDiscoverResults(item.kind)
+    }
+
+    private func openDiscoverResults(_ kind: DiscoverListItem.Kind) {
+        switch kind {
         case .festival(let festival):
-            viewModel.selectedFestival = festival
-            viewModel.selectedEvent = nil
+            destinationStore.addRecent(festival.discoverDestination)
+            router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
         case .event(let event):
-            viewModel.selectedEvent = event
-            viewModel.selectedFestival = nil
+            destinationStore.addRecent(event.discoverDestination)
+            router.showResults(for: event.discoverDestination, presentation: event.discoverPresentation)
         }
     }
 
@@ -740,11 +744,9 @@ struct MapHomeView: View {
     private func handlePinTap(_ pin: MapPinItem) {
         switch pin.kind {
         case .festival(let festival):
-            focusMap(to: pin.coordinate, zoomLevel: 16)
-            Task { await viewModel.selectFestival(festival) }
+            openDiscoverResults(.festival(festival))
         case .event(let event):
-            focusMap(to: pin.coordinate, zoomLevel: 16)
-            Task { await viewModel.selectEvent(event) }
+            openDiscoverResults(.event(event))
         case .parking(let parkingLot):
             viewModel.selectedParkingLot = parkingLot
             focusMap(to: pin.coordinate, zoomLevel: 17)

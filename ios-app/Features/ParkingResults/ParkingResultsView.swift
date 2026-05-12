@@ -189,15 +189,39 @@ private struct DiscoverHeroImage: View {
 
 private struct DiscoverDescriptionCard: View {
     @EnvironmentObject private var tabRouter: AppTabRouter
+    @Environment(\.openURL) private var openURL
     let presentation: DiscoverPresentation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            detailSection(label: "\u{D589}\u{C0AC} \u{C124}\u{BA85}", value: descriptionText)
             detailRow(label: "일정", value: presentation.dateText)
             if let venueName = presentation.venueName, !venueName.isEmpty {
                 detailRow(label: "장소", value: venueName)
             }
             detailRow(label: "주소", value: presentation.address)
+
+            if let price = clean(presentation.price) {
+                detailRow(label: "\u{AC00}\u{ACA9}", value: price)
+            }
+            if let region = clean(presentation.region) {
+                detailRow(label: "\u{C9C0}\u{C5ED}", value: region)
+            }
+            detailRow(label: "\u{CD9C}\u{CC98}", value: presentation.source)
+            if let updatedAt = clean(presentation.updatedAt) {
+                detailRow(label: "\u{C5C5}\u{B370}\u{C774}\u{D2B8}", value: updatedAt)
+            }
+
+            if let sourceUrl = clean(presentation.sourceUrl), let url = URL(string: sourceUrl) {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("\u{ACF5}\u{C2DD} \u{C815}\u{BCF4} \u{C5F4}\u{AE30}", systemImage: "safari")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(FestivalDesign.navy)
+            }
 
             if !normalizedTags.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -240,6 +264,32 @@ private struct DiscoverDescriptionCard: View {
                 .replacingOccurrences(of: "#", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty })).sorted()
+    }
+
+    private var descriptionText: String {
+        if let description = clean(presentation.description) {
+            return description
+        }
+        let venueText = clean(presentation.venueName) ?? presentation.address
+        let priceText = clean(presentation.price).map { " \u{AC00}\u{ACA9}: \($0)." } ?? ""
+        return "\(presentation.title) \u{D589}\u{C0AC}\u{B294} \(presentation.dateText)\u{C5D0} \(venueText)\u{C5D0}\u{C11C} \u{C9C4}\u{D589}\u{B418}\u{B294} \(presentation.typeText)\u{C785}\u{B2C8}\u{B2E4}.\(priceText) \u{C790}\u{C138}\u{D55C} \u{B0B4}\u{C6A9}\u{C740} \(presentation.source)\u{C758} \u{C6D0}\u{BCF8} \u{B370}\u{C774}\u{D130} \u{C81C}\u{ACF5} \u{BC94}\u{C704}\u{C5D0} \u{B530}\u{B77C} \u{D45C}\u{C2DC}\u{B429}\u{B2C8}\u{B2E4}."
+    }
+
+    private func clean(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func detailSection(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(FestivalDesign.navy)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func detailRow(label: String, value: String) -> some View {

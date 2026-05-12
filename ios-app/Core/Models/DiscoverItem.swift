@@ -59,14 +59,113 @@ struct FreeEvent: Codable, Hashable, Identifiable {
 struct DiscoverPresentation: Hashable {
     let title: String
     let subtitle: String?
+    let description: String?
     let dateText: String
     let venueName: String?
     let address: String
     let status: DiscoverStatus
     let typeText: String
     let source: String
+    let sourceUrl: String?
     let imageUrl: String?
+    let price: String?
+    let region: String?
+    let updatedAt: String?
     let tags: [String]
+}
+
+extension Festival {
+    var discoverTags: [String] {
+        DiscoverTagBuilder.festivalTags(
+            title: title,
+            subtitle: subtitle,
+            venueName: venueName,
+            address: address,
+            startDate: startDate,
+            source: source,
+            rawTags: tags
+        )
+    }
+
+    var discoverDestination: Destination {
+        Destination(
+            id: "festival-\(id)",
+            name: title,
+            address: address,
+            lat: lat,
+            lng: lng,
+            source: source,
+            rawCategory: discoverTags.joined(separator: ","),
+            normalizedCategory: "festival"
+        )
+    }
+
+    var discoverPresentation: DiscoverPresentation {
+        DiscoverPresentation(
+            title: title,
+            subtitle: subtitle,
+            description: subtitle,
+            dateText: "\(startDate) - \(endDate)",
+            venueName: venueName,
+            address: address,
+            status: status,
+            typeText: "\u{CD95}\u{C81C}",
+            source: source,
+            sourceUrl: sourceUrl,
+            imageUrl: imageUrl,
+            price: nil,
+            region: nil,
+            updatedAt: nil,
+            tags: discoverTags
+        )
+    }
+}
+
+extension FreeEvent {
+    var discoverTags: [String] {
+        DiscoverTagBuilder.eventTags(
+            title: title,
+            eventType: eventType,
+            description: shortDescription,
+            venueName: venueName,
+            address: address,
+            startDate: startDate,
+            source: source
+        )
+    }
+
+    var discoverDestination: Destination {
+        Destination(
+            id: "event-\(id)",
+            name: title,
+            address: address,
+            lat: lat,
+            lng: lng,
+            source: source,
+            rawCategory: discoverTags.joined(separator: ","),
+            normalizedCategory: "event"
+        )
+    }
+
+    var discoverPresentation: DiscoverPresentation {
+        DiscoverPresentation(
+            title: title,
+            subtitle: shortDescription,
+            description: shortDescription,
+            dateText: "\(startDate) - \(endDate)",
+            venueName: venueName,
+            address: address,
+            status: status,
+            typeText: eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : eventType,
+            source: source,
+            sourceUrl: sourceUrl,
+            imageUrl: imageUrl,
+            price: price,
+            region: region,
+            updatedAt: updatedAt,
+            tags: discoverTags
+        )
+    }
 }
 
 enum DiscoverTagBuilder {
