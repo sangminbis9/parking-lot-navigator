@@ -4,6 +4,7 @@ import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import type { DiscoverQuery, EventProvider } from "../common/discoverProvider.js";
 import {
   EVENT_FEED_CACHE_TTL_MS,
+  EVENT_GEOCODE_ROW_LIMIT,
   EVENT_PAGE_SIZE,
   KakaoEventCoordinateResolver,
   categoryFromText,
@@ -69,7 +70,7 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
     const totalPages = Math.min(5, Math.max(1, Math.ceil((first.totalCount ?? first.rows.length) / EVENT_PAGE_SIZE)));
     const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => this.fetchPage(index + 2)));
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
-    const items = await Promise.all(rows.map((row) => this.mapRow(row)));
+    const items = await Promise.all(rows.map((row, index) => this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT)));
     const normalized = dedupeCachedEvents(items.filter((item): item is CachedEvent => Boolean(item)));
     logProviderResult("culture_portal", rows.length, normalized.length);
     return normalized;
@@ -78,7 +79,7 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
   private async fetchPage(page: number): Promise<{ rows: Record<string, unknown>[]; totalCount: number | null }> {
     const now = new Date();
     const to = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-    const url = new URL("/B553457/nopenapi/rest/publicperformancedisplays/period", this.baseUrl);
+    const url = new URL("/B553457/cultureinfo/period2", this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
     url.searchParams.set("cPage", String(page));
     url.searchParams.set("rows", String(EVENT_PAGE_SIZE));
@@ -102,7 +103,7 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
     return { rows: parseXmlItemsAny(text, ["item", "perforList", "perforInfo", "publicPerformanceDisplay"]), totalCount: null };
   }
 
-  private async mapRow(row: Record<string, unknown>): Promise<CachedEvent | null> {
+  private async mapRow(row: Record<string, unknown>, resolveCoordinates: boolean): Promise<CachedEvent | null> {
     const title = getString(row, ["title", "TITLE", "prfnm", "name"]);
     if (!title) return null;
     const categoryText = getString(row, ["realmName", "realmNameKr", "category", "subjectCategory", "codename"]);
@@ -129,7 +130,7 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
         isFree: clean(getString(row, ["price", "charge", "useFee"]))?.includes("\uBB34\uB8CC") ?? null,
         raw: row
       },
-      this.resolver
+      resolveCoordinates ? this.resolver : undefined
     );
   }
 }
