@@ -2,6 +2,8 @@
 
 This package runs the Parking Lot Navigator API on Cloudflare Workers.
 
+Last updated: 2026-05-12
+
 ## One-time setup
 
 ```powershell
@@ -69,6 +71,22 @@ User-facing parking and discovery endpoints read from D1 only. External discover
 ```powershell
 curl -X POST -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/admin/sync-discovery?kinds=festivals,events"
 ```
+
+Configured discovery providers:
+
+- Festivals: TourAPI and national culture festival standard data through `PUBLIC_DATA_SERVICE_KEY`.
+- Events: Seoul Open Data through `SEOUL_OPEN_DATA_KEY`.
+- Events: Culture Portal through `CULTURE_PORTAL_API_KEY` or `PUBLIC_DATA_SERVICE_KEY`.
+- Events: KOPIS through `KOPIS_API_KEY`.
+- Events: KCISA id 428 through `KCISA_428_API_KEY`.
+- Events: KCISA id 196 through `KCISA_196_API_KEY`.
+- Text-only event locations can be geocoded through Kakao Local when `KAKAO_REST_API_KEY` is configured.
+
+iOS client behavior to keep in mind:
+
+- The map displays all discovery providers through one "이벤트" toggle.
+- The event tab loads discovery data on demand and pages rows in batches of 20.
+- Event detail recommendations call both `/parking/nearby` and `/parking/realtime` and merge results before ranking.
 
 You can also trigger the same refresh from GitHub Actions:
 

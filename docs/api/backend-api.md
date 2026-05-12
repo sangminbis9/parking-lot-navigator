@@ -1,5 +1,7 @@
 # Backend API
 
+Last updated: 2026-05-12
+
 ## GET /search/destination
 
 Returns destination candidates for a search query.
@@ -37,6 +39,27 @@ Query:
 - `preferPublic`: prefer public parking lots
 - `evOnly`: only EV-capable parking lots
 - `accessibleOnly`: only accessible parking lots
+
+Notes:
+
+- Event detail recommendation screens call this endpoint and merge the result with `/parking/realtime` before ranking.
+- If realtime parking fails, the app can still rank the `/parking/nearby` result.
+
+## GET /parking/realtime
+
+Returns realtime-capable parking lots near a coordinate.
+
+Query:
+
+- `lat`: destination latitude
+- `lng`: destination longitude
+- `radiusMeters`: search radius
+
+Notes:
+
+- The map realtime layer can request a broad national radius.
+- Event detail recommendation screens request this endpoint around the selected event coordinate and merge it with `/parking/nearby`.
+- Duplicate parking lots are deduped on the iOS side for the event recommendation screen, preferring realtime/fresher rows.
 
 ## GET /parking/providers/health
 
@@ -77,6 +100,17 @@ Configured event providers:
 | `KCISA_428_API_KEY` | KCISA API id 428, `meta16/getkopis07` | `kcisa_428` |
 | `KCISA_196_API_KEY` | KCISA API id 196, `meta4/getKCPG0504` | `kcisa_196` |
 
+Client behavior:
+
+- The event tab loads `/discover/festivals` and `/discover/events` only while selected.
+- The list renders 20 rows initially and loads 20 more as the user scrolls.
+- Map pins and event tab rows both navigate to the same event detail + parking recommendation screen.
+- If an event has no upstream description, the iOS client displays a generated summary from available structured fields.
+
 ## GET /discover/clusters
 
 Returns map clusters for cached festival and event records.
+
+Current iOS note:
+
+- The iOS map no longer relies on numeric discovery clusters for event pins. It renders pins with overlap handling in the Kakao map layer.

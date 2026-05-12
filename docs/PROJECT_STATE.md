@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-05-10
+Last updated: 2026-05-12
 
 ## Project
 
@@ -37,6 +37,10 @@ Required production secret names include:
 - `SEOUL_SEONGDONG_IOT_KEY` if used separately; otherwise Seoul key fallback exists.
 - `SEOUL_HANGANG_PARKING_KEY` if used separately; otherwise Seoul key fallback exists.
 - `PUBLIC_DATA_SERVICE_KEY`
+- `CULTURE_PORTAL_API_KEY` optional; falls back to `PUBLIC_DATA_SERVICE_KEY` for Culture Portal where applicable.
+- `KOPIS_API_KEY`
+- `KCISA_428_API_KEY`
+- `KCISA_196_API_KEY`
 - `SYNC_ADMIN_TOKEN`
 - Cloudflare/GitHub Actions deploy secrets
 
@@ -65,6 +69,21 @@ Realtime map layer:
 - Realtime cache is backed by D1 table `realtime_parking_status`.
 - Realtime cache sync is intended to run every 5 minutes.
 
+Event/festival discovery layer:
+
+- The map exposes one user-facing toggle named "이벤트".
+- That single toggle shows all festival/event pins from existing public data, Seoul Open Data, TourAPI, Culture Portal, KOPIS, and KCISA providers.
+- API/source-specific switches are not shown on the map UI.
+- The event tab still supports category/source-aware filtering internally, but the user-facing filter is centered on event kind.
+- The event tab loads discovery data only when the event tab is selected.
+- Leaving the event tab cancels active loading and defers cleanup briefly so tab switching stays responsive.
+- The event tab renders 20 rows initially and loads 20 more when the user scrolls to the bottom.
+- Map event pins and event tab rows now open the same event detail + nearby parking recommendation screen.
+- Event recommendation screens merge normal nearby parking with realtime parking before ranking.
+- If realtime parking fails but normal nearby parking succeeds, the recommendation screen still works.
+- Event detail screens show every currently available field: description, date, venue, address, price, region, source, source URL, updated timestamp, image, and tags.
+- Some upstream APIs provide weak or missing long descriptions. When no description is available, the app displays a generated summary from title, date, place, type, price, and source.
+
 Major parking providers:
 
 - Seoul realtime: `GetParkingInfo`
@@ -79,6 +98,16 @@ Major parking providers:
 - National static D1 data
 - TS Korea
 - Kakao Local PK6 fallback
+
+Major discovery providers:
+
+- TourAPI festival provider via data.go.kr / KTO TourAPI.
+- National culture festival standard data via data.go.kr.
+- Seoul Open Data cultural events.
+- Culture Portal "한눈에보는문화정보" / public culture information.
+- KOPIS performance list.
+- KCISA Culture API id 428, source id `kcisa_428`.
+- KCISA Culture API id 196, source id `kcisa_196`.
 
 ## Current iOS UX/Brand
 
@@ -96,7 +125,13 @@ Major parking providers:
 
 ## Recent Useful Commits
 
-- Latest local work: apply festival mascot direction across iOS search, parking, navigation, map overlays, and bump iOS build number to 81.
+- `6c96a20 Include realtime parking in event recommendations`
+- `3bdd7bd Unify event detail navigation`
+- `c55f447 Defer event list cleanup on tab switch`
+- `1eef0f4 Optimize event tab list loading`
+- `a11ebdd Set Codemagic build fallback to 105`
+- `ae7ec5b` set iOS build number to `1.0 (105)` in project metadata.
+- Earlier work: apply festival mascot direction across iOS search, parking, navigation, map overlays, and bump iOS build number through the TestFlight sequence.
 - Latest work: remove accommodation discovery/display paths and keep discovery focused on event/festival layers.
 - `6c3792f Fix Seoul provider pagination test`
 - `69b3274 Enrich Seoul realtime parking coordinates`

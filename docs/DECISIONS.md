@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-10
+Last updated: 2026-05-12
 
 ## Product Direction
 
@@ -12,6 +12,8 @@ Last updated: 2026-05-10
 - Keep realtime parking as a map toggle, off by default.
 - Use Cloudflare Worker as production backend.
 - Use Cloudflare D1 for normalized parking data and realtime cache.
+- Keep map discovery controls simple: one user-facing toggle named "이벤트" for all event/festival providers.
+- Keep provider/source distinctions in data and filters, not as separate map toggles.
 
 ## Brand/UI Direction
 
@@ -28,6 +30,10 @@ Last updated: 2026-05-10
 - Use D1 for fast nearby search.
 - Merge regional realtime providers on top of static/provider candidates.
 - Use Kakao Local `category_group_code=PK6` as a fallback for broad candidate coverage.
+- Expand event/festival discovery nationally through official APIs before scraping.
+- Current discovery sources include TourAPI, national culture festival standard data, Seoul Open Data, Culture Portal, KOPIS, KCISA id 428, and KCISA id 196.
+- Rows without usable coordinates can be geocoded by Kakao Local during sync where configured; unresolved rows are omitted from map pin display.
+- Several official list APIs have sparse descriptions. Prefer showing upstream descriptions when present and a generated structured summary when absent; add detail API enrichment later.
 
 ## Realtime Strategy
 
@@ -36,6 +42,8 @@ Last updated: 2026-05-10
 - Realtime toggle should show nationwide data, not only the current viewport.
 - Realtime parking pins render from the loaded realtime lot list instead of numeric server/app clusters.
 - Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
+- Event detail parking recommendations should merge normal nearby parking and realtime parking before ranking.
+- If realtime parking fails, nearby parking recommendations should continue to render.
 
 ## Seoul Realtime Details
 
@@ -48,20 +56,23 @@ Last updated: 2026-05-10
 ## iOS Map Layer Decisions
 
 - Realtime parking toggle label should be simple and not duplicate the parking symbol.
-- Festival/event layers are separate toggles.
+- Festival/event providers are displayed through one map toggle named "이벤트".
 - Festival/event layers do not use numeric clustering. They render actual pins.
 - Festival/event pins hide title labels until deep zoom.
 - Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
 - The map bottom panel uses tabs for parking recommendations and a unified discovery list.
 - The discovery list uses already-loaded local data for search and sorting; default sort is distance, with date and name options.
 - Discovery list distance sorting/display uses the user's current location when available, falling back to provider distance only before location is known.
-- Discovery detail "map view" actions stay inside the app, focus the Kakao map near zoom 16, set the item as the destination, load nearby parking, and enable/load realtime parking.
+- Map pin taps and event tab row taps should open the same event detail + nearby parking recommendation screen.
+- The event tab should load discovery data only when selected, unload after leaving, and render rows in pages of 20 to avoid SwiftUI list/diff stalls.
 
 ## Build/Release
 
 - When committing changes, bump iOS build number by one.
 - Before TestFlight upload, confirm Codemagic's publish log shows a `Version code` higher than the previous App Store Connect build.
 - A publish attempt on 2026-05-09 failed because the uploaded IPA still had build number 79 while App Store Connect already had build 79.
+- A later publish attempt failed because the uploaded IPA still had build number 95 while App Store Connect already had build 95.
+- Current build metadata target is `1.0 (105)`.
 - Codemagic/TestFlight is used for iOS build validation.
 - GitHub Actions also runs an iOS simulator validation workflow on pushes and pull requests.
 - Backend tests run in CI/Codemagic.

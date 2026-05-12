@@ -1,18 +1,55 @@
 # Next Steps
 
-Last updated: 2026-05-10
+Last updated: 2026-05-12
 
 ## Current Status
 
 - Branch: `master`
-- Last pushed commit before this session: `9b8d759 Replace realtime clusters with overlap pins`
+- Latest pushed commit: `6c96a20 Include realtime parking in event recommendations`
 - Product direction is festival/event discovery first, with parking/realtime as support for visiting selected destinations.
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is 81 in `ios-app/project.yml`.
-- Worker discovery and parking reads are moving to D1-only user endpoints with cron/admin sync for external provider calls.
-- Latest TestFlight publish attempt failed because the IPA still contained build number 79. App Store Connect already has build 79, so the next Codemagic build must publish build 80 or higher.
+- iOS build number is `1.0 (105)` in `ios-app/project.yml`; Codemagic fallback build number is also `105`.
+- Worker discovery and parking reads use D1/user endpoints with cron/admin sync for external provider calls.
+- Previous App Store Connect upload failures were caused by duplicate `CFBundleVersion` values. Future uploads must always use a build number higher than the latest uploaded build.
 
 ## Completed This Session
+
+Nationwide event API expansion, event tab performance work, unified event detail navigation, and realtime parking inclusion in event recommendations.
+
+Additional touched files:
+
+- `backend/src/features/discover/events/CulturePortalEventProvider.ts`
+- `backend/src/features/discover/events/KopisEventProvider.ts`
+- `backend/src/features/discover/events/KcisaCultureEventProvider.ts`
+- `backend/src/features/discover/events/eventProviderUtils.ts`
+- `backend/src/features/discover/events/eventService.ts`
+- `shared-types/src/discover.ts`
+- `ios-app/Core/Models/DiscoverItem.swift`
+- `ios-app/Features/Search/SearchView.swift`
+- `ios-app/Features/ParkingResults/ParkingResultsView.swift`
+- `ios-app/Features/ParkingResults/ParkingResultsViewModel.swift`
+
+Implemented behavior:
+
+- Added national event/culture providers for Culture Portal, KOPIS, KCISA id 428, and KCISA id 196.
+- Kept the map UI simple with one event toggle named "이벤트".
+- Merged new and existing event/festival sources into the same app-level event experience.
+- Added source IDs for internal filtering and logging: `culture_portal`, `kopis`, `kcisa_428`, `kcisa_196`, `existing_public_data`, and `seoul_open_data`.
+- Preserved category-level user filters in the event tab: all, festival, performance, exhibition, culture event, local event, and other.
+- Added best-effort address-to-coordinate resolution for rows without coordinates through Kakao Local where configured.
+- Added API failure isolation so a provider failure does not break the entire event feature.
+- Updated event tab loading so it only loads while the tab is selected.
+- Cleared event tab list data after leaving the tab, with deferred cleanup to avoid slow tab switching.
+- Rendered event tab list rows in pages of 20 with infinite-scroll loading.
+- Reverted the temporary map pin cap; map pin behavior remains source-driven and uses existing overlap handling.
+- Unified map pin taps and event tab row taps to the same event detail + nearby parking recommendation screen.
+- Expanded event detail fields to show description, fallback generated summary, date, venue, address, price, region, source, official/source URL, updated timestamp, image, and tags.
+- Updated the event nearby parking recommendation flow to merge `/parking/nearby` and `/parking/realtime` results before ranking.
+- Realtime parking failures no longer block normal nearby parking recommendations.
+
+Known limitation:
+
+- Several upstream list APIs do not provide rich long-form event descriptions. The app shows any provided description, otherwise it generates a concise summary from available structured fields. Richer descriptions require provider-specific detail endpoints, for example KOPIS detail, TourAPI detail, or Culture Portal detail calls.
 
 Festival/event map display, mascot branding, and list/detail refinement on the iOS Kakao map.
 
@@ -52,10 +89,11 @@ Implemented behavior:
 - Event/festival list distance values and distance sorting use the user's current location when available.
 - Tapping a list row opens the existing detail sheet with a main image area.
 - The detail sheet map action stays in app, focuses the Kakao map on the selected item, sets it as the destination, loads nearby parking, and enables/loads realtime parking.
+- Note: map event pins no longer use the old map-only detail sheet as the primary path. They now route to the same detailed event/parking recommendation screen as the event tab.
 
 Validation:
 
-- Before the next Codemagic/TestFlight run, confirm the publish log says `Version code: 80` or higher.
+- Before the next Codemagic/TestFlight run, confirm the publish log says `Version code: 105` or higher.
 - Run `git diff --check` before committing.
 - Run local iOS tests/build if Xcode tooling is available; otherwise rely on CI/Codemagic for full iOS validation.
 - GitHub Actions now includes `iOS Simulator Build`, which runs backend tests, generates the Xcode project, builds the iOS app for simulator, and runs iOS unit tests.
@@ -64,12 +102,14 @@ Validation:
 
 - Apply D1 migrations, including `worker-backend/migrations/0003_discovery_items.sql`.
 - If realtime or discovery provider changes are deployed, run or wait for cron sync.
-- Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, `/discover/events`, and `/discover/clusters` behavior from the production Worker.
+- Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, and `/discover/events` behavior from the production Worker.
 - In app, verify realtime toggle after sync.
+- In app, verify event detail recommendation rows include realtime-capable parking where available.
 
 ## Backlog
 
-- Configure `PUBLIC_DATA_SERVICE_KEY`, `SEOUL_OPEN_DATA_KEY`, and `KAKAO_REST_API_KEY` in Worker secrets, then verify discovery admin sync and D1-backed `/discover/*` endpoints.
+- Configure `PUBLIC_DATA_SERVICE_KEY`, `SEOUL_OPEN_DATA_KEY`, `CULTURE_PORTAL_API_KEY`, `KOPIS_API_KEY`, `KCISA_428_API_KEY`, `KCISA_196_API_KEY`, and `KAKAO_REST_API_KEY` in Worker secrets, then verify discovery admin sync and D1-backed `/discover/*` endpoints.
+- Add provider-specific detail enrichment for event descriptions where official APIs provide detail endpoints.
 - Get exact Seongdong IoT Seoul Open Data service name/field map if the provider still returns no rows.
 - Add more regional realtime providers as approvals arrive.
 - Improve provider health/debug visibility without exposing secrets.
