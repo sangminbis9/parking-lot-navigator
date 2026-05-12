@@ -79,14 +79,42 @@ export class KcisaCultureEventProvider extends BaseProviderHealth implements Eve
   }
 
   private async fetchPage(page: number): Promise<{ rows: Record<string, unknown>[]; totalCount: number | null }> {
-    const url = new URL(this.input.path, this.input.baseUrl);
-    url.searchParams.set("serviceKey", this.input.serviceKey.trim());
-    url.searchParams.set("numOfRows", String(EVENT_PAGE_SIZE));
-    url.searchParams.set("pageNo", String(page));
+    const urls = this.endpointCandidates(page);
+    let lastError: unknown = null;
+    for (const url of urls) {
+      try {
+        const response = await fetchWithTimeout(url, {
+          headers: {
+            Accept: "application/json, text/xml, */*",
+            "Content-Type": "application/json"
+          }
+        });
+        if (!response.ok) {
+          lastError = new Error(`${this.input.source} API failed: ${response.status}`);
+          if (isRetryableGatewayStatus(response.status)) continue;
+          throw lastError;
+        }
+        const text = await response.text();
+        return this.parseResponse(text);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(`${this.input.source} API failed`);
+  }
 
-    const response = await fetchWithTimeout(url, { headers: { Accept: "application/json,text/xml,*/*" } });
-    if (!response.ok) throw new Error(`${this.input.source} API failed: ${response.status}`);
-    const text = await response.text();
+  private endpointCandidates(page: number): URL[] {
+    const bases = [this.input.baseUrl, alternateProtocolBaseUrl(this.input.baseUrl)].filter((base): base is string => Boolean(base));
+    return bases.map((base) => {
+      const url = new URL(this.input.path, base);
+      url.searchParams.set("serviceKey", this.input.serviceKey.trim());
+      url.searchParams.set("numOfRows", String(EVENT_PAGE_SIZE));
+      url.searchParams.set("pageNo", String(page));
+      return url;
+    });
+  }
+
+  private parseResponse(text: string): { rows: Record<string, unknown>[]; totalCount: number | null } {
     if (text.trim().startsWith("{")) {
       const body = JSON.parse(text) as unknown;
       return { rows: extractJsonItems(body), totalCount: extractTotalCount(body) };
@@ -120,4 +148,14 @@ export class KcisaCultureEventProvider extends BaseProviderHealth implements Eve
       resolveCoordinates ? this.input.resolver : undefined
     );
   }
+}
+
+function alternateProtocolBaseUrl(baseUrl: string): string | null {
+  if (baseUrl.startsWith("https://")) return `http://${baseUrl.slice("https://".length)}`;
+  if (baseUrl.startsWith("http://")) return `https://${baseUrl.slice("http://".length)}`;
+  return null;
+}
+
+function isRetryableGatewayStatus(status: number): boolean {
+  return status === 530 || status === 502 || status === 503 || status === 504;
 }
