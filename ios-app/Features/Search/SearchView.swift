@@ -17,11 +17,13 @@ struct SearchView: View {
     @State private var showsFilters = false
     @State private var visibleItemCount = 20
     @State private var loadTask: Task<Void, Never>?
+    @State private var cleanupTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
     private let pageSize = 20
+    private let cleanupDelayNanoseconds: UInt64 = 500_000_000
 
     var body: some View {
         ScrollView {
@@ -100,7 +102,7 @@ struct SearchView: View {
         }
         .onDisappear {
             if tabRouter.selectedTab != .discover {
-                unloadDiscoverItems()
+                scheduleDiscoverUnload()
             }
         }
         .onChange(of: tabRouter.selectedTab) { selectedTab in
@@ -108,7 +110,7 @@ struct SearchView: View {
                 applyPendingDiscoverFilter()
                 startDiscoverLoad()
             } else {
-                unloadDiscoverItems()
+                scheduleDiscoverUnload()
             }
         }
         .onChange(of: tabRouter.discoverFilterQuery) { _ in
@@ -338,6 +340,8 @@ struct SearchView: View {
 
     private func startDiscoverLoad(force: Bool = false) {
         guard tabRouter.selectedTab == .discover else { return }
+        cleanupTask?.cancel()
+        cleanupTask = nil
         guard force || (festivals.isEmpty && events.isEmpty) else { return }
         loadTask?.cancel()
         loadTask = Task { @MainActor in
@@ -345,14 +349,20 @@ struct SearchView: View {
         }
     }
 
-    private func unloadDiscoverItems() {
+    private func scheduleDiscoverUnload() {
         loadTask?.cancel()
         loadTask = nil
-        festivals = []
-        events = []
-        errorMessage = nil
-        isLoading = false
-        resetVisibleItems()
+        cleanupTask?.cancel()
+        cleanupTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: cleanupDelayNanoseconds)
+            guard !Task.isCancelled, tabRouter.selectedTab != .discover else { return }
+            festivals = []
+            events = []
+            errorMessage = nil
+            isLoading = false
+            resetVisibleItems()
+            cleanupTask = nil
+        }
     }
 
     private func resetVisibleItems() {
