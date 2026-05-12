@@ -90,7 +90,8 @@ export class KcisaCultureEventProvider extends BaseProviderHealth implements Eve
           }
         });
         if (!response.ok) {
-          lastError = new Error(`${this.input.source} API failed: ${response.status}`);
+          const detail = await readErrorDetail(response);
+          lastError = new Error(`${this.input.source} API failed: ${response.status}${detail ? ` ${detail}` : ""}`);
           if (isRetryableGatewayStatus(response.status)) continue;
           throw lastError;
         }
@@ -107,7 +108,7 @@ export class KcisaCultureEventProvider extends BaseProviderHealth implements Eve
     const bases = [this.input.baseUrl, alternateProtocolBaseUrl(this.input.baseUrl)].filter((base): base is string => Boolean(base));
     return bases.map((base) => {
       const url = new URL(this.input.path, base);
-      url.searchParams.set("serviceKey", this.input.serviceKey.trim());
+      url.searchParams.set("serviceKey", normalizeServiceKey(this.input.serviceKey));
       url.searchParams.set("numOfRows", String(EVENT_PAGE_SIZE));
       url.searchParams.set("pageNo", String(page));
       return url;
@@ -158,4 +159,23 @@ function alternateProtocolBaseUrl(baseUrl: string): string | null {
 
 function isRetryableGatewayStatus(status: number): boolean {
   return status === 530 || status === 502 || status === 503 || status === 504;
+}
+
+function normalizeServiceKey(serviceKey: string): string {
+  const trimmed = serviceKey.trim();
+  if (!trimmed.includes("%")) return trimmed;
+  try {
+    return decodeURIComponent(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const text = await response.text();
+    return text.replace(/\s+/g, " ").trim().slice(0, 160) || response.statusText || null;
+  } catch {
+    return response.statusText || null;
+  }
 }
