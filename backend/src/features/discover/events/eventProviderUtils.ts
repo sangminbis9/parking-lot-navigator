@@ -63,16 +63,21 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
 
   async resolve(input: { title: string; venue?: string | null; address?: string | null; region?: string | null }): Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null> {
     if (!this.config.KAKAO_REST_API_KEY || this.config.PARKING_PROVIDER_MODE === "mock") return null;
-    const query = [input.address, input.venue, input.region, input.title]
-      .map(clean)
-      .filter(Boolean)
-      .join(" ");
-    if (!query) return null;
-    const cached = this.cache.get(query);
-    if (cached) return cached;
-    const promise = this.fetchCoordinate(query);
-    this.cache.set(query, promise);
-    return promise;
+    const queries = uniqueQueries([
+      clean(input.address),
+      [input.region, input.venue].map(clean).filter(Boolean).join(" "),
+      clean(input.venue),
+      [input.venue, input.title].map(clean).filter(Boolean).join(" "),
+      [input.region, input.title].map(clean).filter(Boolean).join(" ")
+    ]);
+    for (const query of queries) {
+      const cached = this.cache.get(query);
+      const promise = cached ?? this.fetchCoordinate(query);
+      if (!cached) this.cache.set(query, promise);
+      const resolved = await promise;
+      if (resolved) return resolved;
+    }
+    return null;
   }
 
   private async fetchCoordinate(query: string): Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null> {
@@ -206,6 +211,14 @@ export function parseXmlItems(xml: string, itemTag = "item"): Record<string, str
   return [...xml.matchAll(regex)].map((match) => parseXmlObject(match[1]));
 }
 
+export function parseXmlItemsAny(xml: string, itemTags: string[]): Record<string, string>[] {
+  for (const tag of itemTags) {
+    const items = parseXmlItems(xml, tag);
+    if (items.length > 0) return items;
+  }
+  return [];
+}
+
 export function parseXmlObject(xml: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const match of xml.matchAll(/<([A-Za-z0-9_:-]+)[^>]*>([\s\S]*?)<\/\1>/g)) {
@@ -242,7 +255,10 @@ export function categoryFromText(text: string | null | undefined): EventCategory
 export function parseDateRange(value: string | null | undefined): { startDate: string; endDate: string } | null {
   const text = clean(value);
   if (!text) return null;
-  const matches = [...text.matchAll(/\d{4}[-.\/]?\d{1,2}[-.\/]?\d{1,2}/g)]
+  const matches = [
+    ...text.matchAll(/\d{4}[-.\/]?\d{1,2}[-.\/]?\d{1,2}/g),
+    ...text.matchAll(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g)
+  ]
     .map((match) => normalizeDate(match[0]))
     .filter((date): date is string => Boolean(date));
   if (matches.length === 0) return null;
@@ -301,6 +317,10 @@ function normalizeDate(value: unknown): string | null {
   if (parts) {
     return `${parts[1]}-${parts[2].padStart(2, "0")}-${parts[3].padStart(2, "0")}`;
   }
+  const koreanParts = text.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (koreanParts) {
+    return `${koreanParts[1]}-${koreanParts[2].padStart(2, "0")}-${koreanParts[3].padStart(2, "0")}`;
+  }
   return parseDate(text);
 }
 
@@ -338,6 +358,18 @@ function decodeXml(value: string): string {
 
 function containsAny(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle.toLowerCase()));
+}
+
+function uniqueQueries(values: Array<string | null>): string[] {
+  const seen = new Set<string>();
+  const queries: string[] = [];
+  for (const value of values) {
+    const query = clean(value);
+    if (!query || seen.has(query)) continue;
+    seen.add(query);
+    queries.push(query);
+  }
+  return queries;
 }
 
 function normalizeTitle(value: string): string {

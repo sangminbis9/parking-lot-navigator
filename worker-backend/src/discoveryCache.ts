@@ -60,6 +60,7 @@ export interface DiscoverySyncResult {
   upserted: number;
   skipped: number;
   pruned: number;
+  sources: Record<string, number>;
   generatedAt: string;
 }
 
@@ -174,6 +175,7 @@ export async function syncDiscoveryCache(
         upserted: 0,
         skipped: 0,
         pruned: 0,
+        sources: {},
         generatedAt: new Date().toISOString()
       };
       await finishSyncRun(db, run.id, "failed", failed, error instanceof Error ? error.message : "Unknown error");
@@ -203,6 +205,7 @@ async function syncDiscoveryKind(
     })
   );
   const items = dedupeItems(batches.flat());
+  const sources = countSources(items);
   let upserted = 0;
   let skipped = 0;
   for (const item of items) {
@@ -214,7 +217,7 @@ async function syncDiscoveryKind(
     upserted += 1;
   }
   const pruned = await pruneStaleDiscovery(db, typeForKind(kind));
-  return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, generatedAt };
+  return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, sources, generatedAt };
 }
 
 function centersForKind(kind: DiscoverySyncKind): Array<{ id: string; lat: number; lng: number }> {
@@ -470,6 +473,14 @@ function dedupeItems<T extends DiscoveryItem>(items: T[]): T[] {
     selected.set(`${type}:${item.source}:${item.id}`, item);
   }
   return [...selected.values()];
+}
+
+function countSources(items: DiscoveryItem[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    counts[item.source] = (counts[item.source] ?? 0) + 1;
+  }
+  return counts;
 }
 
 async function startSyncRun(db: D1Database, syncType: string): Promise<{ id: string }> {

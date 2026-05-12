@@ -18,7 +18,7 @@ import {
   getString,
   logProviderResult,
   normalizeEventForMap,
-  parseXmlItems,
+  parseXmlItemsAny,
   type CachedEvent,
   type EventCoordinateResolver
 } from "./eventProviderUtils.js";
@@ -84,6 +84,12 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
     url.searchParams.set("rows", String(EVENT_PAGE_SIZE));
     url.searchParams.set("from", formatCompactDate(now));
     url.searchParams.set("to", formatCompactDate(to));
+    url.searchParams.set("place", "");
+    url.searchParams.set("gpsxfrom", "");
+    url.searchParams.set("gpsyfrom", "");
+    url.searchParams.set("gpsxto", "");
+    url.searchParams.set("gpsyto", "");
+    url.searchParams.set("keyword", "");
     url.searchParams.set("sortStdr", "1");
 
     const response = await fetchWithTimeout(url, { headers: { Accept: "application/json,text/xml,*/*" } });
@@ -93,7 +99,7 @@ export class CulturePortalEventProvider extends BaseProviderHealth implements Ev
       const body = JSON.parse(text) as unknown;
       return { rows: extractJsonItems(body), totalCount: extractTotalCount(body) };
     }
-    return { rows: parseXmlItems(text), totalCount: null };
+    return { rows: parseXmlItemsAny(text, ["item", "perforList", "perforInfo", "publicPerformanceDisplay"]), totalCount: null };
   }
 
   private async mapRow(row: Record<string, unknown>): Promise<CachedEvent | null> {
