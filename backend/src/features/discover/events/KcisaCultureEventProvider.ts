@@ -4,8 +4,8 @@ import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import type { DiscoverQuery, EventProvider } from "../common/discoverProvider.js";
 import {
   EVENT_FEED_CACHE_TTL_MS,
-  EVENT_GEOCODE_ROW_LIMIT,
   EVENT_PAGE_SIZE,
+  KCISA_EVENT_GEOCODE_ROW_LIMIT,
   categoryFromText,
   dedupeCachedEvents,
   eventFromCached,
@@ -72,7 +72,7 @@ export class KcisaCultureEventProvider extends BaseProviderHealth implements Eve
     const totalPages = Math.min(3, Math.max(1, Math.ceil((first.totalCount ?? first.rows.length) / EVENT_PAGE_SIZE)));
     const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => this.fetchPage(index + 2)));
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
-    const items = await Promise.all(rows.map((row, index) => this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT)));
+    const items = await Promise.all(rows.map((row, index) => this.mapRow(row, index < KCISA_EVENT_GEOCODE_ROW_LIMIT)));
     const normalized = dedupeCachedEvents(items.filter((item): item is CachedEvent => Boolean(item)));
     logProviderResult(this.input.source, rows.length, normalized.length);
     return normalized;
