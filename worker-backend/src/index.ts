@@ -375,7 +375,11 @@ app.post("/admin/sync-discovery", async (c) => {
   const backend = await loadBackend(c.env);
   try {
     const result = await syncDiscoveryCache(c.env.DB, backend, discoverySyncKinds(query.kinds));
-    return c.json({ result, generatedAt: new Date().toISOString() });
+    return c.json({
+      result,
+      providers: [...backend.festivalService.health(), ...backend.eventService.health()],
+      generatedAt: new Date().toISOString()
+    });
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
   }
