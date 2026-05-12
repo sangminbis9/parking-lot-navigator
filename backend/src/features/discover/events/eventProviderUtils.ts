@@ -9,7 +9,7 @@ export const EVENT_FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const EVENT_FETCH_TIMEOUT_MS = 8_000;
 export const EVENT_PAGE_SIZE = 100;
 export const EVENT_GEOCODE_ROW_LIMIT = 8;
-export const KCISA_EVENT_GEOCODE_ROW_LIMIT = 30;
+export const KCISA_EVENT_GEOCODE_ROW_LIMIT = 12;
 
 export interface NormalizedEventInput {
   source: string;
@@ -72,7 +72,7 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
       [input.venue, input.title].map(clean).filter(Boolean).join(" "),
       [input.region, input.title].map(clean).filter(Boolean).join(" ")
     ]);
-    for (const query of queries.slice(0, 2)) {
+    for (const query of queries.slice(0, 1)) {
       const cached = this.cache.get(query);
       const promise = cached ?? this.fetchCoordinate(query);
       if (!cached) this.cache.set(query, promise);
