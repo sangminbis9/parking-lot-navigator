@@ -647,7 +647,7 @@ private enum DiscoverPinStyle: CaseIterable {
     }
 
     static func eventStyle(for event: FreeEvent) -> DiscoverPinStyle {
-        let text = [event.title, event.eventType, event.venueName, event.address, event.shortDescription]
+        let text = [event.title, event.eventType, event.storeName, event.address, event.benefit, event.shortDescription]
             .compactMap { $0 }
             .joined(separator: " ")
             .lowercased()

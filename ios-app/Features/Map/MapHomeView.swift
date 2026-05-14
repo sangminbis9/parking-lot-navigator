@@ -107,12 +107,12 @@ struct MapHomeView: View {
         .sheet(item: $viewModel.selectedEvent) { event in
             DiscoverDetailSheet(
                 title: event.title,
-                subtitle: event.shortDescription,
-                statusText: event.status.displayText,
-                dateText: "\(event.startDate) - \(event.endDate)",
-                venueName: event.venueName,
+                subtitle: event.benefit ?? event.shortDescription,
+                statusText: event.timelineStatus.displayText,
+                dateText: event.dateText,
+                venueName: event.venueName ?? event.storeName,
                 address: event.address,
-                source: event.source,
+                source: event.isSponsored ? "\(event.source) · sponsored" : event.source,
                 sourceUrl: event.sourceUrl,
                 imageUrl: event.imageUrl,
                 tint: .teal,
@@ -208,10 +208,10 @@ struct MapHomeView: View {
 
     private var discoverSources: [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
-        if viewModel.showsEventLayer {
+        if viewModel.showsFestivalLayer {
             sources.append(contentsOf: viewModel.festivals.map { .festival($0) })
         }
-        if viewModel.showsEventLayer {
+        if viewModel.showsLocalEventLayer {
             sources.append(contentsOf: viewModel.events.map { .event($0) })
         }
         return sources
@@ -374,12 +374,20 @@ struct MapHomeView: View {
                     }
                 }
                 layerToggle(
-                    title: "\u{C774}\u{BCA4}\u{D2B8}",
-                    systemImage: "calendar",
-                    tint: FestivalDesign.teal,
-                    isOn: viewModel.showsEventLayer
+                    title: "\u{CD95}\u{C81C}",
+                    systemImage: "sparkles",
+                    tint: FestivalDesign.coral,
+                    isOn: viewModel.showsFestivalLayer
                 ) {
-                    Task { await viewModel.setEventLayerVisible(!viewModel.showsEventLayer, viewport: mapViewport) }
+                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
+                }
+                layerToggle(
+                    title: "\u{C774}\u{BCA4}\u{D2B8}",
+                    systemImage: "tag.fill",
+                    tint: FestivalDesign.teal,
+                    isOn: viewModel.showsLocalEventLayer
+                ) {
+                    Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                     ProgressView()
@@ -760,12 +768,12 @@ struct MapHomeView: View {
     private func centerOnInitialDiscoverPinIfNeeded() {
         guard !didAutoCenterOnLocation else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
-        if viewModel.showsEventLayer, let festival = viewModel.festivals.first {
+        if viewModel.showsFestivalLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true
             moveMap(to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng), zoomLevel: 12)
             return
         }
-        if viewModel.showsEventLayer, let event = viewModel.events.first {
+        if viewModel.showsLocalEventLayer, let event = viewModel.events.first {
             didAutoCenterOnLocation = true
             moveMap(to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng), zoomLevel: 12)
             return
@@ -795,7 +803,7 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        guard viewModel.showsEventLayer else { return }
+        guard viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
         discoverRefreshTask = Task {
@@ -911,11 +919,11 @@ private struct DiscoverListItem: Identifiable {
             id: "event-\(event.id)",
             kind: .event(event),
             title: event.title,
-            subtitle: event.shortDescription ?? event.venueName ?? event.address,
-            dateText: "\(event.startDate) - \(event.endDate)",
+            subtitle: event.benefit ?? event.storeName,
+            dateText: event.dateText,
             startDate: event.startDate,
-            statusText: event.status.displayText,
-            status: event.status,
+            statusText: event.timelineStatus.displayText,
+            status: event.timelineStatus,
             distanceMeters: measuredDistanceMeters(
                 from: referenceCoordinate,
                 to: CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng),
@@ -926,16 +934,17 @@ private struct DiscoverListItem: Identifiable {
             symbol: category.systemImage,
             typeText: category.title,
             category: category,
-            sourceText: event.source,
+            sourceText: event.isSponsored ? "\(event.source) · sponsored" : event.source,
             regionText: regionText(from: event.address),
             themes: themes,
-            popularityScore: popularityScore(hasImage: event.imageUrl != nil, hasSourceUrl: event.sourceUrl != nil, status: event.status, themeCount: themes.count),
+            popularityScore: popularityScore(hasImage: event.imageUrl != nil, hasSourceUrl: event.sourceUrl != nil, status: event.timelineStatus, themeCount: themes.count) + event.priorityScore,
             searchText: [
                 event.title,
                 event.eventType,
-                event.venueName,
+                event.storeName,
                 event.address,
                 event.source,
+                event.benefit,
                 event.shortDescription
             ]
             .compactMap { $0 }

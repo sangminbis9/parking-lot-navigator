@@ -1,4 +1,4 @@
-# Discover data sources
+# Discover Data Sources
 
 Last updated: 2026-05-12
 
@@ -6,58 +6,85 @@ Last updated: 2026-05-12
 
 Festival discovery uses Korea Tourism Organization TourAPI and national public culture festival data when `FESTIVAL_PROVIDER_ENABLED=true` and `PUBLIC_DATA_SERVICE_KEY` is configured.
 
-- Endpoint adapter: `TourApiFestivalProvider`
-- Candidate source: Korea Tourism Organization TourAPI on data.go.kr and the related TourAPI `searchFestival2` operation.
-- Why: official/public structured tourism data with event start date, event end date, title, address, image, and coordinates (`mapx`, `mapy`) for many festival records.
-- Refresh policy: Cloudflare Worker cron syncs festival data into D1 every hour. User-facing `/discover/festivals` reads D1 only.
-- Limitations: coverage and images depend on TourAPI publication quality. Source detail links should be added only after the final official URL pattern is verified.
+- `TourApiFestivalProvider`: Korea Tourism Organization TourAPI `searchFestival2`.
+- `NationalCultureFestivalProvider`: data.go.kr national culture festival standard data.
+- Refresh policy: Cloudflare Worker cron syncs festival data into D1 every hour. User-facing festival endpoints read D1.
+- User-facing endpoints: `/api/festivals`, with `/discover/festivals` kept for compatibility.
 
-Additional festival source:
+## Public Cultural Data Formerly Named Events
 
-- Endpoint adapter: `NationalCultureFestivalProvider`
-- Candidate source: data.go.kr national culture festival standard data.
-- Why: nationwide official festival rows with title, period, venue/address, coordinates, organizer/sponsor text, phone, homepage, and reference date.
-- Limitations: source quality varies by local government. Some rows have sparse descriptions or outdated reference dates.
+The old public "event" providers are no longer the app's event domain. They are folded into festival discovery because they are public/API-backed cultural listings, not restaurant, cafe, shop, popup, review, discount, or freebie events.
 
-## Events
+Legacy adapters:
 
-The event layer uses Seoul Open Data plus national culture/event providers when `EVENT_PROVIDER_ENABLED=true`.
+- `SeoulCultureEventProvider`: Seoul Open Data cultural events.
+- `CulturePortalEventProvider`: Culture Portal public performance/display data.
+- `KopisEventProvider`: KOPIS performance list.
+- `KcisaCultureEventProvider`: KCISA public culture/performance APIs.
 
-- Endpoint adapter: `SeoulCultureEventProvider`
-- Candidate source: Seoul Open Data `culturalEventInfo`, served from `http://openapi.seoul.go.kr:8088/{KEY}/json/culturalEventInfo/...`.
-- Why: official structured city data for cultural events with title, date, venue, fee text, image/link fields, and coordinate fields.
-- Additional adapters: `CulturePortalEventProvider`, `KopisEventProvider`, and `KcisaCultureEventProvider`.
-- Additional sources:
-  - Culture Portal "한눈에보는문화정보" public culture/performance data, source id `culture_portal`.
-  - KOPIS performance list, source id `kopis`.
-  - KCISA API id 428, `meta16/getkopis07`, source id `kcisa_428`.
-  - KCISA API id 196, `meta4/getKCPG0504`, source id `kcisa_196`.
-- Refresh policy: Cloudflare Worker cron syncs festival and event data into D1 every hour. User-facing `/discover/events` reads D1 only.
-- Limitations:
-  - Some KOPIS/KCISA rows provide venue text rather than coordinates. The backend resolves these with Kakao Local when `KAKAO_REST_API_KEY` is available; unresolved rows are omitted from map pins.
-  - Several list APIs provide no rich long-form description. The iOS detail screen displays the upstream description when present and otherwise generates a short structured summary from title, period, venue/address, type, price, and source.
-  - Richer descriptions require provider-specific detail endpoint enrichment in a later phase.
+Worker sync stores these rows with discovery type `festival`, and migration `0004_local_events.sql` converts cached `discovery_items.type = 'event'` rows to `festival`.
 
-## iOS presentation
+## Local Store Events
 
-- The map exposes one toggle named "이벤트" for all event/festival pins.
-- The event tab shows one combined list but filters by user-facing category rather than API source.
-- The event tab list loads only while the tab is active, unloads after leaving the tab, and renders 20 rows at a time.
-- Map event pins and event tab rows route to the same event detail + nearby parking recommendation screen.
-- That recommendation screen merges `/parking/nearby` and `/parking/realtime` before ranking so realtime-capable parking is not excluded.
+Local store events are stored separately in `local_events` and exposed through `/api/local-events`.
 
-## Required secrets
+Allowed sources:
 
-| Secret | Used by | Notes |
-| --- | --- | --- |
-| `PUBLIC_DATA_SERVICE_KEY` | TourAPI, national culture festival, optional Culture Portal fallback | Existing data.go.kr key. |
-| `SEOUL_OPEN_DATA_KEY` | Seoul cultural events | Existing Seoul Open Data key. |
-| `CULTURE_PORTAL_API_KEY` | Culture Portal event provider | Optional if Culture Portal can use public data key fallback. |
-| `KOPIS_API_KEY` | KOPIS event provider | Required for KOPIS source. |
-| `KCISA_428_API_KEY` | KCISA id 428 provider | Required for `kcisa_428`. |
-| `KCISA_196_API_KEY` | KCISA id 196 provider | Required for `kcisa_196`. |
-| `KAKAO_REST_API_KEY` | Coordinate resolution for text-only venues | Also used for destination search. |
+- `owner_submitted`: store owner submits title, benefit, period, address, images, and Instagram/source links.
+- `admin_manual`: operator enters an Instagram post URL or store details and reviews the structured draft.
+- `user_report`: app user reports a link, caption, photo reference, or store details. Reports start as `pending`.
+- `instagram`: reserved for official Instagram Graph API flows only, such as Hashtag Search or Business Discovery when App Review and permissions allow it.
+- `official_site`: store homepage, public official pages, or other compliant public sources, subject to robots.txt, terms, and request limits.
 
-## Deferred
+Prohibited collection patterns:
 
-Restaurant-specific free promotions are intentionally not included in phase 1. There is no stable official structured source in the current design, and scraping-heavy sources are avoided for reliability and terms-of-use safety.
+- No unauthorized Instagram HTML crawling.
+- No login session spoofing.
+- No bot detection bypass.
+- No unofficial Instagram API calls.
+- No storage of commenter/user personal data.
+- Do not copy and store original Instagram post images unless rights and platform policy permit it. Prefer source links or owner-uploaded assets.
+
+Review states:
+
+- `pending`: submitted or auto-structured, not visible in the app.
+- `approved`: visible in map/list/detail.
+- `rejected`: hidden and retained for moderation history.
+- `expired`: hidden from normal event results.
+
+Supported event types:
+
+- `discount`
+- `freebie`
+- `review_event`
+- `popup`
+- `limited_menu`
+- `opening_event`
+- `etc`
+
+Structuring behavior:
+
+- Input can include Instagram post URL, caption text, image alt/caption text, store name, and address candidate.
+- Output includes title, description, benefit, start/end dates, store name, address, coordinates, source URL, confidence score, and `needsReview`.
+- If the date is unclear, the system does not invent `endDate`; it marks `needsReview=true`.
+- Relative text such as "today only", "this week", or "May limited" is interpreted against the current date only when confidence is high.
+- If only an Instagram URL exists, the item remains `pending` until an admin verifies the store and location.
+
+## Monetization
+
+The schema includes `isSponsored`, `sponsorTier`, `paidUntil`, and `priorityScore`.
+
+Planned paid products:
+
+- Free event: normal listing.
+- Paid event: higher list order, emphasized map pin, and recommendation placement.
+- Owner dashboard metrics: impressions, source-link clicks, navigation clicks, and saves.
+- Payment providers can be added later through Stripe or Toss Payments without changing core event identity.
+
+## iOS Presentation
+
+- Map filters are separate: parking, festival, and event.
+- Festival pins use public/API-backed festival discovery data.
+- Event pins use approved local store events only.
+- Event cards show title, store name, benefit summary, distance, end date, source badge, and sponsored badge when present.
+- Event detail screens include an original source link button when `sourceUrl` is available.

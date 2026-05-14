@@ -4,10 +4,18 @@ import { z, ZodError } from "zod";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import {
   queryDiscoveryClusters,
-  queryEventsFromCache,
   queryFestivalsFromCache,
   syncDiscoveryCache
 } from "./discoveryCache.js";
+import {
+  createAdminLocalEvent,
+  createLocalEventReport,
+  getLocalEvent,
+  localEventMapItem,
+  patchLocalEventStatus,
+  queryLocalEvents,
+  updateAdminLocalEvent
+} from "./localEvents.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
@@ -95,6 +103,58 @@ const discoverQuerySchema = z.object({
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
   freeOnly: optionalBoolean
+});
+
+const localEventQuerySchema = discoverQuerySchema.extend({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50)
+});
+
+const mapItemsQuerySchema = localEventQuerySchema.extend({
+  type: z.enum(["festival", "event", "all"]).default("all")
+});
+
+const eventSourceSchema = z.enum(["instagram", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
+const eventStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
+const eventTypeSchema = z.enum(["discount", "freebie", "review_event", "popup", "limited_menu", "opening_event", "etc"]);
+
+const localEventReportSchema = z.object({
+  sourceUrl: z.string().url().nullable().optional(),
+  captionText: z.string().max(5000).nullable().optional(),
+  storeName: z.string().max(200).nullable().optional(),
+  address: z.string().max(500).nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  note: z.string().max(1000).nullable().optional()
+});
+
+const adminLocalEventSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional(),
+  benefit: z.string().max(500).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().nullable().optional(),
+  storeName: z.string().min(1).max(200).optional(),
+  address: z.string().max(500).optional(),
+  lat: z.number().nullable().optional(),
+  lng: z.number().nullable().optional(),
+  source: eventSourceSchema,
+  sourceUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  eventType: eventTypeSchema.optional(),
+  status: eventStatusSchema.optional(),
+  isSponsored: z.boolean().optional(),
+  sponsorTier: z.string().max(80).nullable().optional(),
+  paidUntil: z.string().nullable().optional(),
+  priorityScore: z.number().int().min(0).max(10000).optional()
+});
+
+const adminLocalEventPatchSchema = adminLocalEventSchema.partial().extend({
+  source: eventSourceSchema.optional()
+});
+
+const localEventStatusPatchSchema = z.object({
+  status: eventStatusSchema,
+  rejectionReason: z.string().max(1000).nullable().optional()
 });
 
 const discoveryClusterSchema = z.object({
@@ -281,15 +341,113 @@ app.get("/discover/festivals", async (c) => {
 });
 
 app.get("/discover/events", async (c) => {
+  return c.json({ error: "deprecated", message: "Use /api/festivals for public festival data or /api/local-events for store events." }, 410);
+});
+
+app.get("/api/festivals", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const items = await queryEventsFromCache(c.env.DB, query.lat, query.lng, {
+  const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
     radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30,
-    freeOnly: query.freeOnly ?? false
+    upcomingWithinDays: query.upcomingWithinDays ?? 30
   });
   return c.json({ items, generatedAt: new Date().toISOString() });
+});
+
+app.get("/api/local-events", async (c) => {
+  const query = localEventQuerySchema.parse(queryObject(c.req.raw.url));
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const result = await queryLocalEvents(c.env.DB, {
+    lat: query.lat,
+    lng: query.lng,
+    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+    cursor: query.cursor,
+    limit: query.limit,
+    status: "approved"
+  });
+  return c.json({ ...result, generatedAt: new Date().toISOString() });
+});
+
+app.get("/api/local-events/:id", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await getLocalEvent(c.env.DB, c.req.param("id"));
+  if (!item || item.status !== "approved") return c.json({ error: "not_found" }, 404);
+  return c.json({ item, generatedAt: new Date().toISOString() });
+});
+
+app.post("/api/local-events/report", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await createLocalEventReport(c.env.DB, localEventReportSchema.parse(await c.req.json()));
+  return c.json({ item, generatedAt: new Date().toISOString() }, 202);
+});
+
+app.post("/api/admin/local-events", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await createAdminLocalEvent(c.env.DB, adminLocalEventSchema.parse(await c.req.json()));
+  return c.json({ item, generatedAt: new Date().toISOString() }, 201);
+});
+
+app.patch("/api/admin/local-events/:id/status", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await patchLocalEventStatus(c.env.DB, c.req.param("id"), localEventStatusPatchSchema.parse(await c.req.json()));
+  if (!item) return c.json({ error: "not_found" }, 404);
+  return c.json({ item, generatedAt: new Date().toISOString() });
+});
+
+app.patch("/api/admin/local-events/:id", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await updateAdminLocalEvent(c.env.DB, c.req.param("id"), adminLocalEventPatchSchema.parse(await c.req.json()));
+  if (!item) return c.json({ error: "not_found" }, 404);
+  return c.json({ item, generatedAt: new Date().toISOString() });
+});
+
+app.get("/api/map/items", async (c) => {
+  const query = mapItemsQuerySchema.parse(queryObject(c.req.raw.url));
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS);
+  const items = [];
+  if (query.type === "festival" || query.type === "all") {
+    const festivals = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
+      radiusMeters,
+      ongoingOnly: query.ongoingOnly,
+      upcomingWithinDays: query.upcomingWithinDays ?? 30
+    });
+    items.push(...festivals.map((item) => ({
+      id: `festival:${item.id}`,
+      type: "festival" as const,
+      title: item.title,
+      subtitle: item.subtitle ?? item.venueName ?? item.address,
+      lat: item.lat,
+      lng: item.lng,
+      distanceMeters: item.distanceMeters,
+      markerType: "festival" as const,
+      source: item.source,
+      sourceUrl: item.sourceUrl,
+      imageUrl: item.imageUrl
+    })));
+  }
+  if (query.type === "event" || query.type === "all") {
+    const events = await queryLocalEvents(c.env.DB, {
+      lat: query.lat,
+      lng: query.lng,
+      radiusMeters,
+      cursor: query.cursor,
+      limit: query.limit,
+      status: "approved"
+    });
+    items.push(...events.items.map(localEventMapItem));
+  }
+  return c.json({
+    items: items.sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0) || a.distanceMeters - b.distanceMeters),
+    generatedAt: new Date().toISOString()
+  });
 });
 
 app.get("/discover/clusters", async (c) => {

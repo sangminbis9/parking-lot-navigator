@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { config } from "../config/env.js";
 import { registerAnalyticsRoutes } from "../features/analytics/analyticsRoutes.js";
 import { registerDiscoverRoutes } from "../features/discover/discoverRoutes.js";
+import { registerLocalEventRoutes } from "../features/localEvents/localEventRoutes.js";
 import { errorHandler } from "../middleware/errorHandler.js";
 import { registerParkingRoutes } from "../routes/parkingRoutes.js";
 import { registerSearchRoutes } from "../routes/searchRoutes.js";
@@ -27,6 +28,7 @@ export async function createApp() {
   await registerParkingRoutes(app);
   await registerAnalyticsRoutes(app);
   await registerDiscoverRoutes(app);
+  await registerLocalEventRoutes(app);
 
   return app;
 }

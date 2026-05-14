@@ -14,7 +14,8 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedFestival: Festival?
     @Published var selectedEvent: FreeEvent?
-    @Published var showsEventLayer = true
+    @Published var showsFestivalLayer = true
+    @Published var showsLocalEventLayer = true
     @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
@@ -141,11 +142,21 @@ final class MapHomeViewModel: ObservableObject {
         parkingLots = []
     }
 
-    func setEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
-        showsEventLayer = isVisible
+    func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+        showsFestivalLayer = isVisible
         if !isVisible {
             selectedFestival = nil
+            festivals = []
+            return
+        }
+        await loadDiscoverLayers(viewport: viewport)
+    }
+
+    func setLocalEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+        showsLocalEventLayer = isVisible
+        if !isVisible {
             selectedEvent = nil
+            events = []
             return
         }
         await loadDiscoverLayers(viewport: viewport)
@@ -186,7 +197,7 @@ final class MapHomeViewModel: ObservableObject {
         var failedLoads = 0
         var attemptedLoads = 0
 
-        if showsEventLayer {
+        if showsFestivalLayer {
             attemptedLoads += 1
             switch await loadFestivalLayer(viewport: viewport) {
             case .success(let items):
@@ -195,7 +206,7 @@ final class MapHomeViewModel: ObservableObject {
                 failedLoads += 1
             }
         }
-        if showsEventLayer {
+        if showsLocalEventLayer {
             attemptedLoads += 1
             switch await loadEventLayer(viewport: viewport) {
             case .success(let items):
@@ -224,28 +235,6 @@ final class MapHomeViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
-        }
-        isLoadingDiscover = false
-    }
-
-    private func loadFestivals(viewport: MapViewport) async {
-        isLoadingDiscover = true
-        errorMessage = nil
-        do {
-            festivals = try await discoverFestivals(viewport: viewport)
-        } catch {
-            errorMessage = "\u{CD95}\u{C81C} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
-        }
-        isLoadingDiscover = false
-    }
-
-    private func loadEvents(viewport: MapViewport) async {
-        isLoadingDiscover = true
-        errorMessage = nil
-        do {
-            events = try await discoverEvents(viewport: viewport)
-        } catch {
-            errorMessage = "\u{C774}\u{BCA4}\u{D2B8} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingDiscover = false
     }

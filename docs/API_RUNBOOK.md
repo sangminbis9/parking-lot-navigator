@@ -49,14 +49,15 @@ Realtime clusters:
 curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/parking/realtime/clusters?lat=36.35&lng=127.8&radiusMeters=460000&clusterMeters=45000"
 ```
 
-Discovery events:
+Discovery:
 
 ```bash
-curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/discover/festivals?lat=36.35&lng=127.8&radiusMeters=460000&upcomingWithinDays=365"
-curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/discover/events?lat=36.35&lng=127.8&radiusMeters=460000&upcomingWithinDays=365"
+curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/festivals?lat=36.35&lng=127.8&radiusMeters=460000&upcomingWithinDays=365"
+curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/local-events?lat=36.35&lng=127.8&radiusMeters=20000&limit=50"
+curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/map/items?type=all&lat=36.35&lng=127.8&radiusMeters=460000"
 ```
 
-Expected event source IDs after sync, depending on configured secrets:
+Expected public culture source IDs after sync, depending on configured secrets:
 
 - `seoul_open_data`
 - `culture_portal`
@@ -74,7 +75,8 @@ Important tables:
 
 - `parking_lots`: nationwide/static parking index.
 - `realtime_parking_status`: realtime parking cache.
-- `discovery_items`: cached festivals and events shown on the map.
+- `discovery_items`: cached public/API-backed festivals and public cultural discovery rows.
+- `local_events`: approved/pending/rejected/expired local store events.
 
 ## Sync
 
@@ -97,9 +99,8 @@ Discovery cache sync:
 - Worker deploys from `master` run a post-deploy discovery refresh when GitHub secret `SYNC_ADMIN_TOKEN` is configured.
 - Manual GitHub Action: `Sync discovery D1`.
 - Manual endpoint: `POST /admin/sync-discovery?kinds=festivals,events`
-- The iOS app reads `/discover/festivals` and `/discover/events` from D1, so newly added discovery providers will not appear in map pins until this sync has run at least once after deployment.
-- The event tab also reads these endpoints on demand when the tab is selected.
-- Map pins and event tab rows use the same event detail route in iOS.
+- The iOS app reads `/api/festivals` for public festival data and `/api/local-events` for local store events.
+- Map pins and list rows use separate marker types: `festival` and `local_event`.
 - If KCISA or KOPIS rows have no coordinates, the backend can resolve a limited number of rows through Kakao Local when `KAKAO_REST_API_KEY` is configured. Rows still missing valid coordinates are omitted from map pin responses.
 
 ## Known Public API Notes

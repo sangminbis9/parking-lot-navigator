@@ -1,23 +1,30 @@
-import type { Festival, ProviderHealth } from "@parking/shared-types";
+import type { Festival, FreeEvent, ProviderHealth } from "@parking/shared-types";
 import { MemoryCache } from "../../../cache/memoryCache.js";
 import { config } from "../../../config/env.js";
 import type { DiscoverQuery, FestivalProvider } from "../common/discoverProvider.js";
 import { MockFestivalProvider } from "./MockFestivalProvider.js";
 import { NationalCultureFestivalProvider } from "./NationalCultureFestivalProvider.js";
 import { TourApiFestivalProvider } from "./TourApiFestivalProvider.js";
+import { createEventService, type EventService } from "../events/eventService.js";
 
 const cache = new MemoryCache<Festival[]>();
 
 export class FestivalService {
-  constructor(private readonly providers: FestivalProvider[]) {}
+  constructor(
+    private readonly providers: FestivalProvider[],
+    private readonly legacyEventService?: EventService
+  ) {}
 
   async nearby(query: DiscoverQuery): Promise<Festival[]> {
     const cacheKey = JSON.stringify({ type: "festivals", query });
     const cached = cache.get(cacheKey);
     if (cached) return cached;
 
-    const results = await Promise.all(this.providers.map((provider) => provider.festivals(query)));
-    const items = dedupeFestivals(results.flat());
+    const [festivalResults, legacyEvents] = await Promise.all([
+      Promise.all(this.providers.map((provider) => provider.festivals(query))),
+      this.legacyEventService ? this.legacyEventService.nearby(query) : Promise.resolve([])
+    ]);
+    const items = dedupeFestivals([...festivalResults.flat(), ...legacyEvents.map(legacyEventToFestival)]);
     if (items.length > 0 || this.health().some((provider) => provider.status !== "down")) {
       cache.set(cacheKey, items, config.DISCOVER_CACHE_TTL_SECONDS);
     }
@@ -25,13 +32,16 @@ export class FestivalService {
   }
 
   health(): ProviderHealth[] {
-    return this.providers.map((provider) => provider.health());
+    return [
+      ...this.providers.map((provider) => provider.health()),
+      ...(this.legacyEventService?.health() ?? [])
+    ];
   }
 }
 
 export function createFestivalService(): FestivalService {
   if (config.NODE_ENV === "test") {
-    return new FestivalService([new MockFestivalProvider()]);
+    return new FestivalService([new MockFestivalProvider()], createEventService());
   }
   if (!config.FESTIVAL_PROVIDER_ENABLED) {
     return new FestivalService([]);
@@ -44,7 +54,27 @@ export function createFestivalService(): FestivalService {
   if (providers.length === 0 && config.PARKING_PROVIDER_MODE === "mock") {
     providers.push(new MockFestivalProvider());
   }
-  return new FestivalService(providers);
+  return new FestivalService(providers, createEventService());
+}
+
+function legacyEventToFestival(item: FreeEvent): Festival {
+  return {
+    id: `public-event-${item.id}`,
+    title: item.title,
+    subtitle: item.shortDescription ?? item.eventType,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    status: item.status,
+    venueName: item.venueName,
+    address: item.address,
+    lat: item.lat,
+    lng: item.lng,
+    distanceMeters: item.distanceMeters,
+    source: item.source,
+    sourceUrl: item.sourceUrl,
+    imageUrl: item.imageUrl,
+    tags: ["public-culture", item.eventType, item.category ?? "culture"].filter((tag): tag is string => Boolean(tag))
+  };
 }
 
 function dedupeFestivals(items: Festival[]): Festival[] {

@@ -118,7 +118,8 @@ After deployment, test:
 ```powershell
 curl https://parking-lot-navigator-api.<your-subdomain>.workers.dev/health
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/providers/health"
-curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/festivals?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
-curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/events?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
+curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/api/festivals?lat=37.5665&lng=126.9780&radiusMeters=60000&upcomingWithinDays=30"
+curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/api/local-events?lat=37.5665&lng=126.9780&radiusMeters=20000&limit=50"
+curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/api/map/items?type=all&lat=37.5665&lng=126.9780&radiusMeters=60000"
 curl "https://parking-lot-navigator-api.<your-subdomain>.workers.dev/discover/clusters?lat=36.35&lng=127.80&radiusMeters=460000&clusterMeters=25000"
 ```

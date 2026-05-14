@@ -216,7 +216,7 @@ async function syncDiscoveryKind(
     await upsertDiscoveryItem(db, item, generatedAt);
     upserted += 1;
   }
-  const pruned = await pruneStaleDiscovery(db, typeForKind(kind));
+  const pruned = kind === "events" ? 0 : await pruneStaleDiscovery(db, typeForKind(kind));
   return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, sources, generatedAt };
 }
 
@@ -333,8 +333,8 @@ async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt
 function discoveryRow(item: DiscoveryItem, syncedAt: string) {
   if ("eventType" in item) {
     return {
-      id: `event:${item.id}`,
-      type: "event" as const,
+      id: `festival:${item.source}:${item.id}`,
+      type: "festival" as const,
       source: item.source,
       sourceItemId: item.id,
       title: item.title,
@@ -413,7 +413,9 @@ function mapFestivalRow(row: DiscoveryItemRow, lat: number, lng: number): Festiv
     source: row.source,
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
-    tags: parseJsonArray<string>(row.tags_json)
+    tags: parseJsonArray<string>(row.tags_json).length > 0
+      ? parseJsonArray<string>(row.tags_json)
+      : (row.category_text ?? "public-culture").split(",").map((tag) => tag.trim()).filter(Boolean)
   };
 }
 
@@ -511,7 +513,7 @@ async function finishSyncRun(
 
 function typeForKind(kind: DiscoverySyncKind): DiscoveryType {
   if (kind === "festivals") return "festival";
-  return "event";
+  return "festival";
 }
 
 function parseJsonArray<T>(value: string | null): T[] {

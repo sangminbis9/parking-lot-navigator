@@ -1,6 +1,6 @@
 import type { ParkingLot } from "./parking.js";
 import type { DestinationCandidate } from "./destination.js";
-import type { Festival, FreeEvent } from "./discover.js";
+import type { Festival, FreeEvent, LocalEvent, MapItem } from "./discover.js";
 
 export interface ApiErrorBody {
   error: {
@@ -46,4 +46,21 @@ export interface DiscoverFestivalsApiResponse {
 export interface DiscoverEventsApiResponse {
   items: FreeEvent[];
   generatedAt: string;
+}
+
+export interface LocalEventsApiResponse {
+  items: LocalEvent[];
+  generatedAt: string;
+  nextCursor?: string | null;
+}
+
+export interface LocalEventApiResponse {
+  item: LocalEvent;
+  generatedAt: string;
+}
+
+export interface MapItemsApiResponse {
+  items: MapItem[];
+  generatedAt: string;
+  nextCursor?: string | null;
 }

@@ -10,23 +10,6 @@ Query:
 
 - `q`: search keyword
 
-Response:
-
-```json
-{
-  "items": [
-    {
-      "id": "dest-seoul-station",
-      "name": "Seoul Station",
-      "address": "405 Hangang-daero, Jung-gu, Seoul",
-      "lat": 37.5547,
-      "lng": 126.9706,
-      "source": "mock"
-    }
-  ]
-}
-```
-
 ## GET /parking/nearby
 
 Returns parking lots near a destination coordinate.
@@ -40,34 +23,17 @@ Query:
 - `evOnly`: only EV-capable parking lots
 - `accessibleOnly`: only accessible parking lots
 
-Notes:
-
-- Event detail recommendation screens call this endpoint and merge the result with `/parking/realtime` before ranking.
-- If realtime parking fails, the app can still rank the `/parking/nearby` result.
-
 ## GET /parking/realtime
 
 Returns realtime-capable parking lots near a coordinate.
-
-Query:
-
-- `lat`: destination latitude
-- `lng`: destination longitude
-- `radiusMeters`: search radius
-
-Notes:
-
-- The map realtime layer can request a broad national radius.
-- Event detail recommendation screens request this endpoint around the selected event coordinate and merge it with `/parking/nearby`.
-- Duplicate parking lots are deduped on the iOS side for the event recommendation screen, preferring realtime/fresher rows.
 
 ## GET /parking/providers/health
 
 Returns provider health, last successful sync time, freshness, and error messages.
 
-## GET /discover/festivals
+## GET /api/festivals
 
-Returns festival records from the D1 discovery cache.
+Preferred festival endpoint. Returns public/API-backed festival and cultural discovery records. Data previously exposed as public "events" is now treated as festival discovery data so it cannot be confused with local store events.
 
 Query:
 
@@ -76,41 +42,70 @@ Query:
 - `radiusMeters`: search radius, default `DEFAULT_DISCOVER_RADIUS_METERS`
 - `ongoingOnly`: optional boolean filter
 - `upcomingWithinDays`: optional day window, default `30`
+
+## GET /discover/festivals
+
+Backward-compatible festival endpoint. New clients should use `/api/festivals`.
 
 ## GET /discover/events
 
-Returns event records from the D1 discovery cache. The map UI exposes these through one "이벤트" layer together with festival records.
+Deprecated. Use `/api/festivals` for public/API-backed festival data or `/api/local-events` for restaurant, cafe, shop, popup, review, freebie, and discount events.
+
+## GET /api/local-events
+
+Returns approved local store events.
 
 Query:
 
 - `lat`: destination latitude
 - `lng`: destination longitude
 - `radiusMeters`: search radius, default `DEFAULT_DISCOVER_RADIUS_METERS`
-- `ongoingOnly`: optional boolean filter
-- `upcomingWithinDays`: optional day window, default `30`
-- `freeOnly`: optional boolean filter, default `false`
+- `cursor`: optional pagination cursor
+- `limit`: page size, max `100`
 
-Configured event providers:
+## GET /api/local-events/:id
 
-| Environment variable | Provider | Source id |
-| --- | --- | --- |
-| `SEOUL_OPEN_DATA_KEY` | Seoul Open Data cultural events | `seoul_open_data` |
-| `CULTURE_PORTAL_API_KEY` or `PUBLIC_DATA_SERVICE_KEY` | Culture Portal public performance displays | `culture_portal` |
-| `KOPIS_API_KEY` | KOPIS performance list | `kopis` |
-| `KCISA_428_API_KEY` | KCISA API id 428, `meta16/getkopis07` | `kcisa_428` |
-| `KCISA_196_API_KEY` | KCISA API id 196, `meta4/getKCPG0504` | `kcisa_196` |
+Returns one approved local event.
 
-Client behavior:
+## POST /api/local-events/report
 
-- The event tab loads `/discover/festivals` and `/discover/events` only while selected.
-- The list renders 20 rows initially and loads 20 more as the user scrolls.
-- Map pins and event tab rows both navigate to the same event detail + parking recommendation screen.
-- If an event has no upstream description, the iOS client displays a generated summary from available structured fields.
+Creates a pending user report. The server may structure a provided source URL/caption/store/address into a draft, but does not scrape Instagram HTML, spoof login sessions, call unofficial APIs, bypass bot detection, or store commenter/user personal data.
+
+## POST /api/admin/local-events
+
+Creates an owner/admin-entered local event. Admin-created items can be `pending`, `approved`, `rejected`, or `expired`.
+
+## PATCH /api/admin/local-events/:id/status
+
+Updates review state for a local event.
+
+## PATCH /api/admin/local-events/:id
+
+Updates local event content and monetization fields such as `isSponsored`, `sponsorTier`, `paidUntil`, and `priorityScore`.
+
+## GET /api/map/items
+
+Returns map items with explicit marker types.
+
+Query:
+
+- `type`: `festival`, `event`, or `all`
+- `lat`, `lng`, `radiusMeters`
+- `cursor`, `limit` for local event paging
+
+Marker types:
+
+- `festival`: public/API-backed festival or public cultural discovery data
+- `local_event`: local store event
 
 ## GET /discover/clusters
 
-Returns map clusters for cached festival and event records.
+Returns map clusters for cached festival records. Local event map results use `/api/map/items` so approval and sponsored priority can be applied directly.
 
-Current iOS note:
+## Client Behavior
 
-- The iOS map no longer relies on numeric discovery clusters for event pins. It renders pins with overlap handling in the Kakao map layer.
+- The festival filter loads `/api/festivals`.
+- The event filter loads `/api/local-events`.
+- The list renders 20 rows initially and loads 20 more as the user scrolls.
+- Map pins and list rows both navigate to the same detail + parking recommendation screen.
+- Local event cards show event title, store name, benefit, distance, end date, source badge, and sponsored badge when present.

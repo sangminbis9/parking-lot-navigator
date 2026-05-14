@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../../config/env.js";
-import { createEventService } from "./events/eventService.js";
 import { createFestivalService } from "./festivals/festivalService.js";
 
 const optionalBoolean = z
@@ -19,7 +18,6 @@ const discoverQuerySchema = z.object({
 });
 
 const festivalService = createFestivalService();
-const eventService = createEventService();
 
 export async function registerDiscoverRoutes(app: FastifyInstance) {
   app.get("/discover/festivals", async (request) => {
@@ -34,21 +32,15 @@ export async function registerDiscoverRoutes(app: FastifyInstance) {
     return { items, generatedAt: new Date().toISOString() };
   });
 
-  app.get("/discover/events", async (request) => {
-    const query = discoverQuerySchema.parse(request.query);
-    const items = await eventService.nearby({
-      lat: query.lat,
-      lng: query.lng,
-      radiusMeters: query.radiusMeters ?? config.DEFAULT_DISCOVER_RADIUS_METERS,
-      ongoingOnly: query.ongoingOnly,
-      upcomingWithinDays: query.upcomingWithinDays ?? 30,
-      freeOnly: query.freeOnly ?? false
+  app.get("/discover/events", async (_request, reply) => {
+    return reply.code(410).send({
+      error: "deprecated",
+      message: "Use /api/festivals for public festival data or /api/local-events for store events."
     });
-    return { items, generatedAt: new Date().toISOString() };
   });
 
   app.get("/discover/providers/health", async () => ({
-    providers: [...festivalService.health(), ...eventService.health()],
+    providers: festivalService.health(),
     generatedAt: new Date().toISOString()
   }));
 }

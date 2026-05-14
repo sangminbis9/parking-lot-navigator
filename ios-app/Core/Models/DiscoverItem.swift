@@ -14,6 +14,13 @@ enum DiscoverStatus: String, Codable, Hashable {
     }
 }
 
+enum LocalEventStatus: String, Codable, Hashable {
+    case pending
+    case approved
+    case rejected
+    case expired
+}
+
 struct Festival: Codable, Hashable, Identifiable {
     let id: String
     let title: String
@@ -39,9 +46,9 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let category: String?
     let sourceId: String?
     let startDate: String
-    let endDate: String
-    let status: DiscoverStatus
-    let isFree: Bool
+    let endDate: String?
+    let status: LocalEventStatus
+    let storeName: String
     let venueName: String?
     let address: String
     let lat: Double
@@ -50,10 +57,32 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
+    let benefit: String?
     let shortDescription: String?
-    let price: String?
     let region: String?
     let updatedAt: String?
+    let confidenceScore: Double?
+    let needsReview: Bool?
+    let isSponsored: Bool
+    let sponsorTier: String?
+    let paidUntil: String?
+    let priorityScore: Int
+
+    var timelineStatus: DiscoverStatus {
+        guard status != .expired else { return .upcoming }
+        let today = String(Date().formatted(.iso8601.year().month().day()).prefix(10))
+        if startDate <= today && (endDate ?? startDate) >= today {
+            return .ongoing
+        }
+        return .upcoming
+    }
+
+    var dateText: String {
+        if let endDate, !endDate.isEmpty {
+            return "\(startDate) - \(endDate)"
+        }
+        return startDate
+    }
 }
 
 struct DiscoverPresentation: Hashable {
@@ -126,8 +155,8 @@ extension FreeEvent {
         DiscoverTagBuilder.eventTags(
             title: title,
             eventType: eventType,
-            description: shortDescription,
-            venueName: venueName,
+            description: [benefit, shortDescription].compactMap { $0 }.joined(separator: " "),
+            venueName: venueName ?? storeName,
             address: address,
             startDate: startDate,
             source: source
@@ -150,17 +179,17 @@ extension FreeEvent {
     var discoverPresentation: DiscoverPresentation {
         DiscoverPresentation(
             title: title,
-            subtitle: shortDescription,
+            subtitle: benefit ?? storeName,
             description: shortDescription,
-            dateText: "\(startDate) - \(endDate)",
-            venueName: venueName,
+            dateText: dateText,
+            venueName: venueName ?? storeName,
             address: address,
-            status: status,
+            status: timelineStatus,
             typeText: eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : eventType,
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
-            price: price,
+            price: benefit,
             region: region,
             updatedAt: updatedAt,
             tags: discoverTags
