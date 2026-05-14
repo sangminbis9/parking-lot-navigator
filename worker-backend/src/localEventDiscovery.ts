@@ -240,8 +240,8 @@ async function buildCandidate(
   const hasClearEndDate = Boolean(dates.endDate ?? structured.endDate);
   const expired = isExpired(dates.endDate ?? structured.endDate, now);
   const status: LocalEventStatus =
-    confidenceScore >= threshold && hasClearEndDate && !expired && lat !== 0 && lng !== 0 ? "approved" : "pending";
-  const needsReview = status !== "approved";
+    confidenceScore >= threshold && !expired && lat !== 0 && lng !== 0 ? "approved" : "pending";
+  const needsReview = status !== "approved" || !hasClearEndDate;
   const sourceId = stableHash(sourceUrl);
   const storeName = kakaoPlace?.place_name ?? storeCandidate;
   const resolvedTitle = structured.title || titleText || `${storeName} event`;

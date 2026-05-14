@@ -110,8 +110,9 @@ Local store event discovery:
 - Requires `Authorization: Bearer <SYNC_ADMIN_TOKEN>`.
 - Candidate collection uses the official Naver Search API response fields only. It does not fetch Instagram HTML, mimic sessions, bypass bot detection, or call unofficial APIs.
 - Coordinate verification uses Kakao Local keyword search with `Authorization: KakaoAK <KAKAO_REST_API_KEY>`.
-- Only high-confidence candidates with a verified Kakao place, clear benefit, and clear end date are automatically saved as `approved`. Lower-confidence candidates are stored as `pending` for admin review.
-- Required Worker secrets: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, and `KAKAO_REST_API_KEY`.
+- High-confidence candidates with a verified Kakao place and clear benefit are automatically saved as `approved`. If the end date is unclear, `endDate` stays `null` and `needsReview=true`; the worker does not invent a date.
+- Lower-confidence candidates are stored as `pending` for admin review.
+- Required Worker secrets: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, and `KAKAO_REST_API_KEY`. The deploy workflow syncs these from GitHub Actions secrets when they are configured.
 
 ```bash
 curl -sS -X POST \
