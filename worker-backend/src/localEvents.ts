@@ -60,10 +60,9 @@ export async function queryLocalEvents(
          AND lat IS NOT NULL
          AND lng IS NOT NULL
          AND lat BETWEEN ? AND ?
-         AND lng BETWEEN ? AND ?
-       LIMIT ?`
+         AND lng BETWEEN ? AND ?`
     )
-    .bind(status, options.lat - latDelta, options.lat + latDelta, options.lng - lngDelta, options.lng + lngDelta, options.limit + offset + 100)
+    .bind(status, options.lat - latDelta, options.lat + latDelta, options.lng - lngDelta, options.lng + lngDelta)
     .all<LocalEventRow>();
   const matched = (rows.results ?? [])
     .map((row) => mapLocalEventRow(row, options.lat, options.lng))
@@ -171,7 +170,7 @@ export async function updateAdminLocalEvent(
     priorityScore: input.priorityScore ?? existing.priorityScore,
     needsReview: input.status ? input.status !== "approved" : existing.needsReview
   };
-  await insertLocalEvent(db, updated, { rawPayload: input, duplicateKey: duplicateKey(updated) });
+  await insertLocalEvent(db, updated, { rawPayload: updated, duplicateKey: duplicateKey(updated) });
   return updated;
 }
 

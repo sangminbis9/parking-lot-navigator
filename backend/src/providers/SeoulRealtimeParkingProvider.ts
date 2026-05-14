@@ -1,6 +1,7 @@
 import type { ParkingSearchOptions } from "@parking/shared-types";
 import type { ParkingProvider, RawParkingRecord } from "../types/provider.js";
 import type { AppConfig } from "../config/env.js";
+import { MemoryCache } from "../cache/memoryCache.js";
 import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
 
@@ -9,7 +10,8 @@ const SEOUL_MAX_ROWS = 10000;
 const SEOUL_CENTER = { lat: 37.5665, lng: 126.9780 };
 const SEOUL_SERVICE_RADIUS_METERS = 45000;
 const KAKAO_GEOCODE_CONCURRENCY = 6;
-const geocodeCache = new Map<string, Coordinate | null>();
+const KAKAO_GEOCODE_CACHE_MAX_ENTRIES = 5000;
+const geocodeCache = new MemoryCache<Coordinate | null>(KAKAO_GEOCODE_CACHE_MAX_ENTRIES);
 
 export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements ParkingProvider {
   readonly name = "seoul-realtime";
@@ -154,7 +156,7 @@ async function enrichMissingCoordinates(
 async function geocodeSeoulParking(config: AppConfig, record: RawParkingRecord): Promise<Coordinate | null> {
   const query = geocodeQuery(record);
   if (!query) return null;
-  if (geocodeCache.has(query)) return geocodeCache.get(query) ?? null;
+  if (geocodeCache.has(query)) return geocodeCache.get(query);
 
   try {
     const url = new URL("/v2/local/search/address.json", config.KAKAO_LOCAL_BASE_URL);
@@ -166,7 +168,7 @@ async function geocodeSeoulParking(config: AppConfig, record: RawParkingRecord):
       }
     });
     if (!response.ok) {
-      geocodeCache.set(query, null);
+      geocodeCache.set(query, null, config.CACHE_TTL_SECONDS);
       return null;
     }
     const body = (await response.json()) as KakaoAddressResponse;
@@ -180,10 +182,10 @@ async function geocodeSeoulParking(config: AppConfig, record: RawParkingRecord):
       validCoord(coordinate.lng)
         ? { lat: coordinate.lat, lng: coordinate.lng }
         : null;
-    geocodeCache.set(query, valid);
+    geocodeCache.set(query, valid, config.CACHE_TTL_SECONDS);
     return valid;
   } catch {
-    geocodeCache.set(query, null);
+    geocodeCache.set(query, null, config.CACHE_TTL_SECONDS);
     return null;
   }
 }

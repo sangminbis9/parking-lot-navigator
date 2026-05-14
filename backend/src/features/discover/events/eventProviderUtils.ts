@@ -72,7 +72,7 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
       [input.venue, input.title].map(clean).filter(Boolean).join(" "),
       [input.region, input.title].map(clean).filter(Boolean).join(" ")
     ]);
-    for (const query of queries.slice(0, 1)) {
+    for (const query of queries) {
       const cached = this.cache.get(query);
       const promise = cached ?? this.fetchCoordinate(query);
       if (!cached) this.cache.set(query, promise);

@@ -191,7 +191,7 @@ async function syncDiscoveryKind(
   kind: DiscoverySyncKind
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
-  const centers = centersForKind(kind);
+  const centers = centersForKind();
   const batches = await Promise.all(
     centers.map((center) => {
       const query = {
@@ -220,8 +220,7 @@ async function syncDiscoveryKind(
   return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, sources, generatedAt };
 }
 
-function centersForKind(kind: DiscoverySyncKind): Array<{ id: string; lat: number; lng: number }> {
-  if (kind === "events") return NATIONAL_DISCOVERY_CENTERS;
+function centersForKind(): Array<{ id: string; lat: number; lng: number }> {
   return NATIONAL_DISCOVERY_CENTERS;
 }
 
@@ -513,7 +512,7 @@ async function finishSyncRun(
 
 function typeForKind(kind: DiscoverySyncKind): DiscoveryType {
   if (kind === "festivals") return "festival";
-  return "festival";
+  return "event";
 }
 
 function parseJsonArray<T>(value: string | null): T[] {

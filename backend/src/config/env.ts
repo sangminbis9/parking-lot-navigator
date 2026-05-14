@@ -47,10 +47,7 @@ export function assertProductionSecrets(cfg: AppConfig): string[] {
     if (!cfg.SEOUL_OPEN_DATA_KEY) missing.push("SEOUL_OPEN_DATA_KEY");
     if (!cfg.PUBLIC_DATA_SERVICE_KEY) missing.push("PUBLIC_DATA_SERVICE_KEY");
   }
-  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.FESTIVAL_PROVIDER_ENABLED && !cfg.PUBLIC_DATA_SERVICE_KEY) {
-    missing.push("PUBLIC_DATA_SERVICE_KEY");
-  }
-  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.EVENT_PROVIDER_ENABLED && !cfg.SEOUL_OPEN_DATA_KEY) {
+  if (cfg.PARKING_PROVIDER_MODE !== "mock" && cfg.EVENT_PROVIDER_ENABLED) {
     const hasAnyEventProvider =
       cfg.SEOUL_OPEN_DATA_KEY ||
       cfg.CULTURE_PORTAL_API_KEY ||

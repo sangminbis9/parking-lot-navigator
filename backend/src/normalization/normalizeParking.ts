@@ -3,7 +3,7 @@ import type { RawParkingRecord } from "../types/provider.js";
 import { distanceMeters } from "../services/geo.js";
 
 export function isStale(freshnessTimestamp: string | null | undefined, thresholdSeconds: number): boolean {
-  if (!freshnessTimestamp) return false;
+  if (!freshnessTimestamp) return true;
   const timestamp = new Date(freshnessTimestamp).getTime();
   if (Number.isNaN(timestamp)) return true;
   return Date.now() - timestamp > thresholdSeconds * 1000;
