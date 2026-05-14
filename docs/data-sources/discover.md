@@ -35,6 +35,15 @@ Allowed sources:
 - `user_report`: app user reports a link, caption, photo reference, or store details. Reports start as `pending`.
 - `instagram`: reserved for official Instagram Graph API flows only, such as Hashtag Search or Business Discovery when App Review and permissions allow it.
 - `official_site`: store homepage, public official pages, or other compliant public sources, subject to robots.txt, terms, and request limits.
+- `other`: compliant aggregator-assisted discovery such as official Naver Search API candidate results. These are used as candidates only and are coordinate-verified with Kakao Local before approval.
+
+Automatic candidate discovery:
+
+- `syncLocalEventDiscovery` uses Naver Search API `webkr.json` with `X-Naver-Client-Id` and `X-Naver-Client-Secret`.
+- The worker stores only search-result title, summary, source URL, and structured event fields. It does not fetch or scrape the target page body.
+- Kakao Local keyword search verifies the candidate store and provides coordinates.
+- Candidates with verified coordinates, a clear event benefit, and a clear end date can be auto-approved when `confidenceScore >= LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE`.
+- Lower-confidence candidates are saved as `pending` and stay hidden until admin approval.
 
 Prohibited collection patterns:
 

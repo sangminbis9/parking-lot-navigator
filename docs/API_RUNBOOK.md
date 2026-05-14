@@ -103,6 +103,22 @@ Discovery cache sync:
 - Map pins and list rows use separate marker types: `festival` and `local_event`.
 - If KCISA or KOPIS rows have no coordinates, the backend can resolve a limited number of rows through Kakao Local when `KAKAO_REST_API_KEY` is configured. Rows still missing valid coordinates are omitted from map pin responses.
 
+Local store event discovery:
+
+- Worker cron runs once per day at `18:15 UTC` (`03:15 KST`).
+- Manual endpoint: `POST /admin/sync-local-events?dryRun=true|false`
+- Requires `Authorization: Bearer <SYNC_ADMIN_TOKEN>`.
+- Candidate collection uses the official Naver Search API response fields only. It does not fetch Instagram HTML, mimic sessions, bypass bot detection, or call unofficial APIs.
+- Coordinate verification uses Kakao Local keyword search with `Authorization: KakaoAK <KAKAO_REST_API_KEY>`.
+- Only high-confidence candidates with a verified Kakao place, clear benefit, and clear end date are automatically saved as `approved`. Lower-confidence candidates are stored as `pending` for admin review.
+- Required Worker secrets: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, and `KAKAO_REST_API_KEY`.
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" \
+  "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events?dryRun=true"
+```
+
 ## Known Public API Notes
 
 Seoul Open Data:

@@ -1,0 +1,26 @@
+name: Sync local events
+
+on:
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Preview without saving"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  sync-local-events:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger local event discovery
+        env:
+          SYNC_ADMIN_TOKEN: ${{ secrets.SYNC_ADMIN_TOKEN }}
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
+            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events?dryRun=${DRY_RUN}"

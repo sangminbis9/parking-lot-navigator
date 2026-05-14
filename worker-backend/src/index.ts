@@ -17,6 +17,7 @@ import {
   queryLocalEvents,
   updateAdminLocalEvent
 } from "./localEvents.js";
+import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
@@ -37,6 +38,12 @@ type Env = {
   DISCOVER_CACHE_TTL_SECONDS: string;
   FESTIVAL_PROVIDER_ENABLED: string;
   EVENT_PROVIDER_ENABLED: string;
+  LOCAL_EVENT_PROVIDER_ENABLED: string;
+  LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE: string;
+  LOCAL_EVENT_SEARCH_MAX_QUERIES: string;
+  NAVER_CLIENT_ID?: string;
+  NAVER_CLIENT_SECRET?: string;
+  NAVER_SEARCH_BASE_URL: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -168,6 +175,10 @@ const discoveryClusterSchema = z.object({
 
 const discoverySyncSchema = z.object({
   kinds: z.string().optional()
+});
+
+const localEventDiscoverySyncSchema = z.object({
+  dryRun: optionalBoolean
 });
 
 const syncNationalParkingSchema = z.object({
@@ -544,6 +555,26 @@ app.post("/admin/sync-discovery", async (c) => {
   }
 });
 
+app.post("/admin/sync-local-events", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+
+  const query = localEventDiscoverySyncSchema.parse(queryObject(c.req.raw.url));
+  try {
+    const result = await syncLocalEventDiscovery({
+      db: c.env.DB,
+      env: c.env,
+      dryRun: query.dryRun ?? false
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default {
@@ -558,6 +589,10 @@ export default {
     }
     if (controller.cron === "0 * * * *") {
       ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
+      return;
+    }
+    if (controller.cron === "15 18 * * *") {
+      ctx.waitUntil(syncLocalEventsScheduled(env));
       return;
     }
   }
@@ -578,6 +613,17 @@ async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "even
     await syncDiscoveryCache(env.DB!, backend, kinds);
   } catch (error) {
     console.error("discovery sync failed", error);
+  }
+}
+
+async function syncLocalEventsScheduled(env: Env): Promise<void> {
+  try {
+    await syncLocalEventDiscovery({
+      db: env.DB!,
+      env
+    });
+  } catch (error) {
+    console.error("local event discovery sync failed", error);
   }
 }
 

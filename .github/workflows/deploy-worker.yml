@@ -51,3 +51,10 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
             "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-discovery?kinds=festivals,events"
+
+      - name: Refresh local event candidates
+        if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
+            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events"

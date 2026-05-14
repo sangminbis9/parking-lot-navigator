@@ -152,6 +152,10 @@ export async function createAdminLocalEvent(db: D1Database, input: LocalEventAdm
   return item;
 }
 
+export async function upsertLocalEvent(db: D1Database, item: LocalEvent, rawPayload: unknown): Promise<void> {
+  await insertLocalEvent(db, item, { rawPayload, duplicateKey: duplicateKey(item) });
+}
+
 export async function updateAdminLocalEvent(
   db: D1Database,
   id: string,
