@@ -27,6 +27,17 @@ describe("discover APIs", () => {
     await app.close();
   });
 
+  it("keeps legacy discover events endpoint compatible for older app builds", async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/discover/events?lat=37.5665&lng=126.9780&radiusMeters=3000"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toEqual([]);
+    await app.close();
+  });
+
   it("accepts user reports as pending local events", async () => {
     const app = await createApp();
     const response = await app.inject({

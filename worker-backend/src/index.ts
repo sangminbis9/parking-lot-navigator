@@ -342,7 +342,7 @@ app.get("/discover/festivals", async (c) => {
 });
 
 app.get("/discover/events", async (c) => {
-  return c.json({ error: "deprecated", message: "Use /api/festivals for public festival data or /api/local-events for store events." }, 410);
+  return c.json({ items: [], generatedAt: new Date().toISOString() });
 });
 
 app.get("/api/festivals", async (c) => {

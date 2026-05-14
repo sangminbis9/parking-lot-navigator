@@ -32,11 +32,8 @@ export async function registerDiscoverRoutes(app: FastifyInstance) {
     return { items, generatedAt: new Date().toISOString() };
   });
 
-  app.get("/discover/events", async (_request, reply) => {
-    return reply.code(410).send({
-      error: "deprecated",
-      message: "Use /api/festivals for public festival data or /api/local-events for store events."
-    });
+  app.get("/discover/events", async () => {
+    return { items: [], generatedAt: new Date().toISOString() };
   });
 
   app.get("/discover/providers/health", async () => ({
