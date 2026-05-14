@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
+import type { MapItem } from "@parking/shared-types";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import {
   queryDiscoveryClusters,
@@ -412,7 +413,7 @@ app.get("/api/map/items", async (c) => {
   const query = mapItemsQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS);
-  const items = [];
+  const items: MapItem[] = [];
   if (query.type === "festival" || query.type === "all") {
     const festivals = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
       radiusMeters,
