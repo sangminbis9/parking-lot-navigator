@@ -1,16 +1,4 @@
 DELETE FROM discovery_items
-WHERE type = 'event'
-  AND EXISTS (
-    SELECT 1
-    FROM discovery_items AS existing
-    WHERE existing.type = 'festival'
-      AND existing.source = discovery_items.source
-      AND existing.source_item_id = discovery_items.source_item_id
-  );
-
-UPDATE discovery_items
-SET type = 'festival',
-    id = 'festival:' || source || ':' || source_item_id
 WHERE type = 'event';
 
 CREATE TABLE IF NOT EXISTS local_events (
