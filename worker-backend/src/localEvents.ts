@@ -52,18 +52,26 @@ export async function queryLocalEvents(
   const offset = parseCursor(options.cursor);
   const latDelta = options.radiusMeters / 111320;
   const lngDelta = options.radiusMeters / Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
-  const rows = await db
-    .prepare(
-      `SELECT *
-       FROM local_events
-       WHERE status = ?
-         AND lat IS NOT NULL
-         AND lng IS NOT NULL
-         AND lat BETWEEN ? AND ?
-         AND lng BETWEEN ? AND ?`
-    )
-    .bind(status, options.lat - latDelta, options.lat + latDelta, options.lng - lngDelta, options.lng + lngDelta)
-    .all<LocalEventRow>();
+  let rows: D1Result<LocalEventRow>;
+  try {
+    rows = await db
+      .prepare(
+        `SELECT *
+         FROM local_events
+         WHERE status = ?
+           AND lat IS NOT NULL
+           AND lng IS NOT NULL
+           AND lat BETWEEN ? AND ?
+           AND lng BETWEEN ? AND ?`
+      )
+      .bind(status, options.lat - latDelta, options.lat + latDelta, options.lng - lngDelta, options.lng + lngDelta)
+      .all<LocalEventRow>();
+  } catch (error) {
+    if (isMissingLocalEventsTable(error)) {
+      return { items: [], nextCursor: null };
+    }
+    throw error;
+  }
   const matched = (rows.results ?? [])
     .map((row) => mapLocalEventRow(row, options.lat, options.lng))
     .filter((item) => item.distanceMeters <= options.radiusMeters)
@@ -77,8 +85,13 @@ export async function queryLocalEvents(
 }
 
 export async function getLocalEvent(db: D1Database, id: string): Promise<LocalEvent | null> {
-  const row = await db.prepare("SELECT * FROM local_events WHERE id = ?").bind(id).first<LocalEventRow>();
-  return row ? mapLocalEventRow(row, row.lat ?? 0, row.lng ?? 0) : null;
+  try {
+    const row = await db.prepare("SELECT * FROM local_events WHERE id = ?").bind(id).first<LocalEventRow>();
+    return row ? mapLocalEventRow(row, row.lat ?? 0, row.lng ?? 0) : null;
+  } catch (error) {
+    if (isMissingLocalEventsTable(error)) return null;
+    throw error;
+  }
 }
 
 export async function createLocalEventReport(db: D1Database, input: LocalEventReportRequest): Promise<LocalEvent> {
@@ -363,4 +376,8 @@ function parseCursor(value: string | undefined): number {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isMissingLocalEventsTable(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes("no such table: local_events");
 }

@@ -63,5 +63,10 @@ jobs:
         working-directory: worker-backend
         run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql
 
+      - name: Apply local events schema
+        if: ${{ inputs.dry_run == false }}
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0004_local_events.sql
+
       - name: Sync national parking
         run: node worker-backend/scripts/sync-national-parking.mjs
