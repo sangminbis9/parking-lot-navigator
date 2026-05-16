@@ -6,6 +6,7 @@ import type {
   LocalEventStatusPatchRequest
 } from "@parking/shared-types";
 import { randomUUID } from "node:crypto";
+import { config } from "../../config/env.js";
 import { distanceMeters } from "../../services/geo.js";
 import { inferLocalEventType, structureLocalEvent } from "./localEventStructuring.js";
 
@@ -172,7 +173,7 @@ export class LocalEventService {
 }
 
 export function createLocalEventService(): LocalEventService {
-  const seed: LocalEvent[] = process.env.NODE_ENV === "test" || process.env.PARKING_PROVIDER_MODE === "mock"
+  const seed: LocalEvent[] = process.env.NODE_ENV === "test" || config.PARKING_PROVIDER_MODE === "mock"
     ? [
         {
           id: "mock-local-event",

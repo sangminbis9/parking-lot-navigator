@@ -92,7 +92,7 @@ const DEFAULT_SEARCH_KEYWORDS = [
 
 const EVENT_KEYWORD_PATTERN = /(\ub9ac\ubdf0\s*\uc774\ubca4\ud2b8|\ubc29\ubb38\s*\uc774\ubca4\ud2b8|\uc624\ud508\s*\uc774\ubca4\ud2b8|\ud560\uc778|\ubb34\ub8cc|\uc99d\uc815|\ud31d\uc5c5|\ud55c\uc815|1\s*\+\s*1|coupon|discount|free|review|popup)/i;
 const BENEFIT_PATTERN = /(\d{1,2}\s?%|\d{1,3}(?:,\d{3})*\s?\uc6d0|1\s*\+\s*1|\ubb34\ub8cc|\uc99d\uc815|\ucfe0\ud3f0|\ud560\uc778|\uc0ac\uc740\ud488|\uc11c\ube44\uc2a4|coupon|discount|free|gift)/i;
-const NOISY_STORE_TOKENS = /(\uc11c\uc6b8|\uac15\ub0a8|\ud64d\ub300|\uc131\uc218|\uc5f0\ub0a8|\ud569\uc815|\uc7a0\uc2e4|\uac74\ub300|\uc2e0\ucd0c|\uba85\ub3d9|\ubd80\uc0b0|\uc81c\uc8fc|\ub9db\uc9d1|\uce74\ud398|\uc2dd\ub2f9|\ub9e4\uc7a5|\uc774\ubca4\ud2b8|\ub9ac\ubdf0|\ubc29\ubb38|\ud560\uc778|\ubb34\ub8cc|\uc99d\uc815|\ud31d\uc5c5|\uc624\ud508|\ud55c\uc815)/g;
+const NOISY_STORE_TOKENS = /(\uc11c\uc6b8|\uac15\ub0a8|\ud64d\ub300|\uc131\uc218|\uc5f0\ub0a8|\ud569\uc815|\uc7a0\uc2e4|\uac74\ub300|\uc2e0\ucd0c|\uba85\ub3d9|\ubd80\uc0b0|\uc81c\uc8fc|\uc774\ubca4\ud2b8|\ub9ac\ubdf0|\ubc29\ubb38|\ud560\uc778|\ubb34\ub8cc|\uc99d\uc815|\ud31d\uc5c5|\uc624\ud508|\ud55c\uc815)/g;
 
 export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOptions): Promise<LocalEventDiscoveryResult> {
   const generatedAt = (options.now ?? new Date()).toISOString();
