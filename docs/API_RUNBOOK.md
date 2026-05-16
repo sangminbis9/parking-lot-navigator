@@ -108,10 +108,11 @@ Local store event discovery:
 - Worker cron runs once per day at `18:15 UTC` (`03:15 KST`).
 - Manual endpoint: `POST /admin/sync-local-events?dryRun=true|false`
 - Requires `Authorization: Bearer <SYNC_ADMIN_TOKEN>`.
-- Candidate collection uses the official Naver Search API response fields only. It does not fetch Instagram HTML, mimic sessions, bypass bot detection, or call unofficial APIs.
-- Coordinate verification uses Kakao Local keyword search with `Authorization: KakaoAK <KAKAO_REST_API_KEY>`.
+- Candidate collection uses Kakao Local category search for restaurants and cafes, then official Naver Blog Search response fields for recent event posts. It does not fetch Instagram HTML, mimic sessions, bypass bot detection, or call unofficial APIs.
+- Coordinates come from Kakao Local category search with `Authorization: KakaoAK <KAKAO_REST_API_KEY>`.
 - High-confidence candidates with a verified Kakao place and clear benefit are automatically saved as `approved`. If the end date is unclear, `endDate` stays `null` and `needsReview=true`; the worker does not invent a date.
 - Lower-confidence candidates are stored as `pending` for admin review.
+- `LOCAL_EVENT_SEARCH_MAX_QUERIES` now means maximum Kakao places processed per run. Default production value is `360`.
 - Required Worker secrets: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, and `KAKAO_REST_API_KEY`. The deploy workflow syncs these from GitHub Actions secrets when they are configured.
 
 ```bash

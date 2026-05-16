@@ -39,12 +39,14 @@ Allowed sources:
 
 Automatic candidate discovery:
 
-- `syncLocalEventDiscovery` uses Naver Search API `webkr.json` with `X-Naver-Client-Id` and `X-Naver-Client-Secret`.
-- The worker stores only search-result title, summary, source URL, and structured event fields. It does not fetch or scrape the target page body.
-- Kakao Local keyword search verifies the candidate store and provides coordinates.
+- `syncLocalEventDiscovery` first collects restaurant and cafe candidates from Kakao Local category search (`FD6`, `CE7`) around configured region centers.
+- For each Kakao place, it checks recent Naver Blog search results for `"place name" event` with `X-Naver-Client-Id` and `X-Naver-Client-Secret`.
+- The worker stores only search-result title, summary, source URL, Kakao place fields, and structured event fields. It does not fetch or scrape the target page body.
+- Kakao Local category search provides the candidate store identity and coordinates.
 - Candidates with verified coordinates and a clear event benefit can be auto-approved when `confidenceScore >= LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE`.
 - If a candidate is approved without a clear end date, `endDate` remains `null` and `needsReview=true`.
 - Lower-confidence candidates are saved as `pending` and stay hidden until admin approval.
+- `LOCAL_EVENT_SEARCH_MAX_QUERIES` limits the number of Kakao places processed per run.
 
 Prohibited collection patterns:
 
