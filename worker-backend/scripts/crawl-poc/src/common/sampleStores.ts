@@ -1,0 +1,35 @@
+import type { SampleStore } from "./types.js";
+
+// PoC seed only. Null ids/handles must be filled by the user before measuring live coverage.
+export const sampleStores: SampleStore[] = [
+  { region: "Seoul", placeName: "Onion Anguk", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Cafe Layered Bukchon", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Teddy Beurre House", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Mil Toast House", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Knotted Cheongdam", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "London Bagel Museum Dosan", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Cafe Mamas City Hall", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Myeongdong Kyoja", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Woo Lae Oak", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Seoul", placeName: "Gwangjang Market Soonhee Bindaetteok", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gyeonggi", placeName: "Cafe Aseul", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gyeonggi", placeName: "Nam June Paik Art Center Cafe", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gyeonggi", placeName: "Paju Provence Cafe", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gyeonggi", placeName: "Suwon Galbi Bon Suwon", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gyeonggi", placeName: "Starfield Suwon Cafe", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Busan", placeName: "Momos Coffee", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Busan", placeName: "Waveon Coffee", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Busan", placeName: "OPS Haeundae", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Busan", placeName: "Geumsubokguk Haeundae", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Busan", placeName: "Bonjeon Dwaeji Gukbap", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Daegu", placeName: "Mansion5", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Daegu", placeName: "Miseong Dang Napjak Mandu", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Daegu", placeName: "Coffee Myungga", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gwangju", placeName: "Yangdong Market Chicken", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gwangju", placeName: "Penguin Village Cafe", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Gwangju", placeName: "Songjeong Tteokgalbi", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Jeju", placeName: "Cafe Delmoondo", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Jeju", placeName: "Myeongjin Jeonbok", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Other", placeName: "Daejeon Sungsimdang", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null },
+  { region: "Other", placeName: "Gangneung Terarosa Coffee", kakaoPlaceId: null, naverPlaceId: null, instagramHandle: null }
+];

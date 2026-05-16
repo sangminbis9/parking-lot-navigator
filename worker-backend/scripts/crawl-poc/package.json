@@ -1,0 +1,8 @@
+{
+  "name": "@parking/crawl-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/runPoc.ts"
+  }
+}
