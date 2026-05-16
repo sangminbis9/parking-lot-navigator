@@ -45,6 +45,7 @@ type Env = {
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   NAVER_SEARCH_BASE_URL: string;
+  NAVER_PLACE_BASE_URL: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -123,7 +124,7 @@ const mapItemsQuerySchema = localEventQuerySchema.extend({
   type: z.enum(["festival", "event", "all"]).default("all")
 });
 
-const eventSourceSchema = z.enum(["instagram", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
+const eventSourceSchema = z.enum(["instagram", "naver_place", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
 const eventStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
 const eventTypeSchema = z.enum(["discount", "freebie", "review_event", "popup", "limited_menu", "opening_event", "etc"]);
 

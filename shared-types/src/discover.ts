@@ -1,6 +1,13 @@
 export type DiscoverStatus = "ongoing" | "upcoming";
 export type EventCategory = "festival" | "performance" | "exhibition" | "culture" | "local_event" | "other";
-export type LocalEventSource = "instagram" | "owner_submitted" | "admin_manual" | "user_report" | "official_site" | "other";
+export type LocalEventSource =
+  | "instagram"
+  | "naver_place"
+  | "owner_submitted"
+  | "admin_manual"
+  | "user_report"
+  | "official_site"
+  | "other";
 export type LocalEventStatus = "pending" | "approved" | "rejected" | "expired";
 export type LocalEventType =
   | "discount"

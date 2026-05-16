@@ -10,6 +10,7 @@ export interface LocalEventDiscoveryEnv {
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   NAVER_SEARCH_BASE_URL?: string;
+  NAVER_PLACE_BASE_URL?: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL?: string;
 }
@@ -22,7 +23,7 @@ export interface LocalEventDiscoveryOptions {
 }
 
 export interface LocalEventDiscoveryResult {
-  provider: "naver_search_kakao_local";
+  provider: "naver_place_feed_kakao_local";
   enabled: boolean;
   dryRun: boolean;
   searchedQueries: number;
@@ -36,14 +37,27 @@ export interface LocalEventDiscoveryResult {
   generatedAt: string;
 }
 
-interface NaverSearchResponse {
-  items?: NaverSearchItem[];
+interface NaverLocalSearchResponse {
+  items?: NaverLocalSearchItem[];
 }
 
-interface NaverSearchItem {
+interface NaverLocalSearchItem {
   title?: string;
   link?: string;
   description?: string;
+  address?: string;
+  roadAddress?: string;
+  mapx?: string;
+  mapy?: string;
+}
+
+interface NaverPlaceFeedEntry {
+  title: string | null;
+  body: string;
+  postedAt: string | null;
+  imageUrl: string | null;
+  permalink: string | null;
+  raw: unknown;
 }
 
 interface KakaoCategoryResponse {
@@ -69,9 +83,11 @@ interface KakaoPlace {
 
 interface LocalEventCandidate {
   item: LocalEvent;
-  sourceItem: NaverSearchItem;
+  sourceItem: NaverPlaceFeedEntry;
   query: string;
   kakaoPlace: KakaoPlace;
+  naverPlace: NaverLocalSearchItem;
+  naverPlaceId: string;
 }
 
 const REGION_CENTERS: RegionCenter[] = [
@@ -97,7 +113,7 @@ const BENEFIT_PATTERN = /(\d{1,2}\s?%|\d{1,3}(?:,\d{3})*\s?\uc6d0|1\s*\+\s*1|\ub
 export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOptions): Promise<LocalEventDiscoveryResult> {
   const generatedAt = (options.now ?? new Date()).toISOString();
   const result: LocalEventDiscoveryResult = {
-    provider: "naver_search_kakao_local",
+    provider: "naver_place_feed_kakao_local",
     enabled: isEnabled(options.env.LOCAL_EVENT_PROVIDER_ENABLED),
     dryRun: options.dryRun ?? false,
     searchedQueries: 0,
@@ -113,7 +129,7 @@ export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOption
 
   if (!result.enabled) return result;
   if (!options.env.NAVER_CLIENT_ID || !options.env.NAVER_CLIENT_SECRET) {
-    result.errors.push("naver_search_credentials_not_configured");
+    result.errors.push("naver_local_search_credentials_not_configured");
     return result;
   }
   if (!options.env.KAKAO_REST_API_KEY) {
@@ -158,7 +174,9 @@ export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOption
             await upsertLocalEvent(options.db, candidate.item, {
               provider: result.provider,
               query: candidate.query,
-              naver: candidate.sourceItem,
+              naverPlace: candidate.naverPlace,
+              naverPlaceId: candidate.naverPlaceId,
+              naverFeed: candidate.sourceItem,
               kakaoPlace: candidate.kakaoPlace
             });
           }
@@ -206,12 +224,13 @@ async function fetchKakaoPlaces(
   }
 }
 
-async function searchNaverBlog(env: LocalEventDiscoveryEnv, placeName: string): Promise<NaverSearchItem[]> {
+async function searchNaverLocal(env: LocalEventDiscoveryEnv, place: KakaoPlace): Promise<NaverLocalSearchItem[]> {
   const baseUrl = env.NAVER_SEARCH_BASE_URL ?? "https://openapi.naver.com";
-  const url = new URL("/v1/search/blog.json", baseUrl);
-  url.searchParams.set("query", `"${placeName}" \uc774\ubca4\ud2b8`);
-  url.searchParams.set("display", "3");
-  url.searchParams.set("sort", "date");
+  const placeName = cleanHtml(place.place_name);
+  const address = cleanHtml(place.road_address_name || place.address_name);
+  const url = new URL("/v1/search/local.json", baseUrl);
+  url.searchParams.set("query", [placeName, address].filter(Boolean).join(" "));
+  url.searchParams.set("display", "5");
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -220,10 +239,103 @@ async function searchNaverBlog(env: LocalEventDiscoveryEnv, placeName: string): 
     }
   });
   if (!response.ok) {
-    throw new Error(`naver_blog_search_failed:${response.status}`);
+    throw new Error(`naver_local_search_failed:${response.status}`);
   }
-  const body = (await response.json()) as NaverSearchResponse;
+  const body = (await response.json()) as NaverLocalSearchResponse;
   return body.items ?? [];
+}
+
+function selectNaverPlace(place: KakaoPlace, items: NaverLocalSearchItem[]): { item: NaverLocalSearchItem; id: string } | null {
+  const placeName = cleanHtml(place.place_name);
+  const address = cleanHtml(place.road_address_name || place.address_name);
+  const kakaoLat = numberOrNull(place.y);
+  const kakaoLng = numberOrNull(place.x);
+  let best: { item: NaverLocalSearchItem; id: string; score: number } | null = null;
+
+  for (const item of items) {
+    const id = extractNaverPlaceId(item.link);
+    if (!id) continue;
+
+    const naverName = cleanHtml(item.title);
+    const naverAddress = cleanHtml(item.roadAddress || item.address);
+    let score = 0;
+    if (nameMatchScore(placeName, naverName) >= 0.55) score += 0.5;
+    if (address && naverAddress && overlapRatio(address, naverAddress) >= 0.35) score += 0.3;
+
+    const naverLng = naverCoordinate(item.mapx);
+    const naverLat = naverCoordinate(item.mapy);
+    if (kakaoLat !== null && kakaoLng !== null && naverLat !== null && naverLng !== null) {
+      const distance = distanceMeters(kakaoLat, kakaoLng, naverLat, naverLng);
+      if (distance <= 150) score += 0.2;
+      else if (distance <= 350) score += 0.1;
+    }
+
+    if (!best || score > best.score) {
+      best = { item, id, score };
+    }
+  }
+
+  return best && best.score >= 0.5 ? { item: best.item, id: best.id } : null;
+}
+
+async function fetchNaverPlaceFeed(
+  env: LocalEventDiscoveryEnv,
+  placeId: string,
+  naverPlace: NaverLocalSearchItem
+): Promise<NaverPlaceFeedEntry[]> {
+  const feedUrl = naverFeedUrl(env, placeId, naverPlace.link);
+  try {
+    const response = await fetch(feedUrl, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "parking-lot-navigator/1.0 (+local event discovery)"
+      }
+    });
+    if (response.status === 403 || response.status === 429) return [];
+    if (!response.ok) {
+      throw new Error(`naver_place_feed_failed:${response.status}`);
+    }
+    return parseNaverPlaceFeed(await response.text(), feedUrl);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("naver_place_feed_failed:")) throw error;
+    return [];
+  }
+}
+
+function parseNaverPlaceFeed(html: string, feedUrl: string): NaverPlaceFeedEntry[] {
+  const entries: NaverPlaceFeedEntry[] = [];
+  for (const jsonText of extractEmbeddedJson(html)) {
+    try {
+      collectFeedEntries(JSON.parse(jsonText), entries, feedUrl);
+    } catch {
+      // Ignore stale or schema-shifted script payloads and continue with other blocks.
+    }
+  }
+
+  if (entries.length === 0) {
+    const fallbackText = cleanHtml(html).slice(0, 4000);
+    if (EVENT_KEYWORD_PATTERN.test(fallbackText)) {
+      entries.push({
+        title: extractHtmlTitle(html),
+        body: fallbackText,
+        postedAt: null,
+        imageUrl: firstImageUrl(html),
+        permalink: feedUrl,
+        raw: { fallback: true }
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  return entries
+    .filter((entry) => EVENT_KEYWORD_PATTERN.test([entry.title, entry.body].filter(Boolean).join(" ")))
+    .filter((entry) => {
+      const key = stableHash([entry.title, entry.body.slice(0, 300), entry.permalink].filter(Boolean).join("|"));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
 }
 
 async function buildCandidateFromPlace(
@@ -236,20 +348,17 @@ async function buildCandidateFromPlace(
   const placeName = cleanHtml(place.place_name);
   if (!placeName) return null;
 
-  const blogItems = await searchNaverBlog(env, placeName);
-  let sourceItem: NaverSearchItem | null = null;
-  let combinedText = "";
-  for (const item of blogItems) {
-    const text = [cleanHtml(item.title), cleanHtml(item.description)].filter(Boolean).join(". ");
-    if (EVENT_KEYWORD_PATTERN.test(text)) {
-      sourceItem = item;
-      combinedText = text;
-      break;
-    }
-  }
-  if (!sourceItem || !combinedText) return null;
+  const naverPlace = selectNaverPlace(place, await searchNaverLocal(env, place));
+  if (!naverPlace) return null;
 
-  const sourceUrl = canonicalUrl(cleanHtml(sourceItem.link));
+  const feedItems = await fetchNaverPlaceFeed(env, naverPlace.id, naverPlace.item);
+  const sourceItem = feedItems[0] ?? null;
+  if (!sourceItem) return null;
+
+  const combinedText = [cleanHtml(sourceItem.title), cleanHtml(sourceItem.body)].filter(Boolean).join(". ");
+  if (!combinedText) return null;
+
+  const sourceUrl = canonicalUrl(sourceItem.permalink ?? naverFeedUrl(env, naverPlace.id, naverPlace.item.link));
   if (!sourceUrl) return null;
   const titleText = cleanHtml(sourceItem.title);
   const address = place.road_address_name || place.address_name || "";
@@ -281,17 +390,19 @@ async function buildCandidateFromPlace(
   const status: LocalEventStatus =
     confidenceScore >= threshold && !expired && lat !== 0 && lng !== 0 ? "approved" : "pending";
   const needsReview = status !== "approved" || !hasClearEndDate;
-  const sourceId = stableHash(sourceUrl);
+  const sourceId = stableHash([naverPlace.id, sourceUrl, combinedText.slice(0, 300)].join("|"));
   const resolvedTitle = structured.title || titleText || `${placeName} event`;
   const description = structured.description ?? (combinedText || null);
   const resolvedBenefit = benefit ?? structured.benefit;
 
   return {
     sourceItem,
-    query: `"${placeName}" \uc774\ubca4\ud2b8`,
+    query: [placeName, address].filter(Boolean).join(" "),
     kakaoPlace: place,
+    naverPlace: naverPlace.item,
+    naverPlaceId: naverPlace.id,
     item: {
-      id: `naver:${sourceId}`,
+      id: `naver-place:${sourceId}`,
       title: truncate(resolvedTitle, 200),
       eventType: inferLocalEventType([resolvedTitle, description, resolvedBenefit].filter(Boolean).join(" ")),
       category: "local_event",
@@ -305,9 +416,9 @@ async function buildCandidateFromPlace(
       lat,
       lng,
       distanceMeters: 0,
-      source: "other",
+      source: "naver_place",
       sourceUrl,
-      imageUrl: null,
+      imageUrl: canonicalUrl(sourceItem.imageUrl ?? "") ?? null,
       benefit: resolvedBenefit ? truncate(resolvedBenefit, 500) : null,
       shortDescription: description ? truncate(description, 5000) : null,
       region,
@@ -320,6 +431,205 @@ async function buildCandidateFromPlace(
       priorityScore: status === "approved" ? Math.round(confidenceScore * 100) : 0
     }
   };
+}
+
+function extractEmbeddedJson(html: string): string[] {
+  const blocks: string[] = [];
+  const nextData = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (nextData) blocks.push(decodeHtmlEntities(nextData.trim()));
+
+  const apolloData = html.match(/<script[^>]+id=["']__APOLLO_STATE__["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (apolloData) blocks.push(decodeHtmlEntities(apolloData.trim()));
+
+  for (const match of html.matchAll(/window\.__(?:APOLLO_STATE__|PRELOADED_STATE__)\s*=\s*({[\s\S]*?})\s*;?\s*<\/script>/g)) {
+    if (match[1]) blocks.push(decodeHtmlEntities(match[1].trim()));
+  }
+
+  return blocks;
+}
+
+function collectFeedEntries(value: unknown, entries: NaverPlaceFeedEntry[], feedUrl: string, depth = 0): void {
+  if (entries.length >= 10 || depth > 9 || value === null || value === undefined) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectFeedEntries(item, entries, feedUrl, depth + 1);
+    return;
+  }
+  if (typeof value !== "object") return;
+
+  const record = value as Record<string, unknown>;
+  const body = feedText(record);
+  if (body.length >= 12 && EVENT_KEYWORD_PATTERN.test(body)) {
+    entries.push({
+      title: firstString(record, ["title", "subject", "name"]) ?? null,
+      body: truncate(body, 5000),
+      postedAt: feedDate(record),
+      imageUrl: findUrl(record, "image"),
+      permalink: canonicalUrl(findUrl(record, "page") ?? feedUrl) ?? feedUrl,
+      raw: compactRaw(record)
+    });
+  }
+
+  for (const child of Object.values(record)) {
+    if (typeof child === "object") collectFeedEntries(child, entries, feedUrl, depth + 1);
+  }
+}
+
+function feedText(record: Record<string, unknown>): string {
+  const values: string[] = [];
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value !== "string") continue;
+    if (!/(title|subject|name|body|content|description|desc|text|notice|event|promotion|feed|message)/i.test(key)) continue;
+    const cleaned = cleanHtml(value);
+    if (cleaned) values.push(cleaned);
+  }
+  return values.join(". ");
+}
+
+function compactRaw(record: Record<string, unknown>): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      raw[key] = typeof value === "string" ? truncate(cleanHtml(value), 500) : value;
+    }
+  }
+  return raw;
+}
+
+function firstString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && cleanHtml(value)) return cleanHtml(value);
+  }
+  return null;
+}
+
+function feedDate(record: Record<string, unknown>): string | null {
+  for (const key of ["postedAt", "createdAt", "createdDate", "regDate", "date", "writeDate", "updatedAt"]) {
+    const value = record[key];
+    const normalized = normalizeDateValue(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function normalizeDateValue(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millis = value > 1000000000000 ? value : value * 1000;
+    return new Date(millis).toISOString();
+  }
+  if (typeof value !== "string") return null;
+  const cleaned = cleanHtml(value);
+  const parsed = Date.parse(cleaned);
+  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  const date = cleaned.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+  if (date) return `${date[1]}-${date[2].padStart(2, "0")}-${date[3].padStart(2, "0")}T00:00:00.000Z`;
+  return null;
+}
+
+function findUrl(value: unknown, kind: "image" | "page", depth = 0): string | null {
+  if (depth > 6 || value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const cleaned = decodeHtmlEntities(value);
+    if (!/^https?:\/\//i.test(cleaned)) return null;
+    if (kind === "image" && /(image|img|photo|thumb|pstatic|phinf|jpg|jpeg|png|webp)/i.test(cleaned)) {
+      return cleaned;
+    }
+    if (kind === "page" && /(place\.naver\.com|m\.place\.naver\.com|map\.naver\.com)/i.test(cleaned)) {
+      return cleaned;
+    }
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findUrl(item, kind, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value === "object") {
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      const found = findUrl(child, kind, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function extractHtmlTitle(html: string): string | null {
+  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  if (ogTitle) return cleanHtml(ogTitle);
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  return title ? cleanHtml(title) : null;
+}
+
+function firstImageUrl(html: string): string | null {
+  const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  return ogImage ? canonicalUrl(decodeHtmlEntities(ogImage)) : null;
+}
+
+function extractNaverPlaceId(value: string | null | undefined): string | null {
+  const cleaned = decodeHtmlEntities(value ?? "");
+  const patterns = [
+    /[?&](?:code|id)=([0-9]+)/i,
+    /\/(?:restaurant|place|hospital|hairshop|accommodation|attraction)\/([0-9]+)/i,
+    /\/entry\/place\/([0-9]+)/i
+  ];
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function naverFeedUrl(env: LocalEventDiscoveryEnv, placeId: string, sourceLink: string | undefined): string {
+  const baseUrl = env.NAVER_PLACE_BASE_URL ?? "https://m.place.naver.com";
+  const link = canonicalUrl(decodeHtmlEntities(sourceLink ?? ""));
+  if (link) {
+    const path = new URL(link).pathname;
+    const match = path.match(/\/(restaurant|place|hospital|hairshop|accommodation|attraction)\/([0-9]+)/i);
+    if (match) {
+      return `${baseUrl}/${match[1]}/${match[2]}/feed`;
+    }
+  }
+  return `${baseUrl}/restaurant/${placeId}/feed`;
+}
+
+function naverCoordinate(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.abs(parsed) > 1000 ? parsed / 10000000 : parsed;
+}
+
+function nameMatchScore(left: string, right: string): number {
+  return overlapRatio(normalizeName(left), normalizeName(right));
+}
+
+function overlapRatio(left: string, right: string): number {
+  if (!left || !right) return 0;
+  const short = left.length <= right.length ? left : right;
+  const long = left.length > right.length ? left : right;
+  if (long.includes(short)) return 1;
+  const chars = new Set([...short]);
+  let overlap = 0;
+  for (const char of chars) {
+    if (long.includes(char)) overlap += 1;
+  }
+  return overlap / chars.size;
+}
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, "").replace(/[()[\]{}"'`~!@#$%^&*_+=,./<>?:;|\\-]/g, "");
+}
+
+function distanceMeters(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const radius = 6371000;
+  const dLat = ((toLat - fromLat) * Math.PI) / 180;
+  const dLng = ((toLng - fromLng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((fromLat * Math.PI) / 180) * Math.cos((toLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function extractBenefit(text: string): string | null {

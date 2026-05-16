@@ -11,7 +11,7 @@ const optionalBoolean = z
   .optional();
 
 const mapTypeSchema = z.enum(["festival", "event", "all"]).default("all");
-const eventSourceSchema = z.enum(["instagram", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
+const eventSourceSchema = z.enum(["instagram", "naver_place", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
 const eventStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
 const eventTypeSchema = z.enum(["discount", "freebie", "review_event", "popup", "limited_menu", "opening_event", "etc"]);
 
