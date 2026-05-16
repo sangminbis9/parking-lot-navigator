@@ -9,6 +9,7 @@ tmp/
 worker-backend/.dev.vars
 worker-backend/.dev.vars.*
 worker-backend/.national-sync/
+worker-backend/scripts/crawl-poc/out/
 ios-app/Config/Debug.xcconfig
 ios-app/Config/Release.xcconfig
 ios-app/*.xcodeproj/

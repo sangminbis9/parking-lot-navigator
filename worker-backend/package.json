@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "poc:crawl": "tsx scripts/crawl-poc/src/runPoc.ts",
-    "postpoc:crawl": "tsx scripts/crawl-poc/src/postRunHint.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,9 +16,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
     "@types/node": "^22.10.2",
-    "cheerio": "^1.0.0",
-    "dotenv": "^16.4.7",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "wrangler": "latest"
   }
