@@ -6,6 +6,7 @@ export interface LocalEventDiscoveryEnv {
   LOCAL_EVENT_PROVIDER_ENABLED?: string;
   LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE?: string;
   LOCAL_EVENT_SEARCH_MAX_QUERIES?: string;
+  LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY?: string;
   KAKAO_CATEGORY_RADIUS_METERS?: string;
   KAKAO_CATEGORY_MAX_PAGES?: string;
   NAVER_CLIENT_ID?: string;
@@ -92,35 +93,62 @@ interface LocalEventCandidate {
 }
 
 const REGION_CENTERS: RegionCenter[] = [
-  { name: "\uc11c\uc6b8", lat: 37.5665, lng: 126.978 },
-  { name: "\uac15\ub0a8", lat: 37.4979, lng: 127.0276 },
-  { name: "\ud64d\ub300", lat: 37.5563, lng: 126.9235 },
-  { name: "\uc131\uc218", lat: 37.5445, lng: 127.0558 },
-  { name: "\uc5f0\ub0a8", lat: 37.5626, lng: 126.9233 },
-  { name: "\ud569\uc815", lat: 37.5497, lng: 126.9143 },
-  { name: "\uc7a0\uc2e4", lat: 37.5132, lng: 127.1001 },
-  { name: "\uac74\ub300", lat: 37.5404, lng: 127.0693 },
-  { name: "\uc2e0\ucd0c", lat: 37.5596, lng: 126.9424 },
-  { name: "\uba85\ub3d9", lat: 37.5636, lng: 126.983 },
-  { name: "\uc5ec\uc758\ub3c4", lat: 37.5219, lng: 126.9245 },
-  { name: "\uc774\ud0dc\uc6d0", lat: 37.5345, lng: 126.9946 },
-  { name: "\uc6a9\uc0b0", lat: 37.5326, lng: 126.9904 },
-  { name: "\ud61c\ud654", lat: 37.582, lng: 127.0019 },
-  { name: "\uc744\uc9c0\ub85c", lat: 37.5663, lng: 126.9919 },
-  { name: "\ubd80\uc0b0", lat: 35.1796, lng: 129.0756 },
-  { name: "\ud574\uc6b4\ub300", lat: 35.1631, lng: 129.1636 },
-  { name: "\uc11c\uba74", lat: 35.1577, lng: 129.0592 },
-  { name: "\uc81c\uc8fc", lat: 33.4996, lng: 126.5312 },
-  { name: "\ub300\uad6c", lat: 35.8714, lng: 128.6014 },
-  { name: "\uad11\uc8fc", lat: 35.1595, lng: 126.8526 },
-  { name: "\ub300\uc804", lat: 36.3504, lng: 127.3845 },
-  { name: "\uc778\ucc9c", lat: 37.4563, lng: 126.7052 },
-  { name: "\uc218\uc6d0", lat: 37.2636, lng: 127.0286 },
-  { name: "\ud310\uad50", lat: 37.3947, lng: 127.1112 },
-  { name: "\ubd84\ub2f9", lat: 37.3596, lng: 127.1054 },
-  { name: "\uc77c\uc0b0", lat: 37.6584, lng: 126.7712 },
-  { name: "\uc804\uc8fc", lat: 35.8242, lng: 127.148 },
-  { name: "\uac15\ub989", lat: 37.7519, lng: 128.8761 }
+  { name: "서울", lat: 37.5665, lng: 126.978 },
+  { name: "강남", lat: 37.4979, lng: 127.0276 },
+  { name: "홍대", lat: 37.5563, lng: 126.9235 },
+  { name: "성수", lat: 37.5445, lng: 127.0558 },
+  { name: "잠실", lat: 37.5132, lng: 127.1001 },
+  { name: "명동", lat: 37.5636, lng: 126.983 },
+  { name: "여의도", lat: 37.5219, lng: 126.9245 },
+  { name: "이태원", lat: 37.5345, lng: 126.9946 },
+  { name: "인천", lat: 37.4563, lng: 126.7052 },
+  { name: "송도", lat: 37.3827, lng: 126.6564 },
+  { name: "부평", lat: 37.4895, lng: 126.7247 },
+  { name: "수원", lat: 37.2636, lng: 127.0286 },
+  { name: "판교", lat: 37.3947, lng: 127.1112 },
+  { name: "분당", lat: 37.3596, lng: 127.1054 },
+  { name: "일산", lat: 37.6584, lng: 126.7712 },
+  { name: "의정부", lat: 37.7381, lng: 127.0338 },
+  { name: "안양", lat: 37.3943, lng: 126.9568 },
+  { name: "부천", lat: 37.5035, lng: 126.766 },
+  { name: "용인", lat: 37.2411, lng: 127.1776 },
+  { name: "화성", lat: 37.1995, lng: 126.8312 },
+  { name: "춘천", lat: 37.8813, lng: 127.7298 },
+  { name: "원주", lat: 37.3422, lng: 127.9202 },
+  { name: "강릉", lat: 37.7519, lng: 128.8761 },
+  { name: "속초", lat: 38.2043, lng: 128.5918 },
+  { name: "대전", lat: 36.3504, lng: 127.3845 },
+  { name: "세종", lat: 36.4801, lng: 127.289 },
+  { name: "청주", lat: 36.6424, lng: 127.489 },
+  { name: "충주", lat: 36.991, lng: 127.9259 },
+  { name: "천안", lat: 36.8151, lng: 127.1139 },
+  { name: "아산", lat: 36.7898, lng: 127.0017 },
+  { name: "공주", lat: 36.4465, lng: 127.119 },
+  { name: "전주", lat: 35.8242, lng: 127.148 },
+  { name: "군산", lat: 35.9677, lng: 126.7366 },
+  { name: "익산", lat: 35.9483, lng: 126.9576 },
+  { name: "광주", lat: 35.1595, lng: 126.8526 },
+  { name: "목포", lat: 34.8118, lng: 126.3922 },
+  { name: "여수", lat: 34.7604, lng: 127.6622 },
+  { name: "순천", lat: 34.9506, lng: 127.4872 },
+  { name: "나주", lat: 35.0158, lng: 126.7108 },
+  { name: "부산", lat: 35.1796, lng: 129.0756 },
+  { name: "해운대", lat: 35.1631, lng: 129.1636 },
+  { name: "서면", lat: 35.1577, lng: 129.0592 },
+  { name: "대구", lat: 35.8714, lng: 128.6014 },
+  { name: "동성로", lat: 35.8692, lng: 128.5951 },
+  { name: "울산", lat: 35.5384, lng: 129.3114 },
+  { name: "창원", lat: 35.2279, lng: 128.6811 },
+  { name: "마산", lat: 35.2138, lng: 128.5833 },
+  { name: "진주", lat: 35.1802, lng: 128.1076 },
+  { name: "김해", lat: 35.2285, lng: 128.8894 },
+  { name: "포항", lat: 36.019, lng: 129.3435 },
+  { name: "경주", lat: 35.8562, lng: 129.2247 },
+  { name: "구미", lat: 36.1195, lng: 128.3446 },
+  { name: "안동", lat: 36.5684, lng: 128.7294 },
+  { name: "제주", lat: 33.4996, lng: 126.5312 },
+  { name: "서귀포", lat: 33.2541, lng: 126.5601 },
+  { name: "애월", lat: 33.4625, lng: 126.3092 }
 ];
 
 const KAKAO_EVENT_CATEGORIES = ["FD6", "CE7"] as const;
@@ -155,7 +183,8 @@ export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOption
     return result;
   }
 
-  const maxPlaces = clampInt(Number(options.env.LOCAL_EVENT_SEARCH_MAX_QUERIES ?? 1000), 1, 2000);
+  const maxPlaces = clampInt(Number(options.env.LOCAL_EVENT_SEARCH_MAX_QUERIES ?? 1600), 1, 5000);
+  const maxPlacesPerRegionCategory = clampInt(Number(options.env.LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY ?? 8), 1, 45);
   const seen = new Set<string>();
 
   outer:
@@ -164,14 +193,17 @@ export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOption
       if (seen.size >= maxPlaces) break outer;
       result.searchedQueries += 1;
       const places = await fetchKakaoPlaces(options.env, region, categoryCode);
+      let processedForRegionCategory = 0;
       for (const place of places) {
         if (seen.size >= maxPlaces) break outer;
+        if (processedForRegionCategory >= maxPlacesPerRegionCategory) break;
         const placeKey = place.id ?? stableHash([place.place_name, place.road_address_name, place.address_name].filter(Boolean).join("|"));
         if (!placeKey || seen.has(placeKey)) {
           result.skipped += 1;
           continue;
         }
         seen.add(placeKey);
+        processedForRegionCategory += 1;
         result.fetched += 1;
 
         try {
