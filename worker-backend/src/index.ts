@@ -6,7 +6,7 @@ import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import {
   queryDiscoveryClusters,
   queryFestivalsFromCache,
-  syncDiscoveryCache
+  syncDiscoveryCache,
 } from "./discoveryCache.js";
 import {
   createAdminLocalEvent,
@@ -15,13 +15,13 @@ import {
   localEventMapItem,
   patchLocalEventStatus,
   queryLocalEvents,
-  updateAdminLocalEvent
+  updateAdminLocalEvent,
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
-  syncRealtimeParkingCache
+  syncRealtimeParkingCache,
 } from "./realtimeParkingCache.js";
 import { queryStaticParkingCache } from "./staticParkingCache.js";
 
@@ -79,7 +79,9 @@ type BackendModules = {
 type BackendRuntime = {
   searchDestination: BackendModules["searchDestination"];
   parkingProvider: ReturnType<BackendModules["createCompositeParkingProvider"]>;
-  realtimeParkingProvider: ReturnType<BackendModules["createRealtimeParkingProvider"]>;
+  realtimeParkingProvider: ReturnType<
+    BackendModules["createRealtimeParkingProvider"]
+  >;
   festivalService: ReturnType<BackendModules["createFestivalService"]>;
   eventService: ReturnType<BackendModules["createEventService"]>;
   searchHistoryService: InstanceType<BackendModules["SearchHistoryService"]>;
@@ -94,7 +96,7 @@ const optionalBoolean = z
   .optional();
 
 const searchQuerySchema = z.object({
-  q: z.string().min(1)
+  q: z.string().min(1),
 });
 
 const parkingNearbySchema = z.object({
@@ -105,7 +107,7 @@ const parkingNearbySchema = z.object({
   preferPublic: optionalBoolean,
   evOnly: optionalBoolean,
   accessibleOnly: optionalBoolean,
-  bestWalkingDistanceBias: optionalBoolean
+  bestWalkingDistanceBias: optionalBoolean,
 });
 
 const discoverQuerySchema = z.object({
@@ -114,21 +116,42 @@ const discoverQuerySchema = z.object({
   radiusMeters: z.coerce.number().optional(),
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
-  freeOnly: optionalBoolean
+  freeOnly: optionalBoolean,
 });
 
 const localEventQuerySchema = discoverQuerySchema.extend({
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50)
+  limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 const mapItemsQuerySchema = localEventQuerySchema.extend({
-  type: z.enum(["festival", "event", "all"]).default("all")
+  type: z.enum(["festival", "event", "all"]).default("all"),
 });
 
-const eventSourceSchema = z.enum(["instagram", "naver_place", "owner_submitted", "admin_manual", "user_report", "official_site", "other"]);
-const eventStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
-const eventTypeSchema = z.enum(["discount", "freebie", "review_event", "popup", "limited_menu", "opening_event", "etc"]);
+const eventSourceSchema = z.enum([
+  "instagram",
+  "naver_place",
+  "owner_submitted",
+  "admin_manual",
+  "user_report",
+  "official_site",
+  "other",
+]);
+const eventStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+]);
+const eventTypeSchema = z.enum([
+  "discount",
+  "freebie",
+  "review_event",
+  "popup",
+  "limited_menu",
+  "opening_event",
+  "etc",
+]);
 
 const localEventReportSchema = z.object({
   sourceUrl: z.string().url().nullable().optional(),
@@ -136,7 +159,7 @@ const localEventReportSchema = z.object({
   storeName: z.string().max(200).nullable().optional(),
   address: z.string().max(500).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
-  note: z.string().max(1000).nullable().optional()
+  note: z.string().max(1000).nullable().optional(),
 });
 
 const adminLocalEventSchema = z.object({
@@ -157,16 +180,16 @@ const adminLocalEventSchema = z.object({
   isSponsored: z.boolean().optional(),
   sponsorTier: z.string().max(80).nullable().optional(),
   paidUntil: z.string().nullable().optional(),
-  priorityScore: z.number().int().min(0).max(10000).optional()
+  priorityScore: z.number().int().min(0).max(10000).optional(),
 });
 
 const adminLocalEventPatchSchema = adminLocalEventSchema.partial().extend({
-  source: eventSourceSchema.optional()
+  source: eventSourceSchema.optional(),
 });
 
 const localEventStatusPatchSchema = z.object({
   status: eventStatusSchema,
-  rejectionReason: z.string().max(1000).nullable().optional()
+  rejectionReason: z.string().max(1000).nullable().optional(),
 });
 
 const discoveryClusterSchema = z.object({
@@ -174,21 +197,25 @@ const discoveryClusterSchema = z.object({
   lng: z.coerce.number(),
   radiusMeters: z.coerce.number().optional(),
   clusterMeters: z.coerce.number().min(250).max(100000).optional(),
-  types: z.string().optional()
+  types: z.string().optional(),
 });
 
 const discoverySyncSchema = z.object({
-  kinds: z.string().optional()
+  kinds: z.string().optional(),
 });
 
 const localEventDiscoverySyncSchema = z.object({
-  dryRun: optionalBoolean
+  dryRun: optionalBoolean,
+  chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
+  chunkCount: z.coerce.number().int().min(1).max(64).optional(),
 });
+
+const LOCAL_EVENT_CHUNK_COUNT = 8;
 
 const syncNationalParkingSchema = z.object({
   pageNo: z.coerce.number().int().min(1).default(1),
   numOfRows: z.coerce.number().int().min(1).max(1000).default(500),
-  dryRun: optionalBoolean
+  dryRun: optionalBoolean,
 });
 
 const placeCategorySchema = z.enum([
@@ -202,7 +229,7 @@ const placeCategorySchema = z.enum([
   "station",
   "hotel",
   "school",
-  "other"
+  "other",
 ]);
 
 const createSearchHistorySchema = z.object({
@@ -217,11 +244,11 @@ const createSearchHistorySchema = z.object({
   selectedAt: z.string().datetime().optional(),
   normalizedCategory: placeCategorySchema.optional(),
   rawCategory: z.string().max(300).nullable().optional(),
-  provider: z.string().max(80).nullable().optional()
+  provider: z.string().max(80).nullable().optional(),
 });
 
 const listQuerySchema = z.object({
-  deviceId: z.string().min(8).max(128).optional()
+  deviceId: z.string().min(8).max(128).optional(),
 });
 
 app.use("*", cors());
@@ -234,9 +261,13 @@ app.onError((error, c) => {
   return c.json({ error: "internal_error" }, 500);
 });
 
-app.get("/", (c) => c.json({ status: "ok", generatedAt: new Date().toISOString() }));
+app.get("/", (c) =>
+  c.json({ status: "ok", generatedAt: new Date().toISOString() }),
+);
 
-app.get("/health", (c) => c.json({ status: "ok", generatedAt: new Date().toISOString() }));
+app.get("/health", (c) =>
+  c.json({ status: "ok", generatedAt: new Date().toISOString() }),
+);
 
 app.get("/search/destination", async (c) => {
   const query = searchQuerySchema.parse({ q: c.req.query("q") });
@@ -248,19 +279,25 @@ app.get("/search/destination", async (c) => {
 app.get("/parking/nearby", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
+  const radiusMeters =
+    query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
   const options = {
     radiusMeters,
     preferPublic: query.preferPublic,
     evOnly: query.evOnly,
     accessibleOnly: query.accessibleOnly,
-    bestWalkingDistanceBias: query.bestWalkingDistanceBias
+    bestWalkingDistanceBias: query.bestWalkingDistanceBias,
   };
-  const items = await queryStaticParkingCache(c.env.DB, query.lat, query.lng, options);
+  const items = await queryStaticParkingCache(
+    c.env.DB,
+    query.lat,
+    query.lng,
+    options,
+  );
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -268,20 +305,26 @@ app.get("/parking/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
     providers: backend.parkingProvider.health(),
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
 app.get("/parking/realtime", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
+  const radiusMeters =
+    query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
   const options = { radiusMeters };
-  const items = await queryRealtimeParkingCache(c.env.DB, query.lat, query.lng, options);
+  const items = await queryRealtimeParkingCache(
+    c.env.DB,
+    query.lat,
+    query.lng,
+    options,
+  );
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -290,20 +333,21 @@ app.get("/parking/realtime/clusters", async (c) => {
   if (!c.env.DB) {
     return c.json({ error: "d1_not_configured" }, 503);
   }
-  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
+  const radiusMeters =
+    query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
   const clusterMeters = query.clusterMeters ?? 5000;
   const clusters = await queryRealtimeParkingClusters(
     c.env.DB,
     query.lat,
     query.lng,
     { radiusMeters },
-    clusterMeters
+    clusterMeters,
   );
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     clusterMeters,
     clusters,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -316,7 +360,10 @@ app.post("/admin/sync-realtime-parking", async (c) => {
 
   const backend = await loadBackend(c.env);
   try {
-    const result = await syncRealtimeParkingCache(c.env.DB, backend.realtimeParkingProvider);
+    const result = await syncRealtimeParkingCache(
+      c.env.DB,
+      backend.realtimeParkingProvider,
+    );
     return c.json(result);
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
@@ -335,7 +382,7 @@ app.get("/analytics/search-history", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
     items: await backend.searchHistoryService.list(query.deviceId),
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -349,9 +396,10 @@ app.get("/discover/festivals", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
-    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+    radiusMeters:
+      query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30
+    upcomingWithinDays: query.upcomingWithinDays ?? 30,
   });
   return c.json({ items, generatedAt: new Date().toISOString() });
 });
@@ -364,9 +412,10 @@ app.get("/api/festivals", async (c) => {
   const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
-    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+    radiusMeters:
+      query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30
+    upcomingWithinDays: query.upcomingWithinDays ?? 30,
   });
   return c.json({ items, generatedAt: new Date().toISOString() });
 });
@@ -377,10 +426,11 @@ app.get("/api/local-events", async (c) => {
   const result = await queryLocalEvents(c.env.DB, {
     lat: query.lat,
     lng: query.lng,
-    radiusMeters: query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+    radiusMeters:
+      query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
     cursor: query.cursor,
     limit: query.limit,
-    status: "approved"
+    status: "approved",
   });
   return c.json({ ...result, generatedAt: new Date().toISOString() });
 });
@@ -388,13 +438,17 @@ app.get("/api/local-events", async (c) => {
 app.get("/api/local-events/:id", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const item = await getLocalEvent(c.env.DB, c.req.param("id"));
-  if (!item || item.status !== "approved") return c.json({ error: "not_found" }, 404);
+  if (!item || item.status !== "approved")
+    return c.json({ error: "not_found" }, 404);
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
 
 app.post("/api/local-events/report", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const item = await createLocalEventReport(c.env.DB, localEventReportSchema.parse(await c.req.json()));
+  const item = await createLocalEventReport(
+    c.env.DB,
+    localEventReportSchema.parse(await c.req.json()),
+  );
   return c.json({ item, generatedAt: new Date().toISOString() }, 202);
 });
 
@@ -402,7 +456,10 @@ app.post("/api/admin/local-events", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const item = await createAdminLocalEvent(c.env.DB, adminLocalEventSchema.parse(await c.req.json()));
+  const item = await createAdminLocalEvent(
+    c.env.DB,
+    adminLocalEventSchema.parse(await c.req.json()),
+  );
   return c.json({ item, generatedAt: new Date().toISOString() }, 201);
 });
 
@@ -410,7 +467,11 @@ app.patch("/api/admin/local-events/:id/status", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const item = await patchLocalEventStatus(c.env.DB, c.req.param("id"), localEventStatusPatchSchema.parse(await c.req.json()));
+  const item = await patchLocalEventStatus(
+    c.env.DB,
+    c.req.param("id"),
+    localEventStatusPatchSchema.parse(await c.req.json()),
+  );
   if (!item) return c.json({ error: "not_found" }, 404);
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
@@ -419,7 +480,11 @@ app.patch("/api/admin/local-events/:id", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const item = await updateAdminLocalEvent(c.env.DB, c.req.param("id"), adminLocalEventPatchSchema.parse(await c.req.json()));
+  const item = await updateAdminLocalEvent(
+    c.env.DB,
+    c.req.param("id"),
+    adminLocalEventPatchSchema.parse(await c.req.json()),
+  );
   if (!item) return c.json({ error: "not_found" }, 404);
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
@@ -427,27 +492,35 @@ app.patch("/api/admin/local-events/:id", async (c) => {
 app.get("/api/map/items", async (c) => {
   const query = mapItemsQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const radiusMeters = query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS);
+  const radiusMeters =
+    query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS);
   const items: MapItem[] = [];
   if (query.type === "festival" || query.type === "all") {
-    const festivals = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
-      radiusMeters,
-      ongoingOnly: query.ongoingOnly,
-      upcomingWithinDays: query.upcomingWithinDays ?? 30
-    });
-    items.push(...festivals.map((item) => ({
-      id: `festival:${item.id}`,
-      type: "festival" as const,
-      title: item.title,
-      subtitle: item.subtitle ?? item.venueName ?? item.address,
-      lat: item.lat,
-      lng: item.lng,
-      distanceMeters: item.distanceMeters,
-      markerType: "festival" as const,
-      source: item.source,
-      sourceUrl: item.sourceUrl,
-      imageUrl: item.imageUrl
-    })));
+    const festivals = await queryFestivalsFromCache(
+      c.env.DB,
+      query.lat,
+      query.lng,
+      {
+        radiusMeters,
+        ongoingOnly: query.ongoingOnly,
+        upcomingWithinDays: query.upcomingWithinDays ?? 30,
+      },
+    );
+    items.push(
+      ...festivals.map((item) => ({
+        id: `festival:${item.id}`,
+        type: "festival" as const,
+        title: item.title,
+        subtitle: item.subtitle ?? item.venueName ?? item.address,
+        lat: item.lat,
+        lng: item.lng,
+        distanceMeters: item.distanceMeters,
+        markerType: "festival" as const,
+        source: item.source,
+        sourceUrl: item.sourceUrl,
+        imageUrl: item.imageUrl,
+      })),
+    );
   }
   if (query.type === "event" || query.type === "all") {
     const events = await queryLocalEvents(c.env.DB, {
@@ -456,13 +529,17 @@ app.get("/api/map/items", async (c) => {
       radiusMeters,
       cursor: query.cursor,
       limit: query.limit,
-      status: "approved"
+      status: "approved",
     });
     items.push(...events.items.map(localEventMapItem));
   }
   return c.json({
-    items: items.sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0) || a.distanceMeters - b.distanceMeters),
-    generatedAt: new Date().toISOString()
+    items: items.sort(
+      (a, b) =>
+        (b.priorityScore ?? 0) - (a.priorityScore ?? 0) ||
+        a.distanceMeters - b.distanceMeters,
+    ),
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -472,20 +549,30 @@ app.get("/discover/clusters", async (c) => {
   const radiusMeters = query.radiusMeters ?? 460000;
   const clusterMeters = query.clusterMeters ?? 20000;
   const types = discoveryClusterTypes(query.types);
-  const clusters = await queryDiscoveryClusters(c.env.DB, types, query.lat, query.lng, { radiusMeters }, clusterMeters);
+  const clusters = await queryDiscoveryClusters(
+    c.env.DB,
+    types,
+    query.lat,
+    query.lng,
+    { radiusMeters },
+    clusterMeters,
+  );
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     clusterMeters,
     clusters,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   });
 });
 
 app.get("/discover/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
   return c.json({
-    providers: [...backend.festivalService.health(), ...backend.eventService.health()],
-    generatedAt: new Date().toISOString()
+    providers: [
+      ...backend.festivalService.health(),
+      ...backend.eventService.health(),
+    ],
+    generatedAt: new Date().toISOString(),
   });
 });
 
@@ -507,7 +594,7 @@ app.post("/admin/sync-national-parking", async (c) => {
       baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "https://api.data.go.kr",
       pageNo: query.pageNo,
       numOfRows: query.numOfRows,
-      dryRun: query.dryRun ?? false
+      dryRun: query.dryRun ?? false,
     });
     return c.json({ ...result, generatedAt: new Date().toISOString() });
   } catch (error) {
@@ -530,7 +617,7 @@ app.get("/admin/sync-national-parking/preview", async (c) => {
       baseUrl: c.env.NATIONAL_PARKING_DATA_BASE_URL ?? "https://api.data.go.kr",
       pageNo: query.pageNo,
       numOfRows: Math.min(query.numOfRows, 20),
-      dryRun: true
+      dryRun: true,
     });
     return c.json({ ...result, generatedAt: new Date().toISOString() });
   } catch (error) {
@@ -548,11 +635,18 @@ app.post("/admin/sync-discovery", async (c) => {
   const query = discoverySyncSchema.parse(queryObject(c.req.raw.url));
   const backend = await loadBackend(c.env);
   try {
-    const result = await syncDiscoveryCache(c.env.DB, backend, discoverySyncKinds(query.kinds));
+    const result = await syncDiscoveryCache(
+      c.env.DB,
+      backend,
+      discoverySyncKinds(query.kinds),
+    );
     return c.json({
       result,
-      providers: [...backend.festivalService.health(), ...backend.eventService.health()],
-      generatedAt: new Date().toISOString()
+      providers: [
+        ...backend.festivalService.health(),
+        ...backend.eventService.health(),
+      ],
+      generatedAt: new Date().toISOString(),
     });
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
@@ -567,11 +661,16 @@ app.post("/admin/sync-local-events", async (c) => {
   }
 
   const query = localEventDiscoverySyncSchema.parse(queryObject(c.req.raw.url));
+  const chunkCount = query.chunkCount ?? LOCAL_EVENT_CHUNK_COUNT;
+  const chunkIndex =
+    query.chunkIndex ?? currentLocalEventChunkIndex(new Date(), chunkCount);
   try {
     const result = await syncLocalEventDiscovery({
       db: c.env.DB,
       env: c.env,
-      dryRun: query.dryRun ?? false
+      dryRun: query.dryRun ?? false,
+      chunkIndex,
+      chunkCount,
     });
     return c.json(result);
   } catch (error) {
@@ -582,10 +681,18 @@ app.post("/admin/sync-local-events", async (c) => {
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+  fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Response | Promise<Response> {
     return app.fetch(request, env, ctx);
   },
-  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
     if (!env.DB) return;
     if (controller.cron === "* * * * *") {
       ctx.waitUntil(syncRealtimeParkingScheduled(env));
@@ -595,11 +702,17 @@ export default {
       ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
       return;
     }
-    if (controller.cron === "15 18 * * *") {
-      ctx.waitUntil(syncLocalEventsScheduled(env));
+    if (controller.cron === "15 */3 * * *") {
+      const scheduledAt = new Date(controller.scheduledTime);
+      ctx.waitUntil(
+        syncLocalEventsScheduled(
+          env,
+          currentLocalEventChunkIndex(scheduledAt, LOCAL_EVENT_CHUNK_COUNT),
+        ),
+      );
       return;
     }
-  }
+  },
 };
 
 async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
@@ -611,7 +724,10 @@ async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
   }
 }
 
-async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "events">): Promise<void> {
+async function syncDiscoveryScheduled(
+  env: Env,
+  kinds: Array<"festivals" | "events">,
+): Promise<void> {
   try {
     const backend = await loadBackend(env);
     await syncDiscoveryCache(env.DB!, backend, kinds);
@@ -620,22 +736,35 @@ async function syncDiscoveryScheduled(env: Env, kinds: Array<"festivals" | "even
   }
 }
 
-async function syncLocalEventsScheduled(env: Env): Promise<void> {
+async function syncLocalEventsScheduled(
+  env: Env,
+  chunkIndex: number,
+): Promise<void> {
   try {
     await syncLocalEventDiscovery({
       db: env.DB!,
-      env
+      env,
+      chunkIndex,
+      chunkCount: LOCAL_EVENT_CHUNK_COUNT,
     });
   } catch (error) {
     console.error("local event discovery sync failed", error);
   }
 }
 
+function currentLocalEventChunkIndex(now: Date, chunkCount: number): number {
+  if (chunkCount <= 1) return 0;
+  const slot = Math.floor(now.getTime() / (3 * 60 * 60 * 1000));
+  return ((slot % chunkCount) + chunkCount) % chunkCount;
+}
+
 function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams.entries());
 }
 
-function discoveryClusterTypes(value: string | undefined): Array<"festival" | "event"> {
+function discoveryClusterTypes(
+  value: string | undefined,
+): Array<"festival" | "event"> {
   const allowed = new Set(["festival", "event"]);
   const types = (value ?? "festival,event")
     .split(",")
@@ -644,7 +773,9 @@ function discoveryClusterTypes(value: string | undefined): Array<"festival" | "e
   return types.length > 0 ? types : ["festival", "event"];
 }
 
-function discoverySyncKinds(value: string | undefined): Array<"festivals" | "events"> {
+function discoverySyncKinds(
+  value: string | undefined,
+): Array<"festivals" | "events"> {
   const allowed = new Set(["festivals", "events"]);
   const kinds = (value ?? "festivals,events")
     .split(",")
@@ -655,10 +786,15 @@ function discoverySyncKinds(value: string | undefined): Array<"festivals" | "eve
 
 function authorizeAdminSync(request: Request, env: Env): Response | null {
   if (!env.SYNC_ADMIN_TOKEN) {
-    return Response.json({ error: "sync_admin_token_not_configured" }, { status: 503 });
+    return Response.json(
+      { error: "sync_admin_token_not_configured" },
+      { status: 503 },
+    );
   }
 
-  const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+  const token = request.headers
+    .get("Authorization")
+    ?.replace(/^Bearer\s+/i, "");
   if (token !== env.SYNC_ADMIN_TOKEN) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -669,7 +805,7 @@ function authorizeAdminSync(request: Request, env: Env): Response | null {
 function syncErrorResponse(error: unknown): { error: string; message: string } {
   return {
     error: "sync_failed",
-    message: error instanceof Error ? error.message : "Unknown sync error"
+    message: error instanceof Error ? error.message : "Unknown sync error",
   };
 }
 
@@ -686,14 +822,14 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     { createFestivalService },
     { createEventService },
     { SearchHistoryService },
-    { searchHistoryRepository }
+    { searchHistoryRepository },
   ] = await Promise.all([
     import("../../backend/src/services/destinationSearch.js"),
     import("../../backend/src/providers/createProviders.js"),
     import("../../backend/src/features/discover/festivals/festivalService.js"),
     import("../../backend/src/features/discover/events/eventService.js"),
     import("../../backend/src/features/analytics/searchHistoryService.js"),
-    import("../../backend/src/features/analytics/SearchHistoryRepository.js")
+    import("../../backend/src/features/analytics/SearchHistoryRepository.js"),
   ]);
 
   return {
@@ -702,7 +838,7 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     realtimeParkingProvider: createRealtimeParkingProvider(),
     festivalService: createFestivalService(),
     eventService: createEventService(),
-    searchHistoryService: new SearchHistoryService(searchHistoryRepository)
+    searchHistoryService: new SearchHistoryService(searchHistoryRepository),
   };
 }
 

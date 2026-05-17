@@ -32,7 +32,7 @@ KOPIS_BASE_URL = "http://www.kopis.or.kr"
 KCISA_BASE_URL = "https://api.kcisa.kr"
 
 [triggers]
-crons = ["* * * * *", "0 * * * *", "15 18 * * *"]
+crons = ["* * * * *", "0 * * * *"]
 
 [[d1_databases]]
 binding = "DB"
