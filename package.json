@@ -15,5 +15,8 @@
     "preflight": "pnpm --filter @parking/backend preflight",
     "release:check": "pnpm --filter @parking/backend release:check"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "devDependencies": {
+    "wrangler": "^4.92.0"
+  }
 }
