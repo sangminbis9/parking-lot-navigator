@@ -7,6 +7,7 @@ export interface LocalEventDiscoveryEnv {
   LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE?: string;
   LOCAL_EVENT_SEARCH_MAX_QUERIES?: string;
   KAKAO_CATEGORY_RADIUS_METERS?: string;
+  KAKAO_CATEGORY_MAX_PAGES?: string;
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   NAVER_SEARCH_BASE_URL?: string;
@@ -101,8 +102,25 @@ const REGION_CENTERS: RegionCenter[] = [
   { name: "\uac74\ub300", lat: 37.5404, lng: 127.0693 },
   { name: "\uc2e0\ucd0c", lat: 37.5596, lng: 126.9424 },
   { name: "\uba85\ub3d9", lat: 37.5636, lng: 126.983 },
+  { name: "\uc5ec\uc758\ub3c4", lat: 37.5219, lng: 126.9245 },
+  { name: "\uc774\ud0dc\uc6d0", lat: 37.5345, lng: 126.9946 },
+  { name: "\uc6a9\uc0b0", lat: 37.5326, lng: 126.9904 },
+  { name: "\ud61c\ud654", lat: 37.582, lng: 127.0019 },
+  { name: "\uc744\uc9c0\ub85c", lat: 37.5663, lng: 126.9919 },
   { name: "\ubd80\uc0b0", lat: 35.1796, lng: 129.0756 },
-  { name: "\uc81c\uc8fc", lat: 33.4996, lng: 126.5312 }
+  { name: "\ud574\uc6b4\ub300", lat: 35.1631, lng: 129.1636 },
+  { name: "\uc11c\uba74", lat: 35.1577, lng: 129.0592 },
+  { name: "\uc81c\uc8fc", lat: 33.4996, lng: 126.5312 },
+  { name: "\ub300\uad6c", lat: 35.8714, lng: 128.6014 },
+  { name: "\uad11\uc8fc", lat: 35.1595, lng: 126.8526 },
+  { name: "\ub300\uc804", lat: 36.3504, lng: 127.3845 },
+  { name: "\uc778\ucc9c", lat: 37.4563, lng: 126.7052 },
+  { name: "\uc218\uc6d0", lat: 37.2636, lng: 127.0286 },
+  { name: "\ud310\uad50", lat: 37.3947, lng: 127.1112 },
+  { name: "\ubd84\ub2f9", lat: 37.3596, lng: 127.1054 },
+  { name: "\uc77c\uc0b0", lat: 37.6584, lng: 126.7712 },
+  { name: "\uc804\uc8fc", lat: 35.8242, lng: 127.148 },
+  { name: "\uac15\ub989", lat: 37.7519, lng: 128.8761 }
 ];
 
 const KAKAO_EVENT_CATEGORIES = ["FD6", "CE7"] as const;
@@ -137,7 +155,7 @@ export async function syncLocalEventDiscovery(options: LocalEventDiscoveryOption
     return result;
   }
 
-  const maxPlaces = clampInt(Number(options.env.LOCAL_EVENT_SEARCH_MAX_QUERIES ?? 360), 1, 360);
+  const maxPlaces = clampInt(Number(options.env.LOCAL_EVENT_SEARCH_MAX_QUERIES ?? 1000), 1, 2000);
   const seen = new Set<string>();
 
   outer:
@@ -200,28 +218,37 @@ async function fetchKakaoPlaces(
   categoryCode: string
 ): Promise<KakaoPlace[]> {
   const baseUrl = env.KAKAO_LOCAL_BASE_URL ?? "https://dapi.kakao.com";
-  const radius = clampInt(Number(env.KAKAO_CATEGORY_RADIUS_METERS ?? 1500), 1, 20000);
-  const url = new URL("/v2/local/search/category.json", baseUrl);
-  url.searchParams.set("category_group_code", categoryCode);
-  url.searchParams.set("x", String(region.lng));
-  url.searchParams.set("y", String(region.lat));
-  url.searchParams.set("radius", String(radius));
-  url.searchParams.set("size", "15");
+  const radius = clampInt(Number(env.KAKAO_CATEGORY_RADIUS_METERS ?? 3000), 1, 20000);
+  const maxPages = clampInt(Number(env.KAKAO_CATEGORY_MAX_PAGES ?? 3), 1, 3);
+  const places: KakaoPlace[] = [];
 
-  try {
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `KakaoAK ${env.KAKAO_REST_API_KEY ?? ""}`
+  for (let page = 1; page <= maxPages; page += 1) {
+    const url = new URL("/v2/local/search/category.json", baseUrl);
+    url.searchParams.set("category_group_code", categoryCode);
+    url.searchParams.set("x", String(region.lng));
+    url.searchParams.set("y", String(region.lat));
+    url.searchParams.set("radius", String(radius));
+    url.searchParams.set("size", "15");
+    url.searchParams.set("page", String(page));
+
+    try {
+      const response = await fetch(url.toString(), {
+        headers: {
+          Authorization: `KakaoAK ${env.KAKAO_REST_API_KEY ?? ""}`
+        }
+      });
+      if (!response.ok) {
+        return places;
       }
-    });
-    if (!response.ok) {
-      return [];
+      const body = (await response.json()) as KakaoCategoryResponse;
+      places.push(...(body.documents ?? []));
+      if (body.meta?.is_end) break;
+    } catch {
+      return places;
     }
-    const body = (await response.json()) as KakaoCategoryResponse;
-    return body.documents ?? [];
-  } catch {
-    return [];
   }
+
+  return places;
 }
 
 async function searchNaverLocal(env: LocalEventDiscoveryEnv, place: KakaoPlace): Promise<NaverLocalSearchItem[]> {
