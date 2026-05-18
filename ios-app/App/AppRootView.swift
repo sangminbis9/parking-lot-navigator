@@ -45,16 +45,16 @@ struct AppRootView: View {
             .tag(AppTab.discover)
 
             routedStack {
-                AgentOfficeView(apiClient: apiClient)
-            }
-            .tabItem { Label("오피스", systemImage: "building.2") }
-            .tag(AppTab.agentOffice)
-
-            routedStack {
                 FavoritesView()
             }
             .tabItem { Label("즐겨찾기", systemImage: "star") }
             .tag(AppTab.favorites)
+
+            routedStack {
+                AgentOfficeView(apiClient: apiClient)
+            }
+            .tabItem { Label("오피스", systemImage: "building.2") }
+            .tag(AppTab.agentOffice)
 
             SettingsView(apiClient: apiClient)
                 .tabItem { Label("설정", systemImage: "gear") }
