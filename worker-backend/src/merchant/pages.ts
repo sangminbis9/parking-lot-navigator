@@ -243,18 +243,97 @@ export function renderEventForm(opts: {
 
       <label>대표 이미지</label>
       <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
-      <div class="field-help">JPG/PNG/WebP, 최대 5MB. 선택 사항.</div>
+      <div class="field-help">JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다. 선택 사항.</div>
 
       <button class="btn btn-primary" type="submit">결제 단계로 이동</button>
     </form>
     <p class="muted" style="margin-top: 12px;">₩10,000 결제가 완료되면 3개월간 앱에 노출됩니다.</p>
   </div>
 </div>
+<script>
+(function() {
+  const form = document.querySelector('form');
+  const fileInput = form.querySelector('input[type=file]');
+  const submitBtn = form.querySelector('button[type=submit]');
+  const originalLabel = submitBtn.textContent;
+  const MAX_DIM = 1600;
+  const QUALITY = 0.85;
+  const SKIP_BELOW_BYTES = 200 * 1024;
+
+  async function compressImage(file) {
+    const bitmap = await createImageBitmap(file);
+    let width = bitmap.width;
+    let height = bitmap.height;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const blob = await new Promise(function(resolve) {
+      canvas.toBlob(resolve, 'image/jpeg', QUALITY);
+    });
+    if (!blob) return null;
+    const base = file.name.replace(/\\.[^.]+$/, '');
+    return new File([blob], base + '.jpg', { type: 'image/jpeg' });
+  }
+
+  let processed = false;
+  form.addEventListener('submit', async function(e) {
+    if (processed) return;
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (file.size < SKIP_BELOW_BYTES) return;
+    if (!/^image\\/(jpeg|jpg|png|webp)$/i.test(file.type)) return;
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = '이미지 처리 중...';
+    try {
+      const smaller = await compressImage(file);
+      if (smaller && smaller.size < file.size) {
+        const dt = new DataTransfer();
+        dt.items.add(smaller);
+        fileInput.files = dt.files;
+      }
+    } catch (err) {
+      console.warn('image compress failed', err);
+    }
+    processed = true;
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
+    form.submit();
+  });
+})();
+</script>
 `,
   );
 }
 
-export function renderPaymentPlaceholder(event: MerchantEventRow): string {
+export function renderTossPayment(opts: {
+  event: MerchantEventRow;
+  clientKey: string;
+  customerKey: string;
+  amount: number;
+  successUrl: string;
+  failUrl: string;
+  customerName: string;
+}): string {
+  const orderName = `${opts.event.title} (3개월 게시)`.slice(0, 100);
+  const config = {
+    clientKey: opts.clientKey,
+    customerKey: opts.customerKey,
+    amount: opts.amount,
+    orderId: opts.event.id,
+    orderName,
+    customerName: opts.customerName,
+    successUrl: opts.successUrl,
+    failUrl: opts.failUrl,
+  };
   return layout(
     "결제",
     `
@@ -264,11 +343,87 @@ export function renderPaymentPlaceholder(event: MerchantEventRow): string {
 </div>
 <div class="container">
   <div class="card">
-    <h1>${htmlEscape(event.title)}</h1>
-    <p class="muted">${htmlEscape(event.store_name)} · ${htmlEscape(event.address)}</p>
-    <p>3개월 게시 요금 <strong>₩10,000</strong></p>
-    <p class="muted">결제 모듈 연결 작업이 진행 중입니다. 곧 이 화면에서 카드/카카오페이로 결제할 수 있게 됩니다.</p>
-    <a class="btn btn-secondary" href="/merchant/dashboard">대시보드로 돌아가기</a>
+    <h1>${htmlEscape(opts.event.title)}</h1>
+    <p class="muted">${htmlEscape(opts.event.store_name)} · ${htmlEscape(opts.event.address)}</p>
+    <p>3개월 게시 요금 <strong>₩${opts.amount.toLocaleString("ko-KR")}</strong></p>
+  </div>
+  <div class="card">
+    <div id="payment-method"></div>
+    <div id="agreement"></div>
+    <button id="pay-btn" class="btn btn-primary" type="button" disabled>결제하기</button>
+    <p class="muted" id="pay-status" style="margin-top: 10px;">결제 위젯을 불러오는 중...</p>
+  </div>
+</div>
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<script>
+(function() {
+  const cfg = ${JSON.stringify(config)};
+  const btn = document.getElementById('pay-btn');
+  const status = document.getElementById('pay-status');
+  if (typeof TossPayments !== 'function') {
+    status.textContent = '결제 모듈을 불러오지 못했습니다. 새로고침해 주세요.';
+    return;
+  }
+  const tossPayments = TossPayments(cfg.clientKey);
+  const widgets = tossPayments.widgets({ customerKey: cfg.customerKey });
+
+  (async function() {
+    try {
+      await widgets.setAmount({ currency: 'KRW', value: cfg.amount });
+      await Promise.all([
+        widgets.renderPaymentMethods({ selector: '#payment-method', variantKey: 'DEFAULT' }),
+        widgets.renderAgreement({ selector: '#agreement', variantKey: 'AGREEMENT' }),
+      ]);
+      btn.disabled = false;
+      status.textContent = '';
+    } catch (err) {
+      console.error(err);
+      status.textContent = '결제 위젯 초기화에 실패했습니다.';
+    }
+  })();
+
+  btn.addEventListener('click', async function() {
+    btn.disabled = true;
+    status.textContent = '결제 요청 중...';
+    try {
+      await widgets.requestPayment({
+        orderId: cfg.orderId,
+        orderName: cfg.orderName,
+        customerName: cfg.customerName,
+        successUrl: cfg.successUrl,
+        failUrl: cfg.failUrl,
+      });
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      status.textContent = (err && err.message) ? err.message : '결제 요청에 실패했습니다.';
+    }
+  });
+})();
+</script>
+`,
+  );
+}
+
+export function renderPaymentFail(opts: {
+  event: MerchantEventRow;
+  code?: string;
+  message?: string;
+}): string {
+  const detail = opts.message ?? "결제가 완료되지 않았습니다.";
+  const codeLine = opts.code
+    ? `<p class="muted">에러 코드: ${htmlEscape(opts.code)}</p>`
+    : "";
+  return layout(
+    "결제 실패",
+    `
+<div class="container">
+  <div class="card">
+    <h1>결제 실패</h1>
+    <p>${htmlEscape(detail)}</p>
+    ${codeLine}
+    <a class="btn btn-primary" href="/merchant/event/${opts.event.id}/pay">다시 결제하기</a>
+    <a class="btn btn-secondary" href="/merchant/dashboard">대시보드로</a>
   </div>
 </div>
 `,
