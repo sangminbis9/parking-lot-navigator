@@ -537,11 +537,11 @@ async function buildCandidateFromBlog(input: {
       ? "approved"
       : "pending";
   const needsReview = status !== "approved" || !hasClearEndDate;
-  const sourceId = stableHash(
-    [link, resolvedStoreName.toLowerCase(), endDate ?? "", benefit ?? ""].join(
-      "|",
-    ),
-  );
+  const dedupeKey =
+    selected.id && selected.id.length > 0
+      ? `kakao:${selected.id}`
+      : `place:${normalizeName(resolvedStoreName)}|${normalizeName(address)}`;
+  const sourceId = dedupeKey;
 
   return {
     kind: "ok",
@@ -551,7 +551,7 @@ async function buildCandidateFromBlog(input: {
       kakaoPlace: selected,
       storeName: resolvedStoreName,
       item: {
-        id: `naver-blog:${sourceId}`,
+        id: `naver-blog:${stableHash(dedupeKey)}`,
         title: truncate(resolvedTitle, 200),
         eventType: inferLocalEventType(
           [resolvedTitle, description, resolvedBenefit]
