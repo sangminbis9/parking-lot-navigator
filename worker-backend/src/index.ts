@@ -18,6 +18,7 @@ import {
   updateAdminLocalEvent,
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
+import { createMerchantApp } from "./merchant/routes.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
@@ -64,6 +65,8 @@ type Env = {
   KCISA_196_API_KEY?: string;
   KCISA_BASE_URL: string;
   NATIONAL_PARKING_DATA_BASE_URL?: string;
+  MERCHANT_SESSION_SECRET?: string;
+  MERCHANT_PUBLIC_BASE_URL?: string;
 };
 
 type BackendModules = {
@@ -252,6 +255,8 @@ const listQuerySchema = z.object({
 });
 
 app.use("*", cors());
+
+app.route("/merchant", createMerchantApp());
 
 app.onError((error, c) => {
   if (error instanceof ZodError) {
