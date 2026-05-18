@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import {
   buildKakaoAuthorizeUrl,
   buildNaverAuthorizeUrl,
@@ -8,8 +8,24 @@ import {
   exchangeKakaoCode,
   exchangeNaverCode,
 } from "./oauth.js";
-import { renderDashboard, renderLanding, renderMessage } from "./pages.js";
+import {
+  EMPTY_FORM,
+  renderDashboard,
+  renderEventForm,
+  renderLanding,
+  renderMessage,
+  renderPaymentPlaceholder,
+  type EventFormValues,
+} from "./pages.js";
 import { getMerchantById, upsertMerchant } from "./store.js";
+import {
+  createMerchantEvent,
+  geocodeAddress,
+  getMerchantEventById,
+  listMerchantEvents,
+  uploadEventImage,
+  type MerchantEventType,
+} from "./events.js";
 import {
   createSessionToken,
   randomToken,
@@ -21,13 +37,38 @@ import {
 
 export type MerchantEnv = {
   DB: D1Database;
+  MERCHANT_IMAGES?: R2Bucket;
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_CLIENT_SECRET?: string;
+  KAKAO_LOCAL_BASE_URL?: string;
   MERCHANT_SESSION_SECRET?: string;
   MERCHANT_PUBLIC_BASE_URL?: string;
 };
+
+const EVENT_TYPES: readonly MerchantEventType[] = [
+  "discount",
+  "freebie",
+  "review_event",
+  "popup",
+  "limited_menu",
+  "opening_event",
+  "etc",
+];
+
+function parseEventType(value: string): MerchantEventType {
+  return (EVENT_TYPES as readonly string[]).includes(value)
+    ? (value as MerchantEventType)
+    : "etc";
+}
+
+function normalizeDate(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
 
 const SESSION_COOKIE = "__merchant_session";
 const STATE_COOKIE_PREFIX = "__merchant_oauth_state_";
@@ -95,7 +136,8 @@ export function createMerchantApp() {
       deleteCookie(c, SESSION_COOKIE, { path: "/merchant" });
       return c.redirect("/merchant");
     }
-    return c.html(renderDashboard(merchant));
+    const events = await listMerchantEvents(c.env.DB, merchant.id);
+    return c.html(renderDashboard(merchant, events));
   });
 
   app.post("/logout", (c) => {
@@ -220,9 +262,115 @@ export function createMerchantApp() {
   app.get("/event/new", async (c) => {
     const session = await loadSession(c.env, c.req.header("cookie"));
     if (!session) return c.redirect("/merchant");
-    return c.html(
-      renderMessage("준비 중", "이벤트 등록 폼은 다음 단계에서 활성화됩니다."),
+    return c.html(renderEventForm({ values: EMPTY_FORM }));
+  });
+
+  app.post("/event/new", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const form = await c.req.formData();
+    const values: EventFormValues = {
+      title: String(form.get("title") ?? "").trim(),
+      description: String(form.get("description") ?? "").trim(),
+      benefit: String(form.get("benefit") ?? "").trim(),
+      eventType: parseEventType(String(form.get("event_type") ?? "")),
+      storeName: String(form.get("store_name") ?? "").trim(),
+      address: String(form.get("address") ?? "").trim(),
+      startDate: String(form.get("start_date") ?? "").trim(),
+      endDate: String(form.get("end_date") ?? "").trim(),
+    };
+
+    const missing = (
+      ["title", "description", "benefit", "storeName", "address"] as const
+    ).filter((key) => !values[key]);
+    if (missing.length > 0) {
+      return c.html(
+        renderEventForm({
+          values,
+          error: "필수 항목을 모두 입력해 주세요.",
+        }),
+        400,
+      );
+    }
+
+    const geocode = await geocodeAddress(
+      c.env.KAKAO_REST_API_KEY,
+      c.env.KAKAO_LOCAL_BASE_URL,
+      values.address,
     );
+    if (!geocode) {
+      return c.html(
+        renderEventForm({
+          values,
+          error:
+            "주소에서 위치를 찾지 못했습니다. 도로명 주소로 다시 입력해 주세요.",
+        }),
+        400,
+      );
+    }
+
+    let imageUrl: string | null = null;
+    const imageEntry = form.get("image");
+    if (imageEntry instanceof File && imageEntry.size > 0) {
+      const result = await uploadEventImage(
+        c.env.MERCHANT_IMAGES,
+        baseUrl(c.env, c.req.url),
+        session.merchantId,
+        imageEntry,
+      );
+      if (!result.ok) {
+        const reason =
+          result.reason === "size"
+            ? "이미지 용량은 5MB 이하만 업로드할 수 있습니다."
+            : result.reason === "type"
+              ? "이미지는 JPG, PNG, WebP 형식만 지원합니다."
+              : "이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        return c.html(renderEventForm({ values, error: reason }), 400);
+      }
+      imageUrl = result.url;
+    }
+
+    const event = await createMerchantEvent(c.env.DB, {
+      merchantId: session.merchantId,
+      title: values.title,
+      description: values.description,
+      benefit: values.benefit,
+      eventType: values.eventType,
+      storeName: values.storeName,
+      address: geocode.refinedAddress,
+      lat: geocode.lat,
+      lng: geocode.lng,
+      startDate: normalizeDate(values.startDate),
+      endDate: normalizeDate(values.endDate),
+      imageUrl,
+    });
+
+    return c.redirect(`/merchant/event/${event.id}/pay`);
+  });
+
+  app.get("/images/:key{.+}", async (c) => {
+    const bucket = c.env.MERCHANT_IMAGES;
+    if (!bucket) return c.notFound();
+    const object = await bucket.get(c.req.param("key"));
+    if (!object) return c.notFound();
+    return c.body(object.body as unknown as ReadableStream, 200, {
+      "Content-Type":
+        object.httpMetadata?.contentType ?? "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
+  });
+
+  app.get("/event/:id/pay", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    return c.html(renderPaymentPlaceholder(event));
   });
 
   return app;
