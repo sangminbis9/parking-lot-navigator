@@ -149,6 +149,42 @@ export async function getMerchantEventById(
     .first<MerchantEventRow>();
 }
 
+export async function markEventApproved(
+  db: D1Database,
+  input: {
+    id: string;
+    paymentKey: string;
+    paymentAmount: number;
+    paidUntil: string;
+    startDate: string | null;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const resolvedStart = input.startDate ?? now.slice(0, 10);
+  await db
+    .prepare(
+      `UPDATE local_events
+       SET status = 'approved',
+           payment_key = ?,
+           payment_amount = ?,
+           paid_until = ?,
+           start_date = COALESCE(start_date, ?),
+           approved_at = ?,
+           updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(
+      input.paymentKey,
+      input.paymentAmount,
+      input.paidUntil,
+      resolvedStart,
+      now,
+      now,
+      input.id,
+    )
+    .run();
+}
+
 export async function listMerchantEvents(
   db: D1Database,
   merchantId: string,

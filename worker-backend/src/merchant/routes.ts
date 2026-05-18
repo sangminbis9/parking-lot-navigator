@@ -14,7 +14,8 @@ import {
   renderEventForm,
   renderLanding,
   renderMessage,
-  renderPaymentPlaceholder,
+  renderPaymentFail,
+  renderTossPayment,
   type EventFormValues,
 } from "./pages.js";
 import { getMerchantById, upsertMerchant } from "./store.js";
@@ -23,9 +24,11 @@ import {
   geocodeAddress,
   getMerchantEventById,
   listMerchantEvents,
+  markEventApproved,
   uploadEventImage,
   type MerchantEventType,
 } from "./events.js";
+import { addMonths, confirmTossPayment } from "./toss.js";
 import {
   createSessionToken,
   randomToken,
@@ -45,7 +48,12 @@ export type MerchantEnv = {
   KAKAO_LOCAL_BASE_URL?: string;
   MERCHANT_SESSION_SECRET?: string;
   MERCHANT_PUBLIC_BASE_URL?: string;
+  TOSS_CLIENT_KEY?: string;
+  TOSS_SECRET_KEY?: string;
 };
+
+const EVENT_PRICE_KRW = 10000;
+const EVENT_DURATION_MONTHS = 3;
 
 const EVENT_TYPES: readonly MerchantEventType[] = [
   "discount",
@@ -370,7 +378,129 @@ export function createMerchantApp() {
         404,
       );
     }
-    return c.html(renderPaymentPlaceholder(event));
+    if (event.status === "approved") {
+      return c.redirect("/merchant/dashboard");
+    }
+    const clientKey = c.env.TOSS_CLIENT_KEY;
+    if (!clientKey) {
+      return c.html(
+        renderMessage(
+          "결제 모듈 준비 중",
+          "결제 모듈이 아직 구성되지 않았습니다. 관리자에게 문의해 주세요.",
+        ),
+        503,
+      );
+    }
+    const merchant = await getMerchantById(c.env.DB, session.merchantId);
+    const customerName = merchant?.display_name ?? "고객";
+    const base = baseUrl(c.env, c.req.url);
+    return c.html(
+      renderTossPayment({
+        event,
+        clientKey,
+        customerKey: `merchant_${session.merchantId}`,
+        amount: EVENT_PRICE_KRW,
+        successUrl: `${base}/merchant/event/${event.id}/payment/success`,
+        failUrl: `${base}/merchant/event/${event.id}/payment/fail`,
+        customerName,
+      }),
+    );
+  });
+
+  app.get("/event/:id/payment/success", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    if (event.status === "approved") {
+      return c.redirect("/merchant/dashboard");
+    }
+    const paymentKey = c.req.query("paymentKey");
+    const orderId = c.req.query("orderId");
+    const amountRaw = c.req.query("amount");
+    const amount = Number(amountRaw);
+    if (
+      !paymentKey ||
+      orderId !== event.id ||
+      !Number.isFinite(amount) ||
+      amount !== EVENT_PRICE_KRW
+    ) {
+      return c.html(
+        renderPaymentFail({
+          event,
+          code: "invalid_callback",
+          message: "결제 응답을 검증하지 못했습니다.",
+        }),
+        400,
+      );
+    }
+    if (!c.env.TOSS_SECRET_KEY) {
+      return c.html(
+        renderPaymentFail({
+          event,
+          code: "secret_missing",
+          message: "결제 모듈이 구성되지 않았습니다.",
+        }),
+        503,
+      );
+    }
+    const result = await confirmTossPayment({
+      secretKey: c.env.TOSS_SECRET_KEY,
+      paymentKey,
+      orderId,
+      amount,
+    });
+    if (!result.ok) {
+      console.error("toss confirm failed", result.code, result.message);
+      return c.html(
+        renderPaymentFail({
+          event,
+          code: result.code,
+          message: result.message,
+        }),
+        400,
+      );
+    }
+    const startDate = event.start_date ?? new Date().toISOString().slice(0, 10);
+    const paidUntil = addMonths(
+      new Date(`${startDate}T00:00:00Z`),
+      EVENT_DURATION_MONTHS,
+    )
+      .toISOString()
+      .slice(0, 10);
+    await markEventApproved(c.env.DB, {
+      id: event.id,
+      paymentKey: result.payment.paymentKey,
+      paymentAmount: result.payment.totalAmount,
+      paidUntil,
+      startDate,
+    });
+    return c.redirect("/merchant/dashboard");
+  });
+
+  app.get("/event/:id/payment/fail", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    return c.html(
+      renderPaymentFail({
+        event,
+        code: c.req.query("code") ?? undefined,
+        message: c.req.query("message") ?? undefined,
+      }),
+      400,
+    );
   });
 
   return app;
