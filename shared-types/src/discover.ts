@@ -1,8 +1,15 @@
 export type DiscoverStatus = "ongoing" | "upcoming";
-export type EventCategory = "festival" | "performance" | "exhibition" | "culture" | "local_event" | "other";
+export type EventCategory =
+  | "festival"
+  | "performance"
+  | "exhibition"
+  | "culture"
+  | "local_event"
+  | "other";
 export type LocalEventSource =
   | "instagram"
   | "naver_place"
+  | "naver_blog"
   | "owner_submitted"
   | "admin_manual"
   | "user_report"
