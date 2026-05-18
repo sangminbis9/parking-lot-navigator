@@ -445,6 +445,11 @@ app.get("/api/local-events/:id", async (c) => {
   const item = await getLocalEvent(c.env.DB, c.req.param("id"));
   if (!item || item.status !== "approved")
     return c.json({ error: "not_found" }, 404);
+  if (item.isSponsored) {
+    const now = new Date().toISOString();
+    if (!item.paidUntil || item.paidUntil <= now)
+      return c.json({ error: "not_found" }, 404);
+  }
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
 
