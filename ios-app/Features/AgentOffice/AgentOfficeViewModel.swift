@@ -35,37 +35,45 @@ enum AgentOfficeStatus: String, Hashable {
     }
 }
 
-struct AgentOfficeAgent: Identifiable {
+struct DiscoveryItem: Identifiable, Hashable {
+    enum Kind: Hashable { case festival, event }
     let id: String
-    let name: String
-    let role: String
-    let status: AgentOfficeStatus
-    /// What this agent says when they speak (used when they visit a partner).
-    let line: String
-    /// What this agent says when receiving a visitor.
-    let reply: String
-    /// Desk position in normalized 0..1 coordinates.
-    let home: CGPoint
-    /// Where the agent walks to during a cycle. `nil` means the agent stays at their desk.
-    let visit: CGPoint?
-    /// Who this agent is talking to when they visit.
-    let partnerID: String?
-    /// Offset (0..1) into the shared activity cycle so movers don't all walk at once.
-    let phaseOffset: Double
+    let title: String
+    let subtitle: String
+    let kind: Kind
 }
 
 struct AgentOfficeSnapshot {
     let summary: String
     let parkingProviders: [ProviderHealth]
     let discoveryProviders: [ProviderHealth]
+    let festivals: [DiscoveryItem]
+    let events: [DiscoveryItem]
     let updatedAt: Date
+
+    var published: [DiscoveryItem] {
+        let merged = festivals.prefix(3) + events.prefix(3)
+        return Array(merged.prefix(6))
+    }
 
     static let empty = AgentOfficeSnapshot(
         summary: "백엔드 상태를 기다리는 중이에요.",
         parkingProviders: [],
         discoveryProviders: [],
+        festivals: [],
+        events: [],
         updatedAt: Date()
     )
+}
+
+struct AgentOfficeAgent: Identifiable {
+    let id: String
+    let name: String
+    let role: String
+    let spriteAsset: String
+    let status: AgentOfficeStatus
+    let line: String
+    let reply: String
 }
 
 @MainActor
@@ -78,9 +86,14 @@ final class AgentOfficeViewModel: ObservableObject {
     private let apiClient: APIClientProtocol
     private var hasLoaded = false
 
+    // Seoul City Hall — fixed reference point for the office display.
+    private let referenceLat: Double = 37.5665
+    private let referenceLng: Double = 126.9780
+    private let referenceRadius: Int = 30_000
+
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
-        agents = Self.idleAgents(line: "백엔드 연결을 기다리는 중이에요.", reply: "대기하고 있어요.")
+        agents = Self.buildAgents(snapshot: .empty)
     }
 
     func loadIfNeeded() async {
@@ -102,25 +115,52 @@ final class AgentOfficeViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        async let parkingProviders = apiClient.providerHealth()
+        async let discoveryProviders = apiClient.discoveryProviderHealth()
+        async let festivalsResult: [Festival]? = try? apiClient.nearbyFestivals(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
+        async let eventsResult: [FreeEvent]? = try? apiClient.nearbyEvents(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
+
         do {
-            async let parkingProviders = apiClient.providerHealth()
-            async let discoveryProviders = apiClient.discoveryProviderHealth()
             let parking = try await parkingProviders
             let discovery = try await discoveryProviders
+            let fests = (await festivalsResult) ?? []
+            let evts = (await eventsResult) ?? []
+
+            let normalizedFestivals = fests.prefix(8).map { f in
+                DiscoveryItem(
+                    id: "fest-\(f.id)",
+                    title: f.title,
+                    subtitle: f.venueName ?? f.address,
+                    kind: .festival
+                )
+            }
+            let normalizedEvents = evts.prefix(8).map { e in
+                DiscoveryItem(
+                    id: "evt-\(e.id)",
+                    title: e.title,
+                    subtitle: e.storeName,
+                    kind: .event
+                )
+            }
+
             let nextSnapshot = AgentOfficeSnapshot(
-                summary: Self.summary(parkingProviders: parking, discoveryProviders: discovery),
+                summary: Self.summary(parking: parking, discovery: discovery, festivals: normalizedFestivals.count, events: normalizedEvents.count),
                 parkingProviders: parking,
                 discoveryProviders: discovery,
+                festivals: Array(normalizedFestivals),
+                events: Array(normalizedEvents),
                 updatedAt: Date()
             )
             snapshot = nextSnapshot
-            agents = Self.agents(for: nextSnapshot)
+            agents = Self.buildAgents(snapshot: nextSnapshot)
         } catch {
             errorMessage = error.localizedDescription
             snapshot = AgentOfficeSnapshot(
                 summary: "백엔드 연결 실패: \(error.localizedDescription)",
                 parkingProviders: [],
                 discoveryProviders: [],
+                festivals: [],
+                events: [],
                 updatedAt: Date()
             )
             agents = Self.errorAgents(message: error.localizedDescription)
@@ -129,133 +169,96 @@ final class AgentOfficeViewModel: ObservableObject {
         isLoading = false
     }
 
-    private static func summary(parkingProviders: [ProviderHealth], discoveryProviders: [ProviderHealth]) -> String {
-        let parking = providerCounts(parkingProviders)
-        let discovery = providerCounts(discoveryProviders)
-        return "주차 \(parking.up)/\(parking.total) 정상 · 탐색 \(discovery.up)/\(discovery.total) 정상"
+    // MARK: - Builders
+
+    private static func summary(parking: [ProviderHealth], discovery: [ProviderHealth], festivals: Int, events: Int) -> String {
+        let p = providerCounts(parking)
+        let d = providerCounts(discovery)
+        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 오늘 발견 축제 \(festivals)건 이벤트 \(events)건"
     }
 
-    private static func agents(for snapshot: AgentOfficeSnapshot) -> [AgentOfficeAgent] {
-        let parking = providerCounts(snapshot.parkingProviders)
-        let discovery = providerCounts(snapshot.discoveryProviders)
-        let festivalProviders = snapshot.discoveryProviders.filter(isFestivalProvider)
-        let eventProviders = snapshot.discoveryProviders.filter { !isFestivalProvider($0) }
-        let festival = providerCounts(festivalProviders)
-        let events = providerCounts(eventProviders)
-        let stale = parking.stale + discovery.stale
+    private static func buildAgents(snapshot: AgentOfficeSnapshot) -> [AgentOfficeAgent] {
+        let p = providerCounts(snapshot.parkingProviders)
+        let d = providerCounts(snapshot.discoveryProviders)
+        let stale = p.stale + d.stale
+        let festivalCount = snapshot.festivals.count
+        let eventCount = snapshot.events.count
 
-        return agentRoutes.map { route in
-            switch route.id {
-            case "orion":
-                return route.build(
-                    status: .thinking,
-                    line: "오늘 상태 공유: \(snapshot.summary)",
-                    reply: stale > 0 ? "지연 신호 \(stale)개 기록했어요." : "좋아요. 계속 진행해요."
-                )
-            case "sentinel":
-                return route.build(
-                    status: healthStatus(for: parking),
-                    line: parking.total == 0
-                        ? "주차 피드가 응답하지 않아요."
-                        : "주차 \(parking.up)/\(parking.total) 정상\(parking.stale > 0 ? ", 지연 \(parking.stale)" : "").",
-                    reply: parking.down > 0 ? "Radar에게 대체 신호를 요청해요." : "경로 상태는 안정적이에요."
-                )
-            case "festa":
-                return route.build(
-                    status: collectorStatus(for: festival),
-                    line: festival.total == 0
-                        ? "오늘 축제 피드가 없어요."
-                        : "축제 \(festival.up)/\(festival.total) 수집 완료.",
-                    reply: "요약 카드에 정리할게요."
-                )
-            case "scout":
-                return route.build(
-                    status: collectorStatus(for: events),
-                    line: events.total == 0
-                        ? "이벤트 소스가 아직 없어요."
-                        : "이벤트 \(events.up)/\(events.total) 수집 완료.",
-                    reply: "검증 대기열로 보낼게요."
-                )
-            case "radar":
-                return route.build(
-                    status: stale > 0 ? .blocked : .monitoring,
-                    line: stale > 0 ? "지연 소스 \(stale)개 표시." : "모든 소스가 최신이에요.",
-                    reply: "빈 구간을 추적 중이에요."
-                )
-            case "vera":
-                return route.build(
-                    status: validatorStatus(parkingCounts: parking, discoveryCounts: discovery),
-                    line: "품질 검사를 실행 중이에요.",
-                    reply: parking.down + discovery.down > 0 ? "실패 항목을 표시했어요." : "검사 통과 중이에요."
-                )
-            case "pixel":
-                return route.build(
-                    status: .idle,
-                    line: "이미지 점검 완료.",
-                    reply: "썸네일을 붙였어요."
-                )
-            case "piper":
-                return route.build(
-                    status: .idle,
-                    line: "게시 대기열 준비 완료.",
-                    reply: "게시 순서에 넣었어요."
-                )
-            case "echo":
-                return route.build(
-                    status: .idle,
-                    line: "사용자 제보를 정리 중이에요.",
-                    reply: "핵심만 전달할게요."
-                )
-            case "promoter":
-                return route.build(
-                    status: .idle,
-                    line: "홍보 슬롯 점검 완료.",
-                    reply: "묶음 구성을 저장했어요."
-                )
-            default:
-                return route.build(status: .idle, line: "", reply: "")
-            }
-        }
-    }
-
-    private static func idleAgents(line: String, reply: String) -> [AgentOfficeAgent] {
-        agentRoutes.map { $0.build(status: .idle, line: line, reply: reply) }
+        return [
+            AgentOfficeAgent(
+                id: "orion",
+                name: "Orion",
+                role: "총괄",
+                spriteAsset: "AgentChar0",
+                status: .thinking,
+                line: snapshot.summary,
+                reply: stale > 0 ? "지연 신호 \(stale)개 확인했어요." : "잘 진행 중이에요."
+            ),
+            AgentOfficeAgent(
+                id: "festa",
+                name: "Festa",
+                role: "축제 수집",
+                spriteAsset: "AgentChar1",
+                status: festivalCount > 0 ? .collecting : .idle,
+                line: festivalCount > 0 ? "축제 \(festivalCount)건 정리했어요." : "오늘은 새 축제가 없네요.",
+                reply: "보고드릴게요."
+            ),
+            AgentOfficeAgent(
+                id: "scout",
+                name: "Scout",
+                role: "이벤트 수집",
+                spriteAsset: "AgentChar2",
+                status: eventCount > 0 ? .collecting : .idle,
+                line: eventCount > 0 ? "이벤트 \(eventCount)건 발견." : "현재 진행 이벤트 없음.",
+                reply: "곧 가져갑니다."
+            ),
+            AgentOfficeAgent(
+                id: "vera",
+                name: "Vera",
+                role: "검증",
+                spriteAsset: "AgentChar3",
+                status: validatorStatus(parking: p, discovery: d),
+                line: "데이터 품질 확인 중.",
+                reply: p.down + d.down > 0 ? "실패 항목 표시했어요." : "검증 통과 중이에요."
+            ),
+            AgentOfficeAgent(
+                id: "sentinel",
+                name: "Sentinel",
+                role: "백엔드 감시",
+                spriteAsset: "AgentChar4",
+                status: healthStatus(for: p),
+                line: p.total == 0
+                    ? "주차 피드가 응답하지 않아요."
+                    : "주차 \(p.up)/\(p.total) 정상\(p.stale > 0 ? ", 지연 \(p.stale)" : "").",
+                reply: "패트롤 계속할게요."
+            ),
+            AgentOfficeAgent(
+                id: "echo",
+                name: "Echo",
+                role: "게시 / 홍보",
+                spriteAsset: "AgentChar5",
+                status: .idle,
+                line: "게시판 정리 중.",
+                reply: "푸시 일정 잡아둘게요."
+            )
+        ]
     }
 
     private static func errorAgents(message: String) -> [AgentOfficeAgent] {
-        agentRoutes.map { route in
-            switch route.id {
+        let base = buildAgents(snapshot: .empty)
+        return base.map { agent in
+            switch agent.id {
             case "orion":
-                return route.build(status: .error, line: "백엔드에 연결할 수 없어요.", reply: message)
+                return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .error, line: "백엔드에 연결할 수 없어요.", reply: message)
             case "sentinel":
-                return route.build(status: .blocked, line: "상태 확인 API가 응답하지 않아요.", reply: "복구를 기다릴게요.")
+                return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .blocked, line: "헬스 엔드포인트 응답 없음.", reply: "재시도 대기 중.")
             default:
-                return route.build(status: .idle, line: "백엔드 복구 대기 중.", reply: "대기하고 있어요.")
+                return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .idle, line: "백엔드 복구를 기다려요.", reply: "대기 중.")
             }
         }
     }
 
-    private static func healthStatus(for counts: ProviderCounts) -> AgentOfficeStatus {
-        guard counts.total > 0 else { return .idle }
-        if counts.down > 0 { return .error }
-        if counts.stale > 0 { return .blocked }
-        if counts.degraded > 0 { return .monitoring }
-        return .monitoring
-    }
-
-    private static func collectorStatus(for counts: ProviderCounts) -> AgentOfficeStatus {
-        guard counts.total > 0 else { return .idle }
-        if counts.down > 0 { return .error }
-        if counts.stale > 0 || counts.degraded > 0 { return .blocked }
-        return .collecting
-    }
-
-    private static func validatorStatus(parkingCounts: ProviderCounts, discoveryCounts: ProviderCounts) -> AgentOfficeStatus {
-        if parkingCounts.down + discoveryCounts.down > 0 { return .error }
-        if parkingCounts.stale + discoveryCounts.stale > 0 { return .blocked }
-        if parkingCounts.degraded + discoveryCounts.degraded > 0 { return .monitoring }
-        return .validating
-    }
+    // MARK: - Counts
 
     private static func providerCounts(_ providers: [ProviderHealth]) -> ProviderCounts {
         providers.reduce(into: ProviderCounts(total: providers.count)) { counts, provider in
@@ -274,9 +277,19 @@ final class AgentOfficeViewModel: ObservableObject {
         return provider.status.lowercased()
     }
 
-    private static func isFestivalProvider(_ provider: ProviderHealth) -> Bool {
-        let name = provider.name.lowercased()
-        return name.contains("festival") || name.contains("tour") || name.contains("national")
+    private static func healthStatus(for counts: ProviderCounts) -> AgentOfficeStatus {
+        guard counts.total > 0 else { return .idle }
+        if counts.down > 0 { return .error }
+        if counts.stale > 0 { return .blocked }
+        if counts.degraded > 0 { return .monitoring }
+        return .monitoring
+    }
+
+    private static func validatorStatus(parking: ProviderCounts, discovery: ProviderCounts) -> AgentOfficeStatus {
+        if parking.down + discovery.down > 0 { return .error }
+        if parking.stale + discovery.stale > 0 { return .blocked }
+        if parking.degraded + discovery.degraded > 0 { return .monitoring }
+        return .validating
     }
 }
 
@@ -287,90 +300,3 @@ private struct ProviderCounts {
     var stale = 0
     var total: Int
 }
-
-private struct AgentRoute {
-    let id: String
-    let name: String
-    let role: String
-    let home: CGPoint
-    let visit: CGPoint?
-    let partnerID: String?
-    let phaseOffset: Double
-
-    func build(status: AgentOfficeStatus, line: String, reply: String) -> AgentOfficeAgent {
-        AgentOfficeAgent(
-            id: id,
-            name: name,
-            role: role,
-            status: status,
-            line: line,
-            reply: reply,
-            home: home,
-            visit: visit,
-            partnerID: partnerID,
-            phaseOffset: phaseOffset
-        )
-    }
-}
-
-// Top-down office choreography. Movers periodically walk to a partner's
-// area, exchange one line, then return to their own desk. Phase offsets
-// stagger the trips so the office always feels active without crowding.
-private let agentRoutes: [AgentRoute] = [
-    AgentRoute(
-        id: "orion", name: "Orion", role: "총괄 에이전트",
-        home: CGPoint(x: 0.50, y: 0.14),
-        visit: nil, partnerID: nil, phaseOffset: 0
-    ),
-    AgentRoute(
-        id: "sentinel", name: "Sentinel", role: "상태 감시",
-        home: CGPoint(x: 0.85, y: 0.34),
-        visit: CGPoint(x: 0.58, y: 0.20),
-        partnerID: "orion", phaseOffset: 0.05
-    ),
-    AgentRoute(
-        id: "festa", name: "Festa", role: "축제 수집",
-        home: CGPoint(x: 0.15, y: 0.34),
-        visit: CGPoint(x: 0.42, y: 0.20),
-        partnerID: "orion", phaseOffset: 0.32
-    ),
-    AgentRoute(
-        id: "scout", name: "Scout", role: "이벤트 수집",
-        home: CGPoint(x: 0.22, y: 0.50),
-        visit: CGPoint(x: 0.43, y: 0.58),
-        partnerID: "vera", phaseOffset: 0.58
-    ),
-    AgentRoute(
-        id: "vera", name: "Vera", role: "데이터 검증",
-        home: CGPoint(x: 0.52, y: 0.58),
-        visit: nil, partnerID: nil, phaseOffset: 0
-    ),
-    AgentRoute(
-        id: "radar", name: "Radar", role: "소스 탐색",
-        home: CGPoint(x: 0.82, y: 0.50),
-        visit: CGPoint(x: 0.82, y: 0.40),
-        partnerID: "sentinel", phaseOffset: 0.20
-    ),
-    AgentRoute(
-        id: "pixel", name: "Pixel", role: "이미지 보강",
-        home: CGPoint(x: 0.20, y: 0.74),
-        visit: CGPoint(x: 0.68, y: 0.74),
-        partnerID: "piper", phaseOffset: 0.45
-    ),
-    AgentRoute(
-        id: "piper", name: "Piper", role: "게시 담당",
-        home: CGPoint(x: 0.80, y: 0.74),
-        visit: nil, partnerID: nil, phaseOffset: 0
-    ),
-    AgentRoute(
-        id: "echo", name: "Echo", role: "피드백 정리",
-        home: CGPoint(x: 0.28, y: 0.88),
-        visit: CGPoint(x: 0.60, y: 0.88),
-        partnerID: "promoter", phaseOffset: 0.78
-    ),
-    AgentRoute(
-        id: "promoter", name: "Promoter", role: "홍보 관리",
-        home: CGPoint(x: 0.74, y: 0.88),
-        visit: nil, partnerID: nil, phaseOffset: 0
-    )
-]
