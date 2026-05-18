@@ -48,13 +48,13 @@ jobs:
         working-directory: worker-backend
         run: |
           if [ -n "${NAVER_CLIENT_ID}" ]; then
-            printf "%s" "${NAVER_CLIENT_ID}" | pnpm exec wrangler secret put NAVER_CLIENT_ID
+            printf "%s" "${NAVER_CLIENT_ID}" | pnpm exec wrangler versions secret put NAVER_CLIENT_ID
           fi
           if [ -n "${NAVER_CLIENT_SECRET}" ]; then
-            printf "%s" "${NAVER_CLIENT_SECRET}" | pnpm exec wrangler secret put NAVER_CLIENT_SECRET
+            printf "%s" "${NAVER_CLIENT_SECRET}" | pnpm exec wrangler versions secret put NAVER_CLIENT_SECRET
           fi
           if [ -n "${KAKAO_REST_API_KEY}" ]; then
-            printf "%s" "${KAKAO_REST_API_KEY}" | pnpm exec wrangler secret put KAKAO_REST_API_KEY
+            printf "%s" "${KAKAO_REST_API_KEY}" | pnpm exec wrangler versions secret put KAKAO_REST_API_KEY
           fi
 
       - name: Deploy Worker
