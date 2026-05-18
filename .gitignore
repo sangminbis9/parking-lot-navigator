@@ -8,6 +8,7 @@ tmp/
 !.env.production.example
 worker-backend/.dev.vars
 worker-backend/.dev.vars.*
+worker-backend/.wrangler/
 worker-backend/.national-sync/
 worker-backend/scripts/crawl-poc/out/
 worker-backend/src/*.js
