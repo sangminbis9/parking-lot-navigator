@@ -11,11 +11,12 @@ struct AgentOfficeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                OfficeFloorView(agents: viewModel.agents)
-                    .aspectRatio(0.72, contentMode: .fit)
+                OfficeFloorView(agents: viewModel.agents, snapshot: viewModel.snapshot)
+                    .aspectRatio(0.78, contentMode: .fit)
                 summaryCard
                 providerSection(title: "주차 제공자", providers: viewModel.snapshot.parkingProviders)
                 providerSection(title: "탐색 제공자", providers: viewModel.snapshot.discoveryProviders)
+                attribution
             }
             .padding(16)
         }
@@ -34,16 +35,13 @@ struct AgentOfficeView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("에이전트 오피스")
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("마스코트 피규어들이 백엔드 상태를 나눠 맡아 일해요")
-                    .font(.subheadline)
-                    .foregroundStyle(FestivalDesign.secondaryText)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 6) {
+            Text("에이전트 오피스")
+                .font(.largeTitle.bold())
+                .foregroundStyle(FestivalDesign.navy)
+            Text("수집팀이 발견한 축제·이벤트를 총괄에게 보고하고, 검증 후 게시판에 올려요.")
+                .font(.subheadline)
+                .foregroundStyle(FestivalDesign.secondaryText)
         }
     }
 
@@ -57,11 +55,9 @@ struct AgentOfficeView: View {
                     .font(.caption)
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
-
             Text(viewModel.snapshot.summary)
                 .font(.subheadline)
                 .foregroundStyle(FestivalDesign.navy)
-
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -77,7 +73,6 @@ struct AgentOfficeView: View {
             Text(title)
                 .font(.headline)
                 .foregroundStyle(FestivalDesign.navy)
-
             if providers.isEmpty {
                 Text("아직 제공자 상태가 도착하지 않았어요.")
                     .font(.subheadline)
@@ -91,6 +86,12 @@ struct AgentOfficeView: View {
         .padding(14)
         .festivalCard()
     }
+
+    private var attribution: some View {
+        Text("픽셀 스프라이트: harishkotra/agent-office (MIT)")
+            .font(.caption2)
+            .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
+    }
 }
 
 private extension AgentOfficeView {
@@ -103,33 +104,29 @@ private extension AgentOfficeView {
 
 private struct OfficeFloorView: View {
     let agents: [AgentOfficeAgent]
+    let snapshot: AgentOfficeSnapshot
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
             GeometryReader { proxy in
                 let size = proxy.size
-                let frames = currentFrames(date: timeline.date)
-                let receivers = activeReceivers(frames: frames)
+                let t = timeline.date.timeIntervalSinceReferenceDate
 
                 ZStack {
-                    OfficeBackdrop(agents: agents)
+                    PixelOfficeBackdrop()
+                    PublishedWall(items: snapshot.published)
+                        .frame(width: size.width * 0.88, height: size.height * 0.20)
+                        .position(x: size.width * 0.50, y: size.height * 0.88)
 
                     ForEach(agents) { agent in
-                        let frame = frames[agent.id] ?? AgentFrame(position: agent.home, phase: .working, walking: false, facing: 0, progress: 0)
-                        let isReceiving = receivers[agent.id]
-                        let isSpeaking = frame.phase == .chatting && agent.visit != nil
-
-                        AgentSprite(
+                        let frame = OfficeChoreography.frame(for: agent.id, at: t, snapshot: snapshot)
+                        AgentRunner(
                             agent: agent,
                             frame: frame,
-                            speakingLine: lineToSpeak(for: agent, frame: frame, receiverInfo: isReceiving),
-                            isSpeaking: isSpeaking || isReceiving != nil,
-                            date: timeline.date
+                            spokenLine: OfficeChoreography.spokenLine(for: agent, frame: frame, snapshot: snapshot)
                         )
-                        .position(
-                            x: frame.position.x * size.width,
-                            y: frame.position.y * size.height
-                        )
+                        .position(x: frame.position.x * size.width,
+                                  y: frame.position.y * size.height)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
@@ -140,101 +137,449 @@ private struct OfficeFloorView: View {
             }
         }
     }
+}
 
-    private func currentFrames(date: Date) -> [String: AgentFrame] {
-        var result: [String: AgentFrame] = [:]
-        for agent in agents {
-            result[agent.id] = AgentChoreography.frame(for: agent, at: date)
+// MARK: - Choreography
+
+private struct AgentFrame {
+    let position: CGPoint
+    let direction: PixelSprite.Direction
+    let walking: Bool
+    let walkPhase: Int
+    let stage: Stage
+    let carry: CarryKind?
+
+    enum Stage { case idle, walkingOut, reporting, walkingToWall, posting, returning, patrolling, validating }
+    enum CarryKind { case festival, event }
+}
+
+private enum OfficeChoreography {
+    private static let homes: [String: CGPoint] = [
+        "festa":    CGPoint(x: 0.16, y: 0.44),
+        "scout":    CGPoint(x: 0.84, y: 0.44),
+        "orion":    CGPoint(x: 0.50, y: 0.34),
+        "vera":     CGPoint(x: 0.36, y: 0.24),
+        "echo":     CGPoint(x: 0.78, y: 0.74),
+        "sentinel": CGPoint(x: 0.18, y: 0.16)
+    ]
+
+    private static let orionDesk = CGPoint(x: 0.50, y: 0.36)
+    private static let wall = CGPoint(x: 0.50, y: 0.74)
+
+    // Sentinel patrol corners
+    private static let patrolPath: [CGPoint] = [
+        CGPoint(x: 0.10, y: 0.16),
+        CGPoint(x: 0.50, y: 0.10),
+        CGPoint(x: 0.90, y: 0.16),
+        CGPoint(x: 0.90, y: 0.62),
+        CGPoint(x: 0.10, y: 0.62)
+    ]
+
+    static func frame(for id: String, at t: TimeInterval, snapshot: AgentOfficeSnapshot) -> AgentFrame {
+        switch id {
+        case "festa":
+            return collectorFrame(id: id, t: t, offset: 0,
+                                  carry: .festival,
+                                  itemCount: snapshot.festivals.count)
+        case "scout":
+            return collectorFrame(id: id, t: t, offset: 12,
+                                  carry: .event,
+                                  itemCount: snapshot.events.count)
+        case "orion":
+            let home = homes["orion"]!
+            let dir: PixelSprite.Direction = (Int(t) % 8 < 4) ? .down : .left
+            return AgentFrame(position: home, direction: dir, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        case "vera":
+            return validatorFrame(t: t)
+        case "echo":
+            return publisherFrame(t: t, hasItems: snapshot.published.count > 0)
+        case "sentinel":
+            return patrolFrame(t: t)
+        default:
+            let home = homes[id] ?? CGPoint(x: 0.5, y: 0.5)
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
         }
-        return result
     }
 
-    /// For each static partner agent, returns the visitor id (if any) currently chatting with them.
-    private func activeReceivers(frames: [String: AgentFrame]) -> [String: String] {
-        var receivers: [String: String] = [:]
-        for agent in agents {
-            guard let partnerID = agent.partnerID,
-                  let frame = frames[agent.id],
-                  frame.phase == .chatting else { continue }
-            receivers[partnerID] = agent.id
+    // 24-second cycle: home(5s) → walk to Orion(4s) → report(4s) → walk to wall(4s) → post(2s) → walk home(5s)
+    private static func collectorFrame(id: String, t: TimeInterval, offset: Double,
+                                       carry: AgentFrame.CarryKind, itemCount: Int) -> AgentFrame {
+        let cycle: Double = 24
+        let tau = (t + offset).truncatingRemainder(dividingBy: cycle)
+        let home = homes[id]!
+        let walking3 = Int(t * 6) % 3
+
+        if itemCount == 0 {
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
         }
-        return receivers
+
+        switch tau {
+        case 0..<5:
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        case 5..<9:
+            let p = ease((tau - 5) / 4)
+            let pos = lerp(home, orionDesk, p)
+            let dir: PixelSprite.Direction = orionDesk.x > home.x ? .right : .left
+            return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
+                              stage: .walkingOut, carry: carry)
+        case 9..<13:
+            let dir: PixelSprite.Direction = orionDesk.x > home.x ? .right : .left
+            return AgentFrame(position: orionDesk, direction: dir, walking: false, walkPhase: 1,
+                              stage: .reporting, carry: carry)
+        case 13..<17:
+            let p = ease((tau - 13) / 4)
+            let pos = lerp(orionDesk, wall, p)
+            return AgentFrame(position: pos, direction: .down, walking: true, walkPhase: walking3,
+                              stage: .walkingToWall, carry: carry)
+        case 17..<19:
+            return AgentFrame(position: wall, direction: .up, walking: false, walkPhase: 1,
+                              stage: .posting, carry: carry)
+        default:
+            let p = ease((tau - 19) / 5)
+            let pos = lerp(wall, home, p)
+            let dir: PixelSprite.Direction = home.x < wall.x ? .left : .right
+            return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
+                              stage: .returning, carry: nil)
+        }
     }
 
-    private func lineToSpeak(for agent: AgentOfficeAgent, frame: AgentFrame, receiverInfo: String?) -> String? {
-        if frame.phase == .chatting && agent.visit != nil {
-            return agent.line
+    private static func validatorFrame(t: TimeInterval) -> AgentFrame {
+        // Vera oscillates between desk and Orion: validating role
+        let home = homes["vera"]!
+        let target = CGPoint(x: 0.44, y: 0.32)
+        let cycle: Double = 8
+        let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
+        let p = (sin(tau * .pi * 2) + 1) / 2
+        let pos = lerp(home, target, p)
+        let walking3 = Int(t * 4) % 3
+        let walking = p > 0.05 && p < 0.95
+        let dir: PixelSprite.Direction = (target.x > home.x) ? .right : .left
+        return AgentFrame(position: pos, direction: dir, walking: walking, walkPhase: walking3,
+                          stage: .validating, carry: nil)
+    }
+
+    private static func publisherFrame(t: TimeInterval, hasItems: Bool) -> AgentFrame {
+        let home = homes["echo"]!
+        let cycle: Double = 16
+        let tau = t.truncatingRemainder(dividingBy: cycle)
+        let walking3 = Int(t * 6) % 3
+        guard hasItems else {
+            return AgentFrame(position: home, direction: .left, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
         }
-        if receiverInfo != nil {
-            return agent.reply
+        switch tau {
+        case 0..<10:
+            return AgentFrame(position: home, direction: .left, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        case 10..<12:
+            let p = ease((tau - 10) / 2)
+            let pos = lerp(home, CGPoint(x: 0.62, y: 0.76), p)
+            return AgentFrame(position: pos, direction: .left, walking: true, walkPhase: walking3,
+                              stage: .walkingToWall, carry: nil)
+        case 12..<14:
+            return AgentFrame(position: CGPoint(x: 0.62, y: 0.76), direction: .up, walking: false, walkPhase: 1,
+                              stage: .posting, carry: nil)
+        default:
+            let p = ease((tau - 14) / 2)
+            let pos = lerp(CGPoint(x: 0.62, y: 0.76), home, p)
+            return AgentFrame(position: pos, direction: .right, walking: true, walkPhase: walking3,
+                              stage: .returning, carry: nil)
         }
-        return nil
+    }
+
+    private static func patrolFrame(t: TimeInterval) -> AgentFrame {
+        let segDuration: Double = 6
+        let total = Double(patrolPath.count) * segDuration
+        let tau = t.truncatingRemainder(dividingBy: total)
+        let segIndex = Int(tau / segDuration)
+        let local = (tau - Double(segIndex) * segDuration) / segDuration
+        let from = patrolPath[segIndex]
+        let to = patrolPath[(segIndex + 1) % patrolPath.count]
+        let pos = lerp(from, to, ease(local))
+        let walking3 = Int(t * 6) % 3
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let dir: PixelSprite.Direction
+        if abs(dx) > abs(dy) {
+            dir = dx >= 0 ? .right : .left
+        } else {
+            dir = dy >= 0 ? .down : .up
+        }
+        return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
+                          stage: .patrolling, carry: nil)
+    }
+
+    static func spokenLine(for agent: AgentOfficeAgent, frame: AgentFrame,
+                           snapshot: AgentOfficeSnapshot) -> String? {
+        switch agent.id {
+        case "festa":
+            return collectorLine(stage: frame.stage, items: snapshot.festivals, fallback: agent.line)
+        case "scout":
+            return collectorLine(stage: frame.stage, items: snapshot.events, fallback: agent.line)
+        case "orion":
+            // Show approval when a collector is reporting nearby
+            let reporterActive = snapshot.festivals.count > 0 || snapshot.events.count > 0
+            if reporterActive, Int(Date().timeIntervalSince1970) % 8 < 3 {
+                return "확인했어요. 게시판에 올려요."
+            }
+            return nil
+        case "vera":
+            switch frame.stage {
+            case .validating: return agent.line
+            default: return nil
+            }
+        case "echo":
+            switch frame.stage {
+            case .posting: return "푸시 일정 잡아둘게요."
+            default: return nil
+            }
+        case "sentinel":
+            // Speak only at corners
+            let segDuration: Double = 6
+            let total = Double(6) * segDuration
+            let tau = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: total)
+            let local = tau - Double(Int(tau / segDuration)) * segDuration
+            return local < 1.0 ? agent.line : nil
+        default:
+            return nil
+        }
+    }
+
+    private static func collectorLine(stage: AgentFrame.Stage, items: [DiscoveryItem], fallback: String) -> String? {
+        guard !items.isEmpty else { return nil }
+        let pickIndex = Int(Date().timeIntervalSince1970 / 24) % items.count
+        let title = items[pickIndex].title
+        switch stage {
+        case .walkingOut, .walkingToWall:
+            return "「\(title)」"
+        case .reporting:
+            return "총괄님, \(title) 찾았어요!"
+        case .posting:
+            return "게시판에 붙입니다."
+        default:
+            return nil
+        }
+    }
+
+    private static func ease(_ x: Double) -> Double {
+        let c = max(0, min(1, x))
+        return c < 0.5 ? 2 * c * c : 1 - pow(-2 * c + 2, 2) / 2
+    }
+
+    private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * CGFloat(t),
+                y: a.y + (b.y - a.y) * CGFloat(t))
     }
 }
 
-// MARK: - Backdrop (static furniture)
+// MARK: - Agent runner (sprite + name + carry + bubble)
 
-private struct OfficeBackdrop: View {
-    let agents: [AgentOfficeAgent]
+private struct AgentRunner: View {
+    let agent: AgentOfficeAgent
+    let frame: AgentFrame
+    let spokenLine: String?
 
+    var body: some View {
+        ZStack {
+            // Shadow
+            Ellipse()
+                .fill(FestivalDesign.navy.opacity(0.18))
+                .frame(width: 24, height: 6)
+                .offset(y: 24)
+
+            PixelSprite(
+                sheet: agent.spriteAsset,
+                direction: frame.direction,
+                walking: frame.walking,
+                walkPhase: frame.walkPhase,
+                scale: 1.6
+            )
+
+            if let carry = frame.carry {
+                CarryMarker(kind: carry)
+                    .offset(x: 10, y: -16)
+            }
+
+            if let line = spokenLine {
+                PixelBubble(text: line, speaker: agent.name, accent: agent.status.color)
+                    .offset(y: -44)
+            }
+
+            Text(agent.name)
+                .font(.system(size: 8, weight: .semibold))
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(FestivalDesign.surface.opacity(0.9))
+                .clipShape(Capsule())
+                .offset(y: 32)
+                .foregroundStyle(FestivalDesign.navy)
+        }
+        .frame(width: 90, height: 90)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(agent.name), \(agent.role)\(spokenLine.map { ", \($0)" } ?? "")")
+    }
+}
+
+private struct CarryMarker: View {
+    let kind: AgentFrame.CarryKind
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(FestivalDesign.navy.opacity(0.6), lineWidth: 1)
+                )
+            Text(symbol)
+                .font(.system(size: 8))
+        }
+    }
+
+    private var color: Color {
+        switch kind {
+        case .festival: return FestivalDesign.lantern.opacity(0.9)
+        case .event: return FestivalDesign.parkingBlue.opacity(0.85)
+        }
+    }
+
+    private var symbol: String {
+        switch kind {
+        case .festival: return "🎪"
+        case .event: return "🎟"
+        }
+    }
+}
+
+private struct PixelBubble: View {
+    let text: String
+    let speaker: String
+    let accent: Color
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(speaker)
+                .font(.system(size: 7, weight: .heavy))
+                .tracking(0.4)
+                .foregroundStyle(accent)
+            Text(text)
+                .font(.system(size: 9))
+                .foregroundStyle(FestivalDesign.navy)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .frame(maxWidth: 130)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(FestivalDesign.surface)
+                Triangle()
+                    .fill(FestivalDesign.surface)
+                    .frame(width: 6, height: 4)
+                    .offset(y: 18)
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(accent.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 3, y: 1)
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Pixel backdrop
+
+private struct PixelOfficeBackdrop: View {
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-
             ZStack {
-                // Floor
+                // Floor: warm wooden gradient with subtle tile grid
                 LinearGradient(
                     colors: [
-                        FestivalDesign.cream.opacity(0.42),
+                        FestivalDesign.cream.opacity(0.65),
                         FestivalDesign.surface,
-                        FestivalDesign.parkingSoft.opacity(0.45)
+                        FestivalDesign.parkingSoft.opacity(0.40)
                     ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                    startPoint: .top, endPoint: .bottom
                 )
 
-                // Subtle floor grid
-                FloorGrid()
-                    .stroke(FestivalDesign.creamDeep.opacity(0.18), lineWidth: 0.6)
+                PixelTileGrid()
+                    .stroke(FestivalDesign.creamDeep.opacity(0.22), lineWidth: 0.6)
 
-                // Carpet bands behind desks
-                CarpetBand(rect: CGRect(x: 0.08 * w, y: 0.30 * h, width: 0.84 * w, height: 0.18 * h),
-                          color: FestivalDesign.tealSoft.opacity(0.55))
-                CarpetBand(rect: CGRect(x: 0.08 * w, y: 0.66 * h, width: 0.84 * w, height: 0.26 * h),
-                          color: FestivalDesign.parkingSoft.opacity(0.55))
+                // Top wall (brick row)
+                BrickStrip()
+                    .fill(FestivalDesign.lantern.opacity(0.35))
+                    .frame(height: 18)
+                    .position(x: w / 2, y: 10)
 
-                // Meeting room
-                MeetingRoom(rect: CGRect(x: 0.26 * w, y: 0.04 * h, width: 0.50 * w, height: 0.24 * h))
+                // Windows on top wall
+                Window()
+                    .frame(width: 36, height: 14)
+                    .position(x: w * 0.30, y: 10)
+                Window()
+                    .frame(width: 36, height: 14)
+                    .position(x: w * 0.68, y: 10)
 
-                // Coffee corner (top-left)
-                CoffeeCorner(center: CGPoint(x: 0.10 * w, y: 0.10 * h))
+                // Desks row (collector left/right + head center)
+                PixelDesk(label: "축제팀", accent: FestivalDesign.lantern)
+                    .position(x: w * 0.16, y: h * 0.50)
+                PixelDesk(label: "총괄", accent: FestivalDesign.coral)
+                    .position(x: w * 0.50, y: h * 0.42)
+                PixelDesk(label: "이벤트팀", accent: FestivalDesign.parkingBlue)
+                    .position(x: w * 0.84, y: h * 0.50)
+
+                // Validation table (Vera)
+                PixelDesk(label: "검증", accent: FestivalDesign.teal)
+                    .position(x: w * 0.36, y: h * 0.30)
+
+                // Echo's promo nook
+                PixelDesk(label: "홍보", accent: FestivalDesign.coral.opacity(0.7))
+                    .position(x: w * 0.80, y: h * 0.78)
 
                 // Plants
-                Plant(center: CGPoint(x: 0.92 * w, y: 0.08 * h))
-                Plant(center: CGPoint(x: 0.06 * w, y: 0.96 * h))
-                Plant(center: CGPoint(x: 0.94 * w, y: 0.96 * h))
+                PixelPlant().position(x: w * 0.06, y: h * 0.06)
+                PixelPlant().position(x: w * 0.94, y: h * 0.06)
+                PixelPlant().position(x: w * 0.06, y: h * 0.62)
 
-                // Desks for each non-Orion agent at their home
-                ForEach(agents) { agent in
-                    if agent.id != "orion" {
-                        AgentDesk(home: agent.home, id: agent.id)
-                            .position(x: agent.home.x * w, y: (agent.home.y + 0.03) * h)
-                    }
+                // Patrol path hint
+                Path { path in
+                    path.move(to: CGPoint(x: w * 0.10, y: h * 0.16))
+                    path.addLine(to: CGPoint(x: w * 0.90, y: h * 0.16))
+                    path.addLine(to: CGPoint(x: w * 0.90, y: h * 0.62))
+                    path.addLine(to: CGPoint(x: w * 0.10, y: h * 0.62))
+                    path.closeSubpath()
                 }
+                .stroke(FestivalDesign.teal.opacity(0.30),
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
 
-                // Dashed walking paths
-                WalkingPaths(agents: agents)
-                    .stroke(FestivalDesign.creamDeep.opacity(0.45),
-                            style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-
-                // Live label
+                // Live indicator
                 HStack(spacing: 5) {
                     Circle()
                         .fill(FestivalDesign.teal)
                         .frame(width: 6, height: 6)
-                    Text("업무실 가동 중")
-                        .font(.caption2.bold())
+                    Text("업무 진행 중")
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(FestivalDesign.navy)
                 }
                 .padding(.horizontal, 8)
@@ -242,16 +587,16 @@ private struct OfficeBackdrop: View {
                 .background(FestivalDesign.surface.opacity(0.92))
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(FestivalDesign.creamDeep.opacity(0.6), lineWidth: 0.5))
-                .position(x: w - 56, y: 18)
+                .position(x: w - 62, y: 26)
             }
         }
     }
 }
 
-private struct FloorGrid: Shape {
+private struct PixelTileGrid: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let step: CGFloat = 28
+        let step: CGFloat = 20
         var x = rect.minX
         while x <= rect.maxX {
             path.move(to: CGPoint(x: x, y: rect.minY))
@@ -268,104 +613,107 @@ private struct FloorGrid: Shape {
     }
 }
 
-private struct CarpetBand: View {
-    let rect: CGRect
-    let color: Color
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(color)
-            .frame(width: rect.width, height: rect.height)
-            .position(x: rect.midX, y: rect.midY)
+private struct BrickStrip: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        let brickW: CGFloat = 18
+        let brickH: CGFloat = 9
+        var y = rect.minY
+        var row = 0
+        while y < rect.maxY {
+            let offsetX = (row % 2 == 0) ? 0 : brickW / 2
+            var x = rect.minX - brickW + offsetX
+            while x < rect.maxX {
+                path.move(to: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: x, y: y + brickH))
+                x += brickW
+            }
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+            y += brickH
+            row += 1
+        }
+        return path
     }
 }
 
-private struct MeetingRoom: View {
-    let rect: CGRect
-
+private struct Window: View {
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(FestivalDesign.cream.opacity(0.85))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(FestivalDesign.creamDeep.opacity(0.85), lineWidth: 1.2)
-                )
-                .frame(width: rect.width, height: rect.height)
-                .position(x: rect.midX, y: rect.midY)
-
-            // Long table
-            RoundedRectangle(cornerRadius: 4)
-                .fill(FestivalDesign.creamDeep.opacity(0.85))
-                .frame(width: rect.width * 0.62, height: rect.height * 0.30)
-                .position(x: rect.midX, y: rect.midY + rect.height * 0.06)
-
-            // Whiteboard hint at top
             RoundedRectangle(cornerRadius: 2)
-                .fill(FestivalDesign.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(FestivalDesign.teal.opacity(0.5), lineWidth: 0.8)
-                )
-                .frame(width: rect.width * 0.34, height: 6)
-                .position(x: rect.midX, y: rect.minY + 8)
+                .fill(FestivalDesign.parkingSoft.opacity(0.7))
+            HStack(spacing: 0) {
+                Rectangle().fill(Color.clear)
+                Rectangle().fill(FestivalDesign.creamDeep.opacity(0.8)).frame(width: 1)
+                Rectangle().fill(Color.clear)
+            }
+            VStack(spacing: 0) {
+                Rectangle().fill(Color.clear)
+                Rectangle().fill(FestivalDesign.creamDeep.opacity(0.8)).frame(height: 1)
+                Rectangle().fill(Color.clear)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(FestivalDesign.creamDeep, lineWidth: 1.2)
+        )
+    }
+}
 
-            Text("회의실")
-                .font(.system(size: 8, weight: .semibold))
-                .tracking(1)
-                .foregroundStyle(FestivalDesign.secondaryText.opacity(0.7))
-                .position(x: rect.midX, y: rect.maxY - 10)
+private struct PixelDesk: View {
+    let label: String
+    let accent: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(FestivalDesign.creamDeep.opacity(0.85))
+                    .frame(width: 44, height: 22)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(FestivalDesign.navy.opacity(0.20), lineWidth: 0.8)
+                    )
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(FestivalDesign.navy.opacity(0.85))
+                    .frame(width: 14, height: 9)
+                    .overlay(
+                        Rectangle()
+                            .fill(accent.opacity(0.85))
+                            .frame(width: 10, height: 6)
+                    )
+                    .offset(y: -2)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(accent.opacity(0.85))
+                    .frame(width: 6, height: 8)
+                    .offset(x: 14, y: 0)
+            }
+            Text(label)
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(FestivalDesign.navy.opacity(0.75))
         }
     }
 }
 
-private struct CoffeeCorner: View {
-    let center: CGPoint
-
+private struct PixelPlant: View {
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(FestivalDesign.lantern.opacity(0.22))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(FestivalDesign.lantern.opacity(0.45), lineWidth: 0.8)
-                )
-                .frame(width: 42, height: 30)
-
-            Image(systemName: "cup.and.saucer.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(FestivalDesign.coral)
-        }
-        .position(center)
-    }
-}
-
-private struct Plant: View {
-    let center: CGPoint
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(FestivalDesign.teal.opacity(0.85))
-                .frame(width: 14, height: 14)
-            Circle()
-                .fill(FestivalDesign.teal.opacity(0.55))
-                .frame(width: 8, height: 8)
-                .offset(x: -4, y: -4)
+        VStack(spacing: -2) {
+            ZStack {
+                Circle().fill(FestivalDesign.teal.opacity(0.85)).frame(width: 14, height: 14)
+                Circle().fill(FestivalDesign.teal.opacity(0.55)).frame(width: 8, height: 8).offset(x: -3, y: -3)
+            }
             Trapezoid()
                 .fill(FestivalDesign.creamDeep)
-                .frame(width: 12, height: 6)
-                .offset(y: 9)
+                .frame(width: 12, height: 8)
         }
-        .position(center)
     }
 }
 
 private struct Trapezoid: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX + rect.width * 0.15, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.15, y: rect.minY))
+        path.move(to: CGPoint(x: rect.minX + rect.width * 0.18, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.18, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
@@ -373,371 +721,99 @@ private struct Trapezoid: Shape {
     }
 }
 
-private struct AgentDesk: View {
-    let home: CGPoint
-    let id: String
+// MARK: - Published wall
 
-    private var profile: AgentVisualProfile { AgentVisualProfile.profile(for: id) }
-
-    var body: some View {
-        ZStack {
-            // Desk surface
-            RoundedRectangle(cornerRadius: 4)
-                .fill(profile.deskColor.opacity(0.88))
-                .frame(width: 46, height: 22)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(FestivalDesign.navy.opacity(0.10), lineWidth: 0.8)
-                )
-
-            // Monitor
-            RoundedRectangle(cornerRadius: 2)
-                .fill(FestivalDesign.navy.opacity(0.85))
-                .frame(width: 16, height: 11)
-                .overlay(
-                    Image(systemName: profile.symbol)
-                        .font(.system(size: 6, weight: .bold))
-                        .foregroundStyle(profile.characterColor)
-                )
-                .offset(y: -2)
-
-            RoundedRectangle(cornerRadius: 1)
-                .fill(FestivalDesign.surface.opacity(0.92))
-                .frame(width: 18, height: 3)
-                .offset(y: 8)
-
-            RoundedRectangle(cornerRadius: 1)
-                .fill(FestivalDesign.lantern.opacity(0.7))
-                .frame(width: 8, height: 10)
-                .offset(x: -15, y: 1)
-        }
-        .shadow(color: FestivalDesign.navy.opacity(0.08), radius: 3, y: 1.5)
-    }
-}
-
-private struct WalkingPaths: Shape {
-    let agents: [AgentOfficeAgent]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        for agent in agents {
-            guard let visit = agent.visit else { continue }
-            path.move(to: CGPoint(x: agent.home.x * rect.width, y: agent.home.y * rect.height))
-            path.addLine(to: CGPoint(x: visit.x * rect.width, y: visit.y * rect.height))
-        }
-        return path
-    }
-}
-
-// MARK: - Agent sprite (moving character + bubble)
-
-private struct AgentSprite: View {
-    let agent: AgentOfficeAgent
-    let frame: AgentFrame
-    let speakingLine: String?
-    let isSpeaking: Bool
-    let date: Date
-
-    private var profile: AgentVisualProfile { AgentVisualProfile.profile(for: agent.id) }
-
-    private var walkBob: CGFloat {
-        guard frame.walking else { return 0 }
-        let t = date.timeIntervalSinceReferenceDate
-        return CGFloat(sin(t * 9 + Double(agent.id.hashValue % 7))) * 1.4
-    }
-
-    private var idleBreath: CGFloat {
-        guard !frame.walking else { return 1 }
-        let t = date.timeIntervalSinceReferenceDate
-        return 1 + CGFloat(sin(t * 1.6 + Double(agent.id.hashValue % 11))) * 0.03
-    }
+private struct PublishedWall: View {
+    let items: [DiscoveryItem]
 
     var body: some View {
         ZStack {
-            MascotFigureBody(
-                bodyColor: profile.characterColor,
-                statusColor: agent.status.color,
-                symbol: profile.symbol,
-                facing: frame.facing,
-                walking: frame.walking
-            )
-            .offset(y: walkBob)
-            .scaleEffect(idleBreath)
-
-            if isSpeaking, let line = speakingLine {
-                SpeechBubble(text: line, accent: agent.status.color, speakerName: agent.name)
-                    .offset(y: -34)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .bottom)))
-            }
-
-            Text(agent.name)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(FestivalDesign.navy)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(FestivalDesign.surface.opacity(0.88))
-                .clipShape(Capsule())
-                .offset(y: 24)
-        }
-        .frame(width: 122, height: 96)
-        .animation(.easeInOut(duration: 0.25), value: isSpeaking)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(agent.name), \(agent.role), \(agent.status.title)\(speakingLine.map { ": \($0)" } ?? "")")
-    }
-}
-
-private struct MascotFigureBody: View {
-    let bodyColor: Color
-    let statusColor: Color
-    let symbol: String
-    let facing: CGFloat
-    let walking: Bool
-
-    var body: some View {
-        ZStack {
-            Ellipse()
-                .fill(FestivalDesign.navy.opacity(0.16))
-                .frame(width: 36, height: 8)
-                .offset(y: 22)
-
-            TicketFigureShape()
-                .fill(
-                    LinearGradient(
-                        colors: [bodyColor.opacity(0.96), bodyColor.opacity(0.76)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 34, height: 42)
+            // Cork board
+            RoundedRectangle(cornerRadius: 6)
+                .fill(FestivalDesign.lantern.opacity(0.28))
                 .overlay(
-                    TicketFigureShape()
-                        .stroke(FestivalDesign.surface.opacity(0.92), lineWidth: 2)
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(FestivalDesign.creamDeep, lineWidth: 1.4)
                 )
                 .overlay(
-                    TicketFigureShape()
-                        .stroke(statusColor.opacity(0.82), lineWidth: 1.4)
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(FestivalDesign.navy.opacity(0.10), lineWidth: 0.5)
+                        .padding(3)
                 )
 
-            VStack(spacing: 3) {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(FestivalDesign.navy)
-                        .frame(width: 2.8, height: 2.8)
-                    Circle()
-                        .fill(FestivalDesign.navy)
-                        .frame(width: 2.8, height: 2.8)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("게시판")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Spacer()
+                    Text("\(items.count)건")
+                        .font(.system(size: 8))
+                        .foregroundStyle(FestivalDesign.secondaryText)
                 }
-                Capsule()
-                    .fill(FestivalDesign.surface.opacity(0.9))
-                    .frame(width: 10, height: 3)
+                if items.isEmpty {
+                    Text("아직 게시된 항목이 없어요.")
+                        .font(.system(size: 9))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                } else {
+                    HStack(spacing: 4) {
+                        ForEach(items.prefix(6)) { item in
+                            PublishedCard(item: item)
+                        }
+                    }
+                }
             }
-            .offset(x: facing * 2, y: -7)
-
-            Image(systemName: symbol)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(FestivalDesign.surface.opacity(0.95))
-                .offset(y: 7)
-
-            Capsule()
-                .fill(bodyColor.opacity(0.9))
-                .frame(width: 6, height: 18)
-                .rotationEffect(.degrees(walking ? -30 : -18))
-                .offset(x: -22, y: 2)
-
-            Capsule()
-                .fill(bodyColor.opacity(0.9))
-                .frame(width: 6, height: 18)
-                .rotationEffect(.degrees(walking ? 30 : 18))
-                .offset(x: 22, y: 2)
-
-            Circle()
-                .fill(statusColor)
-                .frame(width: 7, height: 7)
-                .overlay(Circle().stroke(FestivalDesign.surface, lineWidth: 1))
-                .offset(x: 13, y: -17)
+            .padding(6)
         }
-        .frame(width: 50, height: 58)
     }
 }
 
-private struct TicketFigureShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let radius = min(rect.width, rect.height) * 0.16
-        let notchRadius = rect.width * 0.13
-
-        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + radius), control: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY - notchRadius))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.midY + notchRadius), control: CGPoint(x: rect.maxX - notchRadius, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - radius, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - radius), control: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY + notchRadius))
-        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.midY - notchRadius), control: CGPoint(x: rect.minX + notchRadius, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
-        path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-private struct SpeechBubble: View {
-    let text: String
-    let accent: Color
-    let speakerName: String
+private struct PublishedCard: View {
+    let item: DiscoveryItem
 
     var body: some View {
-        VStack(spacing: 1) {
-            Text(speakerName)
-                .font(.system(size: 7, weight: .heavy))
-                .tracking(0.6)
-                .foregroundStyle(accent)
-            Text(text)
-                .font(.system(size: 9))
+        VStack(spacing: 2) {
+            Text(symbol)
+                .font(.system(size: 11))
+            Text(item.title)
+                .font(.system(size: 7, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .frame(maxWidth: 116)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(FestivalDesign.surface)
-                BubbleTail()
-                    .fill(FestivalDesign.surface)
-                    .frame(width: 8, height: 5)
-                    .offset(y: 18)
-            }
+        .padding(3)
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .background(FestivalDesign.surface.opacity(0.95))
+        .overlay(
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(accent.opacity(0.6), lineWidth: 1)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(accent.opacity(0.55), lineWidth: 1)
+            Circle()
+                .fill(FestivalDesign.coral)
+                .frame(width: 4, height: 4)
+                .offset(y: -16),
+            alignment: .top
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 4, y: 2)
     }
-}
 
-private struct BubbleTail: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-// MARK: - Choreography helpers
-
-private enum AgentPhase {
-    case working
-    case walkingOut
-    case chatting
-    case walkingBack
-}
-
-private struct AgentFrame {
-    let position: CGPoint
-    let phase: AgentPhase
-    let walking: Bool
-    let facing: CGFloat
-    let progress: Double
-}
-
-private enum AgentChoreography {
-    static let cycleSeconds: Double = 18
-
-    static func frame(for agent: AgentOfficeAgent, at date: Date) -> AgentFrame {
-        let t = date.timeIntervalSinceReferenceDate / cycleSeconds + agent.phaseOffset
-        var tau = t.truncatingRemainder(dividingBy: 1)
-        if tau < 0 { tau += 1 }
-
-        guard let visit = agent.visit else {
-            return AgentFrame(position: agent.home, phase: .working, walking: false, facing: 0, progress: tau)
-        }
-
-        let walkOutEnd = 0.22
-        let chatEnd = 0.50
-        let walkBackEnd = 0.72
-
-        if tau < walkOutEnd {
-            let p = easeInOut(tau / walkOutEnd)
-            let pos = lerp(agent.home, visit, t: p)
-            return AgentFrame(position: pos, phase: .walkingOut, walking: true,
-                              facing: sign(visit.x - agent.home.x), progress: tau)
-        } else if tau < chatEnd {
-            return AgentFrame(position: visit, phase: .chatting, walking: false,
-                              facing: sign(agent.home.x - visit.x), progress: tau)
-        } else if tau < walkBackEnd {
-            let p = easeInOut((tau - chatEnd) / (walkBackEnd - chatEnd))
-            let pos = lerp(visit, agent.home, t: p)
-            return AgentFrame(position: pos, phase: .walkingBack, walking: true,
-                              facing: sign(agent.home.x - visit.x), progress: tau)
-        } else {
-            return AgentFrame(position: agent.home, phase: .working, walking: false, facing: 0, progress: tau)
+    private var symbol: String {
+        switch item.kind {
+        case .festival: return "🎪"
+        case .event: return "🎟"
         }
     }
 
-    private static func easeInOut(_ x: Double) -> Double {
-        let clamped = max(0, min(1, x))
-        return clamped < 0.5
-            ? 2 * clamped * clamped
-            : 1 - pow(-2 * clamped + 2, 2) / 2
-    }
-
-    private static func lerp(_ a: CGPoint, _ b: CGPoint, t: Double) -> CGPoint {
-        CGPoint(x: a.x + (b.x - a.x) * CGFloat(t),
-                y: a.y + (b.y - a.y) * CGFloat(t))
-    }
-
-    private static func sign(_ value: CGFloat) -> CGFloat {
-        if value > 0.01 { return 1 }
-        if value < -0.01 { return -1 }
-        return 0
-    }
-}
-
-// MARK: - Agent profiles & provider row
-
-private struct AgentVisualProfile {
-    let symbol: String
-    let characterColor: Color
-    let deskColor: Color
-
-    static func profile(for id: String) -> AgentVisualProfile {
-        switch id {
-        case "orion":
-            return AgentVisualProfile(symbol: "sparkles", characterColor: FestivalDesign.coral, deskColor: FestivalDesign.cream)
-        case "sentinel":
-            return AgentVisualProfile(symbol: "heart.text.square", characterColor: FestivalDesign.teal, deskColor: FestivalDesign.tealSoft)
-        case "festa":
-            return AgentVisualProfile(symbol: "calendar", characterColor: FestivalDesign.lantern, deskColor: FestivalDesign.cream)
-        case "scout":
-            return AgentVisualProfile(symbol: "magnifyingglass", characterColor: FestivalDesign.parkingBlue, deskColor: FestivalDesign.parkingSoft)
-        case "radar":
-            return AgentVisualProfile(symbol: "dot.radiowaves.left.and.right", characterColor: FestivalDesign.teal, deskColor: FestivalDesign.tealSoft)
-        case "vera":
-            return AgentVisualProfile(symbol: "checkmark.seal", characterColor: FestivalDesign.lantern, deskColor: FestivalDesign.cream)
-        case "pixel":
-            return AgentVisualProfile(symbol: "photo", characterColor: FestivalDesign.coral, deskColor: FestivalDesign.parkingSoft)
-        case "piper":
-            return AgentVisualProfile(symbol: "paperplane", characterColor: FestivalDesign.parkingBlue, deskColor: FestivalDesign.cream)
-        case "echo":
-            return AgentVisualProfile(symbol: "quote.bubble", characterColor: FestivalDesign.teal, deskColor: FestivalDesign.tealSoft)
-        case "promoter":
-            return AgentVisualProfile(symbol: "megaphone", characterColor: FestivalDesign.coral, deskColor: FestivalDesign.cream)
-        default:
-            return AgentVisualProfile(symbol: "desktopcomputer", characterColor: FestivalDesign.secondaryText, deskColor: FestivalDesign.surface)
+    private var accent: Color {
+        switch item.kind {
+        case .festival: return FestivalDesign.lantern
+        case .event: return FestivalDesign.parkingBlue
         }
     }
 }
+
+// MARK: - Provider row
 
 private struct ProviderHealthRow: View {
     let provider: ProviderHealth
