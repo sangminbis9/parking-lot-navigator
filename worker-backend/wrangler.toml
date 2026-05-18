@@ -18,11 +18,10 @@ EVENT_PROVIDER_ENABLED = "true"
 LOCAL_EVENT_PROVIDER_ENABLED = "true"
 LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.80"
 LOCAL_EVENT_SEARCH_MAX_QUERIES = "1600"
-LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY = "8"
-KAKAO_CATEGORY_RADIUS_METERS = "5000"
-KAKAO_CATEGORY_MAX_PAGES = "3"
+LOCAL_EVENT_MAX_KAKAO_LOOKUPS = "18"
+LOCAL_EVENT_BLOG_DISPLAY = "20"
+LOCAL_EVENT_KAKAO_RADIUS_METERS = "20000"
 NAVER_SEARCH_BASE_URL = "https://openapi.naver.com"
-NAVER_PLACE_BASE_URL = "https://m.place.naver.com"
 KAKAO_LOCAL_BASE_URL = "https://dapi.kakao.com"
 SEOUL_OPEN_DATA_BASE_URL = "http://openapi.seoul.go.kr:8088"
 PUBLIC_DATA_ENV = "production"
@@ -32,7 +31,7 @@ KOPIS_BASE_URL = "http://www.kopis.or.kr"
 KCISA_BASE_URL = "https://api.kcisa.kr"
 
 [triggers]
-crons = ["* * * * *", "0 * * * *"]
+crons = ["* * * * *", "0 * * * *", "15 */3 * * *"]
 
 [[d1_databases]]
 binding = "DB"
