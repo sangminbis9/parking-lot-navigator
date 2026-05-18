@@ -144,8 +144,8 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(id: "vera", name: "Vera", role: "Data Validator", status: validatorStatus(parkingCounts: parkingCounts, discoveryCounts: discoveryCounts), thought: "Validating backend response quality.", position: CGPoint(x: 0.20, y: 0.60)),
             AgentOfficeAgent(id: "pixel", name: "Pixel", role: "Image Enrichment", status: .idle, thought: "Image metadata is read from app content APIs.", position: CGPoint(x: 0.44, y: 0.68)),
             AgentOfficeAgent(id: "piper", name: "Piper", role: "Publisher", status: .idle, thought: "Publishing remains controlled by the app backend.", position: CGPoint(x: 0.70, y: 0.72)),
-            AgentOfficeAgent(id: "echo", name: "Echo", role: "Feedback", status: .idle, thought: "User reports route through backend APIs.", position: CGPoint(x: 0.30, y: 0.86)),
-            AgentOfficeAgent(id: "promoter", name: "Promoter", role: "Promotion", status: .idle, thought: "Sponsored local events stay separate.", position: CGPoint(x: 0.62, y: 0.88))
+            AgentOfficeAgent(id: "echo", name: "Echo", role: "Feedback", status: .idle, thought: "User reports route through backend APIs.", position: CGPoint(x: 0.30, y: 0.80)),
+            AgentOfficeAgent(id: "promoter", name: "Promoter", role: "Promotion", status: .idle, thought: "Sponsored local events stay separate.", position: CGPoint(x: 0.62, y: 0.82))
         ]
     }
 
@@ -259,6 +259,6 @@ private let agentSpecs: [AgentOfficeSpec] = [
     AgentOfficeSpec(id: "vera", name: "Vera", role: "Data Validator", loadingStatus: .validating, position: CGPoint(x: 0.20, y: 0.60)),
     AgentOfficeSpec(id: "pixel", name: "Pixel", role: "Image Enrichment", loadingStatus: .idle, position: CGPoint(x: 0.44, y: 0.68)),
     AgentOfficeSpec(id: "piper", name: "Piper", role: "Publisher", loadingStatus: .idle, position: CGPoint(x: 0.70, y: 0.72)),
-    AgentOfficeSpec(id: "echo", name: "Echo", role: "Feedback", loadingStatus: .idle, position: CGPoint(x: 0.30, y: 0.86)),
-    AgentOfficeSpec(id: "promoter", name: "Promoter", role: "Promotion", loadingStatus: .idle, position: CGPoint(x: 0.62, y: 0.88))
+    AgentOfficeSpec(id: "echo", name: "Echo", role: "Feedback", loadingStatus: .idle, position: CGPoint(x: 0.30, y: 0.80)),
+    AgentOfficeSpec(id: "promoter", name: "Promoter", role: "Promotion", loadingStatus: .idle, position: CGPoint(x: 0.62, y: 0.82))
 ]
