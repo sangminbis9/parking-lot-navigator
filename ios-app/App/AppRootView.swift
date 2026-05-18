@@ -47,7 +47,7 @@ struct AppRootView: View {
             routedStack {
                 AgentOfficeView(apiClient: apiClient)
             }
-            .tabItem { Label("Office", systemImage: "building.2") }
+            .tabItem { Label("오피스", systemImage: "building.2") }
             .tag(AppTab.agentOffice)
 
             routedStack {
