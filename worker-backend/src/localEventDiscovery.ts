@@ -4,6 +4,7 @@ import {
   structureLocalEvent,
 } from "../../backend/src/features/localEvents/localEventStructuring.js";
 import { upsertLocalEvent } from "./localEvents.js";
+import { logAgentActivity } from "./agents/headAgent.js";
 
 export interface LocalEventDiscoveryEnv {
   LOCAL_EVENT_PROVIDER_ENABLED?: string;
@@ -17,6 +18,10 @@ export interface LocalEventDiscoveryEnv {
   NAVER_SEARCH_BASE_URL?: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL?: string;
+  AI?: Ai;
+  AGENT_HEAD_ENABLED?: string;
+  AGENT_HEAD_BATCH_SIZE?: string;
+  AGENT_HEAD_MAX_BATCHES?: string;
 }
 
 export interface LocalEventDiscoveryOptions {
@@ -44,6 +49,11 @@ export interface LocalEventDiscoveryResult {
   skipped: number;
   skipReasons: Record<string, number>;
   errors: string[];
+  headEnabled: boolean;
+  headReviewed: number;
+  headApproved: number;
+  headPending: number;
+  headRejected: number;
   generatedAt: string;
 }
 
@@ -268,6 +278,11 @@ export async function syncLocalEventDiscovery(
     skipped: 0,
     skipReasons: {},
     errors: [],
+    headEnabled: isHeadEnabled(options.env),
+    headReviewed: 0,
+    headApproved: 0,
+    headPending: 0,
+    headRejected: 0,
     generatedAt,
   };
   const noteSkip = (reason: string): void => {
@@ -400,6 +415,19 @@ export async function syncLocalEventDiscovery(
               storeName: candidate.storeName,
               kakaoPlace: candidate.kakaoPlace,
             });
+            await logAgentActivity(options.db, {
+              agentId: "scout",
+              action: "found",
+              targetKind: "local_event",
+              targetId: candidate.item.id,
+              targetTitle: candidate.item.title,
+              payload: {
+                storeName: candidate.item.storeName,
+                region: candidate.item.region,
+                confidenceScore: candidate.item.confidenceScore,
+                initialStatus: candidate.item.status,
+              },
+            });
           }
           result.saved += options.dryRun ? 0 : 1;
           if (candidate.item.status === "approved") result.approved += 1;
@@ -415,6 +443,12 @@ export async function syncLocalEventDiscovery(
   }
 
   return result;
+}
+
+function isHeadEnabled(env: LocalEventDiscoveryEnv): boolean {
+  if (!env.AI) return false;
+  const flag = (env.AGENT_HEAD_ENABLED ?? "true").toLowerCase();
+  return flag !== "false" && flag !== "0";
 }
 
 async function searchNaverBlog(

@@ -81,10 +81,12 @@ final class AgentOfficeViewModel: ObservableObject {
     @Published private(set) var agents: [AgentOfficeAgent] = []
     @Published private(set) var snapshot: AgentOfficeSnapshot = .empty
     @Published private(set) var isLoading = false
+    @Published private(set) var recentActivity: [AgentActivityEvent] = []
     @Published var errorMessage: String?
 
     private let apiClient: APIClientProtocol
     private var hasLoaded = false
+    private var lastActivityTimestamp: String?
 
     // Seoul City Hall — fixed reference point for the office display.
     private let referenceLat: Double = 37.5665
@@ -119,12 +121,16 @@ final class AgentOfficeViewModel: ObservableObject {
         async let discoveryProviders = apiClient.discoveryProviderHealth()
         async let festivalsResult: [Festival]? = try? apiClient.nearbyFestivals(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
         async let eventsResult: [FreeEvent]? = try? apiClient.nearbyEvents(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
+        async let activityResult: [AgentActivityEvent]? = try? apiClient.agentActivity(since: nil, limit: 80)
 
         do {
             let parking = try await parkingProviders
             let discovery = try await discoveryProviders
             let fests = (await festivalsResult) ?? []
             let evts = (await eventsResult) ?? []
+            let activity = (await activityResult) ?? []
+            recentActivity = activity
+            lastActivityTimestamp = activity.first?.ts ?? lastActivityTimestamp
 
             let normalizedFestivals = fests.prefix(8).map { f in
                 DiscoveryItem(

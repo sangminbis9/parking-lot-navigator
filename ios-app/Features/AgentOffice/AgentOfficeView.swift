@@ -11,8 +11,15 @@ struct AgentOfficeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                OfficeFloorView(agents: viewModel.agents, snapshot: viewModel.snapshot)
+                OfficeFloorView(
+                    agents: viewModel.agents,
+                    snapshot: viewModel.snapshot,
+                    activity: viewModel.recentActivity
+                )
                     .aspectRatio(0.78, contentMode: .fit)
+                if !viewModel.recentActivity.isEmpty {
+                    ActivityFeed(events: viewModel.recentActivity)
+                }
                 summaryCard
                 providerSection(title: "주차 제공자", providers: viewModel.snapshot.parkingProviders)
                 providerSection(title: "탐색 제공자", providers: viewModel.snapshot.discoveryProviders)
@@ -105,6 +112,7 @@ private extension AgentOfficeView {
 private struct OfficeFloorView: View {
     let agents: [AgentOfficeAgent]
     let snapshot: AgentOfficeSnapshot
+    let activity: [AgentActivityEvent]
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
@@ -120,10 +128,13 @@ private struct OfficeFloorView: View {
 
                     ForEach(agents) { agent in
                         let frame = OfficeChoreography.frame(for: agent.id, at: t, snapshot: snapshot)
+                        let live = liveLine(for: agent.id)
+                        let line = live
+                            ?? OfficeChoreography.spokenLine(for: agent, frame: frame, snapshot: snapshot)
                         AgentRunner(
                             agent: agent,
                             frame: frame,
-                            spokenLine: OfficeChoreography.spokenLine(for: agent, frame: frame, snapshot: snapshot)
+                            spokenLine: line
                         )
                         .position(x: frame.position.x * size.width,
                                   y: frame.position.y * size.height)
@@ -136,6 +147,107 @@ private struct OfficeFloorView: View {
                 )
             }
         }
+    }
+
+    private func liveLine(for agentId: String) -> String? {
+        guard let event = activity.first(where: { $0.agentId == agentId }) else { return nil }
+        return formatActivityLine(event)
+    }
+}
+
+private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
+    let title = event.targetTitle ?? ""
+    switch (event.agentId, event.action) {
+    case ("scout", "found"):
+        return title.isEmpty ? "후보 발견" : "발견: \(title)"
+    case ("festa", "found"):
+        return title.isEmpty ? "축제 후보 발견" : "발견: \(title)"
+    case ("orion", "validate"):
+        let prefix: String
+        switch event.verdict {
+        case "approve": prefix = "승인"
+        case "reject":  prefix = "거절"
+        default:        prefix = "보류"
+        }
+        if let reason = event.reason, !reason.isEmpty {
+            return "\(prefix): \(reason)"
+        }
+        return title.isEmpty ? prefix : "\(prefix): \(title)"
+    case ("orion", "error"):
+        return "헤드 LLM 오류"
+    case ("echo", "post"):
+        return title.isEmpty ? "게시판 등록" : "게시: \(title)"
+    default:
+        return event.reason
+    }
+}
+
+private struct ActivityFeed: View {
+    let events: [AgentActivityEvent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("최근 활동")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            ForEach(events.prefix(12)) { event in
+                ActivityRow(event: event)
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+}
+
+private struct ActivityRow: View {
+    let event: AgentActivityEvent
+
+    private var accent: Color {
+        switch event.verdict {
+        case "approve": return FestivalDesign.teal
+        case "reject":  return FestivalDesign.coral
+        case "pending": return FestivalDesign.lantern
+        default:
+            switch event.agentId {
+            case "orion": return FestivalDesign.coral
+            case "scout": return FestivalDesign.parkingBlue
+            case "festa": return FestivalDesign.lantern
+            case "echo":  return FestivalDesign.teal
+            default:      return FestivalDesign.secondaryText
+            }
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle().fill(accent).frame(width: 8, height: 8).padding(.top, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(event.agentId.uppercased())
+                        .font(.caption.bold())
+                        .foregroundStyle(accent)
+                    Text(event.action)
+                        .font(.caption)
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                    Spacer()
+                    Text(shortTime(event.ts))
+                        .font(.caption2)
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                Text(formatActivityLine(event) ?? (event.targetTitle ?? "—"))
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private func shortTime(_ ts: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: ts) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return ts
     }
 }
 

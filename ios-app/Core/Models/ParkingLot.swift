@@ -77,3 +77,20 @@ struct ProviderHealthResponse: Codable {
     let providers: [ProviderHealth]
     let generatedAt: String
 }
+
+struct AgentActivityEvent: Codable, Hashable, Identifiable {
+    let id: String
+    let ts: String
+    let agentId: String
+    let action: String
+    let targetKind: String?
+    let targetId: String?
+    let targetTitle: String?
+    let verdict: String?
+    let reason: String?
+}
+
+struct AgentActivityResponse: Codable {
+    let items: [AgentActivityEvent]
+    let generatedAt: String
+}
