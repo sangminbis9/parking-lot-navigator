@@ -210,7 +210,7 @@ const localEventDiscoverySyncSchema = z.object({
   chunkCount: z.coerce.number().int().min(1).max(64).optional(),
 });
 
-const LOCAL_EVENT_CHUNK_COUNT = 8;
+const LOCAL_EVENT_CHUNK_COUNT = 12;
 
 const syncNationalParkingSchema = z.object({
   pageNo: z.coerce.number().int().min(1).default(1),
