@@ -29,6 +29,7 @@ PUBLIC_DATA_BASE_URL = "https://apis.data.go.kr"
 NATIONAL_PARKING_DATA_BASE_URL = "https://api.data.go.kr"
 KOPIS_BASE_URL = "http://www.kopis.or.kr"
 KCISA_BASE_URL = "https://api.kcisa.kr"
+MERCHANT_PUBLIC_BASE_URL = "https://parking-lot-navigator-api.parkingnav.workers.dev"
 
 [triggers]
 crons = ["* * * * *", "0 * * * *", "15 */3 * * *"]
