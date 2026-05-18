@@ -38,3 +38,7 @@ crons = ["* * * * *", "0 * * * *", "15 */3 * * *"]
 binding = "DB"
 database_name = "parking-lot-navigator"
 database_id = "31c04846-57d5-4e38-82b6-2d7b3a0dfbee"
+
+[[r2_buckets]]
+binding = "MERCHANT_IMAGES"
+bucket_name = "merchant-images"
