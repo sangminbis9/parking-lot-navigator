@@ -10,6 +10,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     settingsHeader
+                    merchantCard
                     appSettingsCard
                     dataSourceCard
                     providerStatusCard
@@ -55,6 +56,39 @@ struct SettingsView: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
+    }
+
+    private var merchantURL: URL {
+        AppConfiguration.current.apiBaseURL.appendingPathComponent("merchant")
+    }
+
+    private var merchantCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("내 가게 운영")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            Text("내 가게의 할인, 무료 제공, 팝업, 오픈 이벤트를 앱 지도에 노출해보세요. 등록과 결제는 외부 웹페이지에서 진행됩니다.")
+                .font(.subheadline)
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Link(destination: merchantURL) {
+                HStack(spacing: 8) {
+                    Image(systemName: "building.2.fill")
+                    Text("내 가게 이벤트 등록")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.subheadline)
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(FestivalDesign.navy)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            }
+        }
+        .padding(14)
+        .festivalCard()
     }
 
     private var appSettingsCard: some View {
