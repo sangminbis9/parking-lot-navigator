@@ -9,6 +9,7 @@ protocol APIClientProtocol {
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
     func discoveryProviderHealth() async throws -> [ProviderHealth]
+    func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent]
 }
 
 final class APIClient: APIClientProtocol {
@@ -112,6 +113,17 @@ final class APIClient: APIClientProtocol {
         return response.providers
     }
 
+    func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
+        var components = URLComponents(url: endpoint("agent-office/activity"), resolvingAgainstBaseURL: false)!
+        var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let since, !since.isEmpty {
+            items.append(URLQueryItem(name: "since", value: since))
+        }
+        components.queryItems = items
+        let response: AgentActivityResponse = try await get(components.url!)
+        return response.items
+    }
+
     private func endpoint(_ path: String) -> URL {
         baseURL.appendingPathComponent(path)
     }
@@ -213,6 +225,15 @@ final class MockAPIClient: APIClientProtocol {
         [
             ProviderHealth(name: "mock-festival-provider", status: "up", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: nil, qualityScore: 1, stale: false),
             ProviderHealth(name: "mock-local-event-provider", status: "degraded", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: "Mock review backlog", qualityScore: 0.7, stale: false)
+        ]
+    }
+
+    func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
+        let now = ISO8601DateFormatter().string(from: Date())
+        return [
+            AgentActivityEvent(id: "mock-1", ts: now, agentId: "scout", action: "found", targetKind: "local_event", targetId: "mock-event", targetTitle: "샘플 카페 리뷰 이벤트", verdict: nil, reason: nil),
+            AgentActivityEvent(id: "mock-2", ts: now, agentId: "orion", action: "validate", targetKind: "local_event", targetId: "mock-event", targetTitle: "샘플 카페 리뷰 이벤트", verdict: "approve", reason: "혜택과 매장 정보 일치"),
+            AgentActivityEvent(id: "mock-3", ts: now, agentId: "echo", action: "post", targetKind: "local_event", targetId: "mock-event", targetTitle: "샘플 카페 리뷰 이벤트", verdict: nil, reason: nil)
         ]
     }
 }

@@ -18,6 +18,7 @@ import {
   updateAdminLocalEvent,
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
+import { runHeadReview } from "./agents/headAgent.js";
 import { createMerchantApp } from "./merchant/routes.js";
 import {
   queryRealtimeParkingCache,
@@ -67,6 +68,10 @@ type Env = {
   NATIONAL_PARKING_DATA_BASE_URL?: string;
   MERCHANT_SESSION_SECRET?: string;
   MERCHANT_PUBLIC_BASE_URL?: string;
+  AI?: Ai;
+  AGENT_HEAD_ENABLED?: string;
+  AGENT_HEAD_BATCH_SIZE?: string;
+  AGENT_HEAD_MAX_BATCHES?: string;
 };
 
 type BackendModules = {
@@ -663,6 +668,62 @@ app.post("/admin/sync-discovery", async (c) => {
   }
 });
 
+app.get("/agent-office/activity", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const params = queryObject(c.req.raw.url);
+  const limitRaw = Number(params.limit ?? 80);
+  const limit = Number.isFinite(limitRaw)
+    ? Math.max(1, Math.min(Math.trunc(limitRaw), 200))
+    : 80;
+  const since = typeof params.since === "string" ? params.since : null;
+  try {
+    const rows = since
+      ? await c.env.DB.prepare(
+          `SELECT id, ts, agent_id, action, target_kind, target_id, target_title, verdict, reason, payload_json
+             FROM agent_activity
+            WHERE ts > ?
+            ORDER BY ts DESC
+            LIMIT ?`,
+        )
+          .bind(since, limit)
+          .all()
+      : await c.env.DB.prepare(
+          `SELECT id, ts, agent_id, action, target_kind, target_id, target_title, verdict, reason, payload_json
+             FROM agent_activity
+            ORDER BY ts DESC
+            LIMIT ?`,
+        )
+          .bind(limit)
+          .all();
+    const items = (rows.results ?? []).map((row) => {
+      const r = row as Record<string, unknown>;
+      let payload: unknown = null;
+      if (typeof r.payload_json === "string" && r.payload_json) {
+        try {
+          payload = JSON.parse(r.payload_json);
+        } catch {
+          payload = null;
+        }
+      }
+      return {
+        id: r.id,
+        ts: r.ts,
+        agentId: r.agent_id,
+        action: r.action,
+        targetKind: r.target_kind,
+        targetId: r.target_id,
+        targetTitle: r.target_title,
+        verdict: r.verdict,
+        reason: r.reason,
+        payload,
+      };
+    });
+    return c.json({ items, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/sync-local-events", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -682,6 +743,18 @@ app.post("/admin/sync-local-events", async (c) => {
       chunkIndex,
       chunkCount,
     });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
+app.post("/admin/run-head-review", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  try {
+    const result = await runHeadReview(c.env.DB, c.env);
     return c.json(result);
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
@@ -722,8 +795,20 @@ export default {
       );
       return;
     }
+    if (controller.cron === "30 */3 * * *") {
+      ctx.waitUntil(runHeadReviewScheduled(env));
+      return;
+    }
   },
 };
+
+async function runHeadReviewScheduled(env: Env): Promise<void> {
+  try {
+    await runHeadReview(env.DB!, env);
+  } catch (error) {
+    console.error("head review scheduled failed", error);
+  }
+}
 
 async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
   try {
