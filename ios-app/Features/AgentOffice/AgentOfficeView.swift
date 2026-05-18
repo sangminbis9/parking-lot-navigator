@@ -14,19 +14,19 @@ struct AgentOfficeView: View {
                 OfficeFloorView(agents: viewModel.agents)
                     .aspectRatio(0.72, contentMode: .fit)
                 summaryCard
-                providerSection(title: "Parking Providers", providers: viewModel.snapshot.parkingProviders)
-                providerSection(title: "Discovery Providers", providers: viewModel.snapshot.discoveryProviders)
+                providerSection(title: "주차 제공자", providers: viewModel.snapshot.parkingProviders)
+                providerSection(title: "탐색 제공자", providers: viewModel.snapshot.discoveryProviders)
             }
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("Agent Office")
+        .navigationTitle("에이전트 오피스")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: refresh) {
                     Image(systemName: viewModel.isLoading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                 }
-                .accessibilityLabel("Refresh Agent Office")
+                .accessibilityLabel("에이전트 오피스 새로고침")
             }
         }
         .task { await viewModel.runPolling() }
@@ -36,10 +36,10 @@ struct AgentOfficeView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Agent Office")
+                Text("에이전트 오피스")
                     .font(.largeTitle.bold())
                     .foregroundStyle(FestivalDesign.navy)
-                Text("Backend agents on the floor right now")
+                Text("마스코트 피규어들이 백엔드 상태를 나눠 맡아 일해요")
                     .font(.subheadline)
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
@@ -50,7 +50,7 @@ struct AgentOfficeView: View {
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Orion Summary", systemImage: "brain.head.profile")
+                Label("오리온 요약", systemImage: "brain.head.profile")
                     .font(.headline)
                 Spacer()
                 Text(viewModel.snapshot.updatedAt, style: .time)
@@ -79,7 +79,7 @@ struct AgentOfficeView: View {
                 .foregroundStyle(FestivalDesign.navy)
 
             if providers.isEmpty {
-                Text("No provider health returned.")
+                Text("아직 제공자 상태가 도착하지 않았어요.")
                     .font(.subheadline)
                     .foregroundStyle(FestivalDesign.secondaryText)
             } else {
@@ -233,7 +233,7 @@ private struct OfficeBackdrop: View {
                     Circle()
                         .fill(FestivalDesign.teal)
                         .frame(width: 6, height: 6)
-                    Text("Live floor")
+                    Text("업무실 가동 중")
                         .font(.caption2.bold())
                         .foregroundStyle(FestivalDesign.navy)
                 }
@@ -310,7 +310,7 @@ private struct MeetingRoom: View {
                 .frame(width: rect.width * 0.34, height: 6)
                 .position(x: rect.midX, y: rect.minY + 8)
 
-            Text("MEETING")
+            Text("회의실")
                 .font(.system(size: 8, weight: .semibold))
                 .tracking(1)
                 .foregroundStyle(FestivalDesign.secondaryText.opacity(0.7))
@@ -400,6 +400,16 @@ private struct AgentDesk: View {
                         .foregroundStyle(profile.characterColor)
                 )
                 .offset(y: -2)
+
+            RoundedRectangle(cornerRadius: 1)
+                .fill(FestivalDesign.surface.opacity(0.92))
+                .frame(width: 18, height: 3)
+                .offset(y: 8)
+
+            RoundedRectangle(cornerRadius: 1)
+                .fill(FestivalDesign.lantern.opacity(0.7))
+                .frame(width: 8, height: 10)
+                .offset(x: -15, y: 1)
         }
         .shadow(color: FestivalDesign.navy.opacity(0.08), radius: 3, y: 1.5)
     }
@@ -444,9 +454,10 @@ private struct AgentSprite: View {
 
     var body: some View {
         ZStack {
-            CharacterBody(
+            MascotFigureBody(
                 bodyColor: profile.characterColor,
                 statusColor: agent.status.color,
+                symbol: profile.symbol,
                 facing: frame.facing,
                 walking: frame.walking
             )
@@ -468,63 +479,108 @@ private struct AgentSprite: View {
                 .clipShape(Capsule())
                 .offset(y: 24)
         }
-        .frame(width: 110, height: 32)
+        .frame(width: 122, height: 96)
         .animation(.easeInOut(duration: 0.25), value: isSpeaking)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(agent.name), \(agent.role), \(agent.status.title)\(speakingLine.map { ": \($0)" } ?? "")")
     }
 }
 
-private struct CharacterBody: View {
+private struct MascotFigureBody: View {
     let bodyColor: Color
     let statusColor: Color
+    let symbol: String
     let facing: CGFloat
     let walking: Bool
 
     var body: some View {
         ZStack {
-            // Shadow
             Ellipse()
                 .fill(FestivalDesign.navy.opacity(0.16))
-                .frame(width: 22, height: 6)
-                .offset(y: 14)
+                .frame(width: 36, height: 8)
+                .offset(y: 22)
 
-            // Status ring
-            Circle()
-                .stroke(statusColor.opacity(0.85), lineWidth: 2)
-                .frame(width: 26, height: 26)
-                .offset(y: 2)
-
-            // Body
-            Circle()
-                .fill(bodyColor.opacity(0.92))
-                .frame(width: 22, height: 22)
-                .offset(y: 2)
-
-            // Head
-            Circle()
-                .fill(FestivalDesign.cream)
-                .frame(width: 14, height: 14)
-                .overlay(
-                    Circle()
-                        .stroke(bodyColor.opacity(0.65), lineWidth: 1.4)
+            TicketFigureShape()
+                .fill(
+                    LinearGradient(
+                        colors: [bodyColor.opacity(0.96), bodyColor.opacity(0.76)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-                .offset(x: facing * 1.5, y: -6)
+                .frame(width: 34, height: 42)
+                .overlay(
+                    TicketFigureShape()
+                        .stroke(FestivalDesign.surface.opacity(0.92), lineWidth: 2)
+                )
+                .overlay(
+                    TicketFigureShape()
+                        .stroke(statusColor.opacity(0.82), lineWidth: 1.4)
+                )
 
-            // Nose dot (facing indicator)
-            Circle()
-                .fill(FestivalDesign.navy.opacity(0.6))
-                .frame(width: 2.4, height: 2.4)
-                .offset(x: facing * 4.5, y: -6)
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(FestivalDesign.navy)
+                        .frame(width: 2.8, height: 2.8)
+                    Circle()
+                        .fill(FestivalDesign.navy)
+                        .frame(width: 2.8, height: 2.8)
+                }
+                Capsule()
+                    .fill(FestivalDesign.surface.opacity(0.9))
+                    .frame(width: 10, height: 3)
+            }
+            .offset(x: facing * 2, y: -7)
 
-            // Status pip on shoulder
+            Image(systemName: symbol)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(FestivalDesign.surface.opacity(0.95))
+                .offset(y: 7)
+
+            Capsule()
+                .fill(bodyColor.opacity(0.9))
+                .frame(width: 6, height: 18)
+                .rotationEffect(.degrees(walking ? -30 : -18))
+                .offset(x: -22, y: 2)
+
+            Capsule()
+                .fill(bodyColor.opacity(0.9))
+                .frame(width: 6, height: 18)
+                .rotationEffect(.degrees(walking ? 30 : 18))
+                .offset(x: 22, y: 2)
+
             Circle()
                 .fill(statusColor)
-                .frame(width: 5, height: 5)
+                .frame(width: 7, height: 7)
                 .overlay(Circle().stroke(FestivalDesign.surface, lineWidth: 1))
-                .offset(x: 9, y: -2)
+                .offset(x: 13, y: -17)
         }
-        .frame(width: 32, height: 32)
+        .frame(width: 50, height: 58)
+    }
+}
+
+private struct TicketFigureShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let radius = min(rect.width, rect.height) * 0.16
+        let notchRadius = rect.width * 0.13
+
+        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + radius), control: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY - notchRadius))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.midY + notchRadius), control: CGPoint(x: rect.maxX - notchRadius, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - radius, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - radius), control: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY + notchRadius))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.midY - notchRadius), control: CGPoint(x: rect.minX + notchRadius, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -535,7 +591,7 @@ private struct SpeechBubble: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            Text(speakerName.uppercased())
+            Text(speakerName)
                 .font(.system(size: 7, weight: .heavy))
                 .tracking(0.6)
                 .foregroundStyle(accent)
@@ -705,17 +761,28 @@ private struct ProviderHealthRow: View {
                 Text(provider.name)
                     .font(.subheadline.bold())
                     .foregroundStyle(FestivalDesign.navy)
-                Text(provider.lastError ?? "quality \(Int(provider.qualityScore * 100))%")
+                Text(provider.lastError ?? "품질 \(Int(provider.qualityScore * 100))%")
                     .font(.caption)
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
             Spacer()
-            Text(provider.stale ? "stale" : provider.status)
+            Text(providerStatusText)
                 .font(.caption.bold())
                 .foregroundStyle(color)
         }
         .padding(.vertical, 6)
+    }
+
+    private var providerStatusText: String {
+        if provider.stale { return "지연" }
+        switch provider.status.lowercased() {
+        case "up": return "정상"
+        case "degraded": return "주의"
+        case "down": return "중단"
+        case "stale": return "지연"
+        default: return provider.status
+        }
     }
 }
 
