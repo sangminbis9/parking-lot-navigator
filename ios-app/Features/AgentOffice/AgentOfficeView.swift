@@ -290,7 +290,7 @@ private struct SpeechBubble: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .frame(width: 134, minHeight: 44)
+            .frame(minWidth: 134, maxWidth: 134, minHeight: 44)
             .background(FestivalDesign.surface.opacity(0.94))
             .clipShape(RoundedRectangle(cornerRadius: 7))
             .overlay(
