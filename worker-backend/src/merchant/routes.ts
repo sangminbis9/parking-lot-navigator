@@ -24,6 +24,7 @@ export type MerchantEnv = {
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   KAKAO_REST_API_KEY?: string;
+  KAKAO_CLIENT_SECRET?: string;
   MERCHANT_SESSION_SECRET?: string;
   MERCHANT_PUBLIC_BASE_URL?: string;
 };
@@ -129,7 +130,7 @@ export function createMerchantApp() {
         clientSecret:
           provider === "naver"
             ? c.env.NAVER_CLIENT_SECRET
-            : undefined,
+            : c.env.KAKAO_CLIENT_SECRET,
       };
       const url =
         provider === "naver"
@@ -180,7 +181,7 @@ export function createMerchantApp() {
           clientSecret:
             provider === "naver"
               ? c.env.NAVER_CLIENT_SECRET
-              : undefined,
+              : c.env.KAKAO_CLIENT_SECRET,
         };
         const profile =
           provider === "naver"
