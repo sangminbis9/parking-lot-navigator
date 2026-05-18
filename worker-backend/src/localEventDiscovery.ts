@@ -165,16 +165,33 @@ const EVENT_KEYWORD_PATTERN =
 const BENEFIT_PATTERN =
   /(\d{1,2}\s?%|\d{1,3}(?:,\d{3})*\s?원|1\s*\+\s*1|무료|증정|쿠폰|할인|사은품|서비스|coupon|discount|free|gift)/i;
 
-const STORE_NAME_NOISE = new Set([
+const STORE_TYPE_WORDS = [
+  "베이커리",
+  "이자카야",
+  "비스트로",
+  "레스토랑",
+  "브런치",
+  "디저트",
+  "팝업스토어",
+  "팝업",
   "카페",
   "맛집",
+  "주점",
+  "포차",
+  "분식",
+  "식당",
+  "다이닝",
+] as const;
+
+const EVENT_PHRASE_PATTERN =
+  /(오픈\s*이벤트|리뷰\s*이벤트|방문\s*이벤트|체험단|할인\s*이벤트|할인\s*행사|1\s*\+\s*1|무료\s*증정|쿠폰\s*증정|오픈\s*기념|오픈\s*특가|신메뉴\s*출시|한정\s*판매|선착순|이벤트\s*중|이벤트\s*진행)/g;
+
+const TITLE_NOISE_PATTERN =
+  /(솔직\s*후기|내돈내산|존맛탱|존맛|JMT|핫\s?플레이스|핫플|블로그|체험|광고|협찬|추천|인스타|sns|소개|방문기|다녀온|다녀왔|후기|리뷰)/gi;
+
+const GENERIC_TOKEN_NOISE = new Set([
   "이벤트",
-  "오픈이벤트",
-  "리뷰이벤트",
   "오픈",
-  "리뷰",
-  "팝업",
-  "팝업스토어",
   "할인",
   "쿠폰",
   "무료",
@@ -182,11 +199,15 @@ const STORE_NAME_NOISE = new Set([
   "한정",
   "사은품",
   "서비스",
-  "오픈기념",
-  "후기",
-  "방문",
-  "블로그",
-  "체험단",
+  "신메뉴",
+  "오늘",
+  "내일",
+  "주말",
+  "평일",
+  "오전",
+  "오후",
+  "진행",
+  "중",
 ]);
 
 export async function syncLocalEventDiscovery(
@@ -297,7 +318,11 @@ export async function syncLocalEventDiscovery(
           noteSkip("no_event_keyword");
           continue;
         }
-        const storeName = extractStoreNameFromBlog(titleText, region.name);
+        const storeName = extractStoreNameFromBlog(
+          titleText,
+          descText,
+          region.name,
+        );
         if (!storeName) {
           noteSkip("no_store_name");
           continue;
@@ -605,30 +630,94 @@ function selectKakaoPlace(
 
 function extractStoreNameFromBlog(
   title: string,
+  description: string,
   regionName: string,
 ): string | null {
-  if (!title) return null;
-  let working = title;
-  working = working.replace(/\[[^\]]*\]/g, " ");
-  working = working.replace(/\([^)]*\)/g, " ");
+  return (
+    extractStoreFromText(title, regionName) ??
+    extractStoreFromText(description, regionName)
+  );
+}
+
+function extractStoreFromText(text: string, regionName: string): string | null {
+  if (!text) return null;
+  let working = text;
+  working = working.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, " ");
+  working = working.replace(/[\[(<【〈{][^\])>】〉}]*[\])>】〉}]/g, " ");
   working = working.replace(/[#@][^\s]+/g, " ");
-  working = working.replace(/[`'"":!?~|\\/]+/g, " ");
-  if (regionName) working = working.replace(new RegExp(regionName, "g"), " ");
-  for (const keyword of EVENT_QUERY_KEYWORDS) {
-    for (const token of keyword.split(/\s+/)) {
-      if (token.length >= 2)
-        working = working.replace(new RegExp(token, "g"), " ");
+  working = working.replace(EVENT_PHRASE_PATTERN, " ");
+  working = working.replace(TITLE_NOISE_PATTERN, " ");
+  if (regionName) {
+    working = working.replace(new RegExp(regionName, "g"), " ");
+  }
+  working = working.replace(/[`''""!?~|\\/=^*…·•★☆♥♡♪]/g, " ");
+  working = working.replace(/\s+/g, " ").trim();
+  if (!working) return null;
+
+  const typeMatch = matchStoreTypePhrase(working);
+  if (typeMatch && isAcceptableCandidate(typeMatch)) return typeMatch;
+
+  const tokens = working
+    .split(/[\s,.:;\-–—]+/)
+    .map((token) => token.trim())
+    .filter(
+      (token) =>
+        token.length >= 2 &&
+        !GENERIC_TOKEN_NOISE.has(token) &&
+        !/^\d+$/.test(token),
+    );
+  if (tokens.length === 0) return null;
+  for (let take = Math.min(3, tokens.length); take >= 1; take -= 1) {
+    const candidate = tokens.slice(0, take).join(" ").trim();
+    if (isAcceptableCandidate(candidate)) return candidate;
+  }
+  return null;
+}
+
+function matchStoreTypePhrase(text: string): string | null {
+  for (const type of STORE_TYPE_WORDS) {
+    let index = text.indexOf(type);
+    while (index >= 0) {
+      const before = text.slice(0, index).trim();
+      const beforeTokens = sanitizeTokens(before.split(/[\s,.:;\-–—]+/)).slice(
+        -2,
+      );
+      if (beforeTokens.length >= 1) {
+        const candidate = `${beforeTokens.join(" ")} ${type}`.trim();
+        if (isAcceptableCandidate(candidate)) return candidate;
+      }
+      const after = text.slice(index + type.length).trim();
+      const afterTokens = sanitizeTokens(after.split(/[\s,.:;\-–—]+/)).slice(
+        0,
+        2,
+      );
+      if (afterTokens.length >= 1) {
+        const candidate = `${type} ${afterTokens.join(" ")}`.trim();
+        if (isAcceptableCandidate(candidate)) return candidate;
+      }
+      index = text.indexOf(type, index + type.length);
     }
   }
-  const tokens = working
-    .split(/[\s,.\-]+/)
+  return null;
+}
+
+function sanitizeTokens(tokens: string[]): string[] {
+  return tokens
     .map((token) => token.trim())
-    .filter((token) => token.length >= 2 && !STORE_NAME_NOISE.has(token));
-  if (tokens.length === 0) return null;
-  const candidate = tokens.slice(0, 3).join(" ").trim();
-  if (candidate.length < 2 || candidate.length > 40) return null;
-  if (/^\d+$/.test(candidate)) return null;
-  return candidate;
+    .filter(
+      (token) =>
+        token.length >= 2 &&
+        !GENERIC_TOKEN_NOISE.has(token) &&
+        !/^\d+$/.test(token) &&
+        !STORE_TYPE_WORDS.includes(token as (typeof STORE_TYPE_WORDS)[number]),
+    );
+}
+
+function isAcceptableCandidate(value: string): boolean {
+  if (!value) return false;
+  if (value.length < 2 || value.length > 40) return false;
+  if (/^\d+$/.test(value)) return false;
+  return true;
 }
 
 function nameMatchScore(left: string, right: string): number {
