@@ -560,9 +560,7 @@ async function buildCandidateFromBlog(input: {
   const hasClearEndDate = Boolean(endDate);
   const expired = isExpired(endDate, now);
   const status: LocalEventStatus =
-    confidenceScore >= threshold && !expired && hasClearEndDate
-      ? "approved"
-      : "pending";
+    confidenceScore >= threshold && !expired ? "approved" : "pending";
   const needsReview = status !== "approved" || !hasClearEndDate;
   const dedupeKey =
     selected.id && selected.id.length > 0
