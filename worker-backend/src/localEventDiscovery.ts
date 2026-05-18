@@ -188,7 +188,9 @@ const EVENT_QUERY_KEYWORDS = [
 ] as const;
 
 const EVENT_KEYWORD_PATTERN =
-  /(리뷰\s*이벤트|방문\s*이벤트|오픈\s*이벤트|할인|무료|증정|팝업|한정|1\s*\+\s*1|coupon|discount|free|review|popup)/i;
+  /(리뷰\s*이벤트|방문\s*이벤트|오픈\s*이벤트|할인|무료|증정|팝업|한정|1\s*\+\s*1|coupon|discount|free|review|popup)/gi;
+const NEGATION_LOOKAHEAD =
+  /(않|없[다어습으는]|안\s*[하합함해]|종료|끝났|마감|중단|취소|폐점|정지)/;
 const BENEFIT_PATTERN =
   /(\d{1,2}\s?%|\d{1,3}(?:,\d{3})*\s?원|1\s*\+\s*1|무료|증정|쿠폰|할인|사은품|서비스|coupon|discount|free|gift)/i;
 
@@ -341,7 +343,7 @@ export async function syncLocalEventDiscovery(
           noteSkip("blog_text_empty");
           continue;
         }
-        if (!EVENT_KEYWORD_PATTERN.test(combined)) {
+        if (!hasActiveEventKeyword(combined)) {
           noteSkip("no_event_keyword");
           continue;
         }
@@ -932,6 +934,21 @@ function stableHash(value: string): string {
 
 function isEnabled(value: string | undefined): boolean {
   return value === undefined ? false : value.toLowerCase() === "true";
+}
+
+function hasActiveEventKeyword(text: string): boolean {
+  const pattern = new RegExp(EVENT_KEYWORD_PATTERN.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    const window = text.slice(
+      match.index + match[0].length,
+      match.index + match[0].length + 40,
+    );
+    if (!NEGATION_LOOKAHEAD.test(window)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isExpired(value: string | null | undefined, now: Date): boolean {
