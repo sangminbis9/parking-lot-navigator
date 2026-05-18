@@ -8,6 +8,7 @@ protocol APIClientProtocol {
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
+    func discoveryProviderHealth() async throws -> [ProviderHealth]
 }
 
 final class APIClient: APIClientProtocol {
@@ -106,6 +107,11 @@ final class APIClient: APIClientProtocol {
         return response.providers
     }
 
+    func discoveryProviderHealth() async throws -> [ProviderHealth] {
+        let response: ProviderHealthResponse = try await get(endpoint("discover/providers/health"))
+        return response.providers
+    }
+
     private func endpoint(_ path: String) -> URL {
         baseURL.appendingPathComponent(path)
     }
@@ -201,5 +207,12 @@ final class MockAPIClient: APIClientProtocol {
 
     func providerHealth() async throws -> [ProviderHealth] {
         [ProviderHealth(name: "mock", status: "up", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: nil, qualityScore: 1, stale: false)]
+    }
+
+    func discoveryProviderHealth() async throws -> [ProviderHealth] {
+        [
+            ProviderHealth(name: "mock-festival-provider", status: "up", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: nil, qualityScore: 1, stale: false),
+            ProviderHealth(name: "mock-local-event-provider", status: "degraded", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: "Mock review backlog", qualityScore: 0.7, stale: false)
+        ]
     }
 }

@@ -10,6 +10,7 @@ enum AppRoute: Hashable {
 enum AppTab: Hashable {
     case map
     case discover
+    case agentOffice
     case favorites
     case settings
 }
@@ -42,6 +43,12 @@ struct AppRootView: View {
             }
             .tabItem { Label("\u{C774}\u{BCA4}\u{D2B8}", systemImage: "sparkles") }
             .tag(AppTab.discover)
+
+            routedStack {
+                AgentOfficeView(apiClient: apiClient)
+            }
+            .tabItem { Label("Office", systemImage: "building.2") }
+            .tag(AppTab.agentOffice)
 
             routedStack {
                 FavoritesView()
