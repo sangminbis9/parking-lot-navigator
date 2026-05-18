@@ -4,10 +4,13 @@ import type {
   LocalEventReportRequest,
   LocalEventStatus,
   LocalEventStatusPatchRequest,
-  MapItem
+  MapItem,
 } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
-import { inferLocalEventType, structureLocalEvent } from "../../backend/src/features/localEvents/localEventStructuring.js";
+import {
+  inferLocalEventType,
+  structureLocalEvent,
+} from "../../backend/src/features/localEvents/localEventStructuring.js";
 
 export interface LocalEventQueryOptions {
   lat: number;
@@ -46,12 +49,15 @@ interface LocalEventRow {
 
 export async function queryLocalEvents(
   db: D1Database,
-  options: LocalEventQueryOptions
+  options: LocalEventQueryOptions,
 ): Promise<{ items: LocalEvent[]; nextCursor: string | null }> {
   const status = options.status ?? "approved";
   const offset = parseCursor(options.cursor);
   const latDelta = options.radiusMeters / 111320;
-  const lngDelta = options.radiusMeters / Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
+  const lngDelta =
+    options.radiusMeters /
+    Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
+  const now = new Date().toISOString();
   let rows: D1Result<LocalEventRow>;
   try {
     rows = await db
@@ -62,9 +68,17 @@ export async function queryLocalEvents(
            AND lat IS NOT NULL
            AND lng IS NOT NULL
            AND lat BETWEEN ? AND ?
-           AND lng BETWEEN ? AND ?`
+           AND lng BETWEEN ? AND ?
+           AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))`,
       )
-      .bind(status, options.lat - latDelta, options.lat + latDelta, options.lng - lngDelta, options.lng + lngDelta)
+      .bind(
+        status,
+        options.lat - latDelta,
+        options.lat + latDelta,
+        options.lng - lngDelta,
+        options.lng + lngDelta,
+        now,
+      )
       .all<LocalEventRow>();
   } catch (error) {
     if (isMissingLocalEventsTable(error)) {
@@ -80,13 +94,19 @@ export async function queryLocalEvents(
   const nextOffset = offset + page.length;
   return {
     items: page,
-    nextCursor: nextOffset < matched.length ? String(nextOffset) : null
+    nextCursor: nextOffset < matched.length ? String(nextOffset) : null,
   };
 }
 
-export async function getLocalEvent(db: D1Database, id: string): Promise<LocalEvent | null> {
+export async function getLocalEvent(
+  db: D1Database,
+  id: string,
+): Promise<LocalEvent | null> {
   try {
-    const row = await db.prepare("SELECT * FROM local_events WHERE id = ?").bind(id).first<LocalEventRow>();
+    const row = await db
+      .prepare("SELECT * FROM local_events WHERE id = ?")
+      .bind(id)
+      .first<LocalEventRow>();
     return row ? mapLocalEventRow(row, row.lat ?? 0, row.lng ?? 0) : null;
   } catch (error) {
     if (isMissingLocalEventsTable(error)) return null;
@@ -94,19 +114,26 @@ export async function getLocalEvent(db: D1Database, id: string): Promise<LocalEv
   }
 }
 
-export async function createLocalEventReport(db: D1Database, input: LocalEventReportRequest): Promise<LocalEvent> {
+export async function createLocalEventReport(
+  db: D1Database,
+  input: LocalEventReportRequest,
+): Promise<LocalEvent> {
   const now = new Date().toISOString();
   const structured = structureLocalEvent({
     sourceUrl: input.sourceUrl,
     captionText: input.captionText,
     storeName: input.storeName,
-    address: input.address
+    address: input.address,
   });
   const id = `report:${crypto.randomUUID()}`;
   const item: LocalEvent = {
     id,
     title: structured.title ?? "Submitted local event",
-    eventType: inferLocalEventType([structured.title, structured.description, structured.benefit].filter(Boolean).join(" ")),
+    eventType: inferLocalEventType(
+      [structured.title, structured.description, structured.benefit]
+        .filter(Boolean)
+        .join(" "),
+    ),
     category: "local_event",
     sourceId: id,
     startDate: structured.startDate ?? today(),
@@ -130,36 +157,62 @@ export async function createLocalEventReport(db: D1Database, input: LocalEventRe
     isSponsored: false,
     sponsorTier: null,
     paidUntil: null,
-    priorityScore: 0
+    priorityScore: 0,
   };
-  await insertLocalEvent(db, item, { rawPayload: input, duplicateKey: duplicateKey(item) });
+  await insertLocalEvent(db, item, {
+    rawPayload: input,
+    duplicateKey: duplicateKey(item),
+  });
   await db
     .prepare(
       `INSERT INTO local_event_reports (
         id, local_event_id, source_url, caption_text, store_name, address, image_url, note, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     )
-    .bind(`report:${crypto.randomUUID()}`, item.id, input.sourceUrl ?? null, input.captionText ?? null, input.storeName ?? null, input.address ?? null, input.imageUrl ?? null, input.note ?? null, now)
+    .bind(
+      `report:${crypto.randomUUID()}`,
+      item.id,
+      input.sourceUrl ?? null,
+      input.captionText ?? null,
+      input.storeName ?? null,
+      input.address ?? null,
+      input.imageUrl ?? null,
+      input.note ?? null,
+      now,
+    )
     .run();
   return item;
 }
 
-export async function createAdminLocalEvent(db: D1Database, input: LocalEventAdminUpsertRequest): Promise<LocalEvent> {
+export async function createAdminLocalEvent(
+  db: D1Database,
+  input: LocalEventAdminUpsertRequest,
+): Promise<LocalEvent> {
   const now = new Date().toISOString();
   const id = `local:${crypto.randomUUID()}`;
   const item = adminInputToLocalEvent(id, input, now);
-  await insertLocalEvent(db, item, { rawPayload: input, duplicateKey: duplicateKey(item) });
+  await insertLocalEvent(db, item, {
+    rawPayload: input,
+    duplicateKey: duplicateKey(item),
+  });
   return item;
 }
 
-export async function upsertLocalEvent(db: D1Database, item: LocalEvent, rawPayload: unknown): Promise<void> {
-  await insertLocalEvent(db, item, { rawPayload, duplicateKey: duplicateKey(item) });
+export async function upsertLocalEvent(
+  db: D1Database,
+  item: LocalEvent,
+  rawPayload: unknown,
+): Promise<void> {
+  await insertLocalEvent(db, item, {
+    rawPayload,
+    duplicateKey: duplicateKey(item),
+  });
 }
 
 export async function updateAdminLocalEvent(
   db: D1Database,
   id: string,
-  input: Partial<LocalEventAdminUpsertRequest>
+  input: Partial<LocalEventAdminUpsertRequest>,
 ): Promise<LocalEvent | null> {
   const existing = await getLocalEvent(db, id);
   if (!existing) return null;
@@ -176,31 +229,47 @@ export async function updateAdminLocalEvent(
     lat: input.lat ?? existing.lat,
     lng: input.lng ?? existing.lng,
     source: input.source ?? existing.source,
-    sourceUrl: input.sourceUrl === undefined ? existing.sourceUrl : input.sourceUrl,
+    sourceUrl:
+      input.sourceUrl === undefined ? existing.sourceUrl : input.sourceUrl,
     imageUrl: input.imageUrl === undefined ? existing.imageUrl : input.imageUrl,
     benefit: input.benefit ?? existing.benefit,
     shortDescription: input.description ?? existing.shortDescription,
     updatedAt: new Date().toISOString(),
     isSponsored: input.isSponsored ?? existing.isSponsored,
-    sponsorTier: input.sponsorTier === undefined ? existing.sponsorTier : input.sponsorTier,
-    paidUntil: input.paidUntil === undefined ? existing.paidUntil : input.paidUntil,
+    sponsorTier:
+      input.sponsorTier === undefined
+        ? existing.sponsorTier
+        : input.sponsorTier,
+    paidUntil:
+      input.paidUntil === undefined ? existing.paidUntil : input.paidUntil,
     priorityScore: input.priorityScore ?? existing.priorityScore,
-    needsReview: input.status ? input.status !== "approved" : existing.needsReview
+    needsReview: input.status
+      ? input.status !== "approved"
+      : existing.needsReview,
   };
-  await insertLocalEvent(db, updated, { rawPayload: updated, duplicateKey: duplicateKey(updated) });
+  await insertLocalEvent(db, updated, {
+    rawPayload: updated,
+    duplicateKey: duplicateKey(updated),
+  });
   return updated;
 }
 
 export async function patchLocalEventStatus(
   db: D1Database,
   id: string,
-  input: LocalEventStatusPatchRequest
+  input: LocalEventStatusPatchRequest,
 ): Promise<LocalEvent | null> {
   const updated = await updateAdminLocalEvent(db, id, { status: input.status });
   if (!updated) return null;
   await db
-    .prepare("UPDATE local_events SET rejection_reason = ?, approved_at = ? WHERE id = ?")
-    .bind(input.rejectionReason ?? null, input.status === "approved" ? new Date().toISOString() : null, id)
+    .prepare(
+      "UPDATE local_events SET rejection_reason = ?, approved_at = ? WHERE id = ?",
+    )
+    .bind(
+      input.rejectionReason ?? null,
+      input.status === "approved" ? new Date().toISOString() : null,
+      id,
+    )
     .run();
   return updated;
 }
@@ -219,15 +288,25 @@ export function localEventMapItem(item: LocalEvent): MapItem {
     sourceUrl: item.sourceUrl,
     imageUrl: item.imageUrl,
     isSponsored: item.isSponsored,
-    priorityScore: item.priorityScore
+    priorityScore: item.priorityScore,
   };
 }
 
-function adminInputToLocalEvent(id: string, input: LocalEventAdminUpsertRequest, now: string): LocalEvent {
+function adminInputToLocalEvent(
+  id: string,
+  input: LocalEventAdminUpsertRequest,
+  now: string,
+): LocalEvent {
   return {
     id,
     title: input.title ?? "Local event",
-    eventType: input.eventType ?? inferLocalEventType([input.title, input.description, input.benefit].filter(Boolean).join(" ")),
+    eventType:
+      input.eventType ??
+      inferLocalEventType(
+        [input.title, input.description, input.benefit]
+          .filter(Boolean)
+          .join(" "),
+      ),
     category: "local_event",
     sourceId: id,
     startDate: input.startDate ?? today(),
@@ -251,14 +330,14 @@ function adminInputToLocalEvent(id: string, input: LocalEventAdminUpsertRequest,
     isSponsored: input.isSponsored ?? false,
     sponsorTier: input.sponsorTier ?? null,
     paidUntil: input.paidUntil ?? null,
-    priorityScore: input.priorityScore ?? 0
+    priorityScore: input.priorityScore ?? 0,
   };
 }
 
 async function insertLocalEvent(
   db: D1Database,
   item: LocalEvent,
-  options: { rawPayload: unknown; duplicateKey: string }
+  options: { rawPayload: unknown; duplicateKey: string },
 ): Promise<void> {
   const now = item.updatedAt ?? new Date().toISOString();
   await db
@@ -293,7 +372,7 @@ async function insertLocalEvent(
         priority_score = excluded.priority_score,
         duplicate_key = excluded.duplicate_key,
         raw_payload = excluded.raw_payload,
-        updated_at = excluded.updated_at`
+        updated_at = excluded.updated_at`,
     )
     .bind(
       item.id,
@@ -321,12 +400,16 @@ async function insertLocalEvent(
       options.duplicateKey,
       JSON.stringify(options.rawPayload),
       now,
-      now
+      now,
     )
     .run();
 }
 
-function mapLocalEventRow(row: LocalEventRow, lat: number, lng: number): LocalEvent {
+function mapLocalEventRow(
+  row: LocalEventRow,
+  lat: number,
+  lng: number,
+): LocalEvent {
   return {
     id: row.id,
     title: row.title,
@@ -341,7 +424,9 @@ function mapLocalEventRow(row: LocalEventRow, lat: number, lng: number): LocalEv
     address: row.address,
     lat: row.lat ?? 0,
     lng: row.lng ?? 0,
-    distanceMeters: Math.round(distanceMeters(lat, lng, row.lat ?? 0, row.lng ?? 0)),
+    distanceMeters: Math.round(
+      distanceMeters(lat, lng, row.lat ?? 0, row.lng ?? 0),
+    ),
     source: row.source,
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
@@ -354,22 +439,33 @@ function mapLocalEventRow(row: LocalEventRow, lat: number, lng: number): LocalEv
     isSponsored: Boolean(row.is_sponsored),
     sponsorTier: row.sponsor_tier,
     paidUntil: row.paid_until,
-    priorityScore: row.priority_score
+    priorityScore: row.priority_score,
   };
 }
 
 function localEventSort(a: LocalEvent, b: LocalEvent): number {
   if (a.isSponsored !== b.isSponsored) return a.isSponsored ? -1 : 1;
-  if (a.priorityScore !== b.priorityScore) return b.priorityScore - a.priorityScore;
+  if (a.priorityScore !== b.priorityScore)
+    return b.priorityScore - a.priorityScore;
   return a.distanceMeters - b.distanceMeters;
 }
 
 function duplicateKey(item: LocalEvent): string {
-  return [normalize(item.storeName), normalize(item.title), item.startDate, item.endDate ?? "", Math.round(item.lat * 1000), Math.round(item.lng * 1000)].join("|");
+  return [
+    normalize(item.storeName),
+    normalize(item.title),
+    item.startDate,
+    item.endDate ?? "",
+    Math.round(item.lat * 1000),
+    Math.round(item.lng * 1000),
+  ].join("|");
 }
 
 function normalize(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, "").replace(/[()[\]{}"'`~!@#$%^&*_+=,./<>?:;|\\-]/g, "");
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[()[\]{}"'`~!@#$%^&*_+=,./<>?:;|\\-]/g, "");
 }
 
 function parseCursor(value: string | undefined): number {
@@ -383,5 +479,8 @@ function today(): string {
 }
 
 function isMissingLocalEventsTable(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("no such table: local_events");
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("no such table: local_events")
+  );
 }
