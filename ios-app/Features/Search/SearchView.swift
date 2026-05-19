@@ -9,6 +9,7 @@ struct SearchView: View {
     @State private var festivals: [Festival] = []
     @State private var events: [FreeEvent] = []
     @State private var query = ""
+    @State private var debouncedQuery = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedKind: DiscoverTabKind = .all
@@ -18,12 +19,19 @@ struct SearchView: View {
     @State private var visibleItemCount = 20
     @State private var loadTask: Task<Void, Never>?
     @State private var cleanupTask: Task<Void, Never>?
+    @State private var queryDebounceTask: Task<Void, Never>?
+    @State private var allItems: [DiscoverTabItem] = []
+    @State private var filteredItems: [DiscoverTabItem] = []
+    @State private var availableSources: [String] = []
+    @State private var availableTags: [String] = []
+    @State private var availableRegions: [String] = []
     @FocusState private var isSearchFocused: Bool
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
     private let pageSize = 20
     private let cleanupDelayNanoseconds: UInt64 = 500_000_000
+    private let queryDebounceNanoseconds: UInt64 = 250_000_000
 
     var body: some View {
         ScrollView {
@@ -116,17 +124,24 @@ struct SearchView: View {
         .onChange(of: tabRouter.discoverFilterQuery) { _ in
             applyPendingDiscoverFilter()
         }
-        .onChange(of: query) { _ in
+        .onChange(of: query) { newValue in
+            scheduleQueryDebounce(newValue)
+        }
+        .onChange(of: debouncedQuery) { _ in
             resetVisibleItems()
+            recomputeFilteredItems()
         }
         .onChange(of: selectedKind) { _ in
             resetVisibleItems()
+            recomputeFilteredItems()
         }
         .onChange(of: sort) { _ in
             resetVisibleItems()
+            recomputeFilteredItems()
         }
         .onChange(of: filters) { _ in
             resetVisibleItems()
+            recomputeFilteredItems()
         }
         .sheet(isPresented: $showsFilters) {
             DiscoverTabFilterSheet(
@@ -298,33 +313,35 @@ struct SearchView: View {
         .festivalCard()
     }
 
-    private var allItems: [DiscoverTabItem] {
-        festivals.map(DiscoverTabItem.festival) + events.map(DiscoverTabItem.event)
-    }
-
-    private var filteredItems: [DiscoverTabItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let searched = trimmed.isEmpty ? allItems : allItems.filter { $0.searchText.contains(trimmed) }
-        let scoped = searched
-            .filter { selectedKind.includes($0) }
-            .filter { filters.includes($0) }
-        return scoped.sorted(by: sort.sort)
-    }
-
     private var visibleItems: [DiscoverTabItem] {
         Array(filteredItems.prefix(visibleItemCount))
     }
 
-    private var availableSources: [String] {
-        uniqueValues(allItems.map(\.source))
+    private func rebuildAllItems() {
+        let items = festivals.map(DiscoverTabItem.festival) + events.map(DiscoverTabItem.event)
+        allItems = items
+        availableSources = uniqueValues(items.map(\.source))
+        availableTags = uniqueValues(items.flatMap(\.tags))
+        availableRegions = uniqueValues(items.map(\.regionText))
+        recomputeFilteredItems()
     }
 
-    private var availableTags: [String] {
-        uniqueValues(allItems.flatMap(\.tags))
+    private func recomputeFilteredItems() {
+        let trimmed = debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let searched = trimmed.isEmpty ? allItems : allItems.filter { $0.searchText.contains(trimmed) }
+        let scoped = searched
+            .filter { selectedKind.includes($0) }
+            .filter { filters.includes($0) }
+        filteredItems = scoped.sorted(by: sort.sort)
     }
 
-    private var availableRegions: [String] {
-        uniqueValues(allItems.map(\.regionText))
+    private func scheduleQueryDebounce(_ newValue: String) {
+        queryDebounceTask?.cancel()
+        queryDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: queryDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            debouncedQuery = newValue
+        }
     }
 
     private var activeFilterLabels: [String] {
@@ -361,6 +378,7 @@ struct SearchView: View {
             errorMessage = nil
             isLoading = false
             resetVisibleItems()
+            rebuildAllItems()
             cleanupTask = nil
         }
     }
@@ -394,6 +412,7 @@ struct SearchView: View {
             festivals = loadedFestivals
             events = loadedEvents
             resetVisibleItems()
+            rebuildAllItems()
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
