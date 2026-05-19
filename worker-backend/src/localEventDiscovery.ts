@@ -65,10 +65,27 @@ interface NaverBlogItem {
   title: string;
   link: string;
   description: string;
-  bloggername: string;
-  bloggerlink: string;
-  postdate: string;
+  bloggername?: string;
+  bloggerlink?: string;
+  postdate?: string;
+  cafename?: string;
+  pubDate?: string;
+  originallink?: string;
+  source?: NaverSearchSourceId;
 }
+
+type NaverSearchSourceId = "blog" | "cafe" | "news";
+
+interface NaverSearchSource {
+  id: NaverSearchSourceId;
+  path: string;
+}
+
+const NAVER_SEARCH_SOURCES: NaverSearchSource[] = [
+  { id: "blog", path: "/v1/search/blog.json" },
+  { id: "cafe", path: "/v1/search/cafearticle.json" },
+  { id: "news", path: "/v1/search/news.json" },
+];
 
 interface KakaoKeywordPlace {
   id?: string;
@@ -194,7 +211,25 @@ const REGION_CENTERS: RegionCenter[] = [
 const EVENT_QUERY_KEYWORDS = [
   "카페 오픈이벤트",
   "카페 리뷰이벤트",
+  "카페 팝업",
+  "카페 한정메뉴",
+  "카페 신메뉴",
+  "카페 1+1",
+  "카페 리뉴얼오픈",
   "맛집 오픈이벤트",
+  "맛집 할인",
+  "맛집 오픈기념",
+  "맛집 신메뉴",
+  "맛집 시식",
+  "식당 오픈이벤트",
+  "식당 할인",
+  "식당 오픈기념",
+  "식당 신메뉴",
+  "식당 시식",
+  "디저트 팝업",
+  "베이커리 오픈",
+  "팝업스토어 오픈",
+  "그랜드오픈",
 ] as const;
 
 const EVENT_KEYWORD_PATTERN =
@@ -323,120 +358,129 @@ export async function syncLocalEventDiscovery(
 
   outer: for (const region of regions) {
     for (const keyword of EVENT_QUERY_KEYWORDS) {
-      if (result.searchedQueries >= maxQueries) break outer;
-      result.searchedQueries += 1;
-      const query = `${region.name} ${keyword}`;
-      let blogItems: NaverBlogItem[];
-      try {
-        blogItems = await searchNaverBlog(options.env, query, blogDisplay);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "unknown_error";
-        result.errors.push(`naver_blog_search:${message.slice(0, 80)}`);
-        noteSkip(`naver_blog_search_failed`);
-        if (/Too many subrequests/i.test(message)) break outer;
-        continue;
-      }
-
-      for (const blogItem of blogItems) {
-        const link = canonicalUrl(blogItem.link);
-        if (!link) {
-          noteSkip("blog_link_invalid");
-          continue;
-        }
-        if (seenBlogLinks.has(link)) {
-          noteSkip("blog_link_duplicate");
-          continue;
-        }
-        seenBlogLinks.add(link);
-        result.fetched += 1;
-
-        const titleText = cleanHtml(blogItem.title);
-        const descText = cleanHtml(blogItem.description);
-        const combined = [titleText, descText].filter(Boolean).join(". ");
-        if (!combined) {
-          noteSkip("blog_text_empty");
-          continue;
-        }
-        if (!hasActiveEventKeyword(combined)) {
-          noteSkip("no_event_keyword");
-          continue;
-        }
-        const storeName = extractStoreNameFromBlog(
-          titleText,
-          descText,
-          region.name,
-        );
-        if (!storeName) {
-          noteSkip("no_store_name");
-          continue;
-        }
-        if (kakaoLookups >= maxKakaoLookups) {
-          noteSkip("kakao_lookup_budget_exhausted");
-          continue;
-        }
-
+      for (const source of NAVER_SEARCH_SOURCES) {
+        if (result.searchedQueries >= maxQueries) break outer;
+        result.searchedQueries += 1;
+        const query = `${region.name} ${keyword}`;
+        let blogItems: NaverBlogItem[];
         try {
-          kakaoLookups += 1;
-          const outcome = await buildCandidateFromBlog({
-            env: options.env,
-            blogItem,
-            link,
-            titleText,
-            descText,
-            combined,
-            storeName,
-            region,
-            keyword,
-            generatedAt,
-            now,
-          });
-          if (outcome.kind === "skip") {
-            noteSkip(outcome.reason);
-            continue;
-          }
-          const candidate = outcome.candidate;
-          if (
-            candidate.item.sourceId &&
-            seenSourceIds.has(candidate.item.sourceId)
-          ) {
-            noteSkip("candidate_source_duplicate");
-            continue;
-          }
-          if (candidate.item.sourceId)
-            seenSourceIds.add(candidate.item.sourceId);
-
-          result.candidates += 1;
-          if (!options.dryRun) {
-            await upsertLocalEvent(options.db, candidate.item, {
-              provider: result.provider,
-              query: candidate.query,
-              blogItem: candidate.blogItem,
-              storeName: candidate.storeName,
-              kakaoPlace: candidate.kakaoPlace,
-            });
-            await logAgentActivity(options.db, {
-              agentId: "scout",
-              action: "found",
-              targetKind: "local_event",
-              targetId: candidate.item.id,
-              targetTitle: candidate.item.title,
-              payload: {
-                storeName: candidate.item.storeName,
-                region: candidate.item.region,
-                confidenceScore: candidate.item.confidenceScore,
-                initialStatus: candidate.item.status,
-              },
-            });
-          }
-          result.saved += options.dryRun ? 0 : 1;
-          if (candidate.item.status === "approved") result.approved += 1;
-          if (candidate.item.status === "pending") result.pending += 1;
+          blogItems = await searchNaverSource(
+            options.env,
+            source,
+            query,
+            blogDisplay,
+          );
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "unknown_error";
-          noteSkip(`exception:${message.slice(0, 60)}`);
-          result.errors.push(message);
+          result.errors.push(
+            `naver_${source.id}_search:${message.slice(0, 80)}`,
+          );
+          noteSkip(`naver_${source.id}_search_failed`);
+          if (/Too many subrequests/i.test(message)) break outer;
+          continue;
+        }
+
+        for (const blogItem of blogItems) {
+          const link = canonicalUrl(blogItem.link);
+          if (!link) {
+            noteSkip("blog_link_invalid");
+            continue;
+          }
+          if (seenBlogLinks.has(link)) {
+            noteSkip("blog_link_duplicate");
+            continue;
+          }
+          seenBlogLinks.add(link);
+          result.fetched += 1;
+
+          const titleText = cleanHtml(blogItem.title);
+          const descText = cleanHtml(blogItem.description);
+          const combined = [titleText, descText].filter(Boolean).join(". ");
+          if (!combined) {
+            noteSkip("blog_text_empty");
+            continue;
+          }
+          if (!hasActiveEventKeyword(combined)) {
+            noteSkip("no_event_keyword");
+            continue;
+          }
+          const storeName = extractStoreNameFromBlog(
+            titleText,
+            descText,
+            region.name,
+          );
+          if (!storeName) {
+            noteSkip("no_store_name");
+            continue;
+          }
+          if (kakaoLookups >= maxKakaoLookups) {
+            noteSkip("kakao_lookup_budget_exhausted");
+            continue;
+          }
+
+          try {
+            kakaoLookups += 1;
+            const outcome = await buildCandidateFromBlog({
+              env: options.env,
+              blogItem,
+              link,
+              titleText,
+              descText,
+              combined,
+              storeName,
+              region,
+              keyword,
+              generatedAt,
+              now,
+            });
+            if (outcome.kind === "skip") {
+              noteSkip(outcome.reason);
+              continue;
+            }
+            const candidate = outcome.candidate;
+            if (
+              candidate.item.sourceId &&
+              seenSourceIds.has(candidate.item.sourceId)
+            ) {
+              noteSkip("candidate_source_duplicate");
+              continue;
+            }
+            if (candidate.item.sourceId)
+              seenSourceIds.add(candidate.item.sourceId);
+
+            result.candidates += 1;
+            if (!options.dryRun) {
+              await upsertLocalEvent(options.db, candidate.item, {
+                provider: result.provider,
+                query: candidate.query,
+                blogItem: candidate.blogItem,
+                storeName: candidate.storeName,
+                kakaoPlace: candidate.kakaoPlace,
+              });
+              await logAgentActivity(options.db, {
+                agentId: "scout",
+                action: "found",
+                targetKind: "local_event",
+                targetId: candidate.item.id,
+                targetTitle: candidate.item.title,
+                payload: {
+                  storeName: candidate.item.storeName,
+                  region: candidate.item.region,
+                  confidenceScore: candidate.item.confidenceScore,
+                  initialStatus: candidate.item.status,
+                },
+              });
+            }
+            result.saved += options.dryRun ? 0 : 1;
+            if (candidate.item.status === "approved") result.approved += 1;
+            if (candidate.item.status === "pending") result.pending += 1;
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "unknown_error";
+            noteSkip(`exception:${message.slice(0, 60)}`);
+            result.errors.push(message);
+          }
         }
       }
     }
@@ -451,13 +495,14 @@ function isHeadEnabled(env: LocalEventDiscoveryEnv): boolean {
   return flag !== "false" && flag !== "0";
 }
 
-async function searchNaverBlog(
+async function searchNaverSource(
   env: LocalEventDiscoveryEnv,
+  source: NaverSearchSource,
   query: string,
   display: number,
 ): Promise<NaverBlogItem[]> {
   const baseUrl = env.NAVER_SEARCH_BASE_URL ?? "https://openapi.naver.com";
-  const url = new URL("/v1/search/blog.json", baseUrl);
+  const url = new URL(source.path, baseUrl);
   url.searchParams.set("query", query);
   url.searchParams.set("display", String(display));
   url.searchParams.set("sort", "date");
@@ -470,10 +515,10 @@ async function searchNaverBlog(
     },
   });
   if (!response.ok) {
-    throw new Error(`naver_blog_search_failed:${response.status}`);
+    throw new Error(`naver_${source.id}_search_failed:${response.status}`);
   }
   const body = (await response.json()) as NaverBlogSearchResponse;
-  return body.items ?? [];
+  return (body.items ?? []).map((item) => ({ ...item, source: source.id }));
 }
 
 async function searchKakaoKeyword(

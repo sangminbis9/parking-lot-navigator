@@ -17,8 +17,8 @@ FESTIVAL_PROVIDER_ENABLED = "true"
 EVENT_PROVIDER_ENABLED = "true"
 LOCAL_EVENT_PROVIDER_ENABLED = "true"
 LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.75"
-LOCAL_EVENT_SEARCH_MAX_QUERIES = "1600"
-LOCAL_EVENT_MAX_KAKAO_LOOKUPS = "18"
+LOCAL_EVENT_SEARCH_MAX_QUERIES = "17"
+LOCAL_EVENT_MAX_KAKAO_LOOKUPS = "30"
 LOCAL_EVENT_BLOG_DISPLAY = "20"
 LOCAL_EVENT_KAKAO_RADIUS_METERS = "20000"
 NAVER_SEARCH_BASE_URL = "https://openapi.naver.com"
@@ -33,7 +33,7 @@ MERCHANT_PUBLIC_BASE_URL = "https://parking-lot-navigator-api.parkingnav.workers
 TOSS_CLIENT_KEY = "test_gck_docs_OAQ92ymxN34nW1Gq9DRBaajRKgw6"
 
 [triggers]
-crons = ["* * * * *", "0 * * * *", "15 */3 * * *", "30 */3 * * *"]
+crons = ["* * * * *", "0 * * * *", "15 * * * *", "30 */3 * * *"]
 
 [[d1_databases]]
 binding = "DB"
