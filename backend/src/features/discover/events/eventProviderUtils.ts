@@ -2,7 +2,11 @@ import type { EventCategory, FreeEvent } from "@parking/shared-types";
 import type { AppConfig } from "../../../config/env.js";
 import { logger } from "../../../logging/logger.js";
 import { distanceMeters } from "../../../services/geo.js";
-import { discoverStatus, isWithinWindow, parseDate } from "../common/dateUtils.js";
+import {
+  discoverStatus,
+  isWithinWindow,
+  parseDate,
+} from "../common/dateUtils.js";
 import type { DiscoverQuery } from "../common/discoverProvider.js";
 
 export const EVENT_FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -54,27 +58,112 @@ export interface CachedEvent {
   updatedAt: string;
 }
 
-export interface EventCoordinateResolver {
-  resolve(input: { title: string; venue?: string | null; address?: string | null; region?: string | null }): Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null>;
+export interface ResolverInput {
+  title: string;
+  venue?: string | null;
+  address?: string | null;
+  region?: string | null;
 }
 
+export interface EventCoordinateResolver {
+  resolve(input: ResolverInput): Promise<{
+    lat: number;
+    lng: number;
+    address: string | null;
+    venue: string | null;
+  } | null>;
+  warmup?(inputs: ResolverInput[]): Promise<void>;
+  flush?(): Promise<void>;
+}
+
+export interface GeocodeStoreEntry {
+  found: boolean;
+  lat: number | null;
+  lng: number | null;
+  address: string | null;
+  venue: string | null;
+}
+
+export interface GeocodeStore {
+  getMany(queries: string[]): Promise<Map<string, GeocodeStoreEntry>>;
+  setMany(
+    entries: Array<{ query: string; entry: GeocodeStoreEntry }>,
+  ): Promise<void>;
+}
+
+let globalGeocodeStore: GeocodeStore | null = null;
+
+export function setGeocodeStore(store: GeocodeStore | null): void {
+  globalGeocodeStore = store;
+}
+
+export function getGeocodeStore(): GeocodeStore | null {
+  return globalGeocodeStore;
+}
+
+type ResolvedCoordinate = {
+  lat: number;
+  lng: number;
+  address: string | null;
+  venue: string | null;
+} | null;
+
 export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
-  private cache = new Map<string, Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null>>();
+  private cache = new Map<string, Promise<ResolvedCoordinate>>();
+  private pendingWrites = new Map<string, GeocodeStoreEntry>();
 
   constructor(private readonly config: AppConfig) {}
 
-  async resolve(input: { title: string; venue?: string | null; address?: string | null; region?: string | null }): Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null> {
-    if (!this.config.KAKAO_REST_API_KEY || this.config.PARKING_PROVIDER_MODE === "mock") return null;
-    const queries = uniqueQueries([
-      clean(input.address),
-      [input.region, input.venue].map(clean).filter(Boolean).join(" "),
-      clean(input.venue),
-      [input.venue, input.title].map(clean).filter(Boolean).join(" "),
-      [input.region, input.title].map(clean).filter(Boolean).join(" ")
-    ]);
+  async warmup(inputs: ResolverInput[]): Promise<void> {
+    if (
+      !this.config.KAKAO_REST_API_KEY ||
+      this.config.PARKING_PROVIDER_MODE === "mock"
+    )
+      return;
+    const store = getGeocodeStore();
+    if (!store) return;
+    const queries = new Set<string>();
+    for (const input of inputs) {
+      for (const query of candidateQueries(input)) queries.add(query);
+    }
+    if (queries.size === 0) return;
+    let entries: Map<string, GeocodeStoreEntry>;
+    try {
+      entries = await store.getMany([...queries]);
+    } catch {
+      return;
+    }
+    for (const [query, entry] of entries.entries()) {
+      if (this.cache.has(query)) continue;
+      this.cache.set(query, Promise.resolve(entryToResolved(entry)));
+    }
+  }
+
+  async flush(): Promise<void> {
+    const store = getGeocodeStore();
+    if (!store || this.pendingWrites.size === 0) return;
+    const batch = [...this.pendingWrites.entries()].map(([query, entry]) => ({
+      query,
+      entry,
+    }));
+    this.pendingWrites.clear();
+    try {
+      await store.setMany(batch);
+    } catch {
+      // best-effort persistence; never fail sync because of cache write
+    }
+  }
+
+  async resolve(input: ResolverInput): Promise<ResolvedCoordinate> {
+    if (
+      !this.config.KAKAO_REST_API_KEY ||
+      this.config.PARKING_PROVIDER_MODE === "mock"
+    )
+      return null;
+    const queries = candidateQueries(input);
     for (const query of queries) {
       const cached = this.cache.get(query);
-      const promise = cached ?? this.fetchCoordinate(query);
+      const promise = cached ?? this.lookupCoordinate(query);
       if (!cached) this.cache.set(query, promise);
       const resolved = await promise;
       if (resolved) return resolved;
@@ -82,15 +171,41 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     return null;
   }
 
-  private async fetchCoordinate(query: string): Promise<{ lat: number; lng: number; address: string | null; venue: string | null } | null> {
-    const url = new URL("/v2/local/search/keyword.json", this.config.KAKAO_LOCAL_BASE_URL);
+  private async lookupCoordinate(query: string): Promise<ResolvedCoordinate> {
+    const resolved = await this.fetchCoordinate(query);
+    this.pendingWrites.set(
+      query,
+      resolved
+        ? {
+            found: true,
+            lat: resolved.lat,
+            lng: resolved.lng,
+            address: resolved.address,
+            venue: resolved.venue,
+          }
+        : {
+            found: false,
+            lat: null,
+            lng: null,
+            address: null,
+            venue: null,
+          },
+    );
+    return resolved;
+  }
+
+  private async fetchCoordinate(query: string): Promise<ResolvedCoordinate> {
+    const url = new URL(
+      "/v2/local/search/keyword.json",
+      this.config.KAKAO_LOCAL_BASE_URL,
+    );
     url.searchParams.set("query", query);
     url.searchParams.set("size", "1");
     const response = await fetchWithTimeout(url, {
       headers: {
         Authorization: `KakaoAK ${this.config.KAKAO_REST_API_KEY}`,
-        Accept: "application/json"
-      }
+        Accept: "application/json",
+      },
     });
     if (!response.ok) return null;
     const body = (await response.json()) as {
@@ -105,19 +220,40 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     const doc = body.documents?.[0];
     const lat = toNumber(doc?.y);
     const lng = toNumber(doc?.x);
-    if (lat === null || lng === null || !isKoreaCoordinate(lat, lng)) return null;
+    if (lat === null || lng === null || !isKoreaCoordinate(lat, lng))
+      return null;
     return {
       lat,
       lng,
       address: clean(doc?.road_address_name) ?? clean(doc?.address_name),
-      venue: clean(doc?.place_name)
+      venue: clean(doc?.place_name),
     };
   }
 }
 
+function candidateQueries(input: ResolverInput): string[] {
+  return uniqueQueries([
+    clean(input.address),
+    [input.region, input.venue].map(clean).filter(Boolean).join(" "),
+    clean(input.venue),
+    [input.venue, input.title].map(clean).filter(Boolean).join(" "),
+    [input.region, input.title].map(clean).filter(Boolean).join(" "),
+  ]);
+}
+
+function entryToResolved(entry: GeocodeStoreEntry): ResolvedCoordinate {
+  if (!entry.found || entry.lat === null || entry.lng === null) return null;
+  return {
+    lat: entry.lat,
+    lng: entry.lng,
+    address: entry.address,
+    venue: entry.venue,
+  };
+}
+
 export async function normalizeEventForMap(
   input: NormalizedEventInput,
-  resolver?: EventCoordinateResolver
+  resolver?: EventCoordinateResolver,
 ): Promise<CachedEvent | null> {
   const title = clean(input.title);
   const startDate = normalizeDate(input.startDate);
@@ -128,8 +264,16 @@ export async function normalizeEventForMap(
   let lng = input.lng ?? null;
   let address = clean(input.address) ?? "";
   let venue = clean(input.venue);
-  if ((lat === null || lng === null || !isKoreaCoordinate(lat, lng)) && resolver) {
-    const resolved = await resolver.resolve({ title, venue, address, region: input.region });
+  if (
+    (lat === null || lng === null || !isKoreaCoordinate(lat, lng)) &&
+    resolver
+  ) {
+    const resolved = await resolver.resolve({
+      title,
+      venue,
+      address,
+      region: input.region,
+    });
     if (resolved) {
       lat = resolved.lat;
       lng = resolved.lng;
@@ -139,7 +283,11 @@ export async function normalizeEventForMap(
   }
   if (lat === null || lng === null || !isKoreaCoordinate(lat, lng)) return null;
 
-  const sourceId = clean(input.sourceId) ?? hashKey(`${input.source}:${title}:${startDate}:${venue ?? address}:${lat}:${lng}`);
+  const sourceId =
+    clean(input.sourceId) ??
+    hashKey(
+      `${input.source}:${title}:${startDate}:${venue ?? address}:${lat}:${lng}`,
+    );
   const price = clean(input.price);
   return {
     id: `${input.source}:${sourceId}`,
@@ -160,25 +308,33 @@ export async function normalizeEventForMap(
     shortDescription: clean(input.description),
     price,
     region: clean(input.region) ?? regionFromAddress(address),
-    updatedAt: clean(input.updatedAt) ?? new Date().toISOString()
+    updatedAt: clean(input.updatedAt) ?? new Date().toISOString(),
   };
 }
 
-export function eventFromCached(item: CachedEvent, query: DiscoverQuery): FreeEvent | null {
+export function eventFromCached(
+  item: CachedEvent,
+  query: DiscoverQuery,
+): FreeEvent | null {
   const distance = distanceMeters(query.lat, query.lng, item.lat, item.lng);
   if (distance > query.radiusMeters) return null;
-  if (!isWithinWindow(item.startDate, item.endDate, query.upcomingWithinDays)) return null;
+  if (!isWithinWindow(item.startDate, item.endDate, query.upcomingWithinDays))
+    return null;
   const status = discoverStatus(item.startDate, item.endDate);
   if (query.ongoingOnly && status !== "ongoing") return null;
   if (query.freeOnly && !item.isFree) return null;
   return {
     ...item,
     status,
-    distanceMeters: distance
+    distanceMeters: distance,
   };
 }
 
-export async function fetchWithTimeout(url: URL, init: RequestInit = {}, timeoutMs = EVENT_FETCH_TIMEOUT_MS): Promise<Response> {
+export async function fetchWithTimeout(
+  url: URL,
+  init: RequestInit = {},
+  timeoutMs = EVENT_FETCH_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -195,7 +351,7 @@ export function extractJsonItems(body: unknown): Record<string, unknown>[] {
     getPath(body, ["response", "body", "items"]),
     getPath(body, ["items", "item"]),
     getPath(body, ["items"]),
-    getPath(body, ["data"])
+    getPath(body, ["data"]),
   ];
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate.filter(isObject);
@@ -205,15 +361,27 @@ export function extractJsonItems(body: unknown): Record<string, unknown>[] {
 }
 
 export function extractTotalCount(body: unknown): number | null {
-  return toNumber(getPath(body, ["response", "body", "totalCount"])) ?? toNumber(getPath(body, ["totalCount"]));
+  return (
+    toNumber(getPath(body, ["response", "body", "totalCount"])) ??
+    toNumber(getPath(body, ["totalCount"]))
+  );
 }
 
-export function parseXmlItems(xml: string, itemTag = "item"): Record<string, string>[] {
-  const regex = new RegExp(`<${itemTag}[^>]*>([\\s\\S]*?)<\\/${itemTag}>`, "gi");
+export function parseXmlItems(
+  xml: string,
+  itemTag = "item",
+): Record<string, string>[] {
+  const regex = new RegExp(
+    `<${itemTag}[^>]*>([\\s\\S]*?)<\\/${itemTag}>`,
+    "gi",
+  );
   return [...xml.matchAll(regex)].map((match) => parseXmlObject(match[1]));
 }
 
-export function parseXmlItemsAny(xml: string, itemTags: string[]): Record<string, string>[] {
+export function parseXmlItemsAny(
+  xml: string,
+  itemTags: string[],
+): Record<string, string>[] {
   for (const tag of itemTags) {
     const items = parseXmlItems(xml, tag);
     if (items.length > 0) return items;
@@ -223,13 +391,18 @@ export function parseXmlItemsAny(xml: string, itemTags: string[]): Record<string
 
 export function parseXmlObject(xml: string): Record<string, string> {
   const values: Record<string, string> = {};
-  for (const match of xml.matchAll(/<([A-Za-z0-9_:-]+)[^>]*>([\s\S]*?)<\/\1>/g)) {
+  for (const match of xml.matchAll(
+    /<([A-Za-z0-9_:-]+)[^>]*>([\s\S]*?)<\/\1>/g,
+  )) {
     values[match[1]] = decodeXml(match[2].replace(/<[^>]+>/g, " ")).trim();
   }
   return values;
 }
 
-export function getString(row: Record<string, unknown>, keys: string[]): string | null {
+export function getString(
+  row: Record<string, unknown>,
+  keys: string[],
+): string | null {
   for (const key of keys) {
     const value = clean(row[key]);
     if (value) return value;
@@ -237,7 +410,10 @@ export function getString(row: Record<string, unknown>, keys: string[]): string 
   return null;
 }
 
-export function getNumber(row: Record<string, unknown>, keys: string[]): number | null {
+export function getNumber(
+  row: Record<string, unknown>,
+  keys: string[],
+): number | null {
   for (const key of keys) {
     const value = toNumber(row[key]);
     if (value !== null) return value;
@@ -245,26 +421,76 @@ export function getNumber(row: Record<string, unknown>, keys: string[]): number 
   return null;
 }
 
-export function categoryFromText(text: string | null | undefined): EventCategory {
+export function categoryFromText(
+  text: string | null | undefined,
+): EventCategory {
   const lower = (text ?? "").toLowerCase();
-  if (containsAny(lower, ["festival", "\uCD95\uC81C", "\uD398\uC2A4\uD2F0\uBC8C"])) return "festival";
-  if (containsAny(lower, ["performance", "concert", "theater", "\uACF5\uC5F0", "\uC5F0\uADF9", "\uBBA4\uC9C0\uCEEC", "\uC74C\uC545", "\uCF58\uC11C\uD2B8", "\uBB34\uC6A9"])) return "performance";
-  if (containsAny(lower, ["exhibition", "exhibit", "\uC804\uC2DC", "\uBBF8\uC220", "\uBC15\uBB3C\uAD00", "\uAC24\uB7EC\uB9AC"])) return "exhibition";
-  if (containsAny(lower, ["\uC9C0\uC5ED", "\uB9C8\uC744", "\uC2DC\uC7A5", "local"])) return "local_event";
-  if (containsAny(lower, ["culture", "\uBB38\uD654", "\uAD50\uC721", "\uCCB4\uD5D8", "\uD589\uC0AC"])) return "culture";
+  if (
+    containsAny(lower, ["festival", "\uCD95\uC81C", "\uD398\uC2A4\uD2F0\uBC8C"])
+  )
+    return "festival";
+  if (
+    containsAny(lower, [
+      "performance",
+      "concert",
+      "theater",
+      "\uACF5\uC5F0",
+      "\uC5F0\uADF9",
+      "\uBBA4\uC9C0\uCEEC",
+      "\uC74C\uC545",
+      "\uCF58\uC11C\uD2B8",
+      "\uBB34\uC6A9",
+    ])
+  )
+    return "performance";
+  if (
+    containsAny(lower, [
+      "exhibition",
+      "exhibit",
+      "\uC804\uC2DC",
+      "\uBBF8\uC220",
+      "\uBC15\uBB3C\uAD00",
+      "\uAC24\uB7EC\uB9AC",
+    ])
+  )
+    return "exhibition";
+  if (
+    containsAny(lower, [
+      "\uC9C0\uC5ED",
+      "\uB9C8\uC744",
+      "\uC2DC\uC7A5",
+      "local",
+    ])
+  )
+    return "local_event";
+  if (
+    containsAny(lower, [
+      "culture",
+      "\uBB38\uD654",
+      "\uAD50\uC721",
+      "\uCCB4\uD5D8",
+      "\uD589\uC0AC",
+    ])
+  )
+    return "culture";
   return "other";
 }
-export function parseDateRange(value: string | null | undefined): { startDate: string; endDate: string } | null {
+export function parseDateRange(
+  value: string | null | undefined,
+): { startDate: string; endDate: string } | null {
   const text = clean(value);
   if (!text) return null;
   const matches = [
     ...text.matchAll(/\d{4}[-.\/]?\d{1,2}[-.\/]?\d{1,2}/g),
-    ...text.matchAll(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g)
+    ...text.matchAll(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g),
   ]
     .map((match) => normalizeDate(match[0]))
     .filter((date): date is string => Boolean(date));
   if (matches.length === 0) return null;
-  return { startDate: matches[0], endDate: matches[matches.length - 1] ?? matches[0] };
+  return {
+    startDate: matches[0],
+    endDate: matches[matches.length - 1] ?? matches[0],
+  };
 }
 
 export function formatCompactDate(date: Date): string {
@@ -282,17 +508,24 @@ export function dedupeCachedEvents(items: CachedEvent[]): CachedEvent[] {
       item.startDate,
       item.endDate,
       Math.round(item.lat * 1000),
-      Math.round(item.lng * 1000)
+      Math.round(item.lng * 1000),
     ].join("|");
     const previous = selected.get(key);
-    if (!previous || sourcePriority(item.source) > sourcePriority(previous.source)) {
+    if (
+      !previous ||
+      sourcePriority(item.source) > sourcePriority(previous.source)
+    ) {
       selected.set(key, item);
     }
   }
   return [...selected.values()];
 }
 
-export function logProviderResult(provider: string, fetched: number, normalized: number): void {
+export function logProviderResult(
+  provider: string,
+  fetched: number,
+  normalized: number,
+): void {
   logger.info({ provider, fetched, normalized }, "event provider fetched");
 }
 
@@ -319,7 +552,9 @@ function normalizeDate(value: unknown): string | null {
   if (parts) {
     return `${parts[1]}-${parts[2].padStart(2, "0")}-${parts[3].padStart(2, "0")}`;
   }
-  const koreanParts = text.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  const koreanParts = text.match(
+    /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/,
+  );
   if (koreanParts) {
     return `${koreanParts[1]}-${koreanParts[2].padStart(2, "0")}-${koreanParts[3].padStart(2, "0")}`;
   }
@@ -328,7 +563,11 @@ function normalizeDate(value: unknown): string | null {
 
 function isFreeText(value: string | null): boolean {
   const text = value?.toLowerCase() ?? "";
-  return text.includes("free") || text.includes("\uBB34\uB8CC") || text.includes("0\uC6D0");
+  return (
+    text.includes("free") ||
+    text.includes("\uBB34\uB8CC") ||
+    text.includes("0\uC6D0")
+  );
 }
 
 function regionFromAddress(address: string): string | null {
@@ -354,7 +593,7 @@ function decodeXml(value: string): string {
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
+    .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 }
 
