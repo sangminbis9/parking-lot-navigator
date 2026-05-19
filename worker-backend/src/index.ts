@@ -785,7 +785,7 @@ export default {
       ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
       return;
     }
-    if (controller.cron === "15 */3 * * *") {
+    if (controller.cron === "15 * * * *") {
       const scheduledAt = new Date(controller.scheduledTime);
       ctx.waitUntil(
         syncLocalEventsScheduled(
