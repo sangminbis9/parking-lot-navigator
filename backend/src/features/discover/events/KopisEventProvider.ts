@@ -1,7 +1,10 @@
 import type { FreeEvent } from "@parking/shared-types";
 import { BaseProviderHealth } from "../../../providers/BaseProviderHealth.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
-import type { DiscoverQuery, EventProvider } from "../common/discoverProvider.js";
+import type {
+  DiscoverQuery,
+  EventProvider,
+} from "../common/discoverProvider.js";
 import {
   EVENT_FEED_CACHE_TTL_MS,
   EVENT_GEOCODE_ROW_LIMIT,
@@ -16,17 +19,22 @@ import {
   normalizeEventForMap,
   parseXmlItems,
   type CachedEvent,
-  type EventCoordinateResolver
+  type EventCoordinateResolver,
+  type ResolverInput,
 } from "./eventProviderUtils.js";
 
-export class KopisEventProvider extends BaseProviderHealth implements EventProvider {
-  private cachedItems: { expiresAt: number; items: CachedEvent[] } | null = null;
+export class KopisEventProvider
+  extends BaseProviderHealth
+  implements EventProvider
+{
+  private cachedItems: { expiresAt: number; items: CachedEvent[] } | null =
+    null;
   private inFlightItems: Promise<CachedEvent[]> | null = null;
 
   constructor(
     private readonly serviceKey: string,
     private readonly baseUrl: string,
-    private readonly resolver?: EventCoordinateResolver
+    private readonly resolver?: EventCoordinateResolver,
   ) {
     super("kopis");
   }
@@ -47,7 +55,8 @@ export class KopisEventProvider extends BaseProviderHealth implements EventProvi
 
   private async fetchCachedItems(): Promise<CachedEvent[]> {
     const now = Date.now();
-    if (this.cachedItems && this.cachedItems.expiresAt > now) return this.cachedItems.items;
+    if (this.cachedItems && this.cachedItems.expiresAt > now)
+      return this.cachedItems.items;
     if (this.inFlightItems) return this.inFlightItems;
     this.inFlightItems = this.fetchAllItems()
       .then((items) => {
@@ -62,10 +71,39 @@ export class KopisEventProvider extends BaseProviderHealth implements EventProvi
 
   private async fetchAllItems(): Promise<CachedEvent[]> {
     const rows = await this.fetchPage(1);
-    const items = await Promise.all(rows.map((row, index) => this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT)));
-    const normalized = dedupeCachedEvents(items.filter((item): item is CachedEvent => Boolean(item)));
+    if (this.resolver?.warmup) {
+      const inputs = rows
+        .slice(0, EVENT_GEOCODE_ROW_LIMIT)
+        .map((row) => this.resolverInputFromRow(row))
+        .filter((input): input is ResolverInput => Boolean(input));
+      await this.resolver.warmup(inputs);
+    }
+    const items = await Promise.all(
+      rows.map((row, index) =>
+        this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT),
+      ),
+    );
+    if (this.resolver?.flush) {
+      await this.resolver.flush();
+    }
+    const normalized = dedupeCachedEvents(
+      items.filter((item): item is CachedEvent => Boolean(item)),
+    );
     logProviderResult("kopis", rows.length, normalized.length);
     return normalized;
+  }
+
+  private resolverInputFromRow(
+    row: Record<string, unknown>,
+  ): ResolverInput | null {
+    const title = getString(row, ["prfnm", "title"]);
+    if (!title) return null;
+    return {
+      title,
+      venue: getString(row, ["fcltynm", "prfplcnm", "venue"]),
+      address: getString(row, ["adres", "address"]),
+      region: getString(row, ["area", "sido", "region"]),
+    };
   }
 
   private async fetchPage(page: number): Promise<Record<string, unknown>[]> {
@@ -79,12 +117,17 @@ export class KopisEventProvider extends BaseProviderHealth implements EventProvi
     url.searchParams.set("rows", String(EVENT_PAGE_SIZE));
     url.searchParams.set("shcate", "");
 
-    const response = await fetchWithTimeout(url, { headers: { Accept: "application/xml,text/xml,*/*" } });
+    const response = await fetchWithTimeout(url, {
+      headers: { Accept: "application/xml,text/xml,*/*" },
+    });
     if (!response.ok) throw new Error(`KOPIS API failed: ${response.status}`);
     return parseXmlItems(await response.text(), "db");
   }
 
-  private async mapRow(row: Record<string, unknown>, resolveCoordinates: boolean): Promise<CachedEvent | null> {
+  private async mapRow(
+    row: Record<string, unknown>,
+    resolveCoordinates: boolean,
+  ): Promise<CachedEvent | null> {
     const title = getString(row, ["prfnm", "title"]);
     if (!title) return null;
     const genre = getString(row, ["genrenm", "genre", "category"]);
@@ -105,9 +148,9 @@ export class KopisEventProvider extends BaseProviderHealth implements EventProvi
         price: getString(row, ["pcseguidance", "price"]),
         region,
         venue,
-        raw: row
+        raw: row,
       },
-      resolveCoordinates ? this.resolver : undefined
+      resolveCoordinates ? this.resolver : undefined,
     );
   }
 }
