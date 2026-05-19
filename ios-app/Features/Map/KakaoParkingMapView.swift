@@ -8,7 +8,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let zoomLevel: Int
     let pins: [MapPinItem]
     let onTap: () -> Void
-    let onPinTap: (MapPinItem) -> Void
+    let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
 
     func makeUIView(context: Context) -> KMViewContainer {
@@ -65,8 +65,9 @@ struct KakaoParkingMapView: UIViewRepresentable {
         )
         var latestPins: [MapPinItem] = []
         var onTap: (() -> Void)?
-        var onPinTap: ((MapPinItem) -> Void)?
+        var onPinTap: ((MapPinItem, CGPoint?) -> Void)?
         var onCameraIdle: ((MapViewport) -> Void)?
+        private var lastTapPoint: CGPoint?
 
         private weak var container: KMViewContainer?
         private var enginePrepared = false
@@ -116,9 +117,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            if let tappedPin = pin(at: gesture.location(in: container)) {
+            let location = gesture.location(in: container)
+            lastTapPoint = location
+            if let tappedPin = pin(at: location) {
                 suppressDiscoverLabelsAfterGesture = false
-                onPinTap?(tappedPin)
+                onPinTap?(tappedPin, location)
                 return
             }
             onTap?()
@@ -357,7 +360,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         func poiTappedHandler(_ param: PoiInteractionEventParam) {
             guard let tappedPin = latestPins.first(where: { $0.poiID == param.poiItem.itemID }) else { return }
-            onPinTap?(tappedPin)
+            onPinTap?(tappedPin, lastTapPoint)
         }
 
         private func pin(at touchPoint: CGPoint) -> MapPinItem? {
@@ -700,17 +703,19 @@ private extension CLLocationCoordinate2D {
 
 private extension UIImage {
     static var mapPinScale: CGFloat { 0.5 }
+    static var pinShadowPadding: CGFloat { 6 }
+    static var pinTailHeight: CGFloat { 7 }
 
     static var currentLocationPin: UIImage {
-        circularPin(fill: FestivalDesign.uiParkingBlue, symbol: nil, size: 28, scale: mapPinScale)
+        haloPin(core: FestivalDesign.uiParkingBlue, symbol: nil, size: 28, scale: mapPinScale, dotted: true)
     }
 
     static var destinationPin: UIImage {
-        circularPin(fill: FestivalDesign.uiCoral, symbol: "flag.fill", size: 38, scale: mapPinScale)
+        haloPin(core: FestivalDesign.uiCoral, symbol: "flag.fill", size: 38, scale: mapPinScale)
     }
 
     static func parkingPin(_ color: UIColor) -> UIImage {
-        parkingMarker(fill: color, size: 32, scale: mapPinScale)
+        haloPin(core: color, symbol: nil, letter: "P", size: 32, scale: mapPinScale)
     }
 
     static func discoverPin(fill: UIColor, symbol: String, label: String? = nil) -> UIImage {
@@ -719,28 +724,36 @@ private extension UIImage {
 
     static func discoverMarker(fill: UIColor, symbol: String, label: String?, size: CGFloat, scale: CGFloat) -> UIImage {
         guard let label, !label.isEmpty else {
-            return circularPin(fill: fill, symbol: symbol, size: size, scale: scale)
+            return haloPin(core: fill, symbol: symbol, size: size, scale: scale)
         }
 
         let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        let horizontalPadding: CGFloat = 8
+        let horizontalPadding: CGFloat = 9
         let bubbleHeight: CGFloat = 24
-        let gap: CGFloat = 3
+        let gap: CGFloat = 4
         let labelWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width + horizontalPadding * 2)
-        let bubbleWidth = min(labelWidth, 124)
-        let canvasWidth = max(size, bubbleWidth)
-        let canvasHeight = bubbleHeight + gap + size + 9
+        let bubbleWidth = min(labelWidth, 128)
+        let pinCanvasWidth = size + pinShadowPadding * 2
+        let canvasWidth = max(pinCanvasWidth, bubbleWidth + pinShadowPadding * 2)
+        let canvasHeight = bubbleHeight + gap + size + pinTailHeight
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
 
-            let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 0, width: bubbleWidth, height: bubbleHeight)
-            let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 8)
-            UIColor.systemBackground.withAlphaComponent(0.92).setFill()
+            let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 2, width: bubbleWidth, height: bubbleHeight)
+            let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 11)
+            context.cgContext.saveGState()
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1.5),
+                blur: 4,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.22).cgColor
+            )
+            FestivalDesign.uiCream.setFill()
             bubble.fill()
-            fill.withAlphaComponent(0.9).setStroke()
-            bubble.lineWidth = 1.5
+            context.cgContext.restoreGState()
+            fill.withAlphaComponent(0.65).setStroke()
+            bubble.lineWidth = 1.2
             bubble.stroke()
 
             let paragraph = NSMutableParagraphStyle()
@@ -748,7 +761,7 @@ private extension UIImage {
             paragraph.lineBreakMode = .byTruncatingTail
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: UIColor.label,
+                .foregroundColor: FestivalDesign.uiNavy,
                 .paragraphStyle: paragraph
             ]
             NSString(string: label).draw(
@@ -757,9 +770,11 @@ private extension UIImage {
             )
 
             let pinOriginX = (canvasWidth - size) / 2
-            drawCircularPinBody(
-                fill: fill,
+            drawHaloPinBody(
+                core: fill,
                 symbol: symbol,
+                letter: nil,
+                dotted: false,
                 size: size,
                 origin: CGPoint(x: pinOriginX, y: bubbleHeight + gap),
                 context: context
@@ -767,75 +782,119 @@ private extension UIImage {
         }
     }
 
-    static func circularPin(fill: UIColor, symbol: String?, size: CGFloat, scale: CGFloat) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * scale, height: (size + 9) * scale))
+    static func haloPin(
+        core: UIColor,
+        symbol: String?,
+        letter: String? = nil,
+        size: CGFloat,
+        scale: CGFloat,
+        dotted: Bool = false
+    ) -> UIImage {
+        let canvasWidth = size + pinShadowPadding * 2
+        let canvasHeight = size + pinTailHeight + pinShadowPadding
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
-            drawCircularPinBody(fill: fill, symbol: symbol, size: size, origin: .zero, context: context)
+            drawHaloPinBody(
+                core: core,
+                symbol: symbol,
+                letter: letter,
+                dotted: dotted,
+                size: size,
+                origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding),
+                context: context
+            )
         }
     }
 
-    static func drawCircularPinBody(fill: UIColor, symbol: String?, size: CGFloat, origin: CGPoint, context: UIGraphicsImageRendererContext) {
-        let rect = CGRect(x: origin.x + 2, y: origin.y + 2, width: size - 4, height: size - 4)
-        fill.setFill()
-        UIBezierPath(ovalIn: rect).fill()
+    static func drawHaloPinBody(
+        core coreColor: UIColor,
+        symbol: String?,
+        letter: String?,
+        dotted: Bool,
+        size: CGFloat,
+        origin: CGPoint,
+        context: UIGraphicsImageRendererContext
+    ) {
+        let haloRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
+        let haloInset: CGFloat = max(size * 0.105, 3)
+        let coreRect = haloRect.insetBy(dx: haloInset, dy: haloInset)
 
-        UIColor.white.setStroke()
-        let outline = UIBezierPath(ovalIn: rect)
-        outline.lineWidth = 3
-        outline.stroke()
+        // Tail (cream, behind halo so it appears as continuation of halo edge)
+        let tailTipY = origin.y + size + pinTailHeight - 0.5
+        let tailBaseY = origin.y + size - 2
+        let tailHalfWidth: CGFloat = max(size * 0.13, 4)
+        let tail = UIBezierPath()
+        tail.move(to: CGPoint(x: origin.x + size / 2 - tailHalfWidth, y: tailBaseY))
+        tail.addLine(to: CGPoint(x: origin.x + size / 2 + tailHalfWidth, y: tailBaseY))
+        tail.addLine(to: CGPoint(x: origin.x + size / 2, y: tailTipY))
+        tail.close()
 
-        let triangle = UIBezierPath()
-        triangle.move(to: CGPoint(x: origin.x + size / 2 - 5, y: origin.y + size - 4))
-        triangle.addLine(to: CGPoint(x: origin.x + size / 2 + 5, y: origin.y + size - 4))
-        triangle.addLine(to: CGPoint(x: origin.x + size / 2, y: origin.y + size + 7))
-        triangle.close()
-        fill.setFill()
-        triangle.fill()
-
-        guard let symbol, let image = UIImage(systemName: symbol) else { return }
-        let iconSize = size * 0.48
-        let iconRect = CGRect(
-            x: origin.x + (size - iconSize) / 2,
-            y: origin.y + (size - iconSize) / 2,
-            width: iconSize,
-            height: iconSize
+        context.cgContext.saveGState()
+        context.cgContext.setShadow(
+            offset: CGSize(width: 0, height: 2.5),
+            blur: 5,
+            color: FestivalDesign.uiNavy.withAlphaComponent(0.28).cgColor
         )
-        UIColor.white.setFill()
-        image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
-    }
+        FestivalDesign.uiCream.setFill()
+        tail.fill()
+        UIBezierPath(ovalIn: haloRect).fill()
+        context.cgContext.restoreGState()
 
-    static func parkingMarker(fill: UIColor, size: CGFloat, scale: CGFloat) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size * scale, height: (size + 9) * scale))
-        return renderer.image { context in
-            context.cgContext.scaleBy(x: scale, y: scale)
-            let rect = CGRect(x: 2, y: 2, width: size - 4, height: size - 4)
+        // Faint halo outline
+        FestivalDesign.uiNavy.withAlphaComponent(0.08).setStroke()
+        let haloOutline = UIBezierPath(ovalIn: haloRect)
+        haloOutline.lineWidth = 0.75
+        haloOutline.stroke()
 
-            fill.setFill()
-            UIBezierPath(ovalIn: rect).fill()
+        // Core
+        if dotted {
+            coreColor.withAlphaComponent(0.22).setFill()
+            UIBezierPath(ovalIn: coreRect).fill()
+            let dotRect = coreRect.insetBy(dx: coreRect.width * 0.28, dy: coreRect.height * 0.28)
+            coreColor.setFill()
+            UIBezierPath(ovalIn: dotRect).fill()
+        } else {
+            coreColor.setFill()
+            UIBezierPath(ovalIn: coreRect).fill()
+        }
 
-            UIColor.white.setStroke()
-            let outline = UIBezierPath(ovalIn: rect)
-            outline.lineWidth = 2.5
-            outline.stroke()
+        // Glossy highlight (top-left)
+        let glossRect = CGRect(
+            x: coreRect.minX + coreRect.width * 0.16,
+            y: coreRect.minY + coreRect.height * 0.12,
+            width: coreRect.width * 0.55,
+            height: coreRect.height * 0.32
+        )
+        UIColor.white.withAlphaComponent(0.28).setFill()
+        UIBezierPath(ovalIn: glossRect).fill()
 
-            let triangle = UIBezierPath()
-            triangle.move(to: CGPoint(x: size / 2 - 4.5, y: size - 5))
-            triangle.addLine(to: CGPoint(x: size / 2 + 4.5, y: size - 5))
-            triangle.addLine(to: CGPoint(x: size / 2, y: size + 6))
-            triangle.close()
-            fill.setFill()
-            triangle.fill()
-
+        // Symbol or letter
+        if let symbol, let image = UIImage(systemName: symbol) {
+            let iconSize = size * 0.42
+            let iconRect = CGRect(
+                x: coreRect.midX - iconSize / 2,
+                y: coreRect.midY - iconSize / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+        } else if let letter, !letter.isEmpty {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: size * 0.45, weight: .heavy),
+                .font: UIFont.systemFont(ofSize: size * 0.46, weight: .heavy),
                 .foregroundColor: UIColor.white,
                 .paragraphStyle: paragraph
             ]
-            let textRect = CGRect(x: 0, y: 6, width: size, height: size * 0.55)
-            NSString(string: "P").draw(in: textRect, withAttributes: attributes)
+            let textSize = (letter as NSString).size(withAttributes: attributes)
+            let textRect = CGRect(
+                x: coreRect.midX - textSize.width / 2,
+                y: coreRect.midY - textSize.height / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+            NSString(string: letter).draw(in: textRect, withAttributes: attributes)
         }
     }
 }

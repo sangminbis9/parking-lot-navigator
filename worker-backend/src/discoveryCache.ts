@@ -8,31 +8,54 @@ const DISCOVERY_RESULT_LIMIT = 1000;
 const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
 const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
   festival: 45,
-  event: 45
+  event: 45,
 };
 const DISCOVERY_SYNC_RADIUS_METERS = 90000;
 
-const NATIONAL_DISCOVERY_CENTERS: Array<{ id: string; lat: number; lng: number }> = [
-  { id: "seoul", lat: 37.5665, lng: 126.9780 },
+const NATIONAL_DISCOVERY_CENTERS: Array<{
+  id: string;
+  lat: number;
+  lng: number;
+}> = [
+  { id: "seoul", lat: 37.5665, lng: 126.978 },
   { id: "busan", lat: 35.1796, lng: 129.0756 },
   { id: "daegu", lat: 35.8714, lng: 128.6014 },
   { id: "incheon", lat: 37.4563, lng: 126.7052 },
   { id: "gwangju", lat: 35.1595, lng: 126.8526 },
   { id: "daejeon", lat: 36.3504, lng: 127.3845 },
   { id: "ulsan", lat: 35.5384, lng: 129.3114 },
-  { id: "sejong", lat: 36.4800, lng: 127.2890 },
+  { id: "sejong", lat: 36.48, lng: 127.289 },
   { id: "suwon", lat: 37.2636, lng: 127.0286 },
   { id: "chuncheon", lat: 37.8813, lng: 127.7298 },
-  { id: "cheongju", lat: 36.6424, lng: 127.4890 },
-  { id: "jeonju", lat: 35.8242, lng: 127.1480 },
+  { id: "cheongju", lat: 36.6424, lng: 127.489 },
+  { id: "jeonju", lat: 35.8242, lng: 127.148 },
   { id: "mokpo", lat: 34.8118, lng: 126.3922 },
   { id: "andong", lat: 36.5684, lng: 128.7294 },
   { id: "changwon", lat: 35.2279, lng: 128.6811 },
   { id: "gangneung", lat: 37.7519, lng: 128.8761 },
-  { id: "jeju", lat: 33.4996, lng: 126.5312 }
+  { id: "jeju", lat: 33.4996, lng: 126.5312 },
 ];
 
-const SEOUL_DISCOVERY_CENTER = { id: "seoul", lat: 37.5665, lng: 126.9780 };
+const SEOUL_DISCOVERY_CENTER = { id: "seoul", lat: 37.5665, lng: 126.978 };
+
+const DISCOVERY_PROVIDER_CHUNKS: Array<{
+  kind: DiscoverySyncKind;
+  providers: string[];
+}> = [
+  { kind: "festivals", providers: ["tourapi-festival"] },
+  { kind: "festivals", providers: ["public-data-culture-festival"] },
+  { kind: "events", providers: ["seoul-culture-event"] },
+  { kind: "events", providers: ["culture-portal"] },
+  { kind: "events", providers: ["kopis"] },
+  { kind: "events", providers: ["kcisa_428"] },
+  { kind: "events", providers: ["kcisa_196"] },
+];
+
+export const DISCOVERY_PROVIDER_CHUNK_COUNT = DISCOVERY_PROVIDER_CHUNKS.length;
+
+export function currentDiscoveryChunkIndex(date: Date = new Date()): number {
+  return Math.floor(date.getUTCMinutes() / 9) % DISCOVERY_PROVIDER_CHUNK_COUNT;
+}
 
 export interface DiscoveryQueryOptions {
   radiusMeters: number;
@@ -107,7 +130,7 @@ export async function queryFestivalsFromCache(
   db: D1Database,
   lat: number,
   lng: number,
-  options: DiscoveryQueryOptions
+  options: DiscoveryQueryOptions,
 ): Promise<Festival[]> {
   const rows = await queryDiscoveryRows(db, "festival", lat, lng, options);
   return rows.map((row) => mapFestivalRow(row, lat, lng));
@@ -117,10 +140,12 @@ export async function queryEventsFromCache(
   db: D1Database,
   lat: number,
   lng: number,
-  options: DiscoveryQueryOptions
+  options: DiscoveryQueryOptions,
 ): Promise<FreeEvent[]> {
   const rows = await queryDiscoveryRows(db, "event", lat, lng, options);
-  return rows.map((row) => mapEventRow(row, lat, lng)).filter((item) => !options.freeOnly || item.isFree);
+  return rows
+    .map((row) => mapEventRow(row, lat, lng))
+    .filter((item) => !options.freeOnly || item.isFree);
 }
 
 export async function queryDiscoveryClusters(
@@ -129,19 +154,38 @@ export async function queryDiscoveryClusters(
   lat: number,
   lng: number,
   options: Pick<DiscoveryQueryOptions, "radiusMeters">,
-  clusterMeters: number
+  clusterMeters: number,
 ): Promise<DiscoveryCluster[]> {
   const rows = (
     await Promise.all(
-      types.map((type) => queryDiscoveryRows(db, type, lat, lng, { ...options, upcomingWithinDays: 365 }, DISCOVERY_CLUSTER_RESULT_LIMIT))
+      types.map((type) =>
+        queryDiscoveryRows(
+          db,
+          type,
+          lat,
+          lng,
+          { ...options, upcomingWithinDays: 365 },
+          DISCOVERY_CLUSTER_RESULT_LIMIT,
+        ),
+      ),
     )
   ).flat();
-  const clusters = new Map<string, { type: DiscoveryType; latSum: number; lngSum: number; count: number }>();
+  const clusters = new Map<
+    string,
+    { type: DiscoveryType; latSum: number; lngSum: number; count: number }
+  >();
   for (const row of rows) {
     const latStep = clusterMeters / 111320;
-    const lngStep = clusterMeters / Math.max(40000, 111320 * Math.cos((row.lat * Math.PI) / 180));
+    const lngStep =
+      clusterMeters /
+      Math.max(40000, 111320 * Math.cos((row.lat * Math.PI) / 180));
     const key = `${row.type}:${Math.round(row.lat / latStep)}:${Math.round(row.lng / lngStep)}`;
-    const cluster = clusters.get(key) ?? { type: row.type, latSum: 0, lngSum: 0, count: 0 };
+    const cluster = clusters.get(key) ?? {
+      type: row.type,
+      latSum: 0,
+      lngSum: 0,
+      count: 0,
+    };
     cluster.latSum += row.lat;
     cluster.lngSum += row.lng;
     cluster.count += 1;
@@ -152,14 +196,14 @@ export async function queryDiscoveryClusters(
     type: cluster.type,
     lat: cluster.latSum / cluster.count,
     lng: cluster.lngSum / cluster.count,
-    count: cluster.count
+    count: cluster.count,
   }));
 }
 
 export async function syncDiscoveryCache(
   db: D1Database,
   runtime: DiscoverySyncRuntime,
-  kinds: DiscoverySyncKind[]
+  kinds: DiscoverySyncKind[],
 ): Promise<DiscoverySyncResult[]> {
   const results: DiscoverySyncResult[] = [];
   for (const kind of kinds) {
@@ -176,9 +220,15 @@ export async function syncDiscoveryCache(
         skipped: 0,
         pruned: 0,
         sources: {},
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
       };
-      await finishSyncRun(db, run.id, "failed", failed, error instanceof Error ? error.message : "Unknown error");
+      await finishSyncRun(
+        db,
+        run.id,
+        "failed",
+        failed,
+        error instanceof Error ? error.message : "Unknown error",
+      );
       throw error;
     }
   }
@@ -188,7 +238,8 @@ export async function syncDiscoveryCache(
 async function syncDiscoveryKind(
   db: D1Database,
   runtime: DiscoverySyncRuntime,
-  kind: DiscoverySyncKind
+  kind: DiscoverySyncKind,
+  providerAllowlist?: ReadonlySet<string>,
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
   const centers = centersForKind();
@@ -198,11 +249,12 @@ async function syncDiscoveryKind(
         lat: center.lat,
         lng: center.lng,
         radiusMeters: DISCOVERY_SYNC_RADIUS_METERS,
-        upcomingWithinDays: 365
+        upcomingWithinDays: 365,
+        providerAllowlist,
       };
       if (kind === "festivals") return runtime.festivalService.nearby(query);
       return runtime.eventService.nearby(query);
-    })
+    }),
   );
   const items = dedupeItems(batches.flat());
   const sources = countSources(items);
@@ -216,8 +268,61 @@ async function syncDiscoveryKind(
     await upsertDiscoveryItem(db, item, generatedAt);
     upserted += 1;
   }
-  const pruned = kind === "events" ? 0 : await pruneStaleDiscovery(db, typeForKind(kind));
-  return { syncType: `discover:${kind}`, fetched: items.length, upserted, skipped, pruned, sources, generatedAt };
+  const pruned =
+    kind === "events" ? 0 : await pruneStaleDiscovery(db, typeForKind(kind));
+  return {
+    syncType: `discover:${kind}`,
+    fetched: items.length,
+    upserted,
+    skipped,
+    pruned,
+    sources,
+    generatedAt,
+  };
+}
+
+export async function syncDiscoveryChunk(
+  db: D1Database,
+  runtime: DiscoverySyncRuntime,
+  chunkIndex: number,
+): Promise<DiscoverySyncResult> {
+  const normalized =
+    ((chunkIndex % DISCOVERY_PROVIDER_CHUNK_COUNT) +
+      DISCOVERY_PROVIDER_CHUNK_COUNT) %
+    DISCOVERY_PROVIDER_CHUNK_COUNT;
+  const chunk = DISCOVERY_PROVIDER_CHUNKS[normalized];
+  const providerSet = new Set(chunk.providers);
+  const syncType = `discover:${chunk.kind}:${chunk.providers.join("+")}`;
+  const run = await startSyncRun(db, syncType);
+  try {
+    const result = await syncDiscoveryKind(
+      db,
+      runtime,
+      chunk.kind,
+      providerSet,
+    );
+    const annotated = { ...result, syncType };
+    await finishSyncRun(db, run.id, "success", annotated);
+    return annotated;
+  } catch (error) {
+    const failed = {
+      syncType,
+      fetched: 0,
+      upserted: 0,
+      skipped: 0,
+      pruned: 0,
+      sources: {},
+      generatedAt: new Date().toISOString(),
+    };
+    await finishSyncRun(
+      db,
+      run.id,
+      "failed",
+      failed,
+      error instanceof Error ? error.message : "Unknown error",
+    );
+    throw error;
+  }
 }
 
 function centersForKind(): Array<{ id: string; lat: number; lng: number }> {
@@ -230,12 +335,15 @@ async function queryDiscoveryRows(
   lat: number,
   lng: number,
   options: DiscoveryQueryOptions,
-  limit = DISCOVERY_RESULT_LIMIT
+  limit = DISCOVERY_RESULT_LIMIT,
 ): Promise<DiscoveryItemRow[]> {
   const radiusMeters = options.radiusMeters;
   const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
-  const minSeenAt = new Date(Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000).toISOString();
+  const lngDelta =
+    radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
+  const minSeenAt = new Date(
+    Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const rows = await db
     .prepare(
       `SELECT *
@@ -244,9 +352,17 @@ async function queryDiscoveryRows(
          AND lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
          AND last_seen_at >= ?
-       LIMIT ?`
+       LIMIT ?`,
     )
-    .bind(type, lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, minSeenAt, Math.max(limit + 500, limit))
+    .bind(
+      type,
+      lat - latDelta,
+      lat + latDelta,
+      lng - lngDelta,
+      lng + lngDelta,
+      minSeenAt,
+      Math.max(limit + 500, limit),
+    )
     .all<DiscoveryItemRow>();
   return (rows.results ?? [])
     .filter((row) => distanceMeters(lat, lng, row.lat, row.lng) <= radiusMeters)
@@ -255,7 +371,11 @@ async function queryDiscoveryRows(
     .slice(0, limit);
 }
 
-async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt: string): Promise<void> {
+async function upsertDiscoveryItem(
+  db: D1Database,
+  item: DiscoveryItem,
+  syncedAt: string,
+): Promise<void> {
   const row = discoveryRow(item, syncedAt);
   await db
     .prepare(
@@ -293,7 +413,7 @@ async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt
         raw_payload = excluded.raw_payload,
         data_updated_at = excluded.data_updated_at,
         last_seen_at = excluded.last_seen_at,
-        synced_at = excluded.synced_at`
+        synced_at = excluded.synced_at`,
     )
     .bind(
       row.id,
@@ -324,7 +444,7 @@ async function upsertDiscoveryItem(db: D1Database, item: DiscoveryItem, syncedAt
       row.dataUpdatedAt,
       syncedAt,
       syncedAt,
-      syncedAt
+      syncedAt,
     )
     .run();
 }
@@ -357,7 +477,7 @@ function discoveryRow(item: DiscoveryItem, syncedAt: string) {
       amenitiesJson: null,
       offersJson: null,
       rawPayload: JSON.stringify(item),
-      dataUpdatedAt: syncedAt
+      dataUpdatedAt: syncedAt,
     };
   }
   return {
@@ -386,17 +506,29 @@ function discoveryRow(item: DiscoveryItem, syncedAt: string) {
     amenitiesJson: null,
     offersJson: null,
     rawPayload: JSON.stringify(item),
-    dataUpdatedAt: syncedAt
+    dataUpdatedAt: syncedAt,
   };
 }
 
-async function pruneStaleDiscovery(db: D1Database, type: DiscoveryType): Promise<number> {
-  const minSeenAt = new Date(Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000).toISOString();
-  const result = await db.prepare("DELETE FROM discovery_items WHERE type = ? AND last_seen_at < ?").bind(type, minSeenAt).run();
+async function pruneStaleDiscovery(
+  db: D1Database,
+  type: DiscoveryType,
+): Promise<number> {
+  const minSeenAt = new Date(
+    Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = await db
+    .prepare("DELETE FROM discovery_items WHERE type = ? AND last_seen_at < ?")
+    .bind(type, minSeenAt)
+    .run();
   return result.meta.changes ?? 0;
 }
 
-function mapFestivalRow(row: DiscoveryItemRow, lat: number, lng: number): Festival {
+function mapFestivalRow(
+  row: DiscoveryItemRow,
+  lat: number,
+  lng: number,
+): Festival {
   return {
     id: row.source_item_id,
     title: row.title,
@@ -412,13 +544,21 @@ function mapFestivalRow(row: DiscoveryItemRow, lat: number, lng: number): Festiv
     source: row.source,
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
-    tags: parseJsonArray<string>(row.tags_json).length > 0
-      ? parseJsonArray<string>(row.tags_json)
-      : (row.category_text ?? "public-culture").split(",").map((tag) => tag.trim()).filter(Boolean)
+    tags:
+      parseJsonArray<string>(row.tags_json).length > 0
+        ? parseJsonArray<string>(row.tags_json)
+        : (row.category_text ?? "public-culture")
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
   };
 }
 
-function mapEventRow(row: DiscoveryItemRow, lat: number, lng: number): FreeEvent {
+function mapEventRow(
+  row: DiscoveryItemRow,
+  lat: number,
+  lng: number,
+): FreeEvent {
   return {
     id: row.source_item_id,
     title: row.title,
@@ -440,16 +580,28 @@ function mapEventRow(row: DiscoveryItemRow, lat: number, lng: number): FreeEvent
     shortDescription: row.subtitle,
     price: row.lowest_price_text,
     region: null,
-    updatedAt: row.data_updated_at ?? undefined
+    updatedAt: row.data_updated_at ?? undefined,
   };
 }
 
 function eventCategory(value: string | null): EventCategory {
-  const allowed: EventCategory[] = ["festival", "performance", "exhibition", "culture", "local_event", "other"];
-  return allowed.includes(value as EventCategory) ? (value as EventCategory) : "other";
+  const allowed: EventCategory[] = [
+    "festival",
+    "performance",
+    "exhibition",
+    "culture",
+    "local_event",
+    "other",
+  ];
+  return allowed.includes(value as EventCategory)
+    ? (value as EventCategory)
+    : "other";
 }
 
-function rowPassesFilters(row: DiscoveryItemRow, options: DiscoveryQueryOptions): boolean {
+function rowPassesFilters(
+  row: DiscoveryItemRow,
+  options: DiscoveryQueryOptions,
+): boolean {
   if (options.ongoingOnly && row.status !== "ongoing") return false;
   if (row.type === "event" && options.freeOnly && !row.is_free) return false;
   if (!row.start_date || !row.end_date) return true;
@@ -459,12 +611,20 @@ function rowPassesFilters(row: DiscoveryItemRow, options: DiscoveryQueryOptions)
   return end >= startOfToday() && Date.parse(row.start_date) <= max;
 }
 
-function sortDiscoveryRows(a: DiscoveryItemRow, b: DiscoveryItemRow, lat: number, lng: number): number {
+function sortDiscoveryRows(
+  a: DiscoveryItemRow,
+  b: DiscoveryItemRow,
+  lat: number,
+  lng: number,
+): number {
   if (a.status !== b.status) {
     if (a.status === "ongoing") return -1;
     if (b.status === "ongoing") return 1;
   }
-  return distanceMeters(lat, lng, a.lat, a.lng) - distanceMeters(lat, lng, b.lat, b.lng);
+  return (
+    distanceMeters(lat, lng, a.lat, a.lng) -
+    distanceMeters(lat, lng, b.lat, b.lng)
+  );
 }
 
 function dedupeItems<T extends DiscoveryItem>(items: T[]): T[] {
@@ -484,10 +644,15 @@ function countSources(items: DiscoveryItem[]): Record<string, number> {
   return counts;
 }
 
-async function startSyncRun(db: D1Database, syncType: string): Promise<{ id: string }> {
+async function startSyncRun(
+  db: D1Database,
+  syncType: string,
+): Promise<{ id: string }> {
   const id = `${syncType}:${crypto.randomUUID()}`;
   await db
-    .prepare("INSERT INTO sync_runs (id, sync_type, started_at, status) VALUES (?, ?, ?, ?)")
+    .prepare(
+      "INSERT INTO sync_runs (id, sync_type, started_at, status) VALUES (?, ?, ?, ?)",
+    )
     .bind(id, syncType, new Date().toISOString(), "running")
     .run();
   return { id };
@@ -498,15 +663,24 @@ async function finishSyncRun(
   id: string,
   status: "success" | "failed",
   result: DiscoverySyncResult,
-  message: string | null = null
+  message: string | null = null,
 ): Promise<void> {
   await db
     .prepare(
       `UPDATE sync_runs
        SET finished_at = ?, status = ?, fetched = ?, upserted = ?, skipped = ?, pruned = ?, message = ?
-       WHERE id = ?`
+       WHERE id = ?`,
     )
-    .bind(new Date().toISOString(), status, result.fetched, result.upserted, result.skipped, result.pruned, message, id)
+    .bind(
+      new Date().toISOString(),
+      status,
+      result.fetched,
+      result.upserted,
+      result.skipped,
+      result.pruned,
+      message,
+      id,
+    )
     .run();
 }
 

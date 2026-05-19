@@ -33,7 +33,7 @@ MERCHANT_PUBLIC_BASE_URL = "https://parking-lot-navigator-api.parkingnav.workers
 TOSS_CLIENT_KEY = "test_gck_docs_OAQ92ymxN34nW1Gq9DRBaajRKgw6"
 
 [triggers]
-crons = ["* * * * *", "0 * * * *", "15 * * * *", "30 */3 * * *"]
+crons = ["* * * * *", "*/9 * * * *", "15 * * * *", "30 */3 * * *"]
 
 [[d1_databases]]
 binding = "DB"
