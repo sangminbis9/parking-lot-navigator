@@ -56,7 +56,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
-            URLQueryItem(name: "upcomingWithinDays", value: "30")
+            URLQueryItem(name: "upcomingWithinDays", value: "90")
         ]
         let response: DiscoverFestivalsResponse = try await get(components.url!)
         return response.items
