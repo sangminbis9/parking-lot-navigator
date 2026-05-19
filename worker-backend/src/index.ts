@@ -4,9 +4,12 @@ import { z, ZodError } from "zod";
 import type { MapItem } from "@parking/shared-types";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import {
+  currentDiscoveryChunkIndex,
+  DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
   queryFestivalsFromCache,
   syncDiscoveryCache,
+  syncDiscoveryChunk,
 } from "./discoveryCache.js";
 import {
   createAdminLocalEvent,
@@ -210,6 +213,7 @@ const discoveryClusterSchema = z.object({
 
 const discoverySyncSchema = z.object({
   kinds: z.string().optional(),
+  chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
 });
 
 const localEventDiscoverySyncSchema = z.object({
@@ -650,6 +654,21 @@ app.post("/admin/sync-discovery", async (c) => {
   const query = discoverySyncSchema.parse(queryObject(c.req.raw.url));
   const backend = await loadBackend(c.env);
   try {
+    if (query.chunkIndex !== undefined) {
+      const chunkResult = await syncDiscoveryChunk(
+        c.env.DB,
+        backend,
+        query.chunkIndex,
+      );
+      return c.json({
+        result: [chunkResult],
+        providers: [
+          ...backend.festivalService.health(),
+          ...backend.eventService.health(),
+        ],
+        generatedAt: new Date().toISOString(),
+      });
+    }
     const result = await syncDiscoveryCache(
       c.env.DB,
       backend,
@@ -781,8 +800,14 @@ export default {
       ctx.waitUntil(syncRealtimeParkingScheduled(env));
       return;
     }
-    if (controller.cron === "0 * * * *") {
-      ctx.waitUntil(syncDiscoveryScheduled(env, ["festivals", "events"]));
+    if (controller.cron === "*/9 * * * *") {
+      const scheduledAt = new Date(controller.scheduledTime);
+      ctx.waitUntil(
+        syncDiscoveryChunkScheduled(
+          env,
+          currentDiscoveryChunkIndex(scheduledAt),
+        ),
+      );
       return;
     }
     if (controller.cron === "15 * * * *") {
@@ -828,6 +853,21 @@ async function syncDiscoveryScheduled(
     await syncDiscoveryCache(env.DB!, backend, kinds);
   } catch (error) {
     console.error("discovery sync failed", error);
+  }
+}
+
+async function syncDiscoveryChunkScheduled(
+  env: Env,
+  chunkIndex: number,
+): Promise<void> {
+  try {
+    const backend = await loadBackend(env);
+    await syncDiscoveryChunk(env.DB!, backend, chunkIndex);
+  } catch (error) {
+    console.error(
+      `discovery chunk sync failed (chunk ${chunkIndex}/${DISCOVERY_PROVIDER_CHUNK_COUNT})`,
+      error,
+    );
   }
 }
 

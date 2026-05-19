@@ -28,6 +28,9 @@ struct MapHomeView: View {
     @State private var discoverListQuery = ""
     @State private var discoverListSort: DiscoverListSort = .distance
     @State private var discoverFilters = DiscoverFilterState()
+    @State private var hologramPin: MapPinItem?
+    @State private var hologramAnchor: CGPoint = .zero
+    @State private var mapContainerSize: CGSize = .zero
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -42,12 +45,28 @@ struct MapHomeView: View {
             KakaoParkingMapView(center: mapCenter, zoomLevel: mapZoomLevel, pins: pins) {
                 isSearchFocused = false
                 clearMapFocus()
-            } onPinTap: { pin in
-                handlePinTap(pin)
+                hologramPin = nil
+            } onPinTap: { pin, tapPoint in
+                handlePinTap(pin, tapPoint: tapPoint)
             } onCameraIdle: { viewport in
                 handleCameraIdle(viewport)
             }
             .ignoresSafeArea(edges: .top)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { mapContainerSize = proxy.size }
+                        .onChange(of: proxy.size) { newSize in
+                            mapContainerSize = newSize
+                        }
+                }
+            )
+            .overlay(alignment: .topLeading) {
+                if let pin = hologramPin {
+                    hologramOverlay(for: pin)
+                        .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                }
+            }
 
             VStack(spacing: 10) {
                 homeMapHeader
@@ -749,20 +768,108 @@ struct MapHomeView: View {
         }
     }
 
-    private func handlePinTap(_ pin: MapPinItem) {
+    private func handlePinTap(_ pin: MapPinItem, tapPoint: CGPoint?) {
+        switch pin.kind {
+        case .festival, .event:
+            let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                hologramAnchor = anchor
+                hologramPin = pin
+            }
+        case .parking(let parkingLot):
+            hologramPin = nil
+            viewModel.selectedParkingLot = parkingLot
+            focusMap(to: pin.coordinate, zoomLevel: 17)
+        case .destination(let destination):
+            hologramPin = nil
+            focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
+        case .currentLocation:
+            hologramPin = nil
+            focusMap(to: pin.coordinate, zoomLevel: 15)
+        }
+    }
+
+    private func resolvedHologramAnchor(tapPoint: CGPoint?) -> CGPoint {
+        if let tapPoint {
+            return tapPoint
+        }
+        if mapContainerSize.width > 0 && mapContainerSize.height > 0 {
+            return CGPoint(x: mapContainerSize.width / 2, y: mapContainerSize.height / 2)
+        }
+        return .zero
+    }
+
+    private func openHologramDetail(_ pin: MapPinItem) {
         switch pin.kind {
         case .festival(let festival):
             openDiscoverResults(.festival(festival))
         case .event(let event):
             openDiscoverResults(.event(event))
-        case .parking(let parkingLot):
-            viewModel.selectedParkingLot = parkingLot
-            focusMap(to: pin.coordinate, zoomLevel: 17)
-        case .destination(let destination):
-            focusMap(to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng), zoomLevel: 16)
-        case .currentLocation:
-            focusMap(to: pin.coordinate, zoomLevel: 15)
+        default:
+            break
         }
+        withAnimation(.easeOut(duration: 0.18)) {
+            hologramPin = nil
+        }
+    }
+
+    @ViewBuilder
+    private func hologramOverlay(for pin: MapPinItem) -> some View {
+        let cardWidth: CGFloat = 268
+        let cardHeight: CGFloat = 110
+        let beamHeight: CGFloat = 18
+        let totalHeight = cardHeight + beamHeight
+        let containerWidth = max(mapContainerSize.width, cardWidth)
+        let containerHeight = max(mapContainerSize.height, totalHeight)
+        let halfWidth = cardWidth / 2
+        let minX = halfWidth + 8
+        let maxX = containerWidth - halfWidth - 8
+        let clampedX = min(max(hologramAnchor.x, minX), maxX)
+        let preferredY = hologramAnchor.y - totalHeight / 2 - 24
+        let minY = totalHeight / 2 + 60
+        let maxY = containerHeight - totalHeight / 2 - 12
+        let clampedY = min(max(preferredY, minY), maxY)
+
+        Group {
+            switch pin.kind {
+            case .festival(let festival):
+                MapHologramOverlay(
+                    title: festival.title,
+                    subtitle: festival.subtitle ?? festival.venueName,
+                    meta: "\(festival.startDate) ~ \(festival.endDate)",
+                    statusText: festival.status.displayText,
+                    imageUrl: festival.imageUrl,
+                    tint: FestivalDesign.coral,
+                    symbol: "sparkles",
+                    onDetails: { openHologramDetail(pin) },
+                    onClose: {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            hologramPin = nil
+                        }
+                    }
+                )
+            case .event(let event):
+                MapHologramOverlay(
+                    title: event.title,
+                    subtitle: event.benefit ?? event.shortDescription ?? event.storeName,
+                    meta: event.dateText,
+                    statusText: event.timelineStatus.displayText,
+                    imageUrl: event.imageUrl,
+                    tint: FestivalDesign.teal,
+                    symbol: "calendar",
+                    onDetails: { openHologramDetail(pin) },
+                    onClose: {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            hologramPin = nil
+                        }
+                    }
+                )
+            default:
+                EmptyView()
+            }
+        }
+        .frame(width: cardWidth)
+        .position(x: clampedX, y: clampedY)
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
@@ -796,9 +903,21 @@ struct MapHomeView: View {
     }
 
     private func handleCameraIdle(_ viewport: MapViewport) {
+        let previousCenter = mapViewport.center
+        let previousZoom = mapViewport.zoomLevel
         mapCenter = viewport.center
         mapViewport = viewport
         mapZoomLevel = viewport.zoomLevel
+        if hologramPin != nil {
+            let moved = abs(previousCenter.latitude - viewport.center.latitude) > 0.0001
+                || abs(previousCenter.longitude - viewport.center.longitude) > 0.0001
+            let zoomed = previousZoom != viewport.zoomLevel
+            if moved || zoomed {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    hologramPin = nil
+                }
+            }
+        }
         scheduleVisibleDiscoverRefresh(for: viewport)
     }
 
@@ -1932,7 +2051,7 @@ private struct DiscoverListRow: View {
     }
 }
 
-private struct DiscoverThumbnail: View {
+struct DiscoverThumbnail: View {
     let imageUrl: String?
     let tint: Color
     let symbol: String

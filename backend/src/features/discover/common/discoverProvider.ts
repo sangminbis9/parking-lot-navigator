@@ -1,4 +1,8 @@
-import type { Festival, FreeEvent, ProviderHealth } from "@parking/shared-types";
+import type {
+  Festival,
+  FreeEvent,
+  ProviderHealth,
+} from "@parking/shared-types";
 
 export interface DiscoverQuery {
   lat: number;
@@ -7,6 +11,7 @@ export interface DiscoverQuery {
   ongoingOnly?: boolean;
   upcomingWithinDays: number;
   freeOnly?: boolean;
+  providerAllowlist?: ReadonlySet<string>;
 }
 
 export interface FestivalProvider {
