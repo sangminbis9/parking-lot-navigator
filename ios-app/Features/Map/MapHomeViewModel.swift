@@ -119,12 +119,6 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingParking = false
     }
 
-    func clearNearbyParkingLots() {
-        guard selectedDestination == nil else { return }
-        parkingLots = []
-        selectedParkingLot = nil
-    }
-
     func loadParkingLots(for destination: Destination) async {
         let destinationID = destination.id
         isLoadingParking = true
@@ -152,12 +146,15 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func clearMapFocus() {
+        let hadDestination = selectedDestination != nil
         selectedDestination = nil
-        selectedParkingLot = nil
         selectedFestival = nil
         selectedEvent = nil
         destinations = []
-        parkingLots = []
+        if hadDestination {
+            selectedParkingLot = nil
+            parkingLots = []
+        }
     }
 
     func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {

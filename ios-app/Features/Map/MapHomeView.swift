@@ -56,12 +56,6 @@ struct MapHomeView: View {
                 },
                 onCameraIdle: { viewport in
                     handleCameraIdle(viewport)
-                },
-                onCameraWillMove: {
-                    if hologramPin != nil {
-                        hologramPin = nil
-                        viewModel.clearNearbyParkingLots()
-                    }
                 }
             )
             .ignoresSafeArea(edges: .top)
@@ -791,6 +785,10 @@ struct MapHomeView: View {
                 hologramAnchor = anchor
                 hologramPin = pin
             }
+            if viewModel.selectedDestination == nil {
+                viewModel.parkingLots = []
+                viewModel.selectedParkingLot = nil
+            }
             Task {
                 await viewModel.loadNearbyParkingLots(around: pin.coordinate, radiusMeters: 800)
             }
@@ -829,7 +827,6 @@ struct MapHomeView: View {
         withAnimation(.easeOut(duration: 0.18)) {
             hologramPin = nil
         }
-        viewModel.clearNearbyParkingLots()
     }
 
     @ViewBuilder
@@ -865,7 +862,6 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
-                        viewModel.clearNearbyParkingLots()
                     }
                 )
             case .event(let event):
@@ -882,7 +878,6 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
-                        viewModel.clearNearbyParkingLots()
                     }
                 )
             default:
