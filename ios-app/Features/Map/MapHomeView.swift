@@ -31,6 +31,8 @@ struct MapHomeView: View {
     @State private var hologramPin: MapPinItem?
     @State private var hologramAnchor: CGPoint = .zero
     @State private var mapContainerSize: CGSize = .zero
+    @State private var hologramAnchorTimer: Timer?
+    @State private var mapProjector = MapProjector()
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -56,7 +58,8 @@ struct MapHomeView: View {
                 },
                 onCameraIdle: { viewport in
                     handleCameraIdle(viewport)
-                }
+                },
+                projector: mapProjector
             )
             .ignoresSafeArea(edges: .top)
             .background(
@@ -106,6 +109,14 @@ struct MapHomeView: View {
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
+            stopHologramAnchorTracking()
+        }
+        .onChange(of: hologramPin?.id) { _ in
+            if hologramPin != nil {
+                startHologramAnchorTracking()
+            } else {
+                stopHologramAnchorTracking()
+            }
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
@@ -813,6 +824,29 @@ struct MapHomeView: View {
             return CGPoint(x: mapContainerSize.width / 2, y: mapContainerSize.height / 2)
         }
         return .zero
+    }
+
+    private func startHologramAnchorTracking() {
+        stopHologramAnchorTracking()
+        updateHologramAnchorFromProjector()
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                updateHologramAnchorFromProjector()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hologramAnchorTimer = timer
+    }
+
+    private func stopHologramAnchorTracking() {
+        hologramAnchorTimer?.invalidate()
+        hologramAnchorTimer = nil
+    }
+
+    private func updateHologramAnchorFromProjector() {
+        guard let pin = hologramPin else { return }
+        guard let point = mapProjector.screenPoint(for: pin.coordinate) else { return }
+        hologramAnchor = point
     }
 
     private func openHologramDetail(_ pin: MapPinItem) {

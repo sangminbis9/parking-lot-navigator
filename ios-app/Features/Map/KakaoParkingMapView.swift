@@ -11,6 +11,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
     var onCameraWillMove: (() -> Void)? = nil
+    var projector: MapProjector? = nil
 
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
@@ -31,6 +32,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
         context.coordinator.onCameraWillMove = onCameraWillMove
+        projector?.coordinator = context.coordinator
         view.addGestureRecognizer(tap)
         view.addGestureRecognizer(pinch)
         context.coordinator.createController(view)
@@ -46,6 +48,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
         context.coordinator.onCameraWillMove = onCameraWillMove
+        projector?.coordinator = context.coordinator
         context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
     }
@@ -426,6 +429,38 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 12
             }
         }
+
+        func screenPoint(for coord: CLLocationCoordinate2D) -> CGPoint? {
+            guard let mapView = controller?.getView("mapview") as? KakaoMap else { return nil }
+            let size = container?.bounds.size ?? mapView.viewRect.size
+            guard size.width > 8, size.height > 8 else { return nil }
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let offset: CGFloat = 64
+            let eastSample = CGPoint(x: center.x + offset, y: center.y)
+            let southSample = CGPoint(x: center.x, y: center.y + offset)
+            let centerCoord = mapView.getPosition(center).wgsCoord
+            let eastCoord = mapView.getPosition(eastSample).wgsCoord
+            let southCoord = mapView.getPosition(southSample).wgsCoord
+            let dLngX = (eastCoord.longitude - centerCoord.longitude) / Double(offset)
+            let dLatX = (eastCoord.latitude - centerCoord.latitude) / Double(offset)
+            let dLngY = (southCoord.longitude - centerCoord.longitude) / Double(offset)
+            let dLatY = (southCoord.latitude - centerCoord.latitude) / Double(offset)
+            let deltaLng = coord.longitude - centerCoord.longitude
+            let deltaLat = coord.latitude - centerCoord.latitude
+            let det = dLngX * dLatY - dLngY * dLatX
+            guard abs(det) > 1e-20 else { return nil }
+            let dx = (deltaLng * dLatY - dLngY * deltaLat) / det
+            let dy = (dLngX * deltaLat - dLatX * deltaLng) / det
+            return CGPoint(x: center.x + CGFloat(dx), y: center.y + CGFloat(dy))
+        }
+    }
+}
+
+final class MapProjector {
+    fileprivate weak var coordinator: KakaoParkingMapView.Coordinator?
+
+    func screenPoint(for coord: CLLocationCoordinate2D) -> CGPoint? {
+        coordinator?.screenPoint(for: coord)
     }
 }
 
