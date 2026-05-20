@@ -29,35 +29,73 @@ export interface RealtimeParkingCluster {
 
 export async function syncRealtimeParkingCache(
   db: D1Database,
-  provider: CompositeParkingProvider
+  provider: CompositeParkingProvider,
 ): Promise<RealtimeCacheSyncResult> {
   const generatedAt = new Date().toISOString();
-  const items = (await provider.nearby(KOREA_REALTIME_SYNC_CENTER.lat, KOREA_REALTIME_SYNC_CENTER.lng, {
-    radiusMeters: KOREA_REALTIME_SYNC_RADIUS_METERS
-  })).filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
+  const items = (
+    await provider.nearby(
+      KOREA_REALTIME_SYNC_CENTER.lat,
+      KOREA_REALTIME_SYNC_CENTER.lng,
+      {
+        radiusMeters: KOREA_REALTIME_SYNC_RADIUS_METERS,
+      },
+    )
+  ).filter((item) => item.realtimeAvailable && item.availableSpaces !== null);
 
-  let upserted = 0;
-  let skipped = 0;
-  for (const item of items) {
-    if (!Number.isFinite(item.lat) || !Number.isFinite(item.lng)) {
-      skipped += 1;
-      continue;
-    }
-    await upsertRealtimeParking(db, item, generatedAt);
-    upserted += 1;
-  }
+  const validItems = items.filter(
+    (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
+  );
+  const skipped = items.length - validItems.length;
+  const upserted = await upsertRealtimeParkingItems(
+    db,
+    validItems,
+    generatedAt,
+  );
   const pruned = await pruneUnseenRealtimeParking(db, generatedAt);
 
   return { fetched: items.length, upserted, skipped, pruned, generatedAt };
+}
+
+const REALTIME_PARKING_UPSERT_BATCH_SIZE = 50;
+
+async function upsertRealtimeParkingItems(
+  db: D1Database,
+  items: ParkingLot[],
+  syncedAt: string,
+): Promise<number> {
+  if (items.length === 0) return 0;
+  let upserted = 0;
+  for (
+    let start = 0;
+    start < items.length;
+    start += REALTIME_PARKING_UPSERT_BATCH_SIZE
+  ) {
+    const slice = items.slice(
+      start,
+      start + REALTIME_PARKING_UPSERT_BATCH_SIZE,
+    );
+    const statements = slice.map((item) =>
+      prepareRealtimeParkingUpsert(db, item, syncedAt),
+    );
+    await db.batch(statements);
+    upserted += slice.length;
+  }
+  return upserted;
 }
 
 export async function queryRealtimeParkingCache(
   db: D1Database,
   lat: number,
   lng: number,
-  options: ParkingSearchOptions
+  options: ParkingSearchOptions,
 ): Promise<ParkingLot[]> {
-  return queryRealtimeParkingCacheItems(db, lat, lng, options, REALTIME_CACHE_RESULT_LIMIT);
+  return queryRealtimeParkingCacheItems(
+    db,
+    lat,
+    lng,
+    options,
+    REALTIME_CACHE_RESULT_LIMIT,
+  );
 }
 
 async function queryRealtimeParkingCacheItems(
@@ -65,12 +103,15 @@ async function queryRealtimeParkingCacheItems(
   lat: number,
   lng: number,
   options: ParkingSearchOptions,
-  limit: number
+  limit: number,
 ): Promise<ParkingLot[]> {
   const radiusMeters = options.radiusMeters;
   const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
-  const minSeenAt = new Date(Date.now() - REALTIME_CACHE_MAX_AGE_SECONDS * 1000).toISOString();
+  const lngDelta =
+    radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
+  const minSeenAt = new Date(
+    Date.now() - REALTIME_CACHE_MAX_AGE_SECONDS * 1000,
+  ).toISOString();
   const rows = await db
     .prepare(
       `SELECT *
@@ -78,9 +119,16 @@ async function queryRealtimeParkingCacheItems(
        WHERE lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
          AND last_seen_at >= ?
-       LIMIT ?`
+       LIMIT ?`,
     )
-    .bind(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, minSeenAt, Math.max(limit + 500, limit))
+    .bind(
+      lat - latDelta,
+      lat + latDelta,
+      lng - lngDelta,
+      lng + lngDelta,
+      minSeenAt,
+      Math.max(limit + 500, limit),
+    )
     .all<RealtimeParkingStatusRow>();
 
   const items = (rows.results ?? [])
@@ -94,11 +142,18 @@ export async function queryRealtimeParkingClusters(
   lat: number,
   lng: number,
   options: ParkingSearchOptions,
-  clusterMeters: number
+  clusterMeters: number,
 ): Promise<RealtimeParkingCluster[]> {
-  const items = await queryRealtimeParkingCacheItems(db, lat, lng, options, REALTIME_CLUSTER_RESULT_LIMIT);
+  const items = await queryRealtimeParkingCacheItems(
+    db,
+    lat,
+    lng,
+    options,
+    REALTIME_CLUSTER_RESULT_LIMIT,
+  );
   const latStep = clusterMeters / 111320;
-  const lngStep = clusterMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
+  const lngStep =
+    clusterMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
   const clusters = new Map<string, ParkingLot[]>();
 
   for (const item of items) {
@@ -106,13 +161,12 @@ export async function queryRealtimeParkingClusters(
     clusters.set(key, [...(clusters.get(key) ?? []), item]);
   }
 
-  return [...clusters.entries()].map(([id, clusterItems]) => summarizeCluster(id, clusterItems));
+  return [...clusters.entries()].map(([id, clusterItems]) =>
+    summarizeCluster(id, clusterItems),
+  );
 }
 
-async function upsertRealtimeParking(db: D1Database, item: ParkingLot, now: string): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO realtime_parking_status (
+const REALTIME_PARKING_UPSERT_SQL = `INSERT INTO realtime_parking_status (
         id, source, source_parking_id, name, address, lat, lng,
         total_capacity, available_spaces, occupancy_rate, congestion_status,
         realtime_available, freshness_timestamp, operating_hours, fee_summary,
@@ -141,8 +195,15 @@ async function upsertRealtimeParking(db: D1Database, item: ParkingLot, now: stri
         display_status = excluded.display_status,
         raw_payload = excluded.raw_payload,
         last_seen_at = excluded.last_seen_at,
-        updated_at = excluded.updated_at`
-    )
+        updated_at = excluded.updated_at`;
+
+function prepareRealtimeParkingUpsert(
+  db: D1Database,
+  item: ParkingLot,
+  now: string,
+): D1PreparedStatement {
+  return db
+    .prepare(REALTIME_PARKING_UPSERT_SQL)
     .bind(
       item.id,
       item.source,
@@ -167,17 +228,19 @@ async function upsertRealtimeParking(db: D1Database, item: ParkingLot, now: stri
       null,
       now,
       now,
-      item.freshnessTimestamp ?? now
-    )
-    .run();
+      item.freshnessTimestamp ?? now,
+    );
 }
 
-async function pruneUnseenRealtimeParking(db: D1Database, syncedAt: string): Promise<number> {
+async function pruneUnseenRealtimeParking(
+  db: D1Database,
+  syncedAt: string,
+): Promise<number> {
   const result = await db
     .prepare(
       `DELETE FROM realtime_parking_status
        WHERE source IN ('seoul-realtime', 'seoul-seongdong-iot', 'seoul-hangang-parking', 'daejeon-realtime', 'suseong-realtime', 'kac-airport-realtime', 'incheon-airport-realtime')
-         AND last_seen_at < ?`
+         AND last_seen_at < ?`,
     )
     .bind(syncedAt)
     .run();
@@ -209,7 +272,11 @@ interface RealtimeParkingStatusRow {
   last_seen_at: string;
 }
 
-function mapRealtimeStatusRow(row: RealtimeParkingStatusRow, lat: number, lng: number): ParkingLot {
+function mapRealtimeStatusRow(
+  row: RealtimeParkingStatusRow,
+  lat: number,
+  lng: number,
+): ParkingLot {
   const stale = isStale(row.last_seen_at, REALTIME_CACHE_MAX_AGE_SECONDS);
   const realtimeAvailable = Boolean(row.realtime_available) && !stale;
   const totalCapacity = row.total_capacity ?? null;
@@ -217,8 +284,9 @@ function mapRealtimeStatusRow(row: RealtimeParkingStatusRow, lat: number, lng: n
   const occupancyRate =
     totalCapacity !== null && totalCapacity > 0 && availableSpaces !== null
       ? Math.max(0, Math.min(1, 1 - availableSpaces / totalCapacity))
-      : row.occupancy_rate ?? null;
-  const congestionStatus = row.congestion_status ?? inferCongestion(availableSpaces, occupancyRate);
+      : (row.occupancy_rate ?? null);
+  const congestionStatus =
+    row.congestion_status ?? inferCongestion(availableSpaces, occupancyRate);
   return {
     id: row.id,
     source: row.source,
@@ -241,20 +309,28 @@ function mapRealtimeStatusRow(row: RealtimeParkingStatusRow, lat: number, lng: n
     isPublic: Boolean(row.is_public),
     isPrivate: Boolean(row.is_private),
     stale,
-    displayStatus: displayStatus({ realtimeAvailable, stale, availableSpaces, congestionStatus }),
+    displayStatus: displayStatus({
+      realtimeAvailable,
+      stale,
+      availableSpaces,
+      congestionStatus,
+    }),
     score: 0,
     provenance: [
       {
         source: row.source,
         sourceParkingId: row.source_parking_id,
-        freshnessTimestamp: row.freshness_timestamp ?? row.last_seen_at
-      }
+        freshnessTimestamp: row.freshness_timestamp ?? row.last_seen_at,
+      },
     ],
-    rawSourcePayload: undefined
+    rawSourcePayload: undefined,
   };
 }
 
-function summarizeCluster(id: string, items: ParkingLot[]): RealtimeParkingCluster {
+function summarizeCluster(
+  id: string,
+  items: ParkingLot[],
+): RealtimeParkingCluster {
   const totalAvailable = sumNullable(items.map((item) => item.availableSpaces));
   const totalCapacity = sumNullable(items.map((item) => item.totalCapacity));
   return {
@@ -264,7 +340,10 @@ function summarizeCluster(id: string, items: ParkingLot[]): RealtimeParkingClust
     count: items.length,
     availableSpaces: totalAvailable,
     totalCapacity,
-    congestionStatus: inferCongestion(totalAvailable, clusterOccupancy(totalAvailable, totalCapacity))
+    congestionStatus: inferCongestion(
+      totalAvailable,
+      clusterOccupancy(totalAvailable, totalCapacity),
+    ),
   };
 }
 
@@ -275,15 +354,24 @@ function sumNullable(values: Array<number | null>): number | null {
 }
 
 function average(values: number[]): number {
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+  return (
+    values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1)
+  );
 }
 
-function clusterOccupancy(availableSpaces: number | null, totalCapacity: number | null): number | null {
-  if (availableSpaces === null || totalCapacity === null || totalCapacity <= 0) return null;
+function clusterOccupancy(
+  availableSpaces: number | null,
+  totalCapacity: number | null,
+): number | null {
+  if (availableSpaces === null || totalCapacity === null || totalCapacity <= 0)
+    return null;
   return Math.max(0, Math.min(1, 1 - availableSpaces / totalCapacity));
 }
 
-function isStale(timestamp: string | null | undefined, thresholdSeconds: number): boolean {
+function isStale(
+  timestamp: string | null | undefined,
+  thresholdSeconds: number,
+): boolean {
   if (!timestamp) return true;
   const time = new Date(timestamp).getTime();
   return Number.isNaN(time) || Date.now() - time > thresholdSeconds * 1000;
@@ -291,7 +379,7 @@ function isStale(timestamp: string | null | undefined, thresholdSeconds: number)
 
 function inferCongestion(
   availableSpaces: number | null,
-  occupancyRate: number | null
+  occupancyRate: number | null,
 ): ParkingLot["congestionStatus"] {
   if (occupancyRate !== null) {
     if (occupancyRate >= 0.98) return "full";
@@ -299,7 +387,8 @@ function inferCongestion(
     if (occupancyRate >= 0.6) return "moderate";
     return "available";
   }
-  if (availableSpaces !== null) return availableSpaces <= 2 ? "busy" : "available";
+  if (availableSpaces !== null)
+    return availableSpaces <= 2 ? "busy" : "available";
   return "unknown";
 }
 
@@ -310,7 +399,8 @@ function displayStatus(input: {
   congestionStatus: ParkingLot["congestionStatus"];
 }): string {
   if (input.stale) return "업데이트 지연 가능";
-  if (input.realtimeAvailable && input.availableSpaces !== null) return `실시간 ${input.availableSpaces}면`;
+  if (input.realtimeAvailable && input.availableSpaces !== null)
+    return `실시간 ${input.availableSpaces}면`;
   switch (input.congestionStatus) {
     case "available":
       return "여유";
