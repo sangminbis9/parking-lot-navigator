@@ -107,6 +107,24 @@ final class MapHomeViewModel: ObservableObject {
         )
     }
 
+    func loadNearbyParkingLots(around coordinate: CLLocationCoordinate2D, radiusMeters: Int = 800) async {
+        isLoadingParking = true
+        errorMessage = nil
+        do {
+            let items = try await apiClient.nearbyParking(lat: coordinate.latitude, lng: coordinate.longitude, radiusMeters: radiusMeters)
+            parkingLots = items
+        } catch {
+            errorMessage = "주변 주차장을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+        }
+        isLoadingParking = false
+    }
+
+    func clearNearbyParkingLots() {
+        guard selectedDestination == nil else { return }
+        parkingLots = []
+        selectedParkingLot = nil
+    }
+
     func loadParkingLots(for destination: Destination) async {
         let destinationID = destination.id
         isLoadingParking = true

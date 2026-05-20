@@ -60,6 +60,7 @@ struct MapHomeView: View {
                 onCameraWillMove: {
                     if hologramPin != nil {
                         hologramPin = nil
+                        viewModel.clearNearbyParkingLots()
                     }
                 }
             )
@@ -791,10 +792,7 @@ struct MapHomeView: View {
                 hologramPin = pin
             }
             Task {
-                if !viewModel.showsRealtimeParkingLayer {
-                    await viewModel.setRealtimeParkingLayerVisible(true, center: pin.coordinate)
-                }
-                await viewModel.loadRealtimeParkingLayer()
+                await viewModel.loadNearbyParkingLots(around: pin.coordinate, radiusMeters: 800)
             }
         case .parking(let parkingLot):
             hologramPin = nil
@@ -831,6 +829,7 @@ struct MapHomeView: View {
         withAnimation(.easeOut(duration: 0.18)) {
             hologramPin = nil
         }
+        viewModel.clearNearbyParkingLots()
     }
 
     @ViewBuilder
@@ -845,7 +844,7 @@ struct MapHomeView: View {
         let minX = halfWidth + 8
         let maxX = containerWidth - halfWidth - 8
         let clampedX = min(max(hologramAnchor.x, minX), maxX)
-        let preferredY = hologramAnchor.y - totalHeight / 2 - 24
+        let preferredY = hologramAnchor.y - totalHeight / 2 - 44
         let minY = totalHeight / 2 + 60
         let maxY = containerHeight - totalHeight / 2 - 12
         let clampedY = min(max(preferredY, minY), maxY)
@@ -866,6 +865,7 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
+                        viewModel.clearNearbyParkingLots()
                     }
                 )
             case .event(let event):
@@ -882,6 +882,7 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
+                        viewModel.clearNearbyParkingLots()
                     }
                 )
             default:
