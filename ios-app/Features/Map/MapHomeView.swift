@@ -42,15 +42,27 @@ struct MapHomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            KakaoParkingMapView(center: mapCenter, zoomLevel: mapZoomLevel, pins: pins) {
-                isSearchFocused = false
-                clearMapFocus()
-                hologramPin = nil
-            } onPinTap: { pin, tapPoint in
-                handlePinTap(pin, tapPoint: tapPoint)
-            } onCameraIdle: { viewport in
-                handleCameraIdle(viewport)
-            }
+            KakaoParkingMapView(
+                center: mapCenter,
+                zoomLevel: mapZoomLevel,
+                pins: pins,
+                onTap: {
+                    isSearchFocused = false
+                    clearMapFocus()
+                    hologramPin = nil
+                },
+                onPinTap: { pin, tapPoint in
+                    handlePinTap(pin, tapPoint: tapPoint)
+                },
+                onCameraIdle: { viewport in
+                    handleCameraIdle(viewport)
+                },
+                onCameraWillMove: {
+                    if hologramPin != nil {
+                        hologramPin = nil
+                    }
+                }
+            )
             .ignoresSafeArea(edges: .top)
             .background(
                 GeometryReader { proxy in
@@ -771,10 +783,18 @@ struct MapHomeView: View {
     private func handlePinTap(_ pin: MapPinItem, tapPoint: CGPoint?) {
         switch pin.kind {
         case .festival, .event:
-            let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
+            let targetZoom = max(mapZoomLevel, 15)
+            focusMap(to: pin.coordinate, zoomLevel: targetZoom)
+            let anchor = resolvedHologramAnchor(tapPoint: nil)
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 hologramAnchor = anchor
                 hologramPin = pin
+            }
+            Task {
+                if !viewModel.showsRealtimeParkingLayer {
+                    await viewModel.setRealtimeParkingLayerVisible(true, center: pin.coordinate)
+                }
+                await viewModel.loadRealtimeParkingLayer()
             }
         case .parking(let parkingLot):
             hologramPin = nil
@@ -903,21 +923,9 @@ struct MapHomeView: View {
     }
 
     private func handleCameraIdle(_ viewport: MapViewport) {
-        let previousCenter = mapViewport.center
-        let previousZoom = mapViewport.zoomLevel
         mapCenter = viewport.center
         mapViewport = viewport
         mapZoomLevel = viewport.zoomLevel
-        if hologramPin != nil {
-            let moved = abs(previousCenter.latitude - viewport.center.latitude) > 0.0001
-                || abs(previousCenter.longitude - viewport.center.longitude) > 0.0001
-            let zoomed = previousZoom != viewport.zoomLevel
-            if moved || zoomed {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    hologramPin = nil
-                }
-            }
-        }
         scheduleVisibleDiscoverRefresh(for: viewport)
     }
 
