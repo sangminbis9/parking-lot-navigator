@@ -10,6 +10,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let onTap: () -> Void
     let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
+    var onCameraWillMove: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> KMViewContainer {
         let view = KMViewContainer()
@@ -29,6 +30,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
+        context.coordinator.onCameraWillMove = onCameraWillMove
         view.addGestureRecognizer(tap)
         view.addGestureRecognizer(pinch)
         context.coordinator.createController(view)
@@ -43,6 +45,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
+        context.coordinator.onCameraWillMove = onCameraWillMove
         context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
     }
@@ -67,6 +70,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         var onTap: (() -> Void)?
         var onPinTap: ((MapPinItem, CGPoint?) -> Void)?
         var onCameraIdle: ((MapViewport) -> Void)?
+        var onCameraWillMove: (() -> Void)?
         private var lastTapPoint: CGPoint?
 
         private weak var container: KMViewContainer?
@@ -79,6 +83,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var observers: [NSObjectProtocol] = []
         private var poiTapHandlers: [DisposableEventHandler] = []
         private var cameraStoppedEventHandler: DisposableEventHandler?
+        private var cameraStartedEventHandler: DisposableEventHandler?
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
         private var showAllDiscoverLabelsAfterZoomIn = false
@@ -114,6 +119,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             observers = []
             cameraStoppedEventHandler?.dispose()
             cameraStoppedEventHandler = nil
+            cameraStartedEventHandler?.dispose()
+            cameraStartedEventHandler = nil
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -286,11 +293,19 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         private func configureCameraEventsIfNeeded() {
-            guard cameraStoppedEventHandler == nil, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
-            cameraStoppedEventHandler = mapView.addCameraStoppedEventHandler(
-                target: self,
-                handler: KakaoParkingMapView.Coordinator.cameraStoppedHandler
-            )
+            guard let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            if cameraStoppedEventHandler == nil {
+                cameraStoppedEventHandler = mapView.addCameraStoppedEventHandler(
+                    target: self,
+                    handler: KakaoParkingMapView.Coordinator.cameraStoppedHandler
+                )
+            }
+            if cameraStartedEventHandler == nil {
+                cameraStartedEventHandler = mapView.addCameraWillMovedEventHandler(
+                    target: self,
+                    handler: KakaoParkingMapView.Coordinator.cameraWillMoveHandler
+                )
+            }
         }
 
         func cameraStoppedHandler(_ param: CameraActionEventParam) {
@@ -299,6 +314,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
             latestCamera = MapCameraTarget(coordinate: viewport.center, zoomLevel: viewport.zoomLevel)
             renderedCamera = latestCamera
             onCameraIdle?(viewport)
+        }
+
+        func cameraWillMoveHandler(_ param: CameraActionEventParam) {
+            guard param.by != .notUserAction else { return }
+            onCameraWillMove?()
         }
 
         private func viewport(for mapView: KakaoMap) -> MapViewport {
