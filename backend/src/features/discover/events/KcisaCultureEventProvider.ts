@@ -67,7 +67,12 @@ export class KcisaCultureEventProvider
     if (this.inFlightItems) return this.inFlightItems;
     this.inFlightItems = this.fetchAllItems()
       .then((items) => {
-        this.cachedItems = { expiresAt: now + EVENT_FEED_CACHE_TTL_MS, items };
+        if (items.length > 0) {
+          this.cachedItems = {
+            expiresAt: now + EVENT_FEED_CACHE_TTL_MS,
+            items,
+          };
+        }
         return items;
       })
       .finally(() => {
