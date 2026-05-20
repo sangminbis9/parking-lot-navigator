@@ -130,7 +130,9 @@ export class NationalCultureFestivalProvider
 
     this.inFlightItems = this.fetchAllItems()
       .then((items) => {
-        this.cachedItems = { expiresAt: now + CACHE_TTL_MS, items };
+        if (items.length > 0) {
+          this.cachedItems = { expiresAt: now + CACHE_TTL_MS, items };
+        }
         return items;
       })
       .finally(() => {
@@ -164,9 +166,7 @@ export class NationalCultureFestivalProvider
     return deduped;
   }
 
-  private async fetchPage(
-    pageNo: number,
-  ): Promise<{
+  private async fetchPage(pageNo: number): Promise<{
     items: NationalCultureFestivalItem[];
     totalCount: number | null;
   }> {
