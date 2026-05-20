@@ -618,74 +618,113 @@ private struct Triangle: Shape {
     }
 }
 
-// MARK: - Pixel backdrop
+// MARK: - Pixel backdrop (diorama with depth)
+//
+// Layout zones (vertical):
+//   y = 0.00 ~ 0.20  → back wall (paint band, clock, framed posters)
+//   y = 0.20 ~ 0.34  → window strip + bookshelf + wainscoting top edge
+//   y = 0.34 ~ 0.40  → wainscoting wood paneling + baseboard
+//   y = 0.40 ~ 1.00  → wood plank floor with perspective lines + furniture
+//
+// Characters walk on the floor (their y is set by the choreography). The back wall
+// reaches further down than the previous backdrop so the office feels enclosed,
+// and a faint vignette + window light spill add depth without breaking pixel feel.
 
 private struct PixelOfficeBackdrop: View {
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
+            let wallBottom = h * 0.22
+
             ZStack {
-                // Floor: warm wooden gradient with subtle tile grid
-                LinearGradient(
-                    colors: [
-                        FestivalDesign.cream.opacity(0.65),
-                        FestivalDesign.surface,
-                        FestivalDesign.parkingSoft.opacity(0.40)
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
+                // 1. Floor (warm wood) — drawn first, full canvas
+                FloorPlanks()
 
-                PixelTileGrid()
-                    .stroke(FestivalDesign.creamDeep.opacity(0.22), lineWidth: 0.6)
+                // 2. Perspective lines on the floor (vanishing toward back wall center)
+                FloorPerspective(wallBottomY: wallBottom)
+                    .stroke(FestivalDesign.creamDeep.opacity(0.30),
+                            style: StrokeStyle(lineWidth: 0.6, dash: [4, 6]))
 
-                // Top wall (brick row)
-                BrickStrip()
-                    .fill(FestivalDesign.lantern.opacity(0.35))
-                    .frame(height: 18)
-                    .position(x: w / 2, y: 10)
+                // 3. Soft floor rug under center desks
+                OfficeRug()
+                    .frame(width: w * 0.60, height: h * 0.18)
+                    .position(x: w * 0.50, y: h * 0.58)
 
-                // Windows on top wall
-                Window()
-                    .frame(width: 36, height: 14)
-                    .position(x: w * 0.30, y: 10)
-                Window()
-                    .frame(width: 36, height: 14)
-                    .position(x: w * 0.68, y: 10)
+                // 4. Back wall (paint + wainscoting + baseboard)
+                BackWall(bottomY: wallBottom)
 
-                // Desks row (collector left/right + head center)
-                PixelDesk(label: "축제팀", accent: FestivalDesign.lantern)
+                // 5. Window light spill on the floor (under each window)
+                WindowLightSpill()
+                    .frame(width: w * 0.18, height: h * 0.18)
+                    .position(x: w * 0.30, y: wallBottom + h * 0.09)
+                WindowLightSpill()
+                    .frame(width: w * 0.18, height: h * 0.18)
+                    .position(x: w * 0.70, y: wallBottom + h * 0.09)
+
+                // 6. Wall fixtures
+                OfficeWindow()
+                    .frame(width: w * 0.20, height: h * 0.14)
+                    .position(x: w * 0.30, y: h * 0.11)
+                OfficeWindow()
+                    .frame(width: w * 0.20, height: h * 0.14)
+                    .position(x: w * 0.70, y: h * 0.11)
+
+                WallClock()
+                    .frame(width: 22, height: 22)
+                    .position(x: w * 0.50, y: h * 0.07)
+
+                FramedPoster(accent: FestivalDesign.lantern, glyph: "🎪")
+                    .frame(width: 22, height: 16)
+                    .position(x: w * 0.50, y: h * 0.15)
+
+                Bookshelf()
+                    .frame(width: w * 0.13, height: h * 0.20)
+                    .position(x: w * 0.07, y: h * 0.18)
+
+                FilingCabinet()
+                    .frame(width: w * 0.11, height: h * 0.16)
+                    .position(x: w * 0.93, y: h * 0.20)
+
+                // 7. Floor furniture (drawn after wall so chairs can extend down)
+                IsoDesk(label: "축제팀", accent: FestivalDesign.lantern)
                     .position(x: w * 0.16, y: h * 0.50)
-                PixelDesk(label: "총괄", accent: FestivalDesign.coral)
+                IsoDesk(label: "총괄", accent: FestivalDesign.coral, large: true)
                     .position(x: w * 0.50, y: h * 0.42)
-                PixelDesk(label: "이벤트팀", accent: FestivalDesign.parkingBlue)
+                IsoDesk(label: "이벤트팀", accent: FestivalDesign.parkingBlue)
                     .position(x: w * 0.84, y: h * 0.50)
 
-                // Validation table (Vera)
-                PixelDesk(label: "검증", accent: FestivalDesign.teal)
+                IsoDesk(label: "검증", accent: FestivalDesign.teal, small: true)
                     .position(x: w * 0.36, y: h * 0.30)
 
-                // Echo's promo nook
-                PixelDesk(label: "홍보", accent: FestivalDesign.coral.opacity(0.7))
+                IsoDesk(label: "홍보", accent: FestivalDesign.coral.opacity(0.75), small: true)
                     .position(x: w * 0.80, y: h * 0.78)
 
-                // Plants
-                PixelPlant().position(x: w * 0.06, y: h * 0.06)
-                PixelPlant().position(x: w * 0.94, y: h * 0.06)
-                PixelPlant().position(x: w * 0.06, y: h * 0.62)
+                CoffeeStation()
+                    .frame(width: 26, height: 30)
+                    .position(x: w * 0.07, y: h * 0.50)
 
-                // Patrol path hint
-                Path { path in
-                    path.move(to: CGPoint(x: w * 0.10, y: h * 0.16))
-                    path.addLine(to: CGPoint(x: w * 0.90, y: h * 0.16))
-                    path.addLine(to: CGPoint(x: w * 0.90, y: h * 0.62))
-                    path.addLine(to: CGPoint(x: w * 0.10, y: h * 0.62))
-                    path.closeSubpath()
-                }
-                .stroke(FestivalDesign.teal.opacity(0.30),
-                        style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                WaterCooler()
+                    .frame(width: 20, height: 32)
+                    .position(x: w * 0.93, y: h * 0.50)
 
-                // Live indicator
+                OfficePlant()
+                    .frame(width: 18, height: 26)
+                    .position(x: w * 0.06, y: h * 0.74)
+                OfficePlant()
+                    .frame(width: 18, height: 26)
+                    .position(x: w * 0.94, y: h * 0.74)
+
+                // 8. Subtle ambient vignette for room depth
+                RadialGradient(
+                    colors: [Color.clear, FestivalDesign.navy.opacity(0.10)],
+                    center: .center,
+                    startRadius: min(w, h) * 0.35,
+                    endRadius: max(w, h) * 0.70
+                )
+                .allowsHitTesting(false)
+
+                // 9. Live indicator chip
                 HStack(spacing: 5) {
                     Circle()
                         .fill(FestivalDesign.teal)
@@ -705,118 +744,574 @@ private struct PixelOfficeBackdrop: View {
     }
 }
 
-private struct PixelTileGrid: Shape {
+// MARK: - Floor
+
+private struct FloorPlanks: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    FestivalDesign.cream.opacity(0.55),
+                    Color(red: 0.96, green: 0.88, blue: 0.74),
+                    Color(red: 0.85, green: 0.74, blue: 0.58)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            PlankStripes()
+                .stroke(FestivalDesign.navy.opacity(0.10), lineWidth: 0.6)
+        }
+    }
+}
+
+private struct PlankStripes: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let step: CGFloat = 20
-        var x = rect.minX
-        while x <= rect.maxX {
-            path.move(to: CGPoint(x: x, y: rect.minY))
-            path.addLine(to: CGPoint(x: x, y: rect.maxY))
-            x += step
-        }
+        let step: CGFloat = 14
         var y = rect.minY
         while y <= rect.maxY {
             path.move(to: CGPoint(x: rect.minX, y: y))
             path.addLine(to: CGPoint(x: rect.maxX, y: y))
             y += step
         }
-        return path
-    }
-}
-
-private struct BrickStrip: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        let brickW: CGFloat = 18
-        let brickH: CGFloat = 9
-        var y = rect.minY
+        // Stagger short marks to suggest plank seams
         var row = 0
-        while y < rect.maxY {
-            let offsetX = (row % 2 == 0) ? 0 : brickW / 2
-            var x = rect.minX - brickW + offsetX
+        y = rect.minY
+        while y <= rect.maxY {
+            let offset: CGFloat = (row % 2 == 0) ? 0 : 28
+            var x = rect.minX + offset
             while x < rect.maxX {
                 path.move(to: CGPoint(x: x, y: y))
-                path.addLine(to: CGPoint(x: x, y: y + brickH))
-                x += brickW
+                path.addLine(to: CGPoint(x: x, y: y + step))
+                x += 56
             }
-            path.move(to: CGPoint(x: rect.minX, y: y))
-            path.addLine(to: CGPoint(x: rect.maxX, y: y))
-            y += brickH
+            y += step
             row += 1
         }
         return path
     }
 }
 
-private struct Window: View {
+private struct FloorPerspective: Shape {
+    let wallBottomY: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let vanish = CGPoint(x: rect.midX, y: wallBottomY)
+        // Three lines fanning out from the vanishing point toward the bottom edge
+        let xs: [CGFloat] = [rect.minX + rect.width * 0.10,
+                             rect.minX + rect.width * 0.30,
+                             rect.midX,
+                             rect.minX + rect.width * 0.70,
+                             rect.maxX - rect.width * 0.10]
+        for x in xs {
+            path.move(to: vanish)
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
+        }
+        return path
+    }
+}
+
+private struct OfficeRug: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(FestivalDesign.tealSoft.opacity(0.85))
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(FestivalDesign.teal.opacity(0.45), lineWidth: 2)
+                .padding(4)
+            // Diamond pattern
+            Path { p in
+                let step: CGFloat = 18
+                var x: CGFloat = -step
+                while x < 400 {
+                    p.move(to: CGPoint(x: x, y: 0))
+                    p.addLine(to: CGPoint(x: x + 80, y: 80))
+                    x += step
+                }
+                x = -step
+                while x < 400 {
+                    p.move(to: CGPoint(x: x + 80, y: 0))
+                    p.addLine(to: CGPoint(x: x, y: 80))
+                    x += step
+                }
+            }
+            .stroke(FestivalDesign.teal.opacity(0.18), lineWidth: 0.7)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.08), radius: 2, y: 1)
+    }
+}
+
+// MARK: - Back wall
+
+private struct BackWall: View {
+    let bottomY: CGFloat
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            ZStack(alignment: .top) {
+                // Upper paint band
+                Rectangle()
+                    .fill(LinearGradient(
+                        colors: [
+                            Color(red: 0.95, green: 0.91, blue: 0.84),
+                            Color(red: 0.92, green: 0.87, blue: 0.78)
+                        ],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: w, height: bottomY - 14)
+
+                // Wainscoting (wood paneling, darker)
+                Rectangle()
+                    .fill(Color(red: 0.74, green: 0.62, blue: 0.48))
+                    .frame(width: w, height: 14)
+                    .overlay(WainscotingPanels().stroke(FestivalDesign.navy.opacity(0.22), lineWidth: 0.7))
+                    .offset(y: bottomY - 14)
+
+                // Top molding line
+                Rectangle()
+                    .fill(FestivalDesign.navy.opacity(0.18))
+                    .frame(width: w, height: 1)
+                    .offset(y: bottomY - 14)
+
+                // Baseboard (bottom of wall meeting floor)
+                Rectangle()
+                    .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+                    .frame(width: w, height: 3)
+                    .offset(y: bottomY - 3)
+
+                // Subtle shadow gradient at the wall-floor junction
+                LinearGradient(
+                    colors: [FestivalDesign.navy.opacity(0.18), Color.clear],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(width: w, height: 18)
+                .offset(y: bottomY)
+                .blendMode(.multiply)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+private struct WainscotingPanels: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let panelW: CGFloat = 26
+        var x = rect.minX
+        while x < rect.maxX {
+            path.move(to: CGPoint(x: x, y: rect.minY + 2))
+            path.addLine(to: CGPoint(x: x, y: rect.maxY - 2))
+            x += panelW
+        }
+        return path
+    }
+}
+
+private struct OfficeWindow: View {
+    var body: some View {
+        ZStack {
+            // Outer frame
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+            // Sky + buildings (inside window)
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(LinearGradient(
+                    colors: [
+                        Color(red: 0.74, green: 0.88, blue: 0.98),
+                        Color(red: 0.92, green: 0.95, blue: 1.0)
+                    ],
+                    startPoint: .top, endPoint: .bottom))
+                .padding(2)
+            // Distant buildings
+            GeometryReader { proxy in
+                let w = proxy.size.width
+                let h = proxy.size.height
+                ZStack(alignment: .bottom) {
+                    Color.clear
+                    HStack(alignment: .bottom, spacing: 1) {
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.30)).frame(width: w * 0.12, height: h * 0.40)
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.20)).frame(width: w * 0.18, height: h * 0.55)
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.28)).frame(width: w * 0.10, height: h * 0.30)
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.22)).frame(width: w * 0.20, height: h * 0.48)
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.26)).frame(width: w * 0.14, height: h * 0.36)
+                        Rectangle().fill(FestivalDesign.navy.opacity(0.20)).frame(width: w * 0.18, height: h * 0.50)
+                    }
+                    .padding(.horizontal, 3)
+                    .padding(.bottom, 3)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 1.5).inset(by: 2))
+            // Cross mullions
+            Rectangle()
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+                .frame(width: 1.5)
+            Rectangle()
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+                .frame(height: 1.5)
+            // Sill
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+                .frame(height: 3)
+                .offset(y: 2)
+                .padding(.horizontal, -2)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.15), radius: 1.5, x: 0, y: 1)
+    }
+}
+
+private struct WindowLightSpill: View {
+    var body: some View {
+        Trapezoid()
+            .fill(LinearGradient(
+                colors: [
+                    FestivalDesign.lantern.opacity(0.32),
+                    FestivalDesign.lantern.opacity(0.0)
+                ],
+                startPoint: .top, endPoint: .bottom))
+            .allowsHitTesting(false)
+    }
+}
+
+private struct WallClock: View {
+    var body: some View {
+        ZStack {
+            Circle().fill(FestivalDesign.surface)
+            Circle().stroke(FestivalDesign.navy.opacity(0.85), lineWidth: 1.5)
+            // Tick marks
+            ForEach(0..<12) { i in
+                Rectangle()
+                    .fill(FestivalDesign.navy.opacity(0.6))
+                    .frame(width: 1, height: 2.5)
+                    .offset(y: -8)
+                    .rotationEffect(.degrees(Double(i) * 30))
+            }
+            // Hands
+            Rectangle().fill(FestivalDesign.navy).frame(width: 1.2, height: 6).offset(y: -3)
+            Rectangle().fill(FestivalDesign.coral).frame(width: 1, height: 8).offset(y: -4)
+                .rotationEffect(.degrees(110))
+            Circle().fill(FestivalDesign.coral).frame(width: 2, height: 2)
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.15), radius: 1, y: 1)
+    }
+}
+
+private struct FramedPoster: View {
+    let accent: Color
+    let glyph: String
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+            RoundedRectangle(cornerRadius: 0.5)
+                .fill(accent.opacity(0.85))
+                .padding(2)
+            Text(glyph)
+                .font(.system(size: 11))
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.15), radius: 1, y: 1)
+    }
+}
+
+private struct Bookshelf: View {
+    var body: some View {
+        ZStack {
+            // Carcass
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
+            // Shelves with books
+            VStack(spacing: 1) {
+                ForEach(0..<3) { _ in
+                    HStack(spacing: 1) {
+                        BookSpine(color: FestivalDesign.coral)
+                        BookSpine(color: FestivalDesign.teal)
+                        BookSpine(color: FestivalDesign.lantern)
+                        BookSpine(color: FestivalDesign.parkingBlue)
+                        BookSpine(color: FestivalDesign.coral.opacity(0.7))
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.18), radius: 1.5, y: 1)
+    }
+}
+
+private struct BookSpine: View {
+    let color: Color
+    var body: some View {
+        RoundedRectangle(cornerRadius: 0.5)
+            .fill(color.opacity(0.9))
+            .overlay(
+                Rectangle()
+                    .fill(FestivalDesign.surface.opacity(0.7))
+                    .frame(height: 0.6)
+            )
+    }
+}
+
+private struct FilingCabinet: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 2)
-                .fill(FestivalDesign.parkingSoft.opacity(0.7))
-            HStack(spacing: 0) {
-                Rectangle().fill(Color.clear)
-                Rectangle().fill(FestivalDesign.creamDeep.opacity(0.8)).frame(width: 1)
-                Rectangle().fill(Color.clear)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.78, green: 0.78, blue: 0.80),
+                             Color(red: 0.62, green: 0.62, blue: 0.66)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            VStack(spacing: 2) {
+                ForEach(0..<3) { _ in
+                    RoundedRectangle(cornerRadius: 0.5)
+                        .fill(FestivalDesign.navy.opacity(0.22))
+                        .frame(height: 8)
+                        .overlay(
+                            Circle()
+                                .fill(FestivalDesign.navy.opacity(0.6))
+                                .frame(width: 2, height: 2)
+                        )
+                        .padding(.horizontal, 2)
+                }
             }
-            VStack(spacing: 0) {
-                Rectangle().fill(Color.clear)
-                Rectangle().fill(FestivalDesign.creamDeep.opacity(0.8)).frame(height: 1)
-                Rectangle().fill(Color.clear)
-            }
+            .padding(.vertical, 2)
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 2)
-                .stroke(FestivalDesign.creamDeep, lineWidth: 1.2)
-        )
+        .shadow(color: FestivalDesign.navy.opacity(0.20), radius: 1.5, y: 1)
     }
 }
 
-private struct PixelDesk: View {
+// MARK: - Floor furniture
+
+private struct IsoDesk: View {
     let label: String
     let accent: Color
+    var large: Bool = false
+    var small: Bool = false
+
+    private var deskW: CGFloat { large ? 56 : (small ? 36 : 46) }
+    private var deskH: CGFloat { large ? 14 : (small ? 9 : 11) }
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 1) {
             ZStack {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(FestivalDesign.creamDeep.opacity(0.85))
-                    .frame(width: 44, height: 22)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 2)
-                            .stroke(FestivalDesign.navy.opacity(0.20), lineWidth: 0.8)
-                    )
+                // Ground shadow
+                Ellipse()
+                    .fill(FestivalDesign.navy.opacity(0.16))
+                    .frame(width: deskW + 6, height: 5)
+                    .offset(y: deskH * 0.55 + 8)
+
+                // Front face of desk (gives depth)
+                Rectangle()
+                    .fill(Color(red: 0.62, green: 0.48, blue: 0.34))
+                    .frame(width: deskW, height: 7)
+                    .offset(y: deskH * 0.5 + 3)
+
+                // Desk top (lighter wood)
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(FestivalDesign.navy.opacity(0.85))
-                    .frame(width: 14, height: 9)
+                    .fill(LinearGradient(
+                        colors: [
+                            Color(red: 0.92, green: 0.80, blue: 0.62),
+                            Color(red: 0.80, green: 0.66, blue: 0.48)
+                        ],
+                        startPoint: .top, endPoint: .bottom))
+                    .frame(width: deskW, height: deskH)
                     .overlay(
-                        Rectangle()
-                            .fill(accent.opacity(0.85))
-                            .frame(width: 10, height: 6)
+                        RoundedRectangle(cornerRadius: 1)
+                            .stroke(FestivalDesign.navy.opacity(0.22), lineWidth: 0.7)
                     )
-                    .offset(y: -2)
-                RoundedRectangle(cornerRadius: 1)
+
+                // Monitor (CRT-ish)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(FestivalDesign.navy.opacity(0.9))
+                        .frame(width: large ? 18 : 14, height: large ? 12 : 9)
+                    Rectangle()
+                        .fill(accent.opacity(0.85))
+                        .frame(width: large ? 14 : 10, height: large ? 8 : 6)
+                    Rectangle()
+                        .fill(FestivalDesign.surface.opacity(0.35))
+                        .frame(width: 2, height: large ? 6 : 4)
+                        .offset(x: large ? -4 : -3, y: -1)
+                }
+                .offset(y: -deskH * 0.4 - (large ? 4 : 3))
+
+                // Monitor stand
+                Rectangle()
+                    .fill(FestivalDesign.navy.opacity(0.7))
+                    .frame(width: 2, height: 3)
+                    .offset(y: -deskH * 0.4 + (large ? 2 : 1))
+
+                // Desk lamp
+                if !small {
+                    LampGlyph()
+                        .offset(x: deskW * 0.32, y: -deskH * 0.4 - 2)
+                }
+
+                // Papers / notebook
+                RoundedRectangle(cornerRadius: 0.5)
+                    .fill(FestivalDesign.surface)
+                    .frame(width: 5, height: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 0.5)
+                            .stroke(FestivalDesign.navy.opacity(0.4), lineWidth: 0.4)
+                    )
+                    .offset(x: -deskW * 0.28, y: -deskH * 0.1)
+
+                // Chair (small back visible behind desk)
+                Rectangle()
                     .fill(accent.opacity(0.85))
-                    .frame(width: 6, height: 8)
-                    .offset(x: 14, y: 0)
+                    .frame(width: deskW * 0.35, height: 4)
+                    .overlay(
+                        Rectangle().stroke(FestivalDesign.navy.opacity(0.35), lineWidth: 0.4)
+                    )
+                    .offset(y: deskH * 0.55 + 10)
             }
             Text(label)
                 .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(FestivalDesign.navy.opacity(0.75))
+                .padding(.horizontal, 3)
+                .padding(.vertical, 0.5)
+                .background(FestivalDesign.surface.opacity(0.9))
+                .clipShape(Capsule())
+                .foregroundStyle(FestivalDesign.navy.opacity(0.85))
+                .offset(y: 4)
         }
     }
 }
 
-private struct PixelPlant: View {
+private struct LampGlyph: View {
     var body: some View {
-        VStack(spacing: -2) {
-            ZStack {
-                Circle().fill(FestivalDesign.teal.opacity(0.85)).frame(width: 14, height: 14)
-                Circle().fill(FestivalDesign.teal.opacity(0.55)).frame(width: 8, height: 8).offset(x: -3, y: -3)
-            }
+        ZStack {
+            // Shade
             Trapezoid()
-                .fill(FestivalDesign.creamDeep)
-                .frame(width: 12, height: 8)
+                .fill(FestivalDesign.lantern.opacity(0.9))
+                .frame(width: 6, height: 4)
+                .overlay(Trapezoid().stroke(FestivalDesign.navy.opacity(0.4), lineWidth: 0.4))
+            // Arm
+            Rectangle()
+                .fill(FestivalDesign.navy.opacity(0.7))
+                .frame(width: 0.8, height: 3)
+                .offset(y: 3)
+            // Base
+            Rectangle()
+                .fill(FestivalDesign.navy.opacity(0.7))
+                .frame(width: 4, height: 1)
+                .offset(y: 5)
+        }
+    }
+}
+
+private struct CoffeeStation: View {
+    var body: some View {
+        VStack(spacing: 1) {
+            // Coffee maker
+            ZStack {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(FestivalDesign.navy.opacity(0.85))
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .fill(FestivalDesign.coral.opacity(0.85))
+                    .frame(width: 5, height: 5)
+                    .offset(y: -1)
+                Rectangle()
+                    .fill(FestivalDesign.lantern)
+                    .frame(width: 8, height: 2)
+                    .offset(y: 4)
+            }
+            // Counter (front edge gives depth)
+            ZStack {
+                Rectangle()
+                    .fill(Color(red: 0.62, green: 0.48, blue: 0.34))
+                    .frame(width: 22, height: 4)
+                    .offset(y: 4)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color(red: 0.85, green: 0.74, blue: 0.58))
+                    .frame(width: 22, height: 5)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 1)
+                            .stroke(FestivalDesign.navy.opacity(0.22), lineWidth: 0.5)
+                    )
+                // A coffee mug
+                Circle()
+                    .fill(FestivalDesign.surface)
+                    .frame(width: 3, height: 3)
+                    .offset(x: 6, y: -1)
+            }
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.15), radius: 1, y: 1)
+    }
+}
+
+private struct WaterCooler: View {
+    var body: some View {
+        VStack(spacing: -1) {
+            // Bottle
+            ZStack {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(FestivalDesign.tealSoft.opacity(0.85))
+                    .frame(width: 12, height: 13)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(FestivalDesign.teal.opacity(0.55), lineWidth: 0.5)
+                    )
+                Ellipse()
+                    .fill(FestivalDesign.surface.opacity(0.5))
+                    .frame(width: 3, height: 5)
+                    .offset(x: -3, y: -2)
+            }
+            // Body
+            ZStack {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color(red: 0.85, green: 0.85, blue: 0.88))
+                    .frame(width: 14, height: 16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 1)
+                            .stroke(FestivalDesign.navy.opacity(0.30), lineWidth: 0.6)
+                    )
+                // Tap
+                Rectangle()
+                    .fill(FestivalDesign.navy.opacity(0.7))
+                    .frame(width: 4, height: 2)
+                    .offset(y: -2)
+                // Indicator light
+                Circle()
+                    .fill(FestivalDesign.teal)
+                    .frame(width: 1.5, height: 1.5)
+                    .offset(x: 4, y: 5)
+            }
+        }
+        .shadow(color: FestivalDesign.navy.opacity(0.20), radius: 1.5, y: 1)
+    }
+}
+
+private struct OfficePlant: View {
+    var body: some View {
+        VStack(spacing: -3) {
+            // Leaves
+            ZStack {
+                Capsule()
+                    .fill(FestivalDesign.teal.opacity(0.9))
+                    .frame(width: 4, height: 14)
+                    .rotationEffect(.degrees(-20))
+                    .offset(x: -3)
+                Capsule()
+                    .fill(FestivalDesign.teal)
+                    .frame(width: 4, height: 16)
+                    .offset(y: -1)
+                Capsule()
+                    .fill(FestivalDesign.teal.opacity(0.85))
+                    .frame(width: 4, height: 13)
+                    .rotationEffect(.degrees(22))
+                    .offset(x: 3, y: 1)
+            }
+            // Pot
+            Trapezoid()
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.78, green: 0.55, blue: 0.42),
+                             Color(red: 0.58, green: 0.38, blue: 0.28)],
+                    startPoint: .top, endPoint: .bottom))
+                .frame(width: 14, height: 10)
+                .overlay(Trapezoid().stroke(FestivalDesign.navy.opacity(0.3), lineWidth: 0.5))
+            // Saucer shadow
+            Ellipse()
+                .fill(FestivalDesign.navy.opacity(0.18))
+                .frame(width: 16, height: 3)
         }
     }
 }
