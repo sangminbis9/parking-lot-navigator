@@ -8,6 +8,7 @@ import {
   DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
   queryFestivalsFromCache,
+  reapStaleSyncRuns,
   syncDiscoveryCache,
   syncDiscoveryChunk,
 } from "./discoveryCache.js";
@@ -100,6 +101,13 @@ type BackendRuntime = {
 
 const app = new Hono<{ Bindings: Env }>();
 let backendRuntime: Promise<BackendRuntime> | null = null;
+let realtimeProviderPromise: Promise<
+  BackendRuntime["realtimeParkingProvider"]
+> | null = null;
+let discoveryRuntimePromise: Promise<{
+  festivalService: BackendRuntime["festivalService"];
+  eventService: BackendRuntime["eventService"];
+}> | null = null;
 
 const optionalBoolean = z
   .enum(["true", "false"])
@@ -837,11 +845,48 @@ async function runHeadReviewScheduled(env: Env): Promise<void> {
 
 async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
   try {
-    const backend = await loadBackend(env);
-    await syncRealtimeParkingCache(env.DB!, backend.realtimeParkingProvider);
+    const provider = await loadRealtimeProvider(env);
+    await syncRealtimeParkingCache(env.DB!, provider);
   } catch (error) {
     console.error("realtime parking sync failed", error);
   }
+}
+
+async function loadRealtimeProvider(
+  env: Env,
+): Promise<BackendRuntime["realtimeParkingProvider"]> {
+  syncProcessEnv(env);
+  realtimeProviderPromise ??= (async () => {
+    const { createRealtimeParkingProvider } =
+      await import("../../backend/src/providers/createRealtimeProviders.js");
+    return createRealtimeParkingProvider();
+  })();
+  return realtimeProviderPromise;
+}
+
+async function loadDiscoveryRuntime(env: Env): Promise<{
+  festivalService: BackendRuntime["festivalService"];
+  eventService: BackendRuntime["eventService"];
+}> {
+  syncProcessEnv(env);
+  discoveryRuntimePromise ??= (async () => {
+    const [
+      { createFestivalService },
+      { createEventService },
+      { setGeocodeStore },
+    ] = await Promise.all([
+      import("../../backend/src/features/discover/festivals/festivalService.js"),
+      import("../../backend/src/features/discover/events/eventService.js"),
+      import("../../backend/src/features/discover/events/eventProviderUtils.js"),
+    ]);
+    if (env.DB) setGeocodeStore(createD1GeocodeStore(env.DB));
+    else setGeocodeStore(null);
+    return {
+      festivalService: createFestivalService(),
+      eventService: createEventService(),
+    };
+  })();
+  return discoveryRuntimePromise;
 }
 
 async function syncDiscoveryScheduled(
@@ -861,8 +906,13 @@ async function syncDiscoveryChunkScheduled(
   chunkIndex: number,
 ): Promise<void> {
   try {
-    const backend = await loadBackend(env);
-    await syncDiscoveryChunk(env.DB!, backend, chunkIndex);
+    if (env.DB) {
+      await reapStaleSyncRuns(env.DB).catch((error) =>
+        console.error("reapStaleSyncRuns failed", error),
+      );
+    }
+    const runtime = await loadDiscoveryRuntime(env);
+    await syncDiscoveryChunk(env.DB!, runtime, chunkIndex);
   } catch (error) {
     console.error(
       `discovery chunk sync failed (chunk ${chunkIndex}/${DISCOVERY_PROVIDER_CHUNK_COUNT})`,

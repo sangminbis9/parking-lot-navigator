@@ -79,7 +79,7 @@ export class KcisaCultureEventProvider
   private async fetchAllItems(): Promise<CachedEvent[]> {
     const first = await this.fetchPage(1);
     const totalPages = Math.min(
-      3,
+      20,
       Math.max(
         1,
         Math.ceil((first.totalCount ?? first.rows.length) / EVENT_PAGE_SIZE),
@@ -91,7 +91,9 @@ export class KcisaCultureEventProvider
       ),
     );
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
-    const geocodeRows = rows.slice(0, KCISA_EVENT_GEOCODE_ROW_LIMIT);
+    const today = new Date().toISOString().slice(0, 10);
+    const futureRows = rows.filter((row) => rowEndsOnOrAfter(row, today));
+    const geocodeRows = futureRows.slice(0, KCISA_EVENT_GEOCODE_ROW_LIMIT);
     if (this.input.resolver?.warmup) {
       const warmupInputs = geocodeRows
         .map((row) => this.resolverInputFromRow(row))
@@ -99,7 +101,7 @@ export class KcisaCultureEventProvider
       await this.input.resolver.warmup(warmupInputs);
     }
     const items = await Promise.all(
-      rows.map((row, index) =>
+      futureRows.map((row, index) =>
         this.mapRow(row, index < KCISA_EVENT_GEOCODE_ROW_LIMIT),
       ),
     );
@@ -276,6 +278,22 @@ async function readErrorDetail(response: Response): Promise<string | null> {
   } catch {
     return response.statusText || null;
   }
+}
+
+function rowEndsOnOrAfter(
+  row: Record<string, unknown>,
+  todayIso: string,
+): boolean {
+  const temporal = getString(row, [
+    "eventPeriod",
+    "temporalCoverage",
+    "period",
+  ]);
+  const dates = parseDateRange(temporal);
+  if (!dates) return true;
+  const endDate = dates.endDate ?? dates.startDate;
+  if (!endDate) return true;
+  return endDate >= todayIso;
 }
 
 function regionFallbackCoordinate(

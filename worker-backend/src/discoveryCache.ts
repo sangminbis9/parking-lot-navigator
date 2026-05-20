@@ -676,6 +676,27 @@ async function startSyncRun(
   return { id };
 }
 
+export async function reapStaleSyncRuns(
+  db: D1Database,
+  olderThanMs: number = 5 * 60 * 1000,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE sync_runs
+         SET finished_at = ?, status = 'timeout', message = COALESCE(message, 'reaped: stale running')
+         WHERE status = 'running' AND started_at < ?`,
+    )
+    .bind(new Date().toISOString(), cutoff)
+    .run();
+  const changes =
+    (result.meta as { changes?: number } | undefined)?.changes ?? 0;
+  if (changes > 0) {
+    console.info(`reapStaleSyncRuns marked ${changes} stale runs as timeout`);
+  }
+  return changes;
+}
+
 async function finishSyncRun(
   db: D1Database,
   id: string,

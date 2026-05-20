@@ -1,11 +1,19 @@
 import type { Festival } from "@parking/shared-types";
 import { BaseProviderHealth } from "../../../providers/BaseProviderHealth.js";
 import { distanceMeters } from "../../../services/geo.js";
-import type { DiscoverQuery, FestivalProvider } from "../common/discoverProvider.js";
-import { discoverStatus, isWithinWindow, parseDate } from "../common/dateUtils.js";
+import type {
+  DiscoverQuery,
+  FestivalProvider,
+} from "../common/discoverProvider.js";
+import {
+  discoverStatus,
+  isWithinWindow,
+  parseDate,
+} from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 
-const NATIONAL_CULTURE_FESTIVAL_PATH = "/openapi/tn_pubr_public_cltur_fstvl_api";
+const NATIONAL_CULTURE_FESTIVAL_PATH =
+  "/openapi/tn_pubr_public_cltur_fstvl_api";
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -16,7 +24,11 @@ interface NationalCultureFestivalApiResponse {
       resultMsg?: string;
     };
     body?: {
-      items?: NationalCultureFestivalItem[] | { item?: NationalCultureFestivalItem[] | NationalCultureFestivalItem };
+      items?:
+        | NationalCultureFestivalItem[]
+        | {
+            item?: NationalCultureFestivalItem[] | NationalCultureFestivalItem;
+          };
       totalCount?: number | string;
       pageNo?: number | string;
       numOfRows?: number | string;
@@ -59,13 +71,19 @@ interface CachedNationalFestival {
   tags: string[];
 }
 
-export class NationalCultureFestivalProvider extends BaseProviderHealth implements FestivalProvider {
-  private cachedItems: { expiresAt: number; items: CachedNationalFestival[] } | null = null;
+export class NationalCultureFestivalProvider
+  extends BaseProviderHealth
+  implements FestivalProvider
+{
+  private cachedItems: {
+    expiresAt: number;
+    items: CachedNationalFestival[];
+  } | null = null;
   private inFlightItems: Promise<CachedNationalFestival[]> | null = null;
 
   constructor(
     private readonly serviceKey: string,
-    private readonly baseUrl: string
+    private readonly baseUrl: string,
   ) {
     super("public-data-culture-festival");
   }
@@ -77,11 +95,22 @@ export class NationalCultureFestivalProvider extends BaseProviderHealth implemen
         .map((item) => ({
           ...item,
           status: discoverStatus(item.startDate, item.endDate),
-          distanceMeters: distanceMeters(query.lat, query.lng, item.lat, item.lng),
-          source: "public-data-culture-festival" as const
+          distanceMeters: distanceMeters(
+            query.lat,
+            query.lng,
+            item.lat,
+            item.lng,
+          ),
+          source: "public-data-culture-festival" as const,
         }))
         .filter((item) => item.distanceMeters <= query.radiusMeters)
-        .filter((item) => isWithinWindow(item.startDate, item.endDate, query.upcomingWithinDays))
+        .filter((item) =>
+          isWithinWindow(
+            item.startDate,
+            item.endDate,
+            query.upcomingWithinDays,
+          ),
+        )
         .filter((item) => !query.ongoingOnly || item.status === "ongoing");
 
       this.markSuccess(normalized.length > 0 ? 0.84 : 0.65);
@@ -113,16 +142,34 @@ export class NationalCultureFestivalProvider extends BaseProviderHealth implemen
   private async fetchAllItems(): Promise<CachedNationalFestival[]> {
     const first = await this.fetchPage(1);
     const totalCount = first.totalCount ?? first.items.length;
-    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) => this.fetchPage(index + 2))
+    const totalPages = Math.min(
+      10,
+      Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
     );
-    return dedupeItems([...first.items, ...rest.flatMap((page) => page.items)]
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        this.fetchPage(index + 2),
+      ),
+    );
+    const rawItems = [...first.items, ...rest.flatMap((page) => page.items)];
+    const normalized = rawItems
       .map(normalizeNationalCultureFestival)
-      .filter((item): item is CachedNationalFestival => Boolean(item)));
+      .filter((item): item is CachedNationalFestival => Boolean(item));
+    const today = new Date().toISOString().slice(0, 10);
+    const futureOnly = normalized.filter((item) => item.endDate >= today);
+    const deduped = dedupeItems(futureOnly);
+    console.info(
+      `public-data-culture-festival fetched=${rawItems.length} normalized=${normalized.length} future=${futureOnly.length} deduped=${deduped.length}`,
+    );
+    return deduped;
   }
 
-  private async fetchPage(pageNo: number): Promise<{ items: NationalCultureFestivalItem[]; totalCount: number | null }> {
+  private async fetchPage(
+    pageNo: number,
+  ): Promise<{
+    items: NationalCultureFestivalItem[];
+    totalCount: number | null;
+  }> {
     const url = new URL(NATIONAL_CULTURE_FESTIVAL_PATH, this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
     url.searchParams.set("pageNo", String(pageNo));
@@ -132,37 +179,53 @@ export class NationalCultureFestivalProvider extends BaseProviderHealth implemen
     const response = await fetch(url, {
       headers: {
         Accept: "application/json,text/plain,*/*",
-        "User-Agent": "ParkingLotNavigator/0.1"
-      }
+        "User-Agent": "ParkingLotNavigator/0.1",
+      },
     });
-    if (!response.ok) throw new Error(`National culture festival API failed: ${response.status}`);
+    if (!response.ok)
+      throw new Error(
+        `National culture festival API failed: ${response.status}`,
+      );
 
     const text = await response.text();
     let body: NationalCultureFestivalApiResponse;
     try {
       body = JSON.parse(text) as NationalCultureFestivalApiResponse;
     } catch {
-      throw new Error(`National culture festival API returned non-JSON body: ${text.replace(/\s+/g, " ").slice(0, 200)}`);
+      throw new Error(
+        `National culture festival API returned non-JSON body: ${text.replace(/\s+/g, " ").slice(0, 200)}`,
+      );
     }
 
     const code = body.response?.header?.resultCode;
     if (code && code !== "00" && code !== "0") {
-      throw new Error(`National culture festival API error: ${body.response?.header?.resultMsg ?? code}`);
+      throw new Error(
+        `National culture festival API error: ${body.response?.header?.resultMsg ?? code}`,
+      );
     }
     return {
       items: extractItems(body),
-      totalCount: toNumber(body.response?.body?.totalCount)
+      totalCount: toNumber(body.response?.body?.totalCount),
     };
   }
 }
 
-function normalizeNationalCultureFestival(row: NationalCultureFestivalItem): CachedNationalFestival | null {
+function normalizeNationalCultureFestival(
+  row: NationalCultureFestivalItem,
+): CachedNationalFestival | null {
   const title = clean(row.fstvlNm);
   const startDate = normalizeDate(row.fstvlStartDate);
   const endDate = normalizeDate(row.fstvlEndDate) ?? startDate;
   const lat = toNumber(row.latitude);
   const lng = toNumber(row.longitude);
-  if (!title || !startDate || !endDate || lat === null || lng === null || !isKoreaCoordinate(lat, lng)) {
+  if (
+    !title ||
+    !startDate ||
+    !endDate ||
+    lat === null ||
+    lng === null ||
+    !isKoreaCoordinate(lat, lng)
+  ) {
     return null;
   }
 
@@ -175,7 +238,7 @@ function normalizeNationalCultureFestival(row: NationalCultureFestivalItem): Cac
     endDate,
     address || venueName,
     lat.toFixed(5),
-    lng.toFixed(5)
+    lng.toFixed(5),
   ]
     .filter(Boolean)
     .join("|");
@@ -183,7 +246,8 @@ function normalizeNationalCultureFestival(row: NationalCultureFestivalItem): Cac
   return {
     id: `public-data-culture:${hashKey(sourceItemKey)}`,
     title,
-    subtitle: clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
+    subtitle:
+      clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
     startDate,
     endDate,
     venueName,
@@ -196,12 +260,14 @@ function normalizeNationalCultureFestival(row: NationalCultureFestivalItem): Cac
       "culture-festival",
       clean(row.mnnstNm),
       clean(row.auspcInsttNm),
-      clean(row.suprtInstt)
-    ].filter((value): value is string => Boolean(value))
+      clean(row.suprtInstt),
+    ].filter((value): value is string => Boolean(value)),
   };
 }
 
-function extractItems(body: NationalCultureFestivalApiResponse): NationalCultureFestivalItem[] {
+function extractItems(
+  body: NationalCultureFestivalApiResponse,
+): NationalCultureFestivalItem[] {
   const items = body.response?.body?.items;
   if (Array.isArray(items)) return items;
   const item = items?.item;
@@ -209,7 +275,9 @@ function extractItems(body: NationalCultureFestivalApiResponse): NationalCulture
   return item ? [item] : [];
 }
 
-function dedupeItems(items: CachedNationalFestival[]): CachedNationalFestival[] {
+function dedupeItems(
+  items: CachedNationalFestival[],
+): CachedNationalFestival[] {
   const selected = new Map<string, CachedNationalFestival>();
   for (const item of items) {
     const key = [
@@ -217,7 +285,7 @@ function dedupeItems(items: CachedNationalFestival[]): CachedNationalFestival[] 
       item.startDate,
       item.endDate,
       Math.round(item.lat * 1000),
-      Math.round(item.lng * 1000)
+      Math.round(item.lng * 1000),
     ].join("|");
     if (!selected.has(key)) selected.set(key, item);
   }
