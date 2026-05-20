@@ -258,16 +258,11 @@ async function syncDiscoveryKind(
   );
   const items = dedupeItems(batches.flat());
   const sources = countSources(items);
-  let upserted = 0;
-  let skipped = 0;
-  for (const item of items) {
-    if (!Number.isFinite(item.lat) || !Number.isFinite(item.lng)) {
-      skipped += 1;
-      continue;
-    }
-    await upsertDiscoveryItem(db, item, generatedAt);
-    upserted += 1;
-  }
+  const validItems = items.filter(
+    (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
+  );
+  const skipped = items.length - validItems.length;
+  const upserted = await upsertDiscoveryItems(db, validItems, generatedAt);
   const pruned =
     kind === "events" ? 0 : await pruneStaleDiscovery(db, typeForKind(kind));
   return {
@@ -371,15 +366,9 @@ async function queryDiscoveryRows(
     .slice(0, limit);
 }
 
-async function upsertDiscoveryItem(
-  db: D1Database,
-  item: DiscoveryItem,
-  syncedAt: string,
-): Promise<void> {
-  const row = discoveryRow(item, syncedAt);
-  await db
-    .prepare(
-      `INSERT INTO discovery_items (
+const DISCOVERY_UPSERT_BATCH_SIZE = 50;
+
+const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         id, type, source, source_item_id, title, subtitle, category_text,
         start_date, end_date, status, is_free, venue_name, address, lat, lng,
         rating, review_count, lowest_price_text, lowest_price_platform,
@@ -413,8 +402,16 @@ async function upsertDiscoveryItem(
         raw_payload = excluded.raw_payload,
         data_updated_at = excluded.data_updated_at,
         last_seen_at = excluded.last_seen_at,
-        synced_at = excluded.synced_at`,
-    )
+        synced_at = excluded.synced_at`;
+
+function prepareDiscoveryUpsert(
+  db: D1Database,
+  item: DiscoveryItem,
+  syncedAt: string,
+): D1PreparedStatement {
+  const row = discoveryRow(item, syncedAt);
+  return db
+    .prepare(DISCOVERY_UPSERT_SQL)
     .bind(
       row.id,
       row.type,
@@ -445,8 +442,29 @@ async function upsertDiscoveryItem(
       syncedAt,
       syncedAt,
       syncedAt,
-    )
-    .run();
+    );
+}
+
+async function upsertDiscoveryItems(
+  db: D1Database,
+  items: DiscoveryItem[],
+  syncedAt: string,
+): Promise<number> {
+  if (items.length === 0) return 0;
+  let upserted = 0;
+  for (
+    let start = 0;
+    start < items.length;
+    start += DISCOVERY_UPSERT_BATCH_SIZE
+  ) {
+    const slice = items.slice(start, start + DISCOVERY_UPSERT_BATCH_SIZE);
+    const statements = slice.map((item) =>
+      prepareDiscoveryUpsert(db, item, syncedAt),
+    );
+    await db.batch(statements);
+    upserted += slice.length;
+  }
+  return upserted;
 }
 
 function discoveryRow(item: DiscoveryItem, syncedAt: string) {
