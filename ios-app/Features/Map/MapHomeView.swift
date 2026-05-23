@@ -34,7 +34,6 @@ struct MapHomeView: View {
     @State private var mapContainerSize: CGSize = .zero
     @State private var hologramAnchorTimer: Timer?
     @State private var mapProjector = MapProjector()
-    @State private var cameraAnimationTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -111,7 +110,6 @@ struct MapHomeView: View {
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
-            cameraAnimationTask?.cancel()
             stopHologramAnchorTracking()
         }
         .onChange(of: hologramPin?.id) { _ in
@@ -787,32 +785,6 @@ struct MapHomeView: View {
         moveMap(to: coordinate, zoomLevel: zoomLevel)
     }
 
-    private func animateMap(to coordinate: CLLocationCoordinate2D, zoomLevel targetZoomLevel: Int) {
-        cameraAnimationTask?.cancel()
-        hasUserFocusedMapTarget = true
-        shouldCenterOnNextLocation = false
-        cameraAnimationTask = Task {
-            let startZoomLevel = mapZoomLevel
-            let zoomStep = startZoomLevel <= targetZoomLevel ? 1 : -1
-            var currentZoomLevel = startZoomLevel
-            await MainActor.run {
-                mapCenter = coordinate
-            }
-            while currentZoomLevel != targetZoomLevel && !Task.isCancelled {
-                currentZoomLevel += zoomStep
-                await MainActor.run {
-                    mapCenter = coordinate
-                    mapZoomLevel = currentZoomLevel
-                }
-                try? await Task.sleep(nanoseconds: 95_000_000)
-            }
-            await MainActor.run {
-                mapCenter = coordinate
-                mapZoomLevel = targetZoomLevel
-            }
-        }
-    }
-
     private func clearMapFocus() {
         hasUserFocusedMapTarget = false
         shouldCenterOnNextLocation = false
@@ -870,7 +842,7 @@ struct MapHomeView: View {
         case .cluster(let cluster):
             hologramPin = nil
             viewModel.selectedParkingLot = nil
-            animateMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
+            focusMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
             focusMap(to: pin.coordinate, zoomLevel: targetZoom)
@@ -913,10 +885,10 @@ struct MapHomeView: View {
 
         let fitZoom: Int
         switch maxDistance {
-        case ..<180:
-            fitZoom = 18
-        case ..<450:
-            fitZoom = 17
+        case ..<250:
+            fitZoom = 15
+        case ..<700:
+            fitZoom = 16
         case ..<1_000:
             fitZoom = 16
         case ..<2_500:
@@ -926,7 +898,8 @@ struct MapHomeView: View {
         default:
             fitZoom = 13
         }
-        return min(18, max(mapZoomLevel + 2, fitZoom))
+        let comfortMaxZoom = cluster.count <= 3 ? 15 : (cluster.count <= 8 ? 16 : 17)
+        return min(comfortMaxZoom, max(mapZoomLevel + 1, fitZoom))
     }
 
     private func resolvedHologramAnchor(tapPoint: CGPoint?) -> CGPoint {
