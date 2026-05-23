@@ -54,29 +54,23 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            routedStack {
-                switch tabRouter.selectedTab {
-                case .map:
-                    MapHomeView(apiClient: apiClient)
-                case .discover:
-                    SearchView(apiClient: apiClient)
-                case .favorites:
-                    FavoritesView()
-                case .agentOffice:
-                    AgentOfficeView(apiClient: apiClient)
-                case .settings:
-                    SettingsView(apiClient: apiClient)
-                }
+        routedStack {
+            switch tabRouter.selectedTab {
+            case .map:
+                MapHomeView(apiClient: apiClient)
+            case .discover:
+                SearchView(apiClient: apiClient)
+            case .favorites:
+                FavoritesView()
+            case .agentOffice:
+                AgentOfficeView(apiClient: apiClient)
+            case .settings:
+                SettingsView(apiClient: apiClient)
             }
-            .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
-            .safeAreaInset(edge: .bottom) {
-                Color.clear.frame(height: 78)
-            }
-
+        }
+        .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             FestivalTabBar(selection: $tabRouter.selectedTab)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
@@ -168,20 +162,25 @@ private struct FestivalTabBar: View {
                 tabButton(tab)
             }
         }
-        .padding(6)
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
-                colors: [FestivalDesign.surface.opacity(0.98), FestivalDesign.cream.opacity(0.92)],
+                colors: [FestivalDesign.surface.opacity(0.99), FestivalDesign.cream.opacity(0.94)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            .ignoresSafeArea(edges: .bottom)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+            Rectangle()
+                .fill(FestivalDesign.creamDeep.opacity(0.55))
+                .frame(height: 1),
+            alignment: .top
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 14, y: 7)
+        .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 8, y: -2)
     }
 
     private func tabButton(_ tab: AppTab) -> some View {
