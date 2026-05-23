@@ -127,8 +127,13 @@ private struct OfficeFloorView: View {
                         .position(x: size.width * 0.50, y: size.height * 0.88)
 
                     ForEach(agents) { agent in
-                        let frame = OfficeChoreography.frame(for: agent.id, at: t, snapshot: snapshot)
                         let live = liveLine(for: agent.id)
+                        let frame = OfficeChoreography.frame(
+                            for: agent,
+                            at: t,
+                            snapshot: snapshot,
+                            hasLiveActivity: live != nil
+                        )
                         let line = live
                             ?? OfficeChoreography.spokenLine(for: agent, frame: frame, snapshot: snapshot)
                         AgentRunner(
@@ -151,8 +156,20 @@ private struct OfficeFloorView: View {
 
     private func liveLine(for agentId: String) -> String? {
         guard let event = activity.first(where: { $0.agentId == agentId }) else { return nil }
+        guard isRecentActivity(event.ts) else { return nil }
         return formatActivityLine(event)
     }
+}
+
+private func isRecentActivity(_ timestamp: String) -> Bool {
+    guard let date = AgentOfficeDateParser.formatter.date(from: timestamp) else {
+        return false
+    }
+    return Date().timeIntervalSince(date) < 120
+}
+
+private enum AgentOfficeDateParser {
+    static let formatter = ISO8601DateFormatter()
 }
 
 private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
@@ -173,8 +190,20 @@ private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
             return "\(prefix): \(reason)"
         }
         return title.isEmpty ? prefix : "\(prefix): \(title)"
+    case ("orion", "reconsider"):
+        let prefix = event.verdict == "approve" ? "복구 승인" : "재검토"
+        if let reason = event.reason, !reason.isEmpty {
+            return "\(prefix): \(reason)"
+        }
+        return title.isEmpty ? prefix : "\(prefix): \(title)"
     case ("orion", "error"):
         return "헤드 LLM 오류"
+    case ("pixel", "image_enrich"):
+        return title.isEmpty ? "대표 사진 보강" : "사진 보강: \(title)"
+    case ("pixel", "image_error"):
+        return event.reason ?? "사진 보강 오류"
+    case ("pixel", "image_skip"):
+        return event.reason ?? "사진 후보 없음"
     case ("echo", "post"):
         return title.isEmpty ? "게시판 등록" : "게시: \(title)"
     default:
@@ -212,6 +241,7 @@ private struct ActivityRow: View {
             case "orion": return FestivalDesign.coral
             case "scout": return FestivalDesign.parkingBlue
             case "festa": return FestivalDesign.lantern
+            case "pixel": return Color.purple
             case "echo":  return FestivalDesign.teal
             default:      return FestivalDesign.secondaryText
             }
@@ -271,6 +301,7 @@ private enum OfficeChoreography {
         "scout":    CGPoint(x: 0.84, y: 0.44),
         "orion":    CGPoint(x: 0.50, y: 0.34),
         "vera":     CGPoint(x: 0.36, y: 0.24),
+        "pixel":    CGPoint(x: 0.64, y: 0.24),
         "echo":     CGPoint(x: 0.78, y: 0.74),
         "sentinel": CGPoint(x: 0.18, y: 0.16)
     ]
@@ -287,29 +318,35 @@ private enum OfficeChoreography {
         CGPoint(x: 0.10, y: 0.62)
     ]
 
-    static func frame(for id: String, at t: TimeInterval, snapshot: AgentOfficeSnapshot) -> AgentFrame {
-        switch id {
+    static func frame(for agent: AgentOfficeAgent, at t: TimeInterval, snapshot: AgentOfficeSnapshot, hasLiveActivity: Bool) -> AgentFrame {
+        let home = homes[agent.id] ?? CGPoint(x: 0.5, y: 0.5)
+        guard agent.status.movesInOffice || hasLiveActivity else {
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        }
+
+        switch agent.id {
         case "festa":
-            return collectorFrame(id: id, t: t, offset: 0,
+            return collectorFrame(id: agent.id, t: t, offset: 0,
                                   carry: .festival,
                                   itemCount: snapshot.festivals.count)
         case "scout":
-            return collectorFrame(id: id, t: t, offset: 12,
+            return collectorFrame(id: agent.id, t: t, offset: 12,
                                   carry: .event,
                                   itemCount: snapshot.events.count)
         case "orion":
-            let home = homes["orion"]!
             let dir: PixelSprite.Direction = (Int(t) % 8 < 4) ? .down : .left
             return AgentFrame(position: home, direction: dir, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         case "vera":
             return validatorFrame(t: t)
+        case "pixel":
+            return imageFrame(t: t, hasMissingImages: snapshot.missingImageCount > 0 || hasLiveActivity)
         case "echo":
             return publisherFrame(t: t, hasItems: snapshot.published.count > 0)
         case "sentinel":
             return patrolFrame(t: t)
         default:
-            let home = homes[id] ?? CGPoint(x: 0.5, y: 0.5)
             return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
@@ -374,6 +411,34 @@ private enum OfficeChoreography {
                           stage: .validating, carry: nil)
     }
 
+    private static func imageFrame(t: TimeInterval, hasMissingImages: Bool) -> AgentFrame {
+        let home = homes["pixel"]!
+        guard hasMissingImages else {
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        }
+        let target = CGPoint(x: 0.58, y: 0.76)
+        let cycle: Double = 18
+        let tau = t.truncatingRemainder(dividingBy: cycle)
+        let walking3 = Int(t * 6) % 3
+        switch tau {
+        case 0..<7:
+            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+                              stage: .validating, carry: nil)
+        case 7..<10:
+            let p = ease((tau - 7) / 3)
+            return AgentFrame(position: lerp(home, target, p), direction: .down,
+                              walking: true, walkPhase: walking3, stage: .walkingToWall, carry: nil)
+        case 10..<13:
+            return AgentFrame(position: target, direction: .up, walking: false, walkPhase: 1,
+                              stage: .posting, carry: nil)
+        default:
+            let p = ease((tau - 13) / 5)
+            return AgentFrame(position: lerp(target, home, p), direction: .up,
+                              walking: true, walkPhase: walking3, stage: .returning, carry: nil)
+        }
+    }
+
     private static func publisherFrame(t: TimeInterval, hasItems: Bool) -> AgentFrame {
         let home = homes["echo"]!
         let cycle: Double = 16
@@ -427,6 +492,7 @@ private enum OfficeChoreography {
 
     static func spokenLine(for agent: AgentOfficeAgent, frame: AgentFrame,
                            snapshot: AgentOfficeSnapshot) -> String? {
+        guard agent.status.canSpeakInOffice else { return nil }
         switch agent.id {
         case "festa":
             return collectorLine(stage: frame.stage, items: snapshot.festivals, fallback: agent.line)
@@ -442,6 +508,12 @@ private enum OfficeChoreography {
         case "vera":
             switch frame.stage {
             case .validating: return agent.line
+            default: return nil
+            }
+        case "pixel":
+            switch frame.stage {
+            case .validating: return agent.line
+            case .posting: return "대표 사진을 붙였어요."
             default: return nil
             }
         case "echo":
@@ -485,6 +557,26 @@ private enum OfficeChoreography {
     private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
         CGPoint(x: a.x + (b.x - a.x) * CGFloat(t),
                 y: a.y + (b.y - a.y) * CGFloat(t))
+    }
+}
+
+private extension AgentOfficeStatus {
+    var movesInOffice: Bool {
+        switch self {
+        case .thinking, .collecting, .validating, .monitoring:
+            return true
+        case .idle, .blocked, .error:
+            return false
+        }
+    }
+
+    var canSpeakInOffice: Bool {
+        switch self {
+        case .idle:
+            return false
+        case .thinking, .collecting, .validating, .monitoring, .blocked, .error:
+            return true
+        }
     }
 }
 

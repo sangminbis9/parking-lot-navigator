@@ -41,6 +41,7 @@ struct DiscoveryItem: Identifiable, Hashable {
     let title: String
     let subtitle: String
     let kind: Kind
+    let hasImage: Bool
 }
 
 struct AgentOfficeSnapshot {
@@ -54,6 +55,10 @@ struct AgentOfficeSnapshot {
     var published: [DiscoveryItem] {
         let merged = festivals.prefix(3) + events.prefix(3)
         return Array(merged.prefix(6))
+    }
+
+    var missingImageCount: Int {
+        festivals.filter { !$0.hasImage }.count + events.filter { !$0.hasImage }.count
     }
 
     static let empty = AgentOfficeSnapshot(
@@ -137,7 +142,8 @@ final class AgentOfficeViewModel: ObservableObject {
                     id: "fest-\(f.id)",
                     title: f.title,
                     subtitle: f.venueName ?? f.address,
-                    kind: .festival
+                    kind: .festival,
+                    hasImage: f.imageUrl != nil
                 )
             }
             let normalizedEvents = evts.prefix(8).map { e in
@@ -145,12 +151,19 @@ final class AgentOfficeViewModel: ObservableObject {
                     id: "evt-\(e.id)",
                     title: e.title,
                     subtitle: e.storeName,
-                    kind: .event
+                    kind: .event,
+                    hasImage: e.imageUrl != nil
                 )
             }
 
             let nextSnapshot = AgentOfficeSnapshot(
-                summary: Self.summary(parking: parking, discovery: discovery, festivals: normalizedFestivals.count, events: normalizedEvents.count),
+                summary: Self.summary(
+                    parking: parking,
+                    discovery: discovery,
+                    festivals: normalizedFestivals.count,
+                    events: normalizedEvents.count,
+                    missingImages: normalizedFestivals.filter { !$0.hasImage }.count + normalizedEvents.filter { !$0.hasImage }.count
+                ),
                 parkingProviders: parking,
                 discoveryProviders: discovery,
                 festivals: Array(normalizedFestivals),
@@ -177,10 +190,10 @@ final class AgentOfficeViewModel: ObservableObject {
 
     // MARK: - Builders
 
-    private static func summary(parking: [ProviderHealth], discovery: [ProviderHealth], festivals: Int, events: Int) -> String {
+    private static func summary(parking: [ProviderHealth], discovery: [ProviderHealth], festivals: Int, events: Int, missingImages: Int) -> String {
         let p = providerCounts(parking)
         let d = providerCounts(discovery)
-        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 오늘 발견 축제 \(festivals)건 이벤트 \(events)건"
+        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 오늘 발견 축제 \(festivals)건 이벤트 \(events)건 · 사진 보강 \(missingImages)건"
     }
 
     private static func buildAgents(snapshot: AgentOfficeSnapshot) -> [AgentOfficeAgent] {
@@ -189,6 +202,7 @@ final class AgentOfficeViewModel: ObservableObject {
         let stale = p.stale + d.stale
         let festivalCount = snapshot.festivals.count
         let eventCount = snapshot.events.count
+        let missingImages = snapshot.missingImageCount
 
         return [
             AgentOfficeAgent(
@@ -226,6 +240,15 @@ final class AgentOfficeViewModel: ObservableObject {
                 status: validatorStatus(parking: p, discovery: d),
                 line: "데이터 품질 확인 중.",
                 reply: p.down + d.down > 0 ? "실패 항목 표시했어요." : "검증 통과 중이에요."
+            ),
+            AgentOfficeAgent(
+                id: "pixel",
+                name: "Pixel",
+                role: "이미지 보강",
+                spriteAsset: "AgentChar5",
+                status: missingImages > 0 ? .validating : .idle,
+                line: missingImages > 0 ? "사진 없는 항목 \(missingImages)건 보강 중." : "이미지 큐 비었어요.",
+                reply: "원문 대표 이미지를 찾고 있어요."
             ),
             AgentOfficeAgent(
                 id: "sentinel",

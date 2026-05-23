@@ -23,6 +23,7 @@ import {
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import { runHeadReview } from "./agents/headAgent.js";
+import { runImageEnrichment } from "./agents/imageAgent.js";
 import { createMerchantApp } from "./merchant/routes.js";
 import {
   queryRealtimeParkingCache,
@@ -76,6 +77,9 @@ type Env = {
   AGENT_HEAD_ENABLED?: string;
   AGENT_HEAD_BATCH_SIZE?: string;
   AGENT_HEAD_MAX_BATCHES?: string;
+  AGENT_HEAD_INCLUDE_REJECTED?: string;
+  AGENT_PIXEL_ENABLED?: string;
+  AGENT_PIXEL_BATCH_SIZE?: string;
 };
 
 type BackendModules = {
@@ -788,6 +792,18 @@ app.post("/admin/run-head-review", async (c) => {
   }
 });
 
+app.post("/admin/run-image-enrichment", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  try {
+    const result = await runImageEnrichment(c.env.DB, c.env);
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default {
@@ -829,17 +845,29 @@ export default {
       return;
     }
     if (controller.cron === "30 */3 * * *") {
-      ctx.waitUntil(runHeadReviewScheduled(env));
+      ctx.waitUntil(runAgentOfficeScheduled(env));
       return;
     }
   },
 };
+
+async function runAgentOfficeScheduled(env: Env): Promise<void> {
+  await Promise.all([runHeadReviewScheduled(env), runImageEnrichmentScheduled(env)]);
+}
 
 async function runHeadReviewScheduled(env: Env): Promise<void> {
   try {
     await runHeadReview(env.DB!, env);
   } catch (error) {
     console.error("head review scheduled failed", error);
+  }
+}
+
+async function runImageEnrichmentScheduled(env: Env): Promise<void> {
+  try {
+    await runImageEnrichment(env.DB!, env);
+  } catch (error) {
+    console.error("image enrichment scheduled failed", error);
   }
 }
 
