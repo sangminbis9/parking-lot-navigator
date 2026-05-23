@@ -28,8 +28,7 @@ struct AgentOfficeView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("에이전트 사무실")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("에이전트 사무실")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: refresh) {

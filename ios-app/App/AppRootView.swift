@@ -55,31 +55,21 @@ struct AppRootView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            TabView(selection: $tabRouter.selectedTab) {
-                routedStack {
+            routedStack {
+                switch tabRouter.selectedTab {
+                case .map:
                     MapHomeView(apiClient: apiClient)
-                }
-                .tag(AppTab.map)
-
-                routedStack {
+                case .discover:
                     SearchView(apiClient: apiClient)
-                }
-                .tag(AppTab.discover)
-
-                routedStack {
+                case .favorites:
                     FavoritesView()
-                }
-                .tag(AppTab.favorites)
-
-                routedStack {
+                case .agentOffice:
                     AgentOfficeView(apiClient: apiClient)
+                case .settings:
+                    SettingsView(apiClient: apiClient)
                 }
-                .tag(AppTab.agentOffice)
-
-                SettingsView(apiClient: apiClient)
-                    .tag(AppTab.settings)
             }
-            .toolbar(.hidden, for: .tabBar)
+            .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 78)
             }

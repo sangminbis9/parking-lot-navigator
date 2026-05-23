@@ -29,8 +29,7 @@ struct ParkingResultsView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("주차 추천")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("주차 추천")
         .task { await viewModel.load() }
     }
 

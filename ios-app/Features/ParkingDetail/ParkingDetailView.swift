@@ -26,8 +26,7 @@ struct ParkingDetailView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("주차장 상세")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("주차장 상세")
     }
 
     private var headerCard: some View {
