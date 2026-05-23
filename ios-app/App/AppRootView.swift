@@ -22,6 +22,7 @@ final class AppTabRouter: ObservableObject {
 
 struct AppRootView: View {
     let apiClient: APIClientProtocol
+    @EnvironmentObject private var themeStore: FestivalThemeStore
     @StateObject private var router = Router()
     @StateObject private var tabRouter = AppTabRouter()
 
@@ -62,6 +63,12 @@ struct AppRootView: View {
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
+        .onAppear {
+            Self.configureTabBarAppearance()
+        }
+        .onChange(of: themeStore.selectedTheme) { _ in
+            Self.configureTabBarAppearance()
+        }
         .onChange(of: tabRouter.selectedTab) { _ in
             router.path.removeAll()
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     let apiClient: APIClientProtocol
+    @EnvironmentObject private var themeStore: FestivalThemeStore
     @State private var providers: [ProviderHealth] = []
     @State private var errorMessage: String?
 
@@ -10,6 +11,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     settingsHeader
+                    themePickerCard
                     merchantCard
                     appSettingsCard
                     dataSourceCard
@@ -60,6 +62,91 @@ struct SettingsView: View {
 
     private var merchantURL: URL {
         AppConfiguration.current.apiBaseURL.appendingPathComponent("merchant")
+    }
+
+    private var themePickerCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("앱 테마")
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("메인 파스텔 톤을 고르면 전체 카드, 배경, 강조색 조합이 함께 바뀝니다.")
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 10)], spacing: 10) {
+                ForEach(FestivalTheme.allCases) { theme in
+                    themeButton(for: theme)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "textformat.size")
+                    .foregroundStyle(FestivalDesign.coral)
+                Text("모든 테마는 파스텔 바탕 위에 흰 글씨를 쓰지 않도록 어두운 본문색을 기준으로 구성했습니다.")
+                    .font(.caption)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .background(FestivalDesign.cream.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private func themeButton(for theme: FestivalTheme) -> some View {
+        let isSelected = themeStore.selectedTheme == theme
+        let palette = theme.palette
+
+        return Button {
+            themeStore.select(theme)
+        } label: {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: -4) {
+                    themeSwatch(palette.cream)
+                    themeSwatch(palette.coral)
+                    themeSwatch(palette.teal)
+                    themeSwatch(palette.parkingBlue)
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(FestivalDesign.coral)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(theme.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(theme.description)
+                        .font(.caption)
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(11)
+            .background(isSelected ? palette.tealSoft.opacity(0.9) : palette.cream.opacity(0.28))
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    .stroke(isSelected ? FestivalDesign.coral : palette.creamDeep.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(theme.displayName) 테마")
+    }
+
+    private func themeSwatch(_ color: Color) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 20, height: 20)
+            .overlay(Circle().stroke(FestivalDesign.surface, lineWidth: 2))
     }
 
     private var merchantCard: some View {
