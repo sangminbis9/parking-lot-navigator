@@ -170,6 +170,13 @@ private func isRecentActivity(_ timestamp: String) -> Bool {
 
 private enum AgentOfficeDateParser {
     static let formatter = ISO8601DateFormatter()
+    static let wakeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 }
 
 private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
@@ -492,6 +499,9 @@ private enum OfficeChoreography {
 
     static func spokenLine(for agent: AgentOfficeAgent, frame: AgentFrame,
                            snapshot: AgentOfficeSnapshot) -> String? {
+        if agent.status == .idle {
+            return nextWakeLine(for: agent.id, at: Date())
+        }
         guard agent.status.canSpeakInOffice else { return nil }
         switch agent.id {
         case "festa":
@@ -547,6 +557,77 @@ private enum OfficeChoreography {
         default:
             return nil
         }
+    }
+
+    private static func nextWakeLine(for agentId: String, at date: Date) -> String? {
+        guard let wakeDate = nextWakeDate(for: agentId, after: date) else { return nil }
+        return "다음 \(formatWakeTime(wakeDate))에 깨어나요."
+    }
+
+    private static func nextWakeDate(for agentId: String, after date: Date) -> Date? {
+        switch agentId {
+        case "festa":
+            return nextMinuteSlot(after: date, intervalMinutes: 9)
+        case "scout":
+            return nextHourlyMinute(after: date, minute: 15)
+        case "orion", "pixel", "echo":
+            return nextThreeHourSlot(after: date, minute: 30)
+        case "vera", "sentinel":
+            return Calendar.current.date(byAdding: .second, value: 20, to: date)
+        default:
+            return nil
+        }
+    }
+
+    private static func nextMinuteSlot(after date: Date, intervalMinutes: Int) -> Date? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        guard let minute = components.minute else { return nil }
+        let nextMinute = ((minute / intervalMinutes) + 1) * intervalMinutes
+        if nextMinute < 60 {
+            var nextComponents = components
+            nextComponents.minute = nextMinute
+            nextComponents.second = 0
+            return calendar.date(from: nextComponents)
+        }
+        guard let nextHour = calendar.date(byAdding: .hour, value: 1, to: date) else { return nil }
+        var nextComponents = calendar.dateComponents([.year, .month, .day, .hour], from: nextHour)
+        nextComponents.minute = 0
+        nextComponents.second = 0
+        return calendar.date(from: nextComponents)
+    }
+
+    private static func nextHourlyMinute(after date: Date, minute: Int) -> Date? {
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day, .hour], from: date)
+        components.minute = minute
+        components.second = 0
+        guard let candidate = calendar.date(from: components) else { return nil }
+        if candidate > date { return candidate }
+        return calendar.date(byAdding: .hour, value: 1, to: candidate)
+    }
+
+    private static func nextThreeHourSlot(after date: Date, minute: Int) -> Date? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour], from: date)
+        guard let hour = components.hour else { return nil }
+        for offset in 0...4 {
+            let candidateHour = ((hour / 3) * 3) + (offset * 3)
+            var nextComponents = components
+            nextComponents.hour = candidateHour % 24
+            nextComponents.minute = minute
+            nextComponents.second = 0
+            guard var candidate = calendar.date(from: nextComponents) else { continue }
+            if candidateHour >= 24 {
+                candidate = calendar.date(byAdding: .day, value: candidateHour / 24, to: candidate) ?? candidate
+            }
+            if candidate > date { return candidate }
+        }
+        return nil
+    }
+
+    private static func formatWakeTime(_ date: Date) -> String {
+        AgentOfficeDateParser.wakeFormatter.string(from: date)
     }
 
     private static func ease(_ x: Double) -> Double {
