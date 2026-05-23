@@ -219,7 +219,7 @@ struct MapHomeView: View {
                 if let cluster = clusterPin(for: group, idPrefix: "realtime-parking-cluster", tint: FestivalDesign.uiParkingBlue) {
                     return cluster
                 }
-                group.first.map { source in
+                return group.first.map { source in
                     MapPinItem(id: "realtime-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot))
                 }
             }
@@ -255,7 +255,7 @@ struct MapHomeView: View {
                 if let cluster = clusterPin(for: group, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal) {
                     return cluster
                 }
-                group.first.map { source in
+                return group.first.map { source in
                     mapPinItem(for: source, coordinate: source.coordinate)
                 }
             }
