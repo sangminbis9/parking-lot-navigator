@@ -803,14 +803,14 @@ private extension UIImage {
     }
 
     static func clusterPin(fill: UIColor, count: Int, scale: CGFloat) -> UIImage {
-        let size: CGFloat = 42
-        let badgeSize: CGFloat = 22
-        let canvasWidth = size + pinShadowPadding * 2 + badgeSize * 0.45
-        let canvasHeight = size + pinTailHeight + pinShadowPadding + badgeSize * 0.35
+        let size: CGFloat = 34
+        let badgeSize: CGFloat = 18
+        let canvasWidth = size + pinShadowPadding * 2 + badgeSize * 0.35
+        let canvasHeight = size + pinTailHeight + pinShadowPadding + badgeSize * 0.25
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
-            let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.18)
+            let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.12)
             drawHaloPinBody(
                 core: fill,
                 symbol: "circle.grid.2x2.fill",
@@ -824,7 +824,7 @@ private extension UIImage {
             let badgeText = count > 99 ? "99+" : "\(count)"
             let badgeRect = CGRect(
                 x: origin.x + size - badgeSize * 0.62,
-                y: origin.y - badgeSize * 0.28,
+                y: origin.y - badgeSize * 0.24,
                 width: badgeSize,
                 height: badgeSize
             )
@@ -845,11 +845,11 @@ private extension UIImage {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: count > 99 ? 8.5 : 10.5, weight: .heavy),
+                .font: UIFont.systemFont(ofSize: count > 99 ? 7.2 : 9.2, weight: .heavy),
                 .foregroundColor: UIColor.white,
                 .paragraphStyle: paragraph
             ]
-            NSString(string: badgeText).draw(in: badgeRect.insetBy(dx: 1, dy: 4.2), withAttributes: attributes)
+            NSString(string: badgeText).draw(in: badgeRect.insetBy(dx: 1, dy: 3.3), withAttributes: attributes)
         }
     }
 
