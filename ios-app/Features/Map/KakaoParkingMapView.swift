@@ -427,6 +427,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 return 12
             case .event:
                 return 12
+            case .cluster:
+                return 16
             }
         }
 
@@ -549,6 +551,8 @@ private extension MapPinItem {
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: event.title)
+        case .cluster(let cluster):
+            return "cluster-\(cluster.count)-\(cluster.tint.stableStyleKey)"
         }
     }
 
@@ -562,6 +566,9 @@ private extension MapPinItem {
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard styleID == style.labeledID(for: event.title) else { return nil }
             return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: event.title.shortMapLabel))
+        case .cluster(let cluster):
+            guard styleID == "cluster-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
+            return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale))
         default:
             return nil
         }
@@ -749,6 +756,24 @@ private extension String {
     }
 }
 
+private extension UIColor {
+    var stableStyleKey: String {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return [
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded()),
+            Int((alpha * 255).rounded())
+        ]
+        .map { String($0, radix: 16) }
+        .joined(separator: "-")
+    }
+}
+
 private extension CLLocationCoordinate2D {
     func isClose(to other: CLLocationCoordinate2D) -> Bool {
         abs(latitude - other.latitude) <= 0.000001 &&
@@ -775,6 +800,57 @@ private extension UIImage {
 
     static func discoverPin(fill: UIColor, symbol: String, label: String? = nil) -> UIImage {
         discoverMarker(fill: fill, symbol: symbol, label: label, size: 34, scale: mapPinScale)
+    }
+
+    static func clusterPin(fill: UIColor, count: Int, scale: CGFloat) -> UIImage {
+        let size: CGFloat = 42
+        let badgeSize: CGFloat = 22
+        let canvasWidth = size + pinShadowPadding * 2 + badgeSize * 0.45
+        let canvasHeight = size + pinTailHeight + pinShadowPadding + badgeSize * 0.35
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
+            let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.18)
+            drawHaloPinBody(
+                core: fill,
+                symbol: "circle.grid.2x2.fill",
+                letter: nil,
+                dotted: false,
+                size: size,
+                origin: origin,
+                context: context
+            )
+
+            let badgeText = count > 99 ? "99+" : "\(count)"
+            let badgeRect = CGRect(
+                x: origin.x + size - badgeSize * 0.62,
+                y: origin.y - badgeSize * 0.28,
+                width: badgeSize,
+                height: badgeSize
+            )
+            let badge = UIBezierPath(ovalIn: badgeRect)
+            context.cgContext.saveGState()
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1.5),
+                blur: 4,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.25).cgColor
+            )
+            FestivalDesign.uiCoral.setFill()
+            badge.fill()
+            context.cgContext.restoreGState()
+            UIColor.white.withAlphaComponent(0.95).setStroke()
+            badge.lineWidth = 1.4
+            badge.stroke()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: count > 99 ? 8.5 : 10.5, weight: .heavy),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: badgeText).draw(in: badgeRect.insetBy(dx: 1, dy: 4.2), withAttributes: attributes)
+        }
     }
 
     static func discoverMarker(fill: UIColor, symbol: String, label: String?, size: CGFloat, scale: CGFloat) -> UIImage {

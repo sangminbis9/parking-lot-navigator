@@ -3,6 +3,7 @@ import CoreLocation
 import Foundation
 import MapKit
 import SwiftUI
+import UIKit
 
 struct MapHomeView: View {
     let apiClient: APIClientProtocol
@@ -33,6 +34,7 @@ struct MapHomeView: View {
     @State private var mapContainerSize: CGSize = .zero
     @State private var hologramAnchorTimer: Timer?
     @State private var mapProjector = MapProjector()
+    @State private var cameraAnimationTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -109,6 +111,7 @@ struct MapHomeView: View {
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
+            cameraAnimationTask?.cancel()
             stopHologramAnchorTracking()
         }
         .onChange(of: hologramPin?.id) { _ in
@@ -175,18 +178,37 @@ struct MapHomeView: View {
                 kind: .destination(destination)
             ))
         }
-        items.append(contentsOf: viewModel.parkingLots.map { parkingLot in
-            MapPinItem(
-                id: "parking-\(parkingLot.id)",
-                coordinate: CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng),
-                kind: .parking(parkingLot)
-            )
-        })
-        if viewModel.showsRealtimeParkingLayer {
+        items.append(contentsOf: parkingPins)
+        if viewModel.showsRealtimeParkingLayer || viewModel.selectedDiscoverParkingContext {
             items.append(contentsOf: realtimeParkingPins)
         }
         items.append(contentsOf: discoverPins)
         return items
+    }
+
+    private var parkingPins: [MapPinItem] {
+        let sources = viewModel.parkingLots.map { ParkingPinSource(parkingLot: $0, prefix: "parking") }
+        let groups = overlayGroups(sources)
+        if mapZoomLevel < overlayReleaseZoomLevel {
+            return groups.compactMap { group in
+                if let cluster = clusterPin(for: group, idPrefix: "parking-cluster", tint: FestivalDesign.uiParkingBlue) {
+                    return cluster
+                }
+                return group.first.map { source in
+                    MapPinItem(id: "parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot))
+                }
+            }
+        }
+
+        return groups.flatMap { group in
+            group.enumerated().map { index, source in
+                MapPinItem(
+                    id: "parking-\(source.parkingLot.id)",
+                    coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count),
+                    kind: .parking(source.parkingLot)
+                )
+            }
+        }
     }
 
     private var realtimeParkingPins: [MapPinItem] {
@@ -194,6 +216,9 @@ struct MapHomeView: View {
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
             return groups.compactMap { group in
+                if let cluster = clusterPin(for: group, idPrefix: "realtime-parking-cluster", tint: FestivalDesign.uiParkingBlue) {
+                    return cluster
+                }
                 group.first.map { source in
                     MapPinItem(id: "realtime-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot))
                 }
@@ -227,6 +252,9 @@ struct MapHomeView: View {
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
             return groups.compactMap { group in
+                if let cluster = clusterPin(for: group, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal) {
+                    return cluster
+                }
                 group.first.map { source in
                     mapPinItem(for: source, coordinate: source.coordinate)
                 }
@@ -292,6 +320,31 @@ struct MapHomeView: View {
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
             )
         }
+    }
+
+    private func clusterPin<Source: OverlayPinSource>(
+        for group: [Source],
+        idPrefix: String,
+        tint: UIColor
+    ) -> MapPinItem? {
+        guard group.count > 1 else { return nil }
+        let coordinates = group.map(\.coordinate)
+        let center = clusterCenter(for: coordinates)
+        let cluster = MapPinCluster(
+            id: "\(idPrefix)-\(overlayKey(for: center, zoomLevel: mapZoomLevel))-\(group.count)",
+            coordinate: center,
+            count: group.count,
+            memberCoordinates: coordinates,
+            tint: tint
+        )
+        return MapPinItem(id: cluster.id, coordinate: center, kind: .cluster(cluster))
+    }
+
+    private func clusterCenter(for coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D {
+        guard !coordinates.isEmpty else { return mapCenter }
+        let latitude = coordinates.map(\.latitude).reduce(0, +) / Double(coordinates.count)
+        let longitude = coordinates.map(\.longitude).reduce(0, +) / Double(coordinates.count)
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
     private func overlayCoordinate(_ coordinate: CLLocationCoordinate2D, index: Int, count: Int) -> CLLocationCoordinate2D {
@@ -734,6 +787,32 @@ struct MapHomeView: View {
         moveMap(to: coordinate, zoomLevel: zoomLevel)
     }
 
+    private func animateMap(to coordinate: CLLocationCoordinate2D, zoomLevel targetZoomLevel: Int) {
+        cameraAnimationTask?.cancel()
+        hasUserFocusedMapTarget = true
+        shouldCenterOnNextLocation = false
+        cameraAnimationTask = Task {
+            let startZoomLevel = mapZoomLevel
+            let zoomStep = startZoomLevel <= targetZoomLevel ? 1 : -1
+            var currentZoomLevel = startZoomLevel
+            await MainActor.run {
+                mapCenter = coordinate
+            }
+            while currentZoomLevel != targetZoomLevel && !Task.isCancelled {
+                currentZoomLevel += zoomStep
+                await MainActor.run {
+                    mapCenter = coordinate
+                    mapZoomLevel = currentZoomLevel
+                }
+                try? await Task.sleep(nanoseconds: 95_000_000)
+            }
+            await MainActor.run {
+                mapCenter = coordinate
+                mapZoomLevel = targetZoomLevel
+            }
+        }
+    }
+
     private func clearMapFocus() {
         hasUserFocusedMapTarget = false
         shouldCenterOnNextLocation = false
@@ -788,6 +867,10 @@ struct MapHomeView: View {
 
     private func handlePinTap(_ pin: MapPinItem, tapPoint: CGPoint?) {
         switch pin.kind {
+        case .cluster(let cluster):
+            hologramPin = nil
+            viewModel.selectedParkingLot = nil
+            animateMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
             focusMap(to: pin.coordinate, zoomLevel: targetZoom)
@@ -796,12 +879,16 @@ struct MapHomeView: View {
                 hologramAnchor = anchor
                 hologramPin = pin
             }
-            if viewModel.selectedDestination == nil {
-                viewModel.parkingLots = []
-                viewModel.selectedParkingLot = nil
-            }
             Task {
-                await viewModel.loadNearbyParkingLots(around: pin.coordinate, radiusMeters: 800)
+                switch pin.kind {
+                case .festival(let festival):
+                    await viewModel.focusParkingAroundFestival(festival)
+                case .event(let event):
+                    await viewModel.focusParkingAroundEvent(event)
+                default:
+                    break
+                }
+                await viewModel.loadRealtimeParkingLayer(force: true)
             }
         case .parking(let parkingLot):
             hologramPin = nil
@@ -814,6 +901,32 @@ struct MapHomeView: View {
             hologramPin = nil
             focusMap(to: pin.coordinate, zoomLevel: 15)
         }
+    }
+
+    private func zoomLevelForCluster(_ cluster: MapPinCluster) -> Int {
+        let centerLocation = CLLocation(latitude: cluster.coordinate.latitude, longitude: cluster.coordinate.longitude)
+        let maxDistance = cluster.memberCoordinates
+            .map { coordinate in
+                centerLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            }
+            .max() ?? 0
+
+        let fitZoom: Int
+        switch maxDistance {
+        case ..<180:
+            fitZoom = 18
+        case ..<450:
+            fitZoom = 17
+        case ..<1_000:
+            fitZoom = 16
+        case ..<2_500:
+            fitZoom = 15
+        case ..<6_000:
+            fitZoom = 14
+        default:
+            fitZoom = 13
+        }
+        return min(18, max(mapZoomLevel + 2, fitZoom))
     }
 
     private func resolvedHologramAnchor(tapPoint: CGPoint?) -> CGPoint {
@@ -1771,6 +1884,19 @@ private struct RealtimeParkingPinSource: OverlayPinSource {
 
     var id: String {
         "realtime-parking-\(parkingLot.id)"
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: parkingLot.lat, longitude: parkingLot.lng)
+    }
+}
+
+private struct ParkingPinSource: OverlayPinSource {
+    let parkingLot: ParkingLot
+    let prefix: String
+
+    var id: String {
+        "\(prefix)-\(parkingLot.id)"
     }
 
     var coordinate: CLLocationCoordinate2D {

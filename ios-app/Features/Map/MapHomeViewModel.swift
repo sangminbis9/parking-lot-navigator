@@ -1,6 +1,7 @@
 import Combine
 import CoreLocation
 import Foundation
+import UIKit
 
 @MainActor
 final class MapHomeViewModel: ObservableObject {
@@ -14,6 +15,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedFestival: Festival?
     @Published var selectedEvent: FreeEvent?
+    @Published var selectedDiscoverParkingContext = false
     @Published var showsFestivalLayer = true
     @Published var showsLocalEventLayer = true
     @Published var showsRealtimeParkingLayer = false
@@ -64,6 +66,7 @@ final class MapHomeViewModel: ObservableObject {
     func select(_ destination: Destination) async {
         let selectedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         exploreMode = .parking
+        selectedDiscoverParkingContext = false
         selectedDestination = destination
         destinations = []
         selectedParkingLot = nil
@@ -147,6 +150,7 @@ final class MapHomeViewModel: ObservableObject {
 
     func clearMapFocus() {
         let hadDestination = selectedDestination != nil
+        selectedDiscoverParkingContext = false
         selectedDestination = nil
         selectedFestival = nil
         selectedEvent = nil
@@ -180,14 +184,16 @@ final class MapHomeViewModel: ObservableObject {
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
         showsRealtimeParkingLayer = isVisible
         if !isVisible {
-            selectedParkingLot = nil
-            realtimeParkingLots = []
+            if !selectedDiscoverParkingContext {
+                selectedParkingLot = nil
+                realtimeParkingLots = []
+            }
             return
         }
     }
 
-    func loadRealtimeParkingLayer() async {
-        guard showsRealtimeParkingLayer else { return }
+    func loadRealtimeParkingLayer(force: Bool = false) async {
+        guard showsRealtimeParkingLayer || force else { return }
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
@@ -301,6 +307,7 @@ final class MapHomeViewModel: ObservableObject {
         normalizedCategory: String
     ) async {
         exploreMode = .parking
+        selectedDiscoverParkingContext = true
         let destination = Destination(
             id: id,
             name: name,
@@ -316,6 +323,36 @@ final class MapHomeViewModel: ObservableObject {
         selectedParkingLot = nil
         parkingLots = []
         await loadParkingLots(for: destination)
+    }
+
+    func focusParkingAroundFestival(_ festival: Festival) async {
+        selectedFestival = nil
+        selectedEvent = nil
+        await selectDiscoverDestination(
+            id: "festival-\(festival.id)",
+            name: festival.title,
+            address: festival.address,
+            lat: festival.lat,
+            lng: festival.lng,
+            source: festival.source,
+            rawCategory: festival.tags.joined(separator: ","),
+            normalizedCategory: "festival"
+        )
+    }
+
+    func focusParkingAroundEvent(_ event: FreeEvent) async {
+        selectedEvent = nil
+        selectedFestival = nil
+        await selectDiscoverDestination(
+            id: "event-\(event.id)",
+            name: event.title,
+            address: event.address,
+            lat: event.lat,
+            lng: event.lng,
+            source: event.source,
+            rawCategory: event.eventType,
+            normalizedCategory: "event"
+        )
     }
 
     private func recordSelection(_ destination: Destination, queryText: String) {
@@ -335,6 +372,10 @@ final class MapHomeViewModel: ObservableObject {
         let destinationTokens = tokens(from: destination.name + " " + destination.address)
         let parkingTokens = tokens(from: parkingLot.name + " " + parkingLot.address)
         return !destinationTokens.isDisjoint(with: parkingTokens)
+    }
+
+    func clearDiscoverParkingContext() {
+        selectedDiscoverParkingContext = false
     }
 
     private func tokens(from text: String) -> Set<String> {
@@ -357,6 +398,7 @@ struct MapPinItem: Identifiable {
         case parking(ParkingLot)
         case festival(Festival)
         case event(FreeEvent)
+        case cluster(MapPinCluster)
     }
 
     let id: String
@@ -364,6 +406,14 @@ struct MapPinItem: Identifiable {
     let kind: Kind
 
     var showsTitleLabel = false
+}
+
+struct MapPinCluster: Identifiable {
+    let id: String
+    let coordinate: CLLocationCoordinate2D
+    let count: Int
+    let memberCoordinates: [CLLocationCoordinate2D]
+    let tint: UIColor
 }
 
 private extension CLLocationCoordinate2D {
