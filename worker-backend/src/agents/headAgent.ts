@@ -11,7 +11,8 @@ export type HeadCandidate = {
   endDate: string | null;
   sourceUrl: string | null;
   region: string | null;
-  currentStatus: "approved" | "pending";
+  currentStatus: "approved" | "pending" | "rejected";
+  rejectionReason: string | null;
   confidenceScore: number;
 };
 
@@ -37,6 +38,9 @@ const SYSTEM_INSTRUCTION = `당신은 한국 매장(식당/카페/상점)의 로
 - approve: 매장의 실제 이벤트(할인, 무료 제공, 리뷰 이벤트, 팝업, 한정 메뉴, 오픈 이벤트 등)가 명확하고, 매장 이름·위치·내용이 일관됨.
 - pending: 이벤트로 보이나 정보가 모호함(날짜 불명, 매장명 약함, 혜택이 불분명) — 수동 검토 필요.
 - reject: 이벤트가 아니거나(일반 음식점 소개 글, 후기 광고로만 보임), 매장과 본문이 매칭이 안되거나, 만료/스팸/중복.
+
+이미 rejected 상태인 후보는 보수적인 규칙으로 반려된 재검토 대상일 수 있습니다.
+본문에서 실제 이벤트 혜택과 매장 정보가 충분히 맞으면 approve로 복구하세요.
 
 판정 시 한국어로 한 문장 사유를 작성하세요. 사유는 80자 이내.
 
@@ -83,6 +87,7 @@ function buildPrompt(candidates: HeadCandidate[]): string {
       `  지역: ${c.region ?? "-"}`,
       `  혜택: ${c.benefit ?? "-"}`,
       `  기간: ${c.startDate ?? "-"} ~ ${c.endDate ?? "-"}`,
+      `  이전 반려 사유: ${c.rejectionReason ?? "-"}`,
       `  설명: ${truncate(c.description ?? "", 500)}`,
     ].join("\n");
   });
@@ -160,10 +165,7 @@ export async function logAgentActivity(
 }
 
 function randomId(): string {
-  return (
-    crypto.randomUUID?.() ??
-    `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  );
+  return crypto.randomUUID();
 }
 
 export type HeadReviewEnv = {
@@ -171,6 +173,7 @@ export type HeadReviewEnv = {
   AGENT_HEAD_ENABLED?: string;
   AGENT_HEAD_BATCH_SIZE?: string;
   AGENT_HEAD_MAX_BATCHES?: string;
+  AGENT_HEAD_INCLUDE_REJECTED?: string;
 };
 
 export type HeadReviewResult = {
@@ -180,6 +183,8 @@ export type HeadReviewResult = {
   approved: number;
   pending: number;
   rejected: number;
+  reconsidered: number;
+  rescued: number;
   errors: string[];
   generatedAt: string;
 };
@@ -195,6 +200,7 @@ type LocalEventRow = {
   end_date: string | null;
   source_url: string | null;
   status: string;
+  rejection_reason: string | null;
   confidence_score: number | null;
 };
 
@@ -210,6 +216,8 @@ export async function runHeadReview(
     approved: 0,
     pending: 0,
     rejected: 0,
+    reconsidered: 0,
+    rescued: 0,
     errors: [],
     generatedAt,
   };
@@ -218,6 +226,10 @@ export async function runHeadReview(
   const batchSize = clampInt(Number(env.AGENT_HEAD_BATCH_SIZE ?? 8), 1, 30);
   const maxBatches = clampInt(Number(env.AGENT_HEAD_MAX_BATCHES ?? 1), 1, 20);
   const limit = batchSize * maxBatches;
+  const includeRejected = includeRejectedReview(env);
+  const statusClause = includeRejected
+    ? "('pending', 'approved', 'rejected')"
+    : "('pending', 'approved')";
 
   let rows: LocalEventRow[];
   try {
@@ -225,14 +237,14 @@ export async function runHeadReview(
       .prepare(
         `SELECT le.id, le.title, le.store_name, le.address,
                 le.benefit, le.description, le.start_date, le.end_date,
-                le.source_url, le.status, le.confidence_score
+                le.source_url, le.status, le.rejection_reason, le.confidence_score
            FROM local_events le
-          WHERE le.status IN ('pending', 'approved')
+          WHERE le.status IN ${statusClause}
             AND NOT EXISTS (
               SELECT 1 FROM agent_activity aa
                WHERE aa.target_id = le.id
                  AND aa.agent_id = 'orion'
-                 AND aa.action = 'validate'
+                 AND aa.action IN ('validate', 'reconsider')
             )
           ORDER BY le.updated_at DESC
           LIMIT ?`,
@@ -261,7 +273,13 @@ export async function runHeadReview(
       endDate: row.end_date,
       sourceUrl: row.source_url,
       region: null,
-      currentStatus: row.status === "approved" ? "approved" : "pending",
+      currentStatus:
+        row.status === "approved"
+          ? "approved"
+          : row.status === "rejected"
+            ? "rejected"
+            : "pending",
+      rejectionReason: row.rejection_reason,
       confidenceScore: row.confidence_score ?? 0,
     }));
     let verdicts: HeadVerdict[];
@@ -303,9 +321,14 @@ export async function runHeadReview(
       if (verdict.verdict === "approve") result.approved += 1;
       else if (verdict.verdict === "reject") result.rejected += 1;
       else result.pending += 1;
+      const action = row.status === "rejected" ? "reconsider" : "validate";
+      if (row.status === "rejected") result.reconsidered += 1;
+      if (row.status === "rejected" && verdict.verdict === "approve") {
+        result.rescued += 1;
+      }
       await logAgentActivity(db, {
         agentId: "orion",
-        action: "validate",
+        action,
         targetKind: "local_event",
         targetId: row.id,
         targetTitle: row.title,
@@ -330,6 +353,11 @@ export async function runHeadReview(
 function headReviewEnabled(env: HeadReviewEnv): boolean {
   if (!env.AI) return false;
   const flag = (env.AGENT_HEAD_ENABLED ?? "true").toLowerCase();
+  return flag !== "false" && flag !== "0";
+}
+
+function includeRejectedReview(env: HeadReviewEnv): boolean {
+  const flag = (env.AGENT_HEAD_INCLUDE_REJECTED ?? "true").toLowerCase();
   return flag !== "false" && flag !== "0";
 }
 
