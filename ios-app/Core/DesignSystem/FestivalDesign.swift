@@ -224,4 +224,19 @@ extension View {
     func festivalCard(isSelected: Bool = false) -> some View {
         modifier(FestivalCardBackground(isSelected: isSelected))
     }
+
+    func festivalNavigationTitle(_ title: String) -> some View {
+        self
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(FestivalDesign.coral)
+                }
+            }
+            .toolbarBackground(FestivalDesign.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+    }
 }

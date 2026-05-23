@@ -7,23 +7,20 @@ struct SettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    settingsHeader
-                    themeSettingsCard
-                    merchantCard
-                    appSettingsCard
-                    dataSourceCard
-                    providerStatusCard
-                }
-                .padding(16)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                settingsHeader
+                themeSettingsCard
+                merchantCard
+                appSettingsCard
+                dataSourceCard
+                providerStatusCard
             }
-            .background(FestivalDesign.background.ignoresSafeArea())
-            .navigationTitle("설정")
-            .navigationBarTitleDisplayMode(.inline)
-            .task { await load() }
+            .padding(16)
         }
+        .background(FestivalDesign.background.ignoresSafeArea())
+        .festivalNavigationTitle("설정")
+        .task { await load() }
     }
 
     private var settingsHeader: some View {
@@ -243,8 +240,7 @@ struct ThemeSettingsView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("테마")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("테마")
     }
 
     private var themePreviewCard: some View {

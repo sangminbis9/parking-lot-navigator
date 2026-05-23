@@ -1556,8 +1556,7 @@ private struct DiscoverListPage: View {
                 }
             }
         }
-        .navigationTitle("\u{D0D0}\u{C0C9}")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("\u{D0D0}\u{C0C9}")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -1638,8 +1637,7 @@ private struct DiscoverFilterSheet: View {
                 .padding(16)
             }
             .background(FestivalDesign.background.ignoresSafeArea())
-            .navigationTitle("\u{D544}\u{D130}")
-            .navigationBarTitleDisplayMode(.inline)
+            .festivalNavigationTitle("\u{D544}\u{D130}")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("\u{CD08}\u{AE30}\u{D654}") {
@@ -2324,8 +2322,7 @@ private struct DiscoverDetailSheet: View {
                 }
                 .padding(18)
             }
-            .navigationTitle("\u{C0C1}\u{C138} \u{C815}\u{BCF4}")
-            .navigationBarTitleDisplayMode(.inline)
+            .festivalNavigationTitle("\u{C0C1}\u{C138} \u{C815}\u{BCF4}")
         }
         .presentationDetents([.medium, .large])
     }

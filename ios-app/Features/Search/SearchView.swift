@@ -102,8 +102,7 @@ struct SearchView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("축제 / 이벤트")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("축제 / 이벤트")
         .onAppear {
             applyPendingDiscoverFilter()
             startDiscoverLoad()
@@ -688,8 +687,7 @@ private struct DiscoverTabFilterSheet: View {
                 .padding(16)
             }
             .background(FestivalDesign.background.ignoresSafeArea())
-            .navigationTitle("필터")
-            .navigationBarTitleDisplayMode(.inline)
+            .festivalNavigationTitle("필터")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("초기화") {

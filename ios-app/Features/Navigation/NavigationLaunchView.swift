@@ -29,8 +29,7 @@ struct NavigationLaunchView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("경로 미리보기")
-        .navigationBarTitleDisplayMode(.inline)
+        .festivalNavigationTitle("경로 미리보기")
         .task { await loadRouteEstimate() }
     }
 
