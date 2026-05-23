@@ -13,6 +13,28 @@ enum AppTab: Hashable {
     case agentOffice
     case favorites
     case settings
+
+    var title: String {
+        switch self {
+        case .map: return "지도"
+        case .discover: return "이벤트"
+        case .favorites: return "즐겨찾기"
+        case .agentOffice: return "사무실"
+        case .settings: return "설정"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .map: return "map.fill"
+        case .discover: return "sparkles"
+        case .favorites: return "star.fill"
+        case .agentOffice: return "building.2.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+
+    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .agentOffice, .settings]
 }
 
 final class AppTabRouter: ObservableObject {
@@ -32,34 +54,39 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        TabView(selection: $tabRouter.selectedTab) {
-            routedStack {
-                MapHomeView(apiClient: apiClient)
-            }
-            .tabItem { Label("지도", systemImage: "map") }
-            .tag(AppTab.map)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $tabRouter.selectedTab) {
+                routedStack {
+                    MapHomeView(apiClient: apiClient)
+                }
+                .tag(AppTab.map)
 
-            routedStack {
-                SearchView(apiClient: apiClient)
-            }
-            .tabItem { Label("\u{C774}\u{BCA4}\u{D2B8}", systemImage: "sparkles") }
-            .tag(AppTab.discover)
+                routedStack {
+                    SearchView(apiClient: apiClient)
+                }
+                .tag(AppTab.discover)
 
-            routedStack {
-                FavoritesView()
-            }
-            .tabItem { Label("즐겨찾기", systemImage: "star") }
-            .tag(AppTab.favorites)
+                routedStack {
+                    FavoritesView()
+                }
+                .tag(AppTab.favorites)
 
-            routedStack {
-                AgentOfficeView(apiClient: apiClient)
-            }
-            .tabItem { Label("오피스", systemImage: "building.2") }
-            .tag(AppTab.agentOffice)
+                routedStack {
+                    AgentOfficeView(apiClient: apiClient)
+                }
+                .tag(AppTab.agentOffice)
 
-            SettingsView(apiClient: apiClient)
-                .tabItem { Label("설정", systemImage: "gear") }
-                .tag(AppTab.settings)
+                SettingsView(apiClient: apiClient)
+                    .tag(AppTab.settings)
+            }
+            .toolbar(.hidden, for: .tabBar)
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: 78)
+            }
+
+            FestivalTabBar(selection: $tabRouter.selectedTab)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
@@ -139,6 +166,62 @@ struct AppRootView: View {
         UINavigationBar.appearance().compactAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().tintColor = titleColor
+    }
+}
+
+private struct FestivalTabBar: View {
+    @Binding var selection: AppTab
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(AppTab.visibleTabs, id: \.self) { tab in
+                tabButton(tab)
+            }
+        }
+        .padding(6)
+        .background(
+            LinearGradient(
+                colors: [FestivalDesign.surface.opacity(0.98), FestivalDesign.cream.opacity(0.92)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 14, y: 7)
+    }
+
+    private func tabButton(_ tab: AppTab) -> some View {
+        let isSelected = selection == tab
+
+        return Button {
+            selection = tab
+        } label: {
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? FestivalDesign.tealSoft : Color.clear)
+                        .frame(width: 42, height: 30)
+                    Image(systemName: tab.systemImage)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                }
+                Text(tab.title)
+                    .font(.system(size: 10, weight: isSelected ? .bold : .semibold))
+                    .foregroundStyle(isSelected ? FestivalDesign.navy : FestivalDesign.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.title)
     }
 }
 

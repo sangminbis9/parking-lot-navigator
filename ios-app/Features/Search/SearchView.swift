@@ -56,7 +56,7 @@ struct SearchView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("축제와 이벤트")
+                        Text("축제 / 이벤트")
                             .font(.headline)
                             .foregroundStyle(FestivalDesign.navy)
                         Spacer()
@@ -102,7 +102,7 @@ struct SearchView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("축제")
+        .navigationTitle("축제 / 이벤트")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             applyPendingDiscoverFilter()

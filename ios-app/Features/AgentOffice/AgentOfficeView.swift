@@ -10,13 +10,13 @@ struct AgentOfficeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                header
                 OfficeFloorView(
                     agents: viewModel.agents,
                     snapshot: viewModel.snapshot,
                     activity: viewModel.recentActivity
                 )
                     .aspectRatio(0.78, contentMode: .fit)
+                AgentRoleStrip(agents: viewModel.agents)
                 if !viewModel.recentActivity.isEmpty {
                     ActivityFeed(events: viewModel.recentActivity)
                 }
@@ -28,28 +28,18 @@ struct AgentOfficeView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .navigationTitle("에이전트 오피스")
+        .navigationTitle("에이전트 사무실")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: refresh) {
                     Image(systemName: viewModel.isLoading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                 }
-                .accessibilityLabel("에이전트 오피스 새로고침")
+                .accessibilityLabel("에이전트 사무실 새로고침")
             }
         }
         .task { await viewModel.runPolling() }
         .refreshable { await viewModel.refresh() }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("에이전트 오피스")
-                .font(.largeTitle.bold())
-                .foregroundStyle(FestivalDesign.navy)
-            Text("수집팀이 발견한 축제·이벤트를 총괄에게 보고하고, 검증 후 게시판에 올려요.")
-                .font(.subheadline)
-                .foregroundStyle(FestivalDesign.secondaryText)
-        }
     }
 
     private var summaryCard: some View {
@@ -218,6 +208,73 @@ private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
     }
 }
 
+private struct AgentRoleStrip: View {
+    let agents: [AgentOfficeAgent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("에이전트 담당")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(agents) { agent in
+                        AgentRoleCard(agent: agent)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+}
+
+private struct AgentRoleCard: View {
+    let agent: AgentOfficeAgent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(agent.status.color.opacity(0.15))
+                    PixelSprite(
+                        sheet: agent.spriteAsset,
+                        direction: .down,
+                        walking: false,
+                        walkPhase: 1,
+                        scale: 1.05
+                    )
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.name)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(agent.role)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(agent.status.color)
+                }
+            }
+            Text(agent.line)
+                .font(.caption)
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(width: 150, alignment: .leading)
+        .padding(10)
+        .background(FestivalDesign.cream.opacity(0.34))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                .stroke(agent.status.color.opacity(0.22), lineWidth: 1)
+        )
+    }
+}
+
 private struct ActivityFeed: View {
     let events: [AgentActivityEvent]
 
@@ -378,8 +435,9 @@ private enum OfficeChoreography {
                               stage: .idle, carry: nil)
         case 5..<9:
             let p = ease((tau - 5) / 4)
-            let pos = lerp(home, orionDesk, p)
-            let dir: PixelSprite.Direction = orionDesk.x > home.x ? .right : .left
+            let pos = routedLerp(home, orionDesk, p, corridorY: 0.48)
+            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.48)
+            let dir = direction(from: prev, to: pos)
             return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
                               stage: .walkingOut, carry: carry)
         case 9..<13:
@@ -388,16 +446,18 @@ private enum OfficeChoreography {
                               stage: .reporting, carry: carry)
         case 13..<17:
             let p = ease((tau - 13) / 4)
-            let pos = lerp(orionDesk, wall, p)
-            return AgentFrame(position: pos, direction: .down, walking: true, walkPhase: walking3,
+            let pos = routedLerp(orionDesk, wall, p, corridorY: 0.58)
+            let prev = routedLerp(orionDesk, wall, max(0, p - 0.03), corridorY: 0.58)
+            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .walkingToWall, carry: carry)
         case 17..<19:
             return AgentFrame(position: wall, direction: .up, walking: false, walkPhase: 1,
                               stage: .posting, carry: carry)
         default:
             let p = ease((tau - 19) / 5)
-            let pos = lerp(wall, home, p)
-            let dir: PixelSprite.Direction = home.x < wall.x ? .left : .right
+            let pos = routedLerp(wall, home, p, corridorY: 0.58)
+            let prev = routedLerp(wall, home, max(0, p - 0.03), corridorY: 0.58)
+            let dir = direction(from: prev, to: pos)
             return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
                               stage: .returning, carry: nil)
         }
@@ -410,10 +470,11 @@ private enum OfficeChoreography {
         let cycle: Double = 8
         let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
         let p = (sin(tau * .pi * 2) + 1) / 2
-        let pos = lerp(home, target, p)
+        let pos = routedLerp(home, target, p, corridorY: 0.34)
         let walking3 = Int(t * 4) % 3
         let walking = p > 0.05 && p < 0.95
-        let dir: PixelSprite.Direction = (target.x > home.x) ? .right : .left
+        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.34)
+        let dir = direction(from: prev, to: pos)
         return AgentFrame(position: pos, direction: dir, walking: walking, walkPhase: walking3,
                           stage: .validating, carry: nil)
     }
@@ -434,14 +495,18 @@ private enum OfficeChoreography {
                               stage: .validating, carry: nil)
         case 7..<10:
             let p = ease((tau - 7) / 3)
-            return AgentFrame(position: lerp(home, target, p), direction: .down,
+            let pos = routedLerp(home, target, p, corridorY: 0.58)
+            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.58)
+            return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
                               walking: true, walkPhase: walking3, stage: .walkingToWall, carry: nil)
         case 10..<13:
             return AgentFrame(position: target, direction: .up, walking: false, walkPhase: 1,
                               stage: .posting, carry: nil)
         default:
             let p = ease((tau - 13) / 5)
-            return AgentFrame(position: lerp(target, home, p), direction: .up,
+            let pos = routedLerp(target, home, p, corridorY: 0.58)
+            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.58)
+            return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
                               walking: true, walkPhase: walking3, stage: .returning, carry: nil)
         }
     }
@@ -461,16 +526,20 @@ private enum OfficeChoreography {
                               stage: .idle, carry: nil)
         case 10..<12:
             let p = ease((tau - 10) / 2)
-            let pos = lerp(home, CGPoint(x: 0.62, y: 0.76), p)
-            return AgentFrame(position: pos, direction: .left, walking: true, walkPhase: walking3,
+            let target = CGPoint(x: 0.62, y: 0.76)
+            let pos = routedLerp(home, target, p, corridorY: 0.76)
+            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.76)
+            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .walkingToWall, carry: nil)
         case 12..<14:
             return AgentFrame(position: CGPoint(x: 0.62, y: 0.76), direction: .up, walking: false, walkPhase: 1,
                               stage: .posting, carry: nil)
         default:
             let p = ease((tau - 14) / 2)
-            let pos = lerp(CGPoint(x: 0.62, y: 0.76), home, p)
-            return AgentFrame(position: pos, direction: .right, walking: true, walkPhase: walking3,
+            let target = CGPoint(x: 0.62, y: 0.76)
+            let pos = routedLerp(target, home, p, corridorY: 0.76)
+            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.76)
+            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .returning, carry: nil)
         }
     }
@@ -633,6 +702,48 @@ private enum OfficeChoreography {
     private static func ease(_ x: Double) -> Double {
         let c = max(0, min(1, x))
         return c < 0.5 ? 2 * c * c : 1 - pow(-2 * c + 2, 2) / 2
+    }
+
+    private static func routedLerp(_ start: CGPoint, _ end: CGPoint, _ progress: Double, corridorY: CGFloat) -> CGPoint {
+        let corridorStart = CGPoint(x: start.x, y: corridorY)
+        let corridorEnd = CGPoint(x: end.x, y: corridorY)
+        let rawPoints = [start, corridorStart, corridorEnd, end]
+        let points = rawPoints.reduce(into: [CGPoint]()) { result, point in
+            guard result.last.map({ distance($0, point) > 0.001 }) ?? true else { return }
+            result.append(point)
+        }
+        return point(on: points, progress: progress)
+    }
+
+    private static func point(on points: [CGPoint], progress: Double) -> CGPoint {
+        guard points.count > 1 else { return points.first ?? .zero }
+        let lengths = zip(points, points.dropFirst()).map { distance($0, $1) }
+        let total = lengths.reduce(0, +)
+        guard total > 0 else { return points.last ?? .zero }
+
+        var remaining = CGFloat(max(0, min(1, progress))) * total
+        for index in lengths.indices {
+            let length = lengths[index]
+            if remaining <= length {
+                let local = Double(remaining / length)
+                return lerp(points[index], points[index + 1], local)
+            }
+            remaining -= length
+        }
+        return points.last ?? .zero
+    }
+
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(b.x - a.x, b.y - a.y)
+    }
+
+    private static func direction(from a: CGPoint, to b: CGPoint) -> PixelSprite.Direction {
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        if abs(dx) > abs(dy) {
+            return dx >= 0 ? .right : .left
+        }
+        return dy >= 0 ? .down : .up
     }
 
     private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
