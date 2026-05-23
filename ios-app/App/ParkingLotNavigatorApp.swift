@@ -21,7 +21,6 @@ struct ParkingLotNavigatorApp: App {
             AppRootView(apiClient: apiClient)
                 .environmentObject(destinationStore)
                 .environmentObject(themeStore)
-                .id(themeStore.selectedTheme.id)
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }
