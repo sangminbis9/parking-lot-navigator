@@ -74,7 +74,7 @@ interface CachedNationalFestival {
 
 interface NormalizeResult {
   item: CachedNationalFestival | null;
-  dropReason: "invalid" | "no_coord" | null;
+  dropReason: "invalid" | "no_coord" | "past" | null;
 }
 
 export class NationalCultureFestivalProvider
@@ -96,7 +96,7 @@ export class NationalCultureFestivalProvider
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => ({
           ...item,
@@ -127,14 +127,16 @@ export class NationalCultureFestivalProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedNationalFestival[]> {
+  private async fetchCachedItems(
+    signal?: AbortSignal,
+  ): Promise<CachedNationalFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
 
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = { expiresAt: now + CACHE_TTL_MS, items };
@@ -147,8 +149,10 @@ export class NationalCultureFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedNationalFestival[]> {
-    const first = await this.fetchPage(1);
+  private async fetchAllItems(
+    signal?: AbortSignal,
+  ): Promise<CachedNationalFestival[]> {
+    const first = await this.fetchPage(1, signal);
     const totalCount = first.totalCount ?? first.items.length;
     const totalPages = Math.min(
       10,
@@ -156,28 +160,25 @@ export class NationalCultureFestivalProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2),
+        this.fetchPage(index + 2, signal),
       ),
     );
     const today = new Date().toISOString().slice(0, 10);
     const rawItems = [...first.items, ...rest.flatMap((page) => page.items)];
-    const normalized: CachedNationalFestival[] = [];
+    const cachedCoordinates = await lookupCachedCoordinates(rawItems);
+    const results = await Promise.all(
+      rawItems.map((row) =>
+        normalizeNationalCultureFestival(row, today, cachedCoordinates),
+      ),
+    );
+    const normalized = results
+      .map((result) => result.item)
+      .filter((item): item is CachedNationalFestival => Boolean(item));
     let droppedNoCoord = 0;
     let droppedPast = 0;
-
-    for (const row of rawItems) {
-      const endDate =
-        normalizeDate(row.fstvlEndDate) ?? normalizeDate(row.fstvlStartDate);
-      if (endDate && endDate < today) {
-        droppedPast += 1;
-        continue;
-      }
-      const result = await normalizeNationalCultureFestival(row);
-      if (result.item) {
-        normalized.push(result.item);
-      } else if (result.dropReason === "no_coord") {
-        droppedNoCoord += 1;
-      }
+    for (const result of results) {
+      if (result.dropReason === "no_coord") droppedNoCoord += 1;
+      if (result.dropReason === "past") droppedPast += 1;
     }
 
     const deduped = dedupeItems(normalized);
@@ -187,7 +188,7 @@ export class NationalCultureFestivalProvider
     return deduped;
   }
 
-  private async fetchPage(pageNo: number): Promise<{
+  private async fetchPage(pageNo: number, signal?: AbortSignal): Promise<{
     items: NationalCultureFestivalItem[];
     totalCount: number | null;
   }> {
@@ -198,6 +199,7 @@ export class NationalCultureFestivalProvider
     url.searchParams.set("type", "json");
 
     const response = await fetch(url, {
+      signal,
       headers: {
         Accept: "application/json,text/plain,*/*",
         "User-Agent": "ParkingLotNavigator/0.1",
@@ -233,6 +235,8 @@ export class NationalCultureFestivalProvider
 
 async function normalizeNationalCultureFestival(
   row: NationalCultureFestivalItem,
+  today: string,
+  cachedCoordinates: Map<string, { lat: number; lng: number }>,
 ): Promise<NormalizeResult> {
   const title = clean(row.fstvlNm);
   const startDate = normalizeDate(row.fstvlStartDate);
@@ -240,13 +244,16 @@ async function normalizeNationalCultureFestival(
   if (!title || !startDate || !endDate) {
     return { item: null, dropReason: "invalid" };
   }
+  if (endDate < today) {
+    return { item: null, dropReason: "past" };
+  }
 
   const address = clean(row.rdnmadr) ?? clean(row.lnmadr) ?? "";
   const venueName = clean(row.opar);
   let lat = toNumber(row.latitude);
   let lng = toNumber(row.longitude);
   if (lat === null || lng === null || !isKoreaCoordinate(lat, lng)) {
-    const cached = await lookupCachedCoordinate(address);
+    const cached = lookupCachedCoordinate(address, cachedCoordinates);
     if (!cached) return { item: null, dropReason: "no_coord" };
     lat = cached.lat;
     lng = cached.lng;
@@ -288,27 +295,51 @@ async function normalizeNationalCultureFestival(
   };
 }
 
-async function lookupCachedCoordinate(
+function lookupCachedCoordinate(
   address: string,
-): Promise<{ lat: number; lng: number } | null> {
-  if (!address) return null;
+  cachedCoordinates: Map<string, { lat: number; lng: number }>,
+): { lat: number; lng: number } | null {
+  return cachedCoordinates.get(address) ?? null;
+}
+
+async function lookupCachedCoordinates(
+  rows: NationalCultureFestivalItem[],
+): Promise<Map<string, { lat: number; lng: number }>> {
+  const result = new Map<string, { lat: number; lng: number }>();
   const store = getGeocodeStore();
-  if (!store) return null;
+  if (!store) return result;
+  const addresses = [
+    ...new Set(
+      rows
+        .filter((row) => !hasValidCoordinate(row))
+        .map((row) => clean(row.rdnmadr) ?? clean(row.lnmadr))
+        .filter((address): address is string => Boolean(address)),
+    ),
+  ];
+  if (addresses.length === 0) return result;
   try {
-    const entries = await store.getMany([address]);
-    const entry = entries.get(address);
-    if (
-      !entry?.found ||
-      entry.lat === null ||
-      entry.lng === null ||
-      !isKoreaCoordinate(entry.lat, entry.lng)
-    ) {
-      return null;
+    const entries = await store.getMany(addresses);
+    for (const address of addresses) {
+      const entry = entries.get(address);
+      if (
+        entry?.found &&
+        entry.lat !== null &&
+        entry.lng !== null &&
+        isKoreaCoordinate(entry.lat, entry.lng)
+      ) {
+        result.set(address, { lat: entry.lat, lng: entry.lng });
+      }
     }
-    return { lat: entry.lat, lng: entry.lng };
   } catch {
-    return null;
+    return result;
   }
+  return result;
+}
+
+function hasValidCoordinate(row: NationalCultureFestivalItem): boolean {
+  const lat = toNumber(row.latitude);
+  const lng = toNumber(row.longitude);
+  return lat !== null && lng !== null && isKoreaCoordinate(lat, lng);
 }
 
 function extractItems(

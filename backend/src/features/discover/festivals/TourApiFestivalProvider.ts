@@ -67,7 +67,7 @@ export class TourApiFestivalProvider
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => ({
           ...item,
@@ -99,14 +99,16 @@ export class TourApiFestivalProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedTourFestival[]> {
+  private async fetchCachedItems(
+    signal?: AbortSignal,
+  ): Promise<CachedTourFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
 
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = {
@@ -122,9 +124,9 @@ export class TourApiFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedTourFestival[]> {
+  private async fetchAllItems(signal?: AbortSignal): Promise<CachedTourFestival[]> {
     const eventStartDate = formatCompactDate(new Date());
-    const first = await this.fetchPage(1, eventStartDate);
+    const first = await this.fetchPage(1, eventStartDate, signal);
     const totalCount = first.totalCount ?? first.items.length;
     const defaultCap = 5 * TOUR_FESTIVAL_PAGE_SIZE;
     if (totalCount > defaultCap && this.maxPages <= 5) {
@@ -138,7 +140,7 @@ export class TourApiFestivalProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2, eventStartDate),
+        this.fetchPage(index + 2, eventStartDate, signal),
       ),
     );
     const raw = [...first.items, ...rest.flatMap((page) => page.items)];
@@ -156,6 +158,7 @@ export class TourApiFestivalProvider
   private async fetchPage(
     pageNo: number,
     eventStartDate: string,
+    signal?: AbortSignal,
   ): Promise<{ items: TourApiFestivalItem[]; totalCount: number | null }> {
     const url = new URL("/B551011/KorService2/searchFestival2", this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
@@ -168,6 +171,7 @@ export class TourApiFestivalProvider
     url.searchParams.set("eventStartDate", eventStartDate);
 
     const response = await fetch(url, {
+      signal,
       headers: {
         "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0",
         Accept: "application/json,text/plain,*/*",

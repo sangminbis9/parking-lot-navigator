@@ -68,7 +68,7 @@ export class TourApiKeywordFestivalProvider
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => ({
           ...item,
@@ -99,13 +99,15 @@ export class TourApiKeywordFestivalProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedKeywordFestival[]> {
+  private async fetchCachedItems(
+    signal?: AbortSignal,
+  ): Promise<CachedKeywordFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = {
@@ -121,9 +123,11 @@ export class TourApiKeywordFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedKeywordFestival[]> {
+  private async fetchAllItems(
+    signal?: AbortSignal,
+  ): Promise<CachedKeywordFestival[]> {
     const pages = await Promise.all(
-      TOUR_KEYWORD_CAT3.map((cat3) => this.fetchCat3(cat3)),
+      TOUR_KEYWORD_CAT3.map((cat3) => this.fetchCat3(cat3, signal)),
     );
     const raw = pages.flat();
     const today = new Date().toISOString().slice(0, 10);
@@ -137,8 +141,11 @@ export class TourApiKeywordFestivalProvider
     return dedupeKeywordFestivals(normalized);
   }
 
-  private async fetchCat3(cat3: string): Promise<TourKeywordItem[]> {
-    const first = await this.fetchPage(cat3, 1);
+  private async fetchCat3(
+    cat3: string,
+    signal?: AbortSignal,
+  ): Promise<TourKeywordItem[]> {
+    const first = await this.fetchPage(cat3, 1, signal);
     const totalCount = first.totalCount ?? first.items.length;
     const totalPages = Math.min(
       this.maxPages,
@@ -146,7 +153,7 @@ export class TourApiKeywordFestivalProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(cat3, index + 2),
+        this.fetchPage(cat3, index + 2, signal),
       ),
     );
     return [first.items, ...rest.map((page) => page.items)].flat();
@@ -155,6 +162,7 @@ export class TourApiKeywordFestivalProvider
   private async fetchPage(
     cat3: string,
     pageNo: number,
+    signal?: AbortSignal,
   ): Promise<{ items: TourKeywordItem[]; totalCount: number | null }> {
     const url = new URL("/B551011/KorService2/searchKeyword2", this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
@@ -170,6 +178,7 @@ export class TourApiKeywordFestivalProvider
     url.searchParams.set("arrange", "E");
 
     const response = await fetch(url, {
+      signal,
       headers: {
         "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0",
         Accept: "application/json,text/plain,*/*",

@@ -113,11 +113,11 @@ function dedupeFestivals(items: Festival[]): Festival[] {
 }
 
 function sourcePriority(source: string): number {
-  if (source === "tourapi") return 3;
-  if (source === "public-data-culture-festival") return 2;
+  if (source === "tourapi") return 4;
+  if (source === "public-data-culture-festival") return 3;
   if (source === "area-based-tour") return 2;
   if (source === "keyword-tour") return 1;
-  return 1;
+  return 0;
 }
 
 function normalizeTitle(value: string): string {

@@ -1,11 +1,20 @@
 import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import {
+  currentDiscoveryChunkIndex,
+  DISCOVERY_PROVIDER_CHUNK_COUNT,
+  DISCOVERY_PROVIDER_CHUNKS,
+  type DiscoverySyncKind,
+} from "./discoverySchedule.js";
 
 export { mapWithConcurrency } from "./concurrency.js";
+export {
+  currentDiscoveryChunkIndex,
+  DISCOVERY_PROVIDER_CHUNK_COUNT,
+} from "./discoverySchedule.js";
 
 type DiscoveryType = "festival" | "event";
-type DiscoverySyncKind = "festivals" | "events";
 
 const DISCOVERY_RESULT_LIMIT = 1000;
 const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
@@ -42,27 +51,6 @@ const NATIONAL_DISCOVERY_CENTERS: Array<{
 ];
 
 const SEOUL_DISCOVERY_CENTER = { id: "seoul", lat: 37.5665, lng: 126.978 };
-
-const DISCOVERY_PROVIDER_CHUNKS: Array<{
-  kind: DiscoverySyncKind;
-  providers: string[];
-}> = [
-  { kind: "festivals", providers: ["tourapi-festival"] },
-  { kind: "festivals", providers: ["public-data-culture-festival"] },
-  { kind: "festivals", providers: ["tourapi-area-festival"] },
-  { kind: "festivals", providers: ["tourapi-keyword-festival"] },
-  { kind: "events", providers: ["seoul-culture-event"] },
-  { kind: "events", providers: ["culture-portal"] },
-  { kind: "events", providers: ["kopis"] },
-  { kind: "events", providers: ["kcisa_428"] },
-  { kind: "events", providers: ["kcisa_196"] },
-];
-
-export const DISCOVERY_PROVIDER_CHUNK_COUNT = DISCOVERY_PROVIDER_CHUNKS.length;
-
-export function currentDiscoveryChunkIndex(date: Date = new Date()): number {
-  return Math.floor(date.getUTCMinutes() / 9) % DISCOVERY_PROVIDER_CHUNK_COUNT;
-}
 
 export interface DiscoveryQueryOptions {
   radiusMeters: number;
