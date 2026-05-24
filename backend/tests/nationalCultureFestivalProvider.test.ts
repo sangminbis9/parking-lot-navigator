@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NationalCultureFestivalProvider } from "../src/features/discover/festivals/NationalCultureFestivalProvider.js";
+import { setGeocodeStore } from "../src/features/discover/events/eventProviderUtils.js";
 
 describe("NationalCultureFestivalProvider", () => {
   afterEach(() => {
+    setGeocodeStore(null);
     vi.restoreAllMocks();
   });
 
@@ -103,5 +105,161 @@ describe("NationalCultureFestivalProvider", () => {
     await provider.festivals({ lat: 35.1796, lng: 129.0756, radiusMeters: 1000, upcomingWithinDays: 36500 });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts integer Korea coordinates and rejects 0/0 through coordinate validation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          response: {
+            header: { resultCode: "00" },
+            body: {
+              totalCount: 2,
+              items: [
+                {
+                  fstvlNm: "Integer Coordinate Festival",
+                  fstvlStartDate: "2099-07-01",
+                  fstvlEndDate: "2099-07-02",
+                  latitude: 37,
+                  longitude: 127
+                },
+                {
+                  fstvlNm: "Zero Coordinate Festival",
+                  fstvlStartDate: "2099-07-01",
+                  fstvlEndDate: "2099-07-02",
+                  latitude: 0,
+                  longitude: 0
+                }
+              ]
+            }
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 37,
+      lng: 127,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toBe("Integer Coordinate Festival");
+    expect(items[0].lat).toBe(37);
+    expect(items[0].lng).toBe(127);
+  });
+
+  it("uses geocode_cache for rows without coordinates", async () => {
+    const getMany = vi.fn().mockResolvedValue(
+      new Map([
+        [
+          "제주특별자치도 제주시 첨단로 1",
+          {
+            found: true,
+            lat: 33.4507,
+            lng: 126.5707,
+            address: "제주특별자치도 제주시 첨단로 1",
+            venue: "제주 축제장"
+          }
+        ]
+      ])
+    );
+    setGeocodeStore({ getMany, setMany: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            response: {
+              header: { resultCode: "00" },
+              body: {
+                totalCount: 1,
+                items: [
+                  {
+                    fstvlNm: "Cached Coordinate Festival",
+                    opar: "제주 축제장",
+                    fstvlStartDate: "2099-08-01",
+                    fstvlEndDate: "2099-08-03",
+                    rdnmadr: "제주특별자치도 제주시 첨단로 1"
+                  }
+                ]
+              }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 33.4507,
+      lng: 126.5707,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500
+    });
+
+    expect(getMany).toHaveBeenCalledWith(["제주특별자치도 제주시 첨단로 1"]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      title: "Cached Coordinate Festival",
+      lat: 33.4507,
+      lng: 126.5707
+    });
+  });
+
+  it("creates deterministic SHA-256 based ids and distinguishes different source keys", async () => {
+    const body = {
+      response: {
+        header: { resultCode: "00" },
+        body: {
+          totalCount: 2,
+          items: [
+            {
+              fstvlNm: "Stable Festival",
+              fstvlStartDate: "2099-09-01",
+              fstvlEndDate: "2099-09-02",
+              latitude: "37.1000",
+              longitude: "127.1000",
+              insttCode: "A"
+            },
+            {
+              fstvlNm: "Stable Festival Long Variant",
+              fstvlStartDate: "2099-09-01",
+              fstvlEndDate: "2099-09-02",
+              latitude: "37.1000",
+              longitude: "127.1000",
+              insttCode: "A"
+            }
+          ]
+        }
+      }
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await new NationalCultureFestivalProvider(
+      "test-key",
+      "https://api.data.go.kr"
+    ).festivals({ lat: 37.1, lng: 127.1, radiusMeters: 1000, upcomingWithinDays: 36500 });
+    const second = await new NationalCultureFestivalProvider(
+      "test-key",
+      "https://api.data.go.kr"
+    ).festivals({ lat: 37.1, lng: 127.1, radiusMeters: 1000, upcomingWithinDays: 36500 });
+
+    expect(first.map((item) => item.id)).toEqual(second.map((item) => item.id));
+    expect(first[0].id).toMatch(/^public-data-culture:[0-9a-f]{16}$/);
+    expect(first[0].id).not.toBe(first[1].id);
   });
 });

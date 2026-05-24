@@ -1,4 +1,4 @@
-import type { Festival, ProviderHealth } from "@parking/shared-types";
+import type { Festival } from "@parking/shared-types";
 import { BaseProviderHealth } from "../../../providers/BaseProviderHealth.js";
 import { distanceMeters } from "../../../services/geo.js";
 import type {
@@ -7,14 +7,13 @@ import type {
 } from "../common/discoverProvider.js";
 import {
   discoverStatus,
-  formatCompactDate,
   isWithinWindow,
   parseDate,
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
 
-interface TourApiFestivalItem {
+interface TourKeywordItem {
   contentid?: string;
   title?: string;
   addr1?: string;
@@ -22,6 +21,7 @@ interface TourApiFestivalItem {
   eventstartdate?: string;
   eventenddate?: string;
   firstimage?: string;
+  firstimage2?: string;
   mapx?: string;
   mapy?: string;
   tel?: string;
@@ -30,7 +30,7 @@ interface TourApiFestivalItem {
   cat3?: string;
 }
 
-interface CachedTourFestival {
+interface CachedKeywordFestival {
   id: string;
   title: string;
   subtitle: string | null;
@@ -44,25 +44,26 @@ interface CachedTourFestival {
   tags: string[];
 }
 
-const TOUR_FESTIVAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const TOUR_FESTIVAL_PAGE_SIZE = 100;
+const TOUR_KEYWORD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const TOUR_KEYWORD_PAGE_SIZE = 100;
+const TOUR_KEYWORD_CAT3 = ["A02070100", "A02070200", "A02070300"];
 
-export class TourApiFestivalProvider
+export class TourApiKeywordFestivalProvider
   extends BaseProviderHealth
   implements FestivalProvider
 {
   private cachedItems: {
     expiresAt: number;
-    items: CachedTourFestival[];
+    items: CachedKeywordFestival[];
   } | null = null;
-  private inFlightItems: Promise<CachedTourFestival[]> | null = null;
+  private inFlightItems: Promise<CachedKeywordFestival[]> | null = null;
 
   constructor(
     private readonly serviceKey: string,
     private readonly baseUrl: string,
     private readonly maxPages: number = tourFestivalMaxPages(),
   ) {
-    super("tourapi-festival");
+    super("tourapi-keyword-festival");
   }
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
@@ -78,8 +79,8 @@ export class TourApiFestivalProvider
             item.lat,
             item.lng,
           ),
-          source: "tourapi" as const,
-          sourceUrl: null as string | null,
+          source: "keyword-tour",
+          sourceUrl: null,
         }))
         .filter((item) => item.distanceMeters <= query.radiusMeters)
         .filter((item) =>
@@ -90,8 +91,7 @@ export class TourApiFestivalProvider
           ),
         )
         .filter((item) => !query.ongoingOnly || item.status === "ongoing");
-
-      this.markSuccess(normalized.length > 0 ? 0.9 : 0.7);
+      this.markSuccess(normalized.length > 0 ? 0.82 : 0.65);
       return sortByStatusThenDistance(normalized);
     } catch (error) {
       this.markFailure(error);
@@ -99,18 +99,17 @@ export class TourApiFestivalProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedTourFestival[]> {
+  private async fetchCachedItems(): Promise<CachedKeywordFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
-
     this.inFlightItems = this.fetchAllItems()
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = {
-            expiresAt: now + TOUR_FESTIVAL_CACHE_TTL_MS,
+            expiresAt: now + TOUR_KEYWORD_CACHE_TTL_MS,
             items,
           };
         }
@@ -122,50 +121,53 @@ export class TourApiFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedTourFestival[]> {
-    const eventStartDate = formatCompactDate(new Date());
-    const first = await this.fetchPage(1, eventStartDate);
+  private async fetchAllItems(): Promise<CachedKeywordFestival[]> {
+    const pages = await Promise.all(
+      TOUR_KEYWORD_CAT3.map((cat3) => this.fetchCat3(cat3)),
+    );
+    const raw = pages.flat();
+    const today = new Date().toISOString().slice(0, 10);
+    const normalized = raw
+      .map(normalizeKeywordFestival)
+      .filter((item): item is CachedKeywordFestival => Boolean(item))
+      .filter((item) => item.endDate >= today);
+    console.info(
+      `tourapi-keyword-festival fetched=${raw.length} normalized=${normalized.length}`,
+    );
+    return dedupeKeywordFestivals(normalized);
+  }
+
+  private async fetchCat3(cat3: string): Promise<TourKeywordItem[]> {
+    const first = await this.fetchPage(cat3, 1);
     const totalCount = first.totalCount ?? first.items.length;
-    const defaultCap = 5 * TOUR_FESTIVAL_PAGE_SIZE;
-    if (totalCount > defaultCap && this.maxPages <= 5) {
-      console.warn(
-        `tourapi-festival totalCount=${totalCount} exceeds default cap=${defaultCap}; set TOUR_FESTIVAL_MAX_PAGES to fetch more pages`,
-      );
-    }
     const totalPages = Math.min(
       this.maxPages,
-      Math.max(1, Math.ceil(totalCount / TOUR_FESTIVAL_PAGE_SIZE)),
+      Math.max(1, Math.ceil(totalCount / TOUR_KEYWORD_PAGE_SIZE)),
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2, eventStartDate),
+        this.fetchPage(cat3, index + 2),
       ),
     );
-    const raw = [...first.items, ...rest.flatMap((page) => page.items)];
-    const normalized = raw
-      .map(normalizeTourFestival)
-      .filter((item): item is CachedTourFestival => Boolean(item));
-    const today = new Date().toISOString().slice(0, 10);
-    const futureOnly = normalized.filter((item) => item.endDate >= today);
-    console.info(
-      `tourapi-festival fetched=${raw.length} normalized=${normalized.length} future=${futureOnly.length}`,
-    );
-    return futureOnly;
+    return [first.items, ...rest.map((page) => page.items)].flat();
   }
 
   private async fetchPage(
+    cat3: string,
     pageNo: number,
-    eventStartDate: string,
-  ): Promise<{ items: TourApiFestivalItem[]; totalCount: number | null }> {
-    const url = new URL("/B551011/KorService2/searchFestival2", this.baseUrl);
+  ): Promise<{ items: TourKeywordItem[]; totalCount: number | null }> {
+    const url = new URL("/B551011/KorService2/searchKeyword2", this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
     url.searchParams.set("MobileOS", "ETC");
     url.searchParams.set("MobileApp", "ParkingLotNavigator");
     url.searchParams.set("_type", "json");
-    url.searchParams.set("numOfRows", String(TOUR_FESTIVAL_PAGE_SIZE));
+    url.searchParams.set("keyword", "\uCD95\uC81C");
+    url.searchParams.set("cat1", "A02");
+    url.searchParams.set("cat2", "A0207");
+    url.searchParams.set("cat3", cat3);
+    url.searchParams.set("numOfRows", String(TOUR_KEYWORD_PAGE_SIZE));
     url.searchParams.set("pageNo", String(pageNo));
     url.searchParams.set("arrange", "E");
-    url.searchParams.set("eventStartDate", eventStartDate);
 
     const response = await fetch(url, {
       headers: {
@@ -173,46 +175,16 @@ export class TourApiFestivalProvider
         Accept: "application/json,text/plain,*/*",
       },
     });
-    if (!response.ok)
-      throw new Error(`TourAPI festival failed: ${response.status}`);
-    const body = (await response.json()) as {
-      response?: {
-        header?: { resultCode?: string; resultMsg?: string };
-        body?: {
-          items?: { item?: TourApiFestivalItem[] | TourApiFestivalItem };
-          totalCount?: number | string;
-        };
-      };
-    };
-    const resultCode = body.response?.header?.resultCode;
-    if (resultCode && resultCode !== "0000") {
-      throw new Error(
-        `TourAPI festival failed: ${body.response?.header?.resultMsg ?? resultCode}`,
-      );
+    if (!response.ok) {
+      throw new Error(`TourAPI keyword festival failed: ${response.status}`);
     }
-    const rawItems = body.response?.body?.items?.item;
-    const items = Array.isArray(rawItems)
-      ? rawItems
-      : rawItems
-        ? [rawItems]
-        : [];
-    const totalCountRaw = body.response?.body?.totalCount;
-    const totalCount =
-      typeof totalCountRaw === "number"
-        ? totalCountRaw
-        : typeof totalCountRaw === "string" && totalCountRaw.trim() !== ""
-          ? Number(totalCountRaw)
-          : null;
-    return {
-      items,
-      totalCount: Number.isFinite(totalCount) ? totalCount : null,
-    };
+    return parseTourResponse(await response.json());
   }
 }
 
-function normalizeTourFestival(
-  item: TourApiFestivalItem,
-): CachedTourFestival | null {
+function normalizeKeywordFestival(
+  item: TourKeywordItem,
+): CachedKeywordFestival | null {
   const lat = Number(item.mapy);
   const lng = Number(item.mapx);
   if (
@@ -228,7 +200,7 @@ function normalizeTourFestival(
   const startDate = parseDate(item.eventstartdate);
   const endDate = parseDate(item.eventenddate);
   return {
-    id: `tourapi:${item.contentid}`,
+    id: `keyword-tour:${item.contentid}`,
     title: item.title,
     subtitle: item.tel ?? null,
     startDate,
@@ -237,9 +209,50 @@ function normalizeTourFestival(
     address: [item.addr1, item.addr2].filter(Boolean).join(" "),
     lat,
     lng,
-    imageUrl: item.firstimage ?? null,
+    imageUrl: item.firstimage || item.firstimage2 || null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),
   };
+}
+
+function parseTourResponse(body: unknown): {
+  items: TourKeywordItem[];
+  totalCount: number | null;
+} {
+  const response = body as {
+    response?: {
+      header?: { resultCode?: string; resultMsg?: string };
+      body?: {
+        items?: { item?: TourKeywordItem[] | TourKeywordItem };
+        totalCount?: number | string;
+      };
+    };
+  };
+  const code = response.response?.header?.resultCode;
+  if (code && code !== "0000") {
+    throw new Error(
+      `TourAPI keyword festival failed: ${response.response?.header?.resultMsg ?? code}`,
+    );
+  }
+  const rawItems = response.response?.body?.items?.item;
+  const totalCountRaw = response.response?.body?.totalCount;
+  const totalCount =
+    typeof totalCountRaw === "number"
+      ? totalCountRaw
+      : typeof totalCountRaw === "string" && totalCountRaw.trim() !== ""
+        ? Number(totalCountRaw)
+        : null;
+  return {
+    items: Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [],
+    totalCount: Number.isFinite(totalCount) ? totalCount : null,
+  };
+}
+
+function dedupeKeywordFestivals(
+  items: CachedKeywordFestival[],
+): CachedKeywordFestival[] {
+  const selected = new Map<string, CachedKeywordFestival>();
+  for (const item of items) selected.set(item.id, item);
+  return [...selected.values()];
 }

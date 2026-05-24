@@ -7,7 +7,9 @@ import type {
 } from "../common/discoverProvider.js";
 import { MockFestivalProvider } from "./MockFestivalProvider.js";
 import { NationalCultureFestivalProvider } from "./NationalCultureFestivalProvider.js";
+import { TourApiAreaFestivalProvider } from "./TourApiAreaFestivalProvider.js";
 import { TourApiFestivalProvider } from "./TourApiFestivalProvider.js";
+import { TourApiKeywordFestivalProvider } from "./TourApiKeywordFestivalProvider.js";
 
 const cache = new MemoryCache<Festival[]>();
 
@@ -70,6 +72,18 @@ export function createFestivalService(): FestivalService {
         config.PUBLIC_DATA_BASE_URL,
       ),
     );
+    providers.push(
+      new TourApiAreaFestivalProvider(
+        config.PUBLIC_DATA_SERVICE_KEY,
+        config.PUBLIC_DATA_BASE_URL,
+      ),
+    );
+    providers.push(
+      new TourApiKeywordFestivalProvider(
+        config.PUBLIC_DATA_SERVICE_KEY,
+        config.PUBLIC_DATA_BASE_URL,
+      ),
+    );
   }
   if (providers.length === 0 && config.PARKING_PROVIDER_MODE === "mock") {
     providers.push(new MockFestivalProvider());
@@ -101,6 +115,8 @@ function dedupeFestivals(items: Festival[]): Festival[] {
 function sourcePriority(source: string): number {
   if (source === "tourapi") return 3;
   if (source === "public-data-culture-festival") return 2;
+  if (source === "area-based-tour") return 2;
+  if (source === "keyword-tour") return 1;
   return 1;
 }
 
