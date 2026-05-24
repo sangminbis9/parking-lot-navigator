@@ -212,6 +212,82 @@ describe("NationalCultureFestivalProvider", () => {
     });
   });
 
+  it("batch reads geocode_cache once for many rows without coordinates", async () => {
+    const rows = Array.from({ length: 100 }, (_, index) => {
+      const hasCoordinate = index % 2 === 0;
+      return {
+        fstvlNm: `Batch Festival ${index}`,
+        fstvlStartDate: "2099-10-01",
+        fstvlEndDate: "2099-10-03",
+        rdnmadr: `Batch Address ${index}`,
+        latitude: hasCoordinate ? "37.1000" : "",
+        longitude: hasCoordinate ? "127.1000" : ""
+      };
+    });
+    const coordinateMap = new Map(
+      rows
+        .filter((_, index) => index % 2 === 1)
+        .map((row, index) => [
+          row.rdnmadr,
+          {
+            found: true,
+            lat: 37.2 + index * 0.0001,
+            lng: 127.2 + index * 0.0001,
+            address: row.rdnmadr,
+            venue: null
+          }
+        ])
+    );
+    const getMany = vi.fn().mockResolvedValue(coordinateMap);
+    setGeocodeStore({ getMany, setMany: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            response: {
+              header: { resultCode: "00" },
+              body: { totalCount: rows.length, items: rows }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 37.15,
+      lng: 127.15,
+      radiusMeters: 50000,
+      upcomingWithinDays: 36500
+    });
+
+    expect(getMany).toHaveBeenCalledTimes(1);
+    expect(getMany.mock.calls[0][0]).toHaveLength(50);
+    expect(items).toHaveLength(100);
+  });
+
+  it("returns an empty list when the fetch is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abortError = Object.assign(new Error("aborted"), {
+      name: "AbortError"
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortError));
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 37.5665,
+      lng: 126.9780,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500,
+      signal: controller.signal
+    });
+
+    expect(items).toEqual([]);
+  });
+
   it("creates deterministic SHA-256 based ids and distinguishes different source keys", async () => {
     const body = {
       response: {

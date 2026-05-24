@@ -12,6 +12,7 @@ export interface DiscoverQuery {
   upcomingWithinDays: number;
   freeOnly?: boolean;
   providerAllowlist?: ReadonlySet<string>;
+  signal?: AbortSignal;
 }
 
 export interface FestivalProvider {

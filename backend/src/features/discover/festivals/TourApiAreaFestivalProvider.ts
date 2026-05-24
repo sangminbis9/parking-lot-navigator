@@ -86,7 +86,7 @@ export class TourApiAreaFestivalProvider
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => ({
           ...item,
@@ -117,13 +117,15 @@ export class TourApiAreaFestivalProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedAreaFestival[]> {
+  private async fetchCachedItems(
+    signal?: AbortSignal,
+  ): Promise<CachedAreaFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = { expiresAt: now + TOUR_AREA_CACHE_TTL_MS, items };
@@ -136,9 +138,11 @@ export class TourApiAreaFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedAreaFestival[]> {
+  private async fetchAllItems(
+    signal?: AbortSignal,
+  ): Promise<CachedAreaFestival[]> {
     const pages = await Promise.all(
-      TOUR_AREA_CODES.map((areaCode) => this.fetchArea(areaCode)),
+      TOUR_AREA_CODES.map((areaCode) => this.fetchArea(areaCode, signal)),
     );
     const raw = pages.flat();
     const today = new Date().toISOString().slice(0, 10);
@@ -152,8 +156,11 @@ export class TourApiAreaFestivalProvider
     return dedupeAreaFestivals(normalized);
   }
 
-  private async fetchArea(areaCode: string): Promise<TourAreaItem[]> {
-    const first = await this.fetchPage(areaCode, 1);
+  private async fetchArea(
+    areaCode: string,
+    signal?: AbortSignal,
+  ): Promise<TourAreaItem[]> {
+    const first = await this.fetchPage(areaCode, 1, signal);
     const totalCount = first.totalCount ?? first.items.length;
     const totalPages = Math.min(
       this.maxPages,
@@ -161,7 +168,7 @@ export class TourApiAreaFestivalProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(areaCode, index + 2),
+        this.fetchPage(areaCode, index + 2, signal),
       ),
     );
     return [first.items, ...rest.map((page) => page.items)].flat();
@@ -170,6 +177,7 @@ export class TourApiAreaFestivalProvider
   private async fetchPage(
     areaCode: string,
     pageNo: number,
+    signal?: AbortSignal,
   ): Promise<{ items: TourAreaItem[]; totalCount: number | null }> {
     const url = new URL("/B551011/KorService2/areaBasedList2", this.baseUrl);
     url.searchParams.set("serviceKey", this.serviceKey.trim());
@@ -185,6 +193,7 @@ export class TourApiAreaFestivalProvider
     url.searchParams.set("arrange", "E");
 
     const response = await fetch(url, {
+      signal,
       headers: {
         "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0",
         Accept: "application/json,text/plain,*/*",

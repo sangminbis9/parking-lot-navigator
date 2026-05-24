@@ -95,6 +95,32 @@ describe("additional TourAPI festival providers", () => {
     expect(url.searchParams.get("contentTypeId")).toBe("15");
     expect(url.searchParams.get("areaCode")).toBe("1");
   });
+
+  it("returns an empty list when provider fetch is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(
+        Object.assign(new Error("aborted"), { name: "AbortError" })
+      )
+    );
+
+    const provider = new TourApiKeywordFestivalProvider(
+      "test-key",
+      "https://apis.data.go.kr",
+      1
+    );
+    const items = await provider.festivals({
+      lat: 37.7519,
+      lng: 128.8761,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500,
+      signal: controller.signal
+    });
+
+    expect(items).toEqual([]);
+  });
 });
 
 function tourResponse(item: Record<string, string>): Response {
