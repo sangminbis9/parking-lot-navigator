@@ -336,11 +336,16 @@ export async function fetchWithTimeout(
   timeoutMs = EVENT_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
+  const externalSignal = init.signal;
+  if (externalSignal?.aborted) controller.abort();
+  const abortFromExternal = () => controller.abort();
+  externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromExternal);
   }
 }
 

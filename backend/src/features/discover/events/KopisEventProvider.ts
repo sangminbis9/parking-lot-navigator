@@ -41,7 +41,7 @@ export class KopisEventProvider
 
   async events(query: DiscoverQuery): Promise<FreeEvent[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => eventFromCached(item, query))
         .filter((item): item is FreeEvent => Boolean(item));
@@ -53,12 +53,12 @@ export class KopisEventProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedEvent[]> {
+  private async fetchCachedItems(signal?: AbortSignal): Promise<CachedEvent[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now)
       return this.cachedItems.items;
     if (this.inFlightItems) return this.inFlightItems;
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         this.cachedItems = { expiresAt: now + EVENT_FEED_CACHE_TTL_MS, items };
         return items;
@@ -69,8 +69,8 @@ export class KopisEventProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedEvent[]> {
-    const rows = await this.fetchPage(1);
+  private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
+    const rows = await this.fetchPage(1, signal);
     if (this.resolver?.warmup) {
       const inputs = rows
         .slice(0, EVENT_GEOCODE_ROW_LIMIT)
@@ -106,7 +106,10 @@ export class KopisEventProvider
     };
   }
 
-  private async fetchPage(page: number): Promise<Record<string, unknown>[]> {
+  private async fetchPage(
+    page: number,
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>[]> {
     const now = new Date();
     const to = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
     const url = new URL("/openApi/restful/pblprfr", this.baseUrl);
@@ -118,6 +121,7 @@ export class KopisEventProvider
     url.searchParams.set("shcate", "");
 
     const response = await fetchWithTimeout(url, {
+      signal,
       headers: { Accept: "application/xml,text/xml,*/*" },
     });
     if (!response.ok) throw new Error(`KOPIS API failed: ${response.status}`);

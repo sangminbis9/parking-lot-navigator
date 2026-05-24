@@ -31,7 +31,7 @@ export class SeoulCultureEventProvider extends BaseProviderHealth implements Eve
   async events(query: DiscoverQuery): Promise<FreeEvent[]> {
     try {
       const url = new URL(`${this.apiKey}/json/culturalEventInfo/1/200`, ensureTrailingSlash(this.baseUrl));
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: query.signal });
       if (!response.ok) throw new Error(`Seoul culture event failed: ${response.status}`);
       const body = (await response.json()) as { culturalEventInfo?: { row?: SeoulCultureEventRow[] } };
       const rows = body.culturalEventInfo?.row ?? [];

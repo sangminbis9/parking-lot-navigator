@@ -48,7 +48,7 @@ export class KcisaCultureEventProvider
 
   async events(query: DiscoverQuery): Promise<FreeEvent[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => eventFromCached(item, query))
         .filter((item): item is FreeEvent => Boolean(item));
@@ -60,12 +60,12 @@ export class KcisaCultureEventProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedEvent[]> {
+  private async fetchCachedItems(signal?: AbortSignal): Promise<CachedEvent[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now)
       return this.cachedItems.items;
     if (this.inFlightItems) return this.inFlightItems;
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = {
@@ -81,8 +81,8 @@ export class KcisaCultureEventProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedEvent[]> {
-    const first = await this.fetchPage(1);
+  private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
+    const first = await this.fetchPage(1, signal);
     const totalPages = Math.min(
       20,
       Math.max(
@@ -92,7 +92,7 @@ export class KcisaCultureEventProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2),
+        this.fetchPage(index + 2, signal),
       ),
     );
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
@@ -140,12 +140,14 @@ export class KcisaCultureEventProvider
 
   private async fetchPage(
     page: number,
+    signal?: AbortSignal,
   ): Promise<{ rows: Record<string, unknown>[]; totalCount: number | null }> {
     const urls = this.endpointCandidates(page);
     let lastError: unknown = null;
     for (const url of urls) {
       try {
         const response = await fetchWithTimeout(url, {
+          signal,
           headers: {
             Accept: "application/json, text/xml, */*",
             "Content-Type": "application/json",
@@ -162,6 +164,7 @@ export class KcisaCultureEventProvider
         const text = await response.text();
         return this.parseResponse(text);
       } catch (error) {
+        if (isAbortError(error)) throw error;
         lastError = error;
       }
     }
@@ -248,6 +251,10 @@ export class KcisaCultureEventProvider
       resolveCoordinates ? this.input.resolver : undefined,
     );
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function alternateProtocolBaseUrl(baseUrl: string): string | null {
