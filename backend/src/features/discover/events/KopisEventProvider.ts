@@ -6,8 +6,11 @@ import type {
   EventProvider,
 } from "../common/discoverProvider.js";
 import {
+  eventGeocodeMissBudget,
+  kopisMaxPages,
+} from "./eventProviderConfig.js";
+import {
   EVENT_FEED_CACHE_TTL_MS,
-  EVENT_GEOCODE_ROW_LIMIT,
   EVENT_PAGE_SIZE,
   categoryFromText,
   dedupeCachedEvents,
@@ -18,6 +21,7 @@ import {
   logProviderResult,
   normalizeEventForMap,
   parseXmlItems,
+  regionFallbackCoordinate,
   type CachedEvent,
   type EventCoordinateResolver,
   type ResolverInput,
@@ -35,6 +39,7 @@ export class KopisEventProvider
     private readonly serviceKey: string,
     private readonly baseUrl: string,
     private readonly resolver?: EventCoordinateResolver,
+    private readonly maxPages: number = kopisMaxPages(),
   ) {
     super("kopis");
   }
@@ -70,19 +75,20 @@ export class KopisEventProvider
   }
 
   private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
-    const rows = await this.fetchPage(1, signal);
+    const rows: Record<string, unknown>[] = [];
+    for (let page = 1; page <= this.maxPages; page += 1) {
+      const pageRows = await this.fetchPage(page, signal);
+      rows.push(...pageRows);
+      if (pageRows.length < EVENT_PAGE_SIZE) break;
+    }
+    this.resolver?.setMissBudget?.(eventGeocodeMissBudget());
     if (this.resolver?.warmup) {
       const inputs = rows
-        .slice(0, EVENT_GEOCODE_ROW_LIMIT)
         .map((row) => this.resolverInputFromRow(row))
         .filter((input): input is ResolverInput => Boolean(input));
       await this.resolver.warmup(inputs);
     }
-    const items = await Promise.all(
-      rows.map((row, index) =>
-        this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT),
-      ),
-    );
+    const items = await Promise.all(rows.map((row) => this.mapRow(row, true)));
     if (this.resolver?.flush) {
       await this.resolver.flush();
     }
@@ -137,6 +143,9 @@ export class KopisEventProvider
     const genre = getString(row, ["genrenm", "genre", "category"]);
     const venue = getString(row, ["fcltynm", "prfplcnm", "venue"]);
     const region = getString(row, ["area", "sido", "region"]);
+    const address = getString(row, ["adres", "address"]);
+    const fallback =
+      regionFallbackCoordinate(address) ?? regionFallbackCoordinate(region);
     return normalizeEventForMap(
       {
         source: "kopis",
@@ -146,7 +155,9 @@ export class KopisEventProvider
         category: categoryFromText(genre ?? "performance"),
         startDate: getString(row, ["prfpdfrom", "startDate"]),
         endDate: getString(row, ["prfpdto", "endDate"]),
-        address: getString(row, ["adres", "address"]),
+        address,
+        lat: fallback?.lat,
+        lng: fallback?.lng,
         imageUrl: getString(row, ["poster", "imageUrl"]),
         officialUrl: getString(row, ["relateurl", "url"]),
         price: getString(row, ["pcseguidance", "price"]),

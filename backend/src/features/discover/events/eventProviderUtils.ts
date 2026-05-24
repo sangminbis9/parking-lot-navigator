@@ -12,8 +12,6 @@ import type { DiscoverQuery } from "../common/discoverProvider.js";
 export const EVENT_FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const EVENT_FETCH_TIMEOUT_MS = 8_000;
 export const EVENT_PAGE_SIZE = 100;
-export const EVENT_GEOCODE_ROW_LIMIT = 8;
-export const KCISA_EVENT_GEOCODE_ROW_LIMIT = 12;
 
 export interface NormalizedEventInput {
   source: string;
@@ -74,6 +72,7 @@ export interface EventCoordinateResolver {
   } | null>;
   warmup?(inputs: ResolverInput[]): Promise<void>;
   flush?(): Promise<void>;
+  setMissBudget?(budget: number): void;
 }
 
 export interface GeocodeStoreEntry {
@@ -111,8 +110,20 @@ type ResolvedCoordinate = {
 export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
   private cache = new Map<string, Promise<ResolvedCoordinate>>();
   private pendingWrites = new Map<string, GeocodeStoreEntry>();
+  private missBudget: number;
+  private missCount = 0;
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    options: { missBudget?: number } = {},
+  ) {
+    this.missBudget = options.missBudget ?? Number.POSITIVE_INFINITY;
+  }
+
+  setMissBudget(budget: number): void {
+    this.missBudget = budget;
+    this.missCount = 0;
+  }
 
   async warmup(inputs: ResolverInput[]): Promise<void> {
     if (
@@ -163,8 +174,15 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     const queries = candidateQueries(input);
     for (const query of queries) {
       const cached = this.cache.get(query);
-      const promise = cached ?? this.lookupCoordinate(query);
-      if (!cached) this.cache.set(query, promise);
+      if (cached) {
+        const resolved = await cached;
+        if (resolved) return resolved;
+        continue;
+      }
+      if (this.missCount >= this.missBudget) continue;
+      this.missCount += 1;
+      const promise = this.lookupCoordinate(query);
+      this.cache.set(query, promise);
       const resolved = await promise;
       if (resolved) return resolved;
     }
@@ -548,6 +566,60 @@ export function toNumber(value: unknown): number | null {
 
 export function isKoreaCoordinate(lat: number, lng: number): boolean {
   return lat >= 32 && lat <= 39.5 && lng >= 124 && lng <= 132;
+}
+
+export function regionFallbackCoordinate(
+  value: string | null | undefined,
+): { lat: number; lng: number } | null {
+  const text = value?.replace(/\s+/g, " ") ?? "";
+  if (!text) return null;
+  const regions: Array<[RegExp, { lat: number; lng: number }]> = [
+    [
+      /서울|종로|중구|용산|성동|광진|동대문|중랑|성북|강북|도봉|노원|은평|서대문|마포|양천|강서|구로|금천|영등포|동작|관악|서초|강남|송파|강동/,
+      { lat: 37.5665, lng: 126.978 },
+    ],
+    [/부산/, { lat: 35.1796, lng: 129.0756 }],
+    [/대구/, { lat: 35.8714, lng: 128.6014 }],
+    [/인천/, { lat: 37.4563, lng: 126.7052 }],
+    [/광주/, { lat: 35.1595, lng: 126.8526 }],
+    [/대전/, { lat: 36.3504, lng: 127.3845 }],
+    [/울산/, { lat: 35.5384, lng: 129.3114 }],
+    [/세종/, { lat: 36.48, lng: 127.289 }],
+    [
+      /경기|수원|고양|성남|용인|부천|안산|안양|남양주|화성|평택|의정부|파주|김포|광명|군포|하남|오산|이천|안성|구리|의왕|포천|양평|여주|동두천|과천/,
+      { lat: 37.2636, lng: 127.0286 },
+    ],
+    [
+      /강원|춘천|원주|강릉|동해|태백|속초|삼척|홍천|횡성|영월|평창|정선|철원|화천|양구|인제|고성|양양/,
+      { lat: 37.8813, lng: 127.7298 },
+    ],
+    [
+      /충북|청주|충주|제천|보은|옥천|영동|증평|진천|괴산|음성|단양/,
+      { lat: 36.6424, lng: 127.489 },
+    ],
+    [
+      /충남|천안|공주|보령|아산|서산|논산|계룡|당진|금산|부여|서천|청양|홍성|예산|태안/,
+      { lat: 36.6588, lng: 126.6728 },
+    ],
+    [
+      /전북|전주|군산|익산|정읍|남원|김제|완주|진안|무주|장수|임실|순창|고창|부안/,
+      { lat: 35.8242, lng: 127.148 },
+    ],
+    [
+      /전남|목포|여수|순천|나주|광양|담양|곡성|구례|고흥|보성|화순|장흥|강진|해남|영암|무안|함평|영광|장성|완도|진도|신안/,
+      { lat: 34.8118, lng: 126.3922 },
+    ],
+    [
+      /경북|포항|경주|김천|안동|구미|영주|영천|상주|문경|경산|군위|의성|청송|영양|영덕|청도|고령|성주|칠곡|예천|봉화|울진|울릉/,
+      { lat: 36.5684, lng: 128.7294 },
+    ],
+    [
+      /경남|창원|진주|통영|사천|김해|밀양|거제|양산|의령|함안|창녕|고성|남해|하동|산청|함양|거창|합천/,
+      { lat: 35.2279, lng: 128.6811 },
+    ],
+    [/제주|서귀포/, { lat: 33.4996, lng: 126.5312 }],
+  ];
+  return regions.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 }
 
 function normalizeDate(value: unknown): string | null {
