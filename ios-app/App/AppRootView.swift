@@ -54,23 +54,29 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        routedStack {
-            switch tabRouter.selectedTab {
-            case .map:
-                MapHomeView(apiClient: apiClient)
-            case .discover:
-                SearchView(apiClient: apiClient)
-            case .favorites:
-                FavoritesView()
-            case .agentOffice:
-                AgentOfficeView(apiClient: apiClient)
-            case .settings:
-                SettingsView(apiClient: apiClient)
+        ZStack(alignment: .bottom) {
+            routedStack {
+                switch tabRouter.selectedTab {
+                case .map:
+                    MapHomeView(apiClient: apiClient)
+                case .discover:
+                    SearchView(apiClient: apiClient)
+                case .favorites:
+                    FavoritesView()
+                case .agentOffice:
+                    AgentOfficeView(apiClient: apiClient)
+                case .settings:
+                    SettingsView(apiClient: apiClient)
+                }
             }
-        }
-        .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+            .id(tabRouter.selectedTab)
+            .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: 66)
+            }
+
             FestivalTabBar(selection: $tabRouter.selectedTab)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
