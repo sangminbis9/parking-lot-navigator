@@ -46,7 +46,7 @@ export class CulturePortalEventProvider
 
   async events(query: DiscoverQuery): Promise<FreeEvent[]> {
     try {
-      const items = await this.fetchCachedItems();
+      const items = await this.fetchCachedItems(query.signal);
       const normalized = items
         .map((item) => eventFromCached(item, query))
         .filter((item): item is FreeEvent => Boolean(item));
@@ -58,12 +58,12 @@ export class CulturePortalEventProvider
     }
   }
 
-  private async fetchCachedItems(): Promise<CachedEvent[]> {
+  private async fetchCachedItems(signal?: AbortSignal): Promise<CachedEvent[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now)
       return this.cachedItems.items;
     if (this.inFlightItems) return this.inFlightItems;
-    this.inFlightItems = this.fetchAllItems()
+    this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
         this.cachedItems = { expiresAt: now + EVENT_FEED_CACHE_TTL_MS, items };
         return items;
@@ -74,8 +74,8 @@ export class CulturePortalEventProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(): Promise<CachedEvent[]> {
-    const first = await this.fetchPage(1);
+  private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
+    const first = await this.fetchPage(1, signal);
     const totalPages = Math.min(
       5,
       Math.max(
@@ -85,7 +85,7 @@ export class CulturePortalEventProvider
     );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2),
+        this.fetchPage(index + 2, signal),
       ),
     );
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
@@ -126,6 +126,7 @@ export class CulturePortalEventProvider
 
   private async fetchPage(
     page: number,
+    signal?: AbortSignal,
   ): Promise<{ rows: Record<string, unknown>[]; totalCount: number | null }> {
     const now = new Date();
     const to = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
@@ -144,6 +145,7 @@ export class CulturePortalEventProvider
     url.searchParams.set("sortStdr", "1");
 
     const response = await fetchWithTimeout(url, {
+      signal,
       headers: { Accept: "application/json,text/xml,*/*" },
     });
     if (!response.ok)

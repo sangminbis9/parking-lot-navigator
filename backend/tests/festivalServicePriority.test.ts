@@ -19,12 +19,30 @@ describe("FestivalService source priority", () => {
     const items = await service.nearby({
       lat: 37.1,
       lng: 127.1,
-      radiusMeters: 12345,
+      radiusMeters: 12346,
       upcomingWithinDays: 36500
     });
 
     expect(items).toHaveLength(1);
     expect(items[0].source).toBe("tourapi");
+  });
+
+  it("uses strict ordering when tourapi is absent", async () => {
+    const service = new FestivalService([
+      providerForSource("keyword-tour"),
+      providerForSource("public-data-culture-festival"),
+      providerForSource("area-based-tour"),
+    ]);
+
+    const items = await service.nearby({
+      lat: 37.1,
+      lng: 127.1,
+      radiusMeters: 12345,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].source).toBe("area-based-tour");
   });
 });
 
