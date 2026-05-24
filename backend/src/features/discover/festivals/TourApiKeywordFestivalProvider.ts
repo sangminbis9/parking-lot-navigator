@@ -147,10 +147,16 @@ export class TourApiKeywordFestivalProvider
   ): Promise<TourKeywordItem[]> {
     const first = await this.fetchPage(cat3, 1, signal);
     const totalCount = first.totalCount ?? first.items.length;
-    const totalPages = Math.min(
-      this.maxPages,
-      Math.max(1, Math.ceil(totalCount / TOUR_KEYWORD_PAGE_SIZE)),
+    const requiredPages = Math.max(
+      1,
+      Math.ceil(totalCount / TOUR_KEYWORD_PAGE_SIZE),
     );
+    const totalPages = Math.min(this.maxPages, requiredPages);
+    if (requiredPages > totalPages) {
+      console.warn(
+        `tourapi-keyword-festival cat3=${cat3} truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise TOUR_FESTIVAL_MAX_PAGES to ingest more`,
+      );
+    }
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
         this.fetchPage(cat3, index + 2, signal),
