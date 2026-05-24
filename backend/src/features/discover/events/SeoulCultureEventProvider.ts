@@ -12,8 +12,14 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { seoulCultureMaxPages } from "./eventProviderConfig.js";
+import { EVENT_FEED_CACHE_TTL_MS } from "./eventProviderUtils.js";
 
 const SEOUL_CULTURE_PAGE_SIZE = 1000;
+const SEOUL_CULTURE_SUCCESS_CODES = new Set([
+  "INFO-000",
+  "INFO-200",
+  "SUCCESS",
+]);
 
 interface SeoulCultureEventRow {
   CODENAME?: string;
@@ -34,6 +40,12 @@ export class SeoulCultureEventProvider
   extends BaseProviderHealth
   implements EventProvider
 {
+  private cachedItems: {
+    expiresAt: number;
+    items: SeoulCultureEventRow[];
+  } | null = null;
+  private inFlightItems: Promise<SeoulCultureEventRow[]> | null = null;
+
   constructor(
     private readonly apiKey: string,
     private readonly baseUrl: string,
@@ -44,7 +56,7 @@ export class SeoulCultureEventProvider
 
   async events(query: DiscoverQuery): Promise<FreeEvent[]> {
     try {
-      const rows = await this.fetchAllRows(query.signal);
+      const rows = await this.fetchCachedItems(query.signal);
       const items = dedupeEvents(
         rows
           .map((row) => normalizeSeoulEvent(row, query))
@@ -66,6 +78,30 @@ export class SeoulCultureEventProvider
       this.markFailure(error);
       return [];
     }
+  }
+
+  private async fetchCachedItems(
+    signal?: AbortSignal,
+  ): Promise<SeoulCultureEventRow[]> {
+    const now = Date.now();
+    if (this.cachedItems && this.cachedItems.expiresAt > now) {
+      return this.cachedItems.items;
+    }
+    if (this.inFlightItems) return this.inFlightItems;
+    this.inFlightItems = this.fetchAllRows(signal)
+      .then((items) => {
+        if (items.length > 0) {
+          this.cachedItems = {
+            expiresAt: now + EVENT_FEED_CACHE_TTL_MS,
+            items,
+          };
+        }
+        return items;
+      })
+      .finally(() => {
+        this.inFlightItems = null;
+      });
+    return this.inFlightItems;
   }
 
   private async fetchAllRows(
@@ -109,12 +145,41 @@ export class SeoulCultureEventProvider
       culturalEventInfo?: {
         row?: SeoulCultureEventRow[];
         list_total_count?: number;
+        RESULT?: { CODE?: string; MESSAGE?: string };
       };
+      RESULT?: { CODE?: string; MESSAGE?: string };
     };
-    const rows = body.culturalEventInfo?.row ?? [];
+    const topLevelResult = body.RESULT;
+    if (
+      topLevelResult?.CODE &&
+      !SEOUL_CULTURE_SUCCESS_CODES.has(topLevelResult.CODE)
+    ) {
+      throw new Error(
+        `Seoul culture event failed: ${topLevelResult.CODE} ${topLevelResult.MESSAGE ?? ""}`.trim(),
+      );
+    }
+    const wrapper = body.culturalEventInfo;
+    if (!wrapper) {
+      if (topLevelResult) {
+        throw new Error(
+          `Seoul culture event failed: ${topLevelResult.CODE ?? "unknown"} ${topLevelResult.MESSAGE ?? ""}`.trim(),
+        );
+      }
+      throw new Error("Seoul culture event returned unexpected body");
+    }
+    const innerResult = wrapper.RESULT;
+    if (
+      innerResult?.CODE &&
+      !SEOUL_CULTURE_SUCCESS_CODES.has(innerResult.CODE)
+    ) {
+      throw new Error(
+        `Seoul culture event failed: ${innerResult.CODE} ${innerResult.MESSAGE ?? ""}`.trim(),
+      );
+    }
+    const rows = wrapper.row ?? [];
     const totalCount =
-      typeof body.culturalEventInfo?.list_total_count === "number"
-        ? body.culturalEventInfo.list_total_count
+      typeof wrapper.list_total_count === "number"
+        ? wrapper.list_total_count
         : null;
     return { rows, totalCount };
   }

@@ -12,6 +12,7 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { getGeocodeStore } from "../events/eventProviderUtils.js";
+import { nationalCultureMaxPages } from "./tourApiFestivalConfig.js";
 
 const NATIONAL_CULTURE_FESTIVAL_PATH =
   "/openapi/tn_pubr_public_cltur_fstvl_api";
@@ -90,6 +91,7 @@ export class NationalCultureFestivalProvider
   constructor(
     private readonly serviceKey: string,
     private readonly baseUrl: string,
+    private readonly maxPages: number = nationalCultureMaxPages(),
   ) {
     super("public-data-culture-festival");
   }
@@ -154,10 +156,13 @@ export class NationalCultureFestivalProvider
   ): Promise<CachedNationalFestival[]> {
     const first = await this.fetchPage(1, signal);
     const totalCount = first.totalCount ?? first.items.length;
-    const totalPages = Math.min(
-      10,
-      Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
-    );
+    const requiredPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    const totalPages = Math.min(this.maxPages, requiredPages);
+    if (requiredPages > totalPages) {
+      console.warn(
+        `public-data-culture-festival truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise NATIONAL_CULTURE_MAX_PAGES to ingest more`,
+      );
+    }
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
         this.fetchPage(index + 2, signal),
@@ -188,7 +193,10 @@ export class NationalCultureFestivalProvider
     return deduped;
   }
 
-  private async fetchPage(pageNo: number, signal?: AbortSignal): Promise<{
+  private async fetchPage(
+    pageNo: number,
+    signal?: AbortSignal,
+  ): Promise<{
     items: NationalCultureFestivalItem[];
     totalCount: number | null;
   }> {

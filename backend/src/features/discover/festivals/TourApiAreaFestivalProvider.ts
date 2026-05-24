@@ -162,10 +162,16 @@ export class TourApiAreaFestivalProvider
   ): Promise<TourAreaItem[]> {
     const first = await this.fetchPage(areaCode, 1, signal);
     const totalCount = first.totalCount ?? first.items.length;
-    const totalPages = Math.min(
-      this.maxPages,
-      Math.max(1, Math.ceil(totalCount / TOUR_AREA_PAGE_SIZE)),
+    const requiredPages = Math.max(
+      1,
+      Math.ceil(totalCount / TOUR_AREA_PAGE_SIZE),
     );
+    const totalPages = Math.min(this.maxPages, requiredPages);
+    if (requiredPages > totalPages) {
+      console.warn(
+        `tourapi-area-festival areaCode=${areaCode} truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise TOUR_FESTIVAL_MAX_PAGES to ingest more`,
+      );
+    }
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
         this.fetchPage(areaCode, index + 2, signal),
@@ -269,7 +275,9 @@ function parseTourResponse(body: unknown): {
   };
 }
 
-function dedupeAreaFestivals(items: CachedAreaFestival[]): CachedAreaFestival[] {
+function dedupeAreaFestivals(
+  items: CachedAreaFestival[],
+): CachedAreaFestival[] {
   const selected = new Map<string, CachedAreaFestival>();
   for (const item of items) selected.set(item.id, item);
   return [...selected.values()];
