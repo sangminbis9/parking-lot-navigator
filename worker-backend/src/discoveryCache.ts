@@ -1,5 +1,8 @@
 import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
+import { mapWithConcurrency } from "./concurrency.js";
+
+export { mapWithConcurrency } from "./concurrency.js";
 
 type DiscoveryType = "festival" | "event";
 type DiscoverySyncKind = "festivals" | "events";
@@ -11,6 +14,8 @@ const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
   event: 45,
 };
 const DISCOVERY_SYNC_RADIUS_METERS = 90000;
+const DEFAULT_DISCOVERY_SYNC_CONCURRENCY = 4;
+const DEFAULT_DISCOVERY_SYNC_FETCH_TIMEOUT_MS = 8000;
 
 const NATIONAL_DISCOVERY_CENTERS: Array<{
   id: string;
@@ -44,6 +49,8 @@ const DISCOVERY_PROVIDER_CHUNKS: Array<{
 }> = [
   { kind: "festivals", providers: ["tourapi-festival"] },
   { kind: "festivals", providers: ["public-data-culture-festival"] },
+  { kind: "festivals", providers: ["tourapi-area-festival"] },
+  { kind: "festivals", providers: ["tourapi-keyword-festival"] },
   { kind: "events", providers: ["seoul-culture-event"] },
   { kind: "events", providers: ["culture-portal"] },
   { kind: "events", providers: ["kopis"] },
@@ -94,6 +101,8 @@ interface SyncDiscoverQuery {
   upcomingWithinDays: number;
   ongoingOnly?: boolean;
   freeOnly?: boolean;
+  providerAllowlist?: ReadonlySet<string>;
+  signal?: AbortSignal;
 }
 
 interface DiscoveryItemRow {
@@ -125,6 +134,35 @@ interface DiscoveryItemRow {
 }
 
 type DiscoveryItem = Festival | FreeEvent;
+
+interface DiscoveryRowPayload {
+  id: string;
+  type: "festival";
+  source: string;
+  sourceItemId: string;
+  title: string;
+  subtitle: string | null;
+  categoryText: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  status: "ongoing" | "upcoming" | null;
+  isFree: number | null;
+  venueName: string | null;
+  address: string;
+  lat: number;
+  lng: number;
+  rating: number | null;
+  reviewCount: number | null;
+  lowestPriceText: string | null;
+  lowestPricePlatform: string | null;
+  sourceUrl: string | null;
+  imageUrl: string | null;
+  tagsJson: string | null;
+  amenitiesJson: string | null;
+  offersJson: string | null;
+  rawPayload: string;
+  dataUpdatedAt: string;
+}
 
 export async function queryFestivalsFromCache(
   db: D1Database,
@@ -243,8 +281,10 @@ async function syncDiscoveryKind(
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
   const centers = centersForKind();
-  const batches = await Promise.all(
-    centers.map((center) => {
+  const batches = await mapWithConcurrency(
+    centers,
+    discoverySyncConcurrency(),
+    async (center) => {
       const query = {
         lat: center.lat,
         lng: center.lng,
@@ -252,9 +292,8 @@ async function syncDiscoveryKind(
         upcomingWithinDays: 365,
         providerAllowlist,
       };
-      if (kind === "festivals") return runtime.festivalService.nearby(query);
-      return runtime.eventService.nearby(query);
-    }),
+      return fetchDiscoveryCenterWithTimeout(runtime, kind, center.id, query);
+    },
   );
   const items = dedupeItems(batches.flat());
   const sources = countSources(items);
@@ -467,60 +506,35 @@ async function upsertDiscoveryItems(
   return upserted;
 }
 
-function discoveryRow(item: DiscoveryItem, syncedAt: string) {
-  if ("eventType" in item) {
-    return {
-      id: `festival:${item.source}:${item.id}`,
-      type: "festival" as const,
-      source: item.source,
-      sourceItemId: item.id,
-      title: item.title,
-      subtitle: item.shortDescription,
-      categoryText: item.eventType,
-      startDate: item.startDate,
-      endDate: item.endDate,
-      status: item.status,
-      isFree: item.isFree ? 1 : 0,
-      venueName: item.venueName,
-      address: item.address,
-      lat: item.lat,
-      lng: item.lng,
-      rating: null,
-      reviewCount: null,
-      lowestPriceText: item.price ?? null,
-      lowestPricePlatform: null,
-      sourceUrl: item.sourceUrl,
-      imageUrl: item.imageUrl,
-      tagsJson: null,
-      amenitiesJson: null,
-      offersJson: null,
-      rawPayload: JSON.stringify(item),
-      dataUpdatedAt: syncedAt,
-    };
-  }
+function discoveryRow(
+  item: DiscoveryItem,
+  syncedAt: string,
+): DiscoveryRowPayload {
+  const isEvent = "eventType" in item;
+  // Public API events are intentionally folded into the festival discovery domain for one map toggle and one cache type.
   return {
-    id: `festival:${item.id}`,
-    type: "festival" as const,
+    id: isEvent ? `festival:${item.source}:${item.id}` : `festival:${item.id}`,
+    type: "festival",
     source: item.source,
     sourceItemId: item.id,
     title: item.title,
-    subtitle: item.subtitle,
-    categoryText: item.tags.join(","),
+    subtitle: isEvent ? item.shortDescription : item.subtitle,
+    categoryText: isEvent ? item.eventType : item.tags.join(","),
     startDate: item.startDate,
     endDate: item.endDate,
     status: item.status,
-    isFree: null,
+    isFree: isEvent ? (item.isFree ? 1 : 0) : null,
     venueName: item.venueName,
     address: item.address,
     lat: item.lat,
     lng: item.lng,
     rating: null,
     reviewCount: null,
-    lowestPriceText: null,
+    lowestPriceText: isEvent ? (item.price ?? null) : null,
     lowestPricePlatform: null,
     sourceUrl: item.sourceUrl,
     imageUrl: item.imageUrl,
-    tagsJson: JSON.stringify(item.tags),
+    tagsJson: isEvent ? null : JSON.stringify(item.tags),
     amenitiesJson: null,
     offersJson: null,
     rawPayload: JSON.stringify(item),
@@ -678,7 +692,7 @@ async function startSyncRun(
 
 export async function reapStaleSyncRuns(
   db: D1Database,
-  olderThanMs: number = 5 * 60 * 1000,
+  olderThanMs: number = 10 * 60 * 1000,
 ): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanMs).toISOString();
   const result = await db
@@ -695,6 +709,60 @@ export async function reapStaleSyncRuns(
     console.info(`reapStaleSyncRuns marked ${changes} stale runs as timeout`);
   }
   return changes;
+}
+
+async function fetchDiscoveryCenterWithTimeout(
+  runtime: DiscoverySyncRuntime,
+  kind: DiscoverySyncKind,
+  centerId: string,
+  query: SyncDiscoverQuery,
+): Promise<DiscoveryItem[]> {
+  const timeoutMs = discoverySyncFetchTimeoutMs();
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const work =
+    kind === "festivals"
+      ? runtime.festivalService.nearby({ ...query, signal: controller.signal })
+      : runtime.eventService.nearby({ ...query, signal: controller.signal });
+  const guardedWork = work.catch((error) => {
+    if (controller.signal.aborted) return [];
+    throw error;
+  });
+  const timeout = new Promise<DiscoveryItem[]>((resolve) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      console.info(
+        `discovery sync ${kind} center=${centerId} timed out after ${timeoutMs}ms`,
+      );
+      resolve([]);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([guardedWork, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function discoverySyncConcurrency(): number {
+  return positiveIntegerFromEnv(
+    "DISCOVERY_SYNC_CONCURRENCY",
+    DEFAULT_DISCOVERY_SYNC_CONCURRENCY,
+  );
+}
+
+function discoverySyncFetchTimeoutMs(): number {
+  return positiveIntegerFromEnv(
+    "DISCOVERY_SYNC_FETCH_TIMEOUT_MS",
+    DEFAULT_DISCOVERY_SYNC_FETCH_TIMEOUT_MS,
+  );
+}
+
+function positiveIntegerFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 async function finishSyncRun(

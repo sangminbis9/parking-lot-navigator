@@ -11,6 +11,7 @@ import {
   parseDate,
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
+import { getGeocodeStore } from "../events/eventProviderUtils.js";
 
 const NATIONAL_CULTURE_FESTIVAL_PATH =
   "/openapi/tn_pubr_public_cltur_fstvl_api";
@@ -69,6 +70,11 @@ interface CachedNationalFestival {
   sourceUrl: string | null;
   imageUrl: null;
   tags: string[];
+}
+
+interface NormalizeResult {
+  item: CachedNationalFestival | null;
+  dropReason: "invalid" | "no_coord" | null;
 }
 
 export class NationalCultureFestivalProvider
@@ -153,15 +159,30 @@ export class NationalCultureFestivalProvider
         this.fetchPage(index + 2),
       ),
     );
-    const rawItems = [...first.items, ...rest.flatMap((page) => page.items)];
-    const normalized = rawItems
-      .map(normalizeNationalCultureFestival)
-      .filter((item): item is CachedNationalFestival => Boolean(item));
     const today = new Date().toISOString().slice(0, 10);
-    const futureOnly = normalized.filter((item) => item.endDate >= today);
-    const deduped = dedupeItems(futureOnly);
+    const rawItems = [...first.items, ...rest.flatMap((page) => page.items)];
+    const normalized: CachedNationalFestival[] = [];
+    let droppedNoCoord = 0;
+    let droppedPast = 0;
+
+    for (const row of rawItems) {
+      const endDate =
+        normalizeDate(row.fstvlEndDate) ?? normalizeDate(row.fstvlStartDate);
+      if (endDate && endDate < today) {
+        droppedPast += 1;
+        continue;
+      }
+      const result = await normalizeNationalCultureFestival(row);
+      if (result.item) {
+        normalized.push(result.item);
+      } else if (result.dropReason === "no_coord") {
+        droppedNoCoord += 1;
+      }
+    }
+
+    const deduped = dedupeItems(normalized);
     console.info(
-      `public-data-culture-festival fetched=${rawItems.length} normalized=${normalized.length} future=${futureOnly.length} deduped=${deduped.length}`,
+      `public-data-culture-festival fetched=${rawItems.length} normalized=${normalized.length} deduped=${deduped.length} dropped_no_coord=${droppedNoCoord} dropped_past=${droppedPast}`,
     );
     return deduped;
   }
@@ -210,27 +231,26 @@ export class NationalCultureFestivalProvider
   }
 }
 
-function normalizeNationalCultureFestival(
+async function normalizeNationalCultureFestival(
   row: NationalCultureFestivalItem,
-): CachedNationalFestival | null {
+): Promise<NormalizeResult> {
   const title = clean(row.fstvlNm);
   const startDate = normalizeDate(row.fstvlStartDate);
   const endDate = normalizeDate(row.fstvlEndDate) ?? startDate;
-  const lat = toNumber(row.latitude);
-  const lng = toNumber(row.longitude);
-  if (
-    !title ||
-    !startDate ||
-    !endDate ||
-    lat === null ||
-    lng === null ||
-    !isKoreaCoordinate(lat, lng)
-  ) {
-    return null;
+  if (!title || !startDate || !endDate) {
+    return { item: null, dropReason: "invalid" };
   }
 
   const address = clean(row.rdnmadr) ?? clean(row.lnmadr) ?? "";
   const venueName = clean(row.opar);
+  let lat = toNumber(row.latitude);
+  let lng = toNumber(row.longitude);
+  if (lat === null || lng === null || !isKoreaCoordinate(lat, lng)) {
+    const cached = await lookupCachedCoordinate(address);
+    if (!cached) return { item: null, dropReason: "no_coord" };
+    lat = cached.lat;
+    lng = cached.lng;
+  }
   const sourceItemKey = [
     clean(row.insttCode),
     title,
@@ -244,25 +264,51 @@ function normalizeNationalCultureFestival(
     .join("|");
 
   return {
-    id: `public-data-culture:${hashKey(sourceItemKey)}`,
-    title,
-    subtitle:
-      clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
-    startDate,
-    endDate,
-    venueName,
-    address,
-    lat,
-    lng,
-    sourceUrl: clean(row.homepageUrl) ?? clean(row.relateInfo),
-    imageUrl: null,
-    tags: [
-      "culture-festival",
-      clean(row.mnnstNm),
-      clean(row.auspcInsttNm),
-      clean(row.suprtInstt),
-    ].filter((value): value is string => Boolean(value)),
+    item: {
+      id: `public-data-culture:${await hashKey(sourceItemKey)}`,
+      title,
+      subtitle:
+        clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
+      startDate,
+      endDate,
+      venueName,
+      address,
+      lat,
+      lng,
+      sourceUrl: clean(row.homepageUrl) ?? clean(row.relateInfo),
+      imageUrl: null,
+      tags: [
+        "culture-festival",
+        clean(row.mnnstNm),
+        clean(row.auspcInsttNm),
+        clean(row.suprtInstt),
+      ].filter((value): value is string => Boolean(value)),
+    },
+    dropReason: null,
   };
+}
+
+async function lookupCachedCoordinate(
+  address: string,
+): Promise<{ lat: number; lng: number } | null> {
+  if (!address) return null;
+  const store = getGeocodeStore();
+  if (!store) return null;
+  try {
+    const entries = await store.getMany([address]);
+    const entry = entries.get(address);
+    if (
+      !entry?.found ||
+      entry.lat === null ||
+      entry.lng === null ||
+      !isKoreaCoordinate(entry.lat, entry.lng)
+    ) {
+      return null;
+    }
+    return { lat: entry.lat, lng: entry.lng };
+  } catch {
+    return null;
+  }
 }
 
 function extractItems(
@@ -316,17 +362,18 @@ function clean(value: unknown): string | null {
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
-  return Number.isFinite(number) && number !== 0 ? number : null;
+  return Number.isFinite(number) ? number : null;
 }
 
 function isKoreaCoordinate(lat: number, lng: number): boolean {
   return lat >= 32 && lat <= 39.5 && lng >= 124 && lng <= 132;
 }
 
-function hashKey(value: string): string {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash.toString(16);
+async function hashKey(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .slice(0, 8)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
