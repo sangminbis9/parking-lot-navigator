@@ -74,6 +74,7 @@ struct AppRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             FestivalTabBar(selection: $tabRouter.selectedTab)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
@@ -166,8 +167,8 @@ private struct FestivalTabBar: View {
             }
         }
         .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 4)
+        .padding(.bottom, 0)
         .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
@@ -208,7 +209,8 @@ private struct FestivalTabBar: View {
                     .minimumScaleFactor(0.78)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
+            .padding(.top, 3)
+            .padding(.bottom, 2)
             .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
