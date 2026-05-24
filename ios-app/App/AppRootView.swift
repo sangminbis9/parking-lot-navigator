@@ -54,7 +54,7 @@ struct AppRootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             routedStack {
                 switch tabRouter.selectedTab {
                 case .map:
@@ -71,12 +71,9 @@ struct AppRootView: View {
             }
             .id(tabRouter.selectedTab)
             .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: 66)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             FestivalTabBar(selection: $tabRouter.selectedTab)
-                .ignoresSafeArea(.container, edges: .bottom)
         }
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
@@ -168,9 +165,9 @@ private struct FestivalTabBar: View {
                 tabButton(tab)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
@@ -199,9 +196,9 @@ private struct FestivalTabBar: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(isSelected ? FestivalDesign.tealSoft : Color.clear)
-                        .frame(width: 42, height: 30)
+                        .frame(width: 38, height: 25)
                     Image(systemName: tab.systemImage)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
                 }
                 Text(tab.title)
@@ -211,7 +208,7 @@ private struct FestivalTabBar: View {
                     .minimumScaleFactor(0.78)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
             .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
