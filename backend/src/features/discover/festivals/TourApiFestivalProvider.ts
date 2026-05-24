@@ -124,20 +124,22 @@ export class TourApiFestivalProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(signal?: AbortSignal): Promise<CachedTourFestival[]> {
+  private async fetchAllItems(
+    signal?: AbortSignal,
+  ): Promise<CachedTourFestival[]> {
     const eventStartDate = formatCompactDate(new Date());
     const first = await this.fetchPage(1, eventStartDate, signal);
     const totalCount = first.totalCount ?? first.items.length;
-    const defaultCap = 5 * TOUR_FESTIVAL_PAGE_SIZE;
-    if (totalCount > defaultCap && this.maxPages <= 5) {
+    const requiredPages = Math.max(
+      1,
+      Math.ceil(totalCount / TOUR_FESTIVAL_PAGE_SIZE),
+    );
+    const totalPages = Math.min(this.maxPages, requiredPages);
+    if (requiredPages > totalPages) {
       console.warn(
-        `tourapi-festival totalCount=${totalCount} exceeds default cap=${defaultCap}; set TOUR_FESTIVAL_MAX_PAGES to fetch more pages`,
+        `tourapi-festival truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise TOUR_FESTIVAL_MAX_PAGES to ingest more`,
       );
     }
-    const totalPages = Math.min(
-      this.maxPages,
-      Math.max(1, Math.ceil(totalCount / TOUR_FESTIVAL_PAGE_SIZE)),
-    );
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
         this.fetchPage(index + 2, eventStartDate, signal),

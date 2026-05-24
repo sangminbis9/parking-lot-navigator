@@ -6,8 +6,11 @@ import type {
   EventProvider,
 } from "../common/discoverProvider.js";
 import {
+  culturePortalMaxPages,
+  eventGeocodeMissBudget,
+} from "./eventProviderConfig.js";
+import {
   EVENT_FEED_CACHE_TTL_MS,
-  EVENT_GEOCODE_ROW_LIMIT,
   EVENT_PAGE_SIZE,
   KakaoEventCoordinateResolver,
   categoryFromText,
@@ -40,6 +43,7 @@ export class CulturePortalEventProvider
     private readonly serviceKey: string,
     private readonly baseUrl: string,
     private readonly resolver?: EventCoordinateResolver,
+    private readonly maxPages: number = culturePortalMaxPages(),
   ) {
     super("culture-portal");
   }
@@ -76,31 +80,30 @@ export class CulturePortalEventProvider
 
   private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
     const first = await this.fetchPage(1, signal);
-    const totalPages = Math.min(
-      5,
-      Math.max(
-        1,
-        Math.ceil((first.totalCount ?? first.rows.length) / EVENT_PAGE_SIZE),
-      ),
+    const requiredPages = Math.max(
+      1,
+      Math.ceil((first.totalCount ?? first.rows.length) / EVENT_PAGE_SIZE),
     );
+    const totalPages = Math.min(this.maxPages, requiredPages);
+    if (requiredPages > totalPages) {
+      console.warn(
+        `culture-portal truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${first.totalCount}; raise CULTURE_PORTAL_MAX_PAGES to ingest more`,
+      );
+    }
     const rest = await Promise.all(
       Array.from({ length: totalPages - 1 }, (_, index) =>
         this.fetchPage(index + 2, signal),
       ),
     );
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
+    this.resolver?.setMissBudget?.(eventGeocodeMissBudget());
     if (this.resolver?.warmup) {
       const inputs = rows
-        .slice(0, EVENT_GEOCODE_ROW_LIMIT)
         .map((row) => this.resolverInputFromRow(row))
         .filter((input): input is ResolverInput => Boolean(input));
       await this.resolver.warmup(inputs);
     }
-    const items = await Promise.all(
-      rows.map((row, index) =>
-        this.mapRow(row, index < EVENT_GEOCODE_ROW_LIMIT),
-      ),
-    );
+    const items = await Promise.all(rows.map((row) => this.mapRow(row, true)));
     if (this.resolver?.flush) {
       await this.resolver.flush();
     }
