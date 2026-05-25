@@ -43,7 +43,7 @@
     </dict>
   </array>
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>선택한 주차장까지 인앱 길안내를 제공하기 위해 현재 위치가 필요합니다.</string>
+  <string>현재 위치 주변의 이벤트·축제와 가까운 주차장을 보여주고, 선택한 장소까지 길안내를 제공하기 위해 위치 정보를 사용합니다.</string>
   <key>API_BASE_URL</key>
   <string>$(API_BASE_URL)</string>
   <key>APP_GROUP_ID</key>
