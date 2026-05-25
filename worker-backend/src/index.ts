@@ -25,6 +25,7 @@ import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { createMerchantApp } from "./merchant/routes.js";
+import { createLegalApp } from "./legal/routes.js";
 import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
@@ -280,6 +281,7 @@ const listQuerySchema = z.object({
 app.use("*", cors());
 
 app.route("/merchant", createMerchantApp());
+app.route("/legal", createLegalApp());
 
 app.onError((error, c) => {
   if (error instanceof ZodError) {
@@ -854,7 +856,10 @@ export default {
 };
 
 async function runAgentOfficeScheduled(env: Env): Promise<void> {
-  await Promise.all([runHeadReviewScheduled(env), runImageEnrichmentScheduled(env)]);
+  await Promise.all([
+    runHeadReviewScheduled(env),
+    runImageEnrichmentScheduled(env),
+  ]);
 }
 
 async function runHeadReviewScheduled(env: Env): Promise<void> {
