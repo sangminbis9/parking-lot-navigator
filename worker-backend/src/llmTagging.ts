@@ -93,10 +93,10 @@ export async function runTagging(
     6,
   );
 
-  const festivalRows = await fetchFestivalRows(env.DB, mode, maxRows);
-  const remaining = maxRows - festivalRows.length;
-  const localEventRows =
-    remaining > 0 ? await fetchLocalEventRows(env.DB, mode, remaining) : [];
+  const [festivalRows, localEventRows] = await Promise.all([
+    fetchFestivalRows(env.DB, mode, maxRows),
+    fetchLocalEventRows(env.DB, mode, maxRows),
+  ]);
 
   const festivalInputs = festivalRows.map(festivalRowToInput);
   const localInputs = localEventRows.map(localEventRowToInput);
