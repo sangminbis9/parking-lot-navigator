@@ -18,7 +18,7 @@ settings:
     SWIFT_VERSION: 5.9
     DEVELOPMENT_TEAM: 95N46NPCJ7
     MARKETING_VERSION: 1.0
-    CURRENT_PROJECT_VERSION: 132
+    CURRENT_PROJECT_VERSION: 133
     APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
     INFOPLIST_OUTPUT_FORMAT: XML
 targets:
@@ -36,6 +36,7 @@ targets:
         excludes:
           - IntentsInfo.plist
           - ShareExtensionInfo.plist
+          - WidgetInfo.plist
     configFiles:
       Debug: Config/Debug.xcconfig
       Release: Config/Release.xcconfig
@@ -50,6 +51,7 @@ targets:
         INFOPLIST_OUTPUT_FORMAT: XML
     dependencies:
       - target: ParkingShareExtension
+      - target: UpcomingFestivalsWidget
       - package: KakaoMapsSDK
         product: KakaoMapsSDK-SPM
       - package: KakaoOpenSDK
@@ -69,6 +71,25 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(SHARE_EXTENSION_BUNDLE_ID)
         INFOPLIST_FILE: Resources/ShareExtensionInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
+        INFOPLIST_OUTPUT_FORMAT: XML
+  UpcomingFestivalsWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Integrations/WidgetKit
+      - Core/Models
+      - Core/Storage
+      - Core/DesignSystem
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(WIDGET_EXTENSION_BUNDLE_ID)
+        INFOPLIST_FILE: Resources/WidgetInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
