@@ -12,6 +12,7 @@ import {
   EMPTY_FORM,
   renderDashboard,
   renderEventForm,
+  renderFreeClaim,
   renderLanding,
   renderMessage,
   renderPaymentFail,
@@ -50,10 +51,19 @@ export type MerchantEnv = {
   MERCHANT_PUBLIC_BASE_URL?: string;
   TOSS_CLIENT_KEY?: string;
   TOSS_SECRET_KEY?: string;
+  MERCHANT_LAUNCH_PROMO_FREE?: string;
 };
 
 const EVENT_PRICE_KRW = 10000;
 const EVENT_DURATION_MONTHS = 3;
+
+function launchPromoEnabled(env: MerchantEnv): boolean {
+  const raw = (env.MERCHANT_LAUNCH_PROMO_FREE ?? "").trim().toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") {
+    return false;
+  }
+  return true;
+}
 
 const EVENT_TYPES: readonly MerchantEventType[] = [
   "discount",
@@ -132,6 +142,7 @@ export function createMerchantApp() {
       renderLanding({
         naverEnabled: providerEnabled(c.env, "naver"),
         kakaoEnabled: providerEnabled(c.env, "kakao"),
+        launchPromoFree: launchPromoEnabled(c.env),
       }),
     );
   });
@@ -270,7 +281,12 @@ export function createMerchantApp() {
   app.get("/event/new", async (c) => {
     const session = await loadSession(c.env, c.req.header("cookie"));
     if (!session) return c.redirect("/merchant");
-    return c.html(renderEventForm({ values: EMPTY_FORM }));
+    return c.html(
+      renderEventForm({
+        values: EMPTY_FORM,
+        launchPromoFree: launchPromoEnabled(c.env),
+      }),
+    );
   });
 
   app.post("/event/new", async (c) => {
@@ -291,11 +307,13 @@ export function createMerchantApp() {
     const missing = (
       ["title", "description", "benefit", "storeName", "address"] as const
     ).filter((key) => !values[key]);
+    const promoFree = launchPromoEnabled(c.env);
     if (missing.length > 0) {
       return c.html(
         renderEventForm({
           values,
           error: "필수 항목을 모두 입력해 주세요.",
+          launchPromoFree: promoFree,
         }),
         400,
       );
@@ -312,6 +330,7 @@ export function createMerchantApp() {
           values,
           error:
             "주소에서 위치를 찾지 못했습니다. 도로명 주소로 다시 입력해 주세요.",
+          launchPromoFree: promoFree,
         }),
         400,
       );
@@ -333,7 +352,14 @@ export function createMerchantApp() {
             : result.reason === "type"
               ? "이미지는 JPG, PNG, WebP 형식만 지원합니다."
               : "이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-        return c.html(renderEventForm({ values, error: reason }), 400);
+        return c.html(
+          renderEventForm({
+            values,
+            error: reason,
+            launchPromoFree: promoFree,
+          }),
+          400,
+        );
       }
       imageUrl = result.url;
     }
@@ -381,6 +407,9 @@ export function createMerchantApp() {
     if (event.status === "approved") {
       return c.redirect("/merchant/dashboard");
     }
+    if (launchPromoEnabled(c.env)) {
+      return c.html(renderFreeClaim({ event }));
+    }
     const clientKey = c.env.TOSS_CLIENT_KEY;
     if (!clientKey) {
       return c.html(
@@ -405,6 +434,54 @@ export function createMerchantApp() {
         customerName,
       }),
     );
+  });
+
+  app.post("/event/:id/claim-free", async (c) => {
+    if (!launchPromoEnabled(c.env)) {
+      return c.html(
+        renderMessage(
+          "무료 등록 불가",
+          "오픈 기념 프로모션이 종료되었습니다. 다시 결제 단계로 이동해 주세요.",
+        ),
+        403,
+      );
+    }
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    if (event.status === "approved") {
+      return c.redirect("/merchant/dashboard");
+    }
+    if (event.status !== "pending_payment") {
+      return c.html(
+        renderMessage(
+          "등록 불가",
+          "이 이벤트는 무료 등록 대상 상태가 아닙니다.",
+        ),
+        400,
+      );
+    }
+    const startDate = event.start_date ?? new Date().toISOString().slice(0, 10);
+    const paidUntil = addMonths(
+      new Date(`${startDate}T00:00:00Z`),
+      EVENT_DURATION_MONTHS,
+    )
+      .toISOString()
+      .slice(0, 10);
+    await markEventApproved(c.env.DB, {
+      id: event.id,
+      paymentKey: "free_launch_promo",
+      paymentAmount: 0,
+      paidUntil,
+      startDate,
+    });
+    return c.redirect("/merchant/dashboard");
   });
 
   app.get("/event/:id/payment/success", async (c) => {
