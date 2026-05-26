@@ -10,8 +10,9 @@ enum AppRoute: Hashable {
 enum AppTab: Hashable {
     case map
     case discover
-    case agentOffice
     case favorites
+    case calendar
+    case agentOffice
     case settings
 
     var title: String {
@@ -19,6 +20,7 @@ enum AppTab: Hashable {
         case .map: return "지도"
         case .discover: return "이벤트"
         case .favorites: return "즐겨찾기"
+        case .calendar: return "캘린더"
         case .agentOffice: return "사무실"
         case .settings: return "설정"
         }
@@ -29,12 +31,13 @@ enum AppTab: Hashable {
         case .map: return "map.fill"
         case .discover: return "sparkles"
         case .favorites: return "star.fill"
+        case .calendar: return "calendar"
         case .agentOffice: return "building.2.fill"
         case .settings: return "gearshape.fill"
         }
     }
 
-    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .agentOffice, .settings]
+    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .calendar, .agentOffice, .settings]
 }
 
 final class AppTabRouter: ObservableObject {
@@ -45,8 +48,10 @@ final class AppTabRouter: ObservableObject {
 struct AppRootView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var themeStore: FestivalThemeStore
+    @EnvironmentObject private var festivalSync: FestivalSyncService
     @StateObject private var router = Router()
     @StateObject private var tabRouter = AppTabRouter()
+    @Environment(\.scenePhase) private var scenePhase
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -63,6 +68,8 @@ struct AppRootView: View {
                     SearchView(apiClient: apiClient)
                 case .favorites:
                     FavoritesView()
+                case .calendar:
+                    CalendarTabView(apiClient: apiClient)
                 case .agentOffice:
                     AgentOfficeView(apiClient: apiClient)
                 case .settings:
@@ -81,11 +88,19 @@ struct AppRootView: View {
         .onAppear {
             Self.configureTabBarAppearance()
         }
+        .task {
+            festivalSync.sync(coordinate: nil)
+        }
         .onChange(of: themeStore.selectedTheme) { _ in
             Self.configureTabBarAppearance()
         }
         .onChange(of: tabRouter.selectedTab) { _ in
             router.path.removeAll()
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                festivalSync.syncIfStale(coordinate: nil)
+            }
         }
     }
 
