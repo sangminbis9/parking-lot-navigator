@@ -1,14 +1,15 @@
 # Next Steps
 
-Last updated: 2026-05-19
+Last updated: 2026-05-26
 
 ## Current Status
 
 - Branch: `master`
-- Latest pushed commit: `116fbcb Widen local event sources, rebalance subrequest budget`
+- Latest pushed commit: `c65a3a5 Derive widget bundle id from app bundle id to fix embed validation`
 - Product direction is festival/event discovery first, with parking/realtime as support for visiting selected destinations, plus a paid local-event registration funnel for merchants.
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is `1.0 (114)` in `ios-app/project.yml`. AgentOffice live activity feed has not been built/uploaded yet, so the next TestFlight needs `>114`.
+- iOS build number is `1.0 (134)` in `ios-app/project.yml`. Latest Codemagic 빌드가 성공한 시점의 번호이며, 다음 TestFlight 업로드 시 `≥ 135` 로 bump 한다.
+- Calendar tab (새 6번째 탭) + Medium WidgetKit widget (`UpcomingFestivalsWidget`) + 공유 필터(지역/반경/태그/상태)는 v1 로 출시되어 Codemagic 빌드까지 통과한 상태.
 - Worker discovery and parking reads use D1/user endpoints with cron/admin sync for external provider calls.
 - CI `deploy-worker` uses `wrangler versions secret put` to stage multiple secrets safely before the final `wrangler deploy`.
 
@@ -53,9 +54,16 @@ Blocking external item: 사업자등록증 발급 (in progress, applied 2026-05-
 
 ## iOS Build / Release
 
-- Codemagic/Xcode build is required only when iOS files change. The Settings link-out (`c31bf14`) has not been built yet.
-- Before the next Codemagic/TestFlight run, bump `ios-app/project.yml` build number above `105` and confirm the publish log shows the new `Version code`.
+- Codemagic/Xcode build is required only when iOS files change.
+- Latest 성공 빌드 번호는 `1.0 (134)` (`f3465f2` + `c65a3a5` 반영 후). 다음 Codemagic/TestFlight 업로드 시 `CURRENT_PROJECT_VERSION` 을 `≥ 135` 로 bump 후 publish 로그의 `Version code` 가 새 값을 가리키는지 확인한다.
 - Verify "내 가게 이벤트 등록" button opens Safari to `https://parking-lot-navigator-api.parkingnav.workers.dev/merchant` on a real device (not just simulator) — Apple's review will check the link-out flow.
+- 캘린더 탭/위젯 검증: 시뮬레이터 또는 실기기에서 ① 캘린더 dot 표시 ② 필터 시트 적용 시 dot/위젯 동기화 ③ 홈 화면에 Medium 위젯 추가 후 다가오는 축제 3개 카드 노출 ④ 빈 상태(90일 매칭 없음) 문구.
+
+## Apple Developer / Codemagic Signing (Widget 추가 후)
+
+- 신규 App ID `com.sangminbis9.ParkingLotNavigator.UpcomingFestivalsWidget` 등록 완료. App Groups capability 는 **Configure 버튼으로 `group.com.sangminbis9.ParkingLotNavigator` 매핑까지 완료**해야 한다 (체크박스만 켜는 것은 부족).
+- Codemagic 은 **수동 사이닝(Manual)** 방식. 위젯용 distribution provisioning profile (`UpcomingFestivalsWidget` App ID + main app 과 동일한 distribution certificate) 을 새로 발급해 Codemagic Provisioning profiles 슬롯에 업로드한 상태이며, 빌드가 정상 통과함.
+- 메인 app / Share Extension / Widget 세 App ID 모두 동일 App Group 에 매핑되어 있어야 한다. 추후 capability 추가/회전 시 세 App ID 모두를 같이 점검.
 
 ## After Worker Deploys
 
@@ -64,6 +72,15 @@ Blocking external item: 사업자등록증 발급 (in progress, applied 2026-05-
 - Verify `/parking/nearby`, `/parking/realtime`, `/discover/festivals`, `/discover/events`, `/api/local-events`, and `/merchant` from the production Worker.
 
 ## Backlog
+
+### Calendar / Widget v1.1 후보
+
+- EventKit 연동: 축제 상세 → "기본 캘린더에 추가" 버튼. NSCalendarsUsageDescription, PrivacyInfo 갱신 필요.
+- Small / Large 위젯 사이즈 추가 (현재 Medium 만 지원).
+- Lock Screen / StandBy 위젯.
+- 위젯 deep link 진입 (이벤트 상세 직진입).
+- 필터 프리셋 저장 / 즐겨찾기 지역 기억.
+- 백엔드 `/api/festivals` 에 `from`/`to` 날짜 범위 파라미터 추가 (현재는 90일 윈도우로 충분).
 
 ### Merchant funnel hardening
 
