@@ -286,19 +286,37 @@ struct MapHomeView: View {
             viewModel.events.map { DiscoverListItem.event($0, referenceCoordinate: referenceCoordinate) }
     }
 
+    private var visibleDiscoverSources: [DiscoverPinSource] {
+        let sources = discoverSources
+        guard !sources.isEmpty else { return [] }
+        let center = CLLocation(
+            latitude: mapViewport.center.latitude,
+            longitude: mapViewport.center.longitude
+        )
+        let radius = Double(mapViewport.radiusMeters)
+        return sources.filter { source in
+            let point = CLLocation(
+                latitude: source.coordinate.latitude,
+                longitude: source.coordinate.longitude
+            )
+            return center.distance(from: point) <= radius
+        }
+    }
+
     private var discoverItemCount: Int {
-        viewModel.festivals.count + viewModel.events.count
+        visibleDiscoverSources.count
     }
 
     private var firstDiscoverListItem: DiscoverListItem? {
         let referenceCoordinate = locationProvider.coordinate
-        if let festival = viewModel.festivals.first {
+        switch visibleDiscoverSources.first {
+        case .festival(let festival):
             return DiscoverListItem.festival(festival, referenceCoordinate: referenceCoordinate)
-        }
-        if let event = viewModel.events.first {
+        case .event(let event):
             return DiscoverListItem.event(event, referenceCoordinate: referenceCoordinate)
+        case nil:
+            return nil
         }
-        return nil
     }
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
