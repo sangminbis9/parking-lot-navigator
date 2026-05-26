@@ -1,6 +1,6 @@
 # API Runbook
 
-Last updated: 2026-05-12
+Last updated: 2026-05-26
 
 ## Production API
 
@@ -56,6 +56,14 @@ curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/festivals
 curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/local-events?lat=36.35&lng=127.8&radiusMeters=20000&limit=50"
 curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/map/items?type=all&lat=36.35&lng=127.8&radiusMeters=460000"
 ```
+
+캘린더 탭 + Medium 위젯이 사용하는 호출 패턴:
+
+```bash
+curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/festivals?lat=37.5663&lng=126.9779&radiusMeters=50000&upcomingWithinDays=90"
+```
+
+`FestivalSyncService` (앱 본체) 가 cold start / foreground / 필터 변경 시 위 호출을 수행하고, 필터(지역/태그/상태) 적용 후 상위 ~20개를 App Group container 의 `widget_festivals.json` 에 저장한다. 위젯은 캐시만 읽고 네트워크 호출을 하지 않는다.
 
 Expected public culture source IDs after sync, depending on configured secrets:
 
@@ -149,4 +157,5 @@ Culture and event APIs:
 - Local Windows environment may not have `node`, `npm`, `swift`, or `xcodebuild`.
 - If tools are missing locally, rely on CI/Codemagic for full build/test.
 - Always run `git diff --check` before committing when possible.
-- Bump iOS build number before release/publish commits. Current known target after the latest App Store Connect duplicate-version issue is `1.0 (105)` or higher.
+- Bump iOS build number before release/publish commits. Current known target after the latest successful Codemagic build is `1.0 (134)` or higher.
+- Three iOS targets share the same App Group `group.com.sangminbis9.ParkingLotNavigator`: main app, `ParkingShareExtension`, `UpcomingFestivalsWidget`. 새 extension 추가 시 App Group 매핑을 세 App ID 모두에서 Configure 로 명시해야 한다 (`docs/release/codemagic-guide.md` 참조).

@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-05-19
+Last updated: 2026-05-26
 
 ## Project
 
@@ -168,10 +168,32 @@ Major discovery providers:
   - `FestivalMascotConcept`
 - SwiftUI map/discovery UI now uses the mascot and a warmer festival palette across search, list, empty states, detail imagery, and helper/tip surfaces.
 - Figma redesign reference: `Festival-Event-App-Redesign`.
+- Tab bar order is `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정` (six tabs). The 캘린더 tab is a themed monthly grid; tapping a day opens a sheet listing that day's festivals.
+- Shared filter axes used by the calendar and widget: 지역(시·도), 거리 반경(10/20/50km/무제한), 태그/장르, 진행 상태(진행중/예정). Filter state is persisted in App Group `UserDefaults` and consumed by both surfaces.
+
+## Calendar + Widget Architecture
+
+- The 캘린더 탭은 `/api/festivals` (alias `/discover/festivals`) 응답을 `upcomingWithinDays=90` 으로 받아 `[Date: [Festival]]` 버킷으로 정리하고, 날짜 셀에 dot 인디케이터(진행 중 → teal, 예정 → lantern)를 표시한다.
+- iOS 홈 화면 **Medium 위젯** `UpcomingFestivalsWidget` 가 다가오는 축제 3개를 카드 형태로 노출한다. 위젯은 네트워크를 직접 호출하지 않고 App Group container 의 `widget_festivals.json` 캐시만 읽는다.
+- `FestivalSyncService` (앱 본체) 가 cold start, foreground 진입, 필터 변경 시 `/api/festivals` 를 호출 → 필터 적용 → 상위 ~20개를 `SharedFestivalCache` 에 저장 → `WidgetCenter.shared.reloadTimelines(ofKind: "UpcomingFestivalsWidget")` 를 호출한다.
+- App Group ID 는 기존 메인 앱이 쓰던 `group.com.sangminbis9.ParkingLotNavigator` 를 재사용한다. 위젯 entitlements 도 동일한 그룹을 참조한다.
+- 위젯 extension Bundle ID: `com.sangminbis9.ParkingLotNavigator.UpcomingFestivalsWidget` (project.yml 에서 `$(APP_BUNDLE_ID).UpcomingFestivalsWidget` 으로 inline 파생).
+- 위젯 target sources: `Integrations/WidgetKit`, `Core/Models`, `Core/Storage`, `Core/DesignSystem` (위젯 target 에는 `Core/Logging` 미포함 — `SharedFestivalCache` 는 silent `try?` 실패).
+- iOS deployment target 16.0 호환을 위해 `containerBackground(_:for: .widget)` 은 iOS 17+ 분기로 처리.
+- EventKit 연동(축제 → 기본 캘린더 추가)은 v1.1 로 deferred. v1 에서는 NSCalendarsUsageDescription 미도입.
 
 ## Recent Useful Commits
 
-Latest (2026-05-19):
+Latest (2026-05-26):
+
+- `c65a3a5 Derive widget bundle id from app bundle id to fix embed validation`
+- `f3465f2 Add festival calendar tab, Medium widget, and shared filter store`
+- `b2ade17 Add legal pages route, iOS Privacy Manifest, and App Store privacy answers`
+- `795f018 Bump iOS build number to 131`
+- `7ebe783 Update app icon and display name`
+- `9727bdf Lower Eventda icon wordmark`
+
+Earlier (2026-05-19):
 
 - `116fbcb Widen local event sources, rebalance subrequest budget`
 - `a0c9d5d Add Workers AI head agent and activity feed`
