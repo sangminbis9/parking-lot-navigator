@@ -6,7 +6,7 @@ struct WidgetSnapshot: Codable {
 }
 
 enum SharedFestivalCache {
-    static let fileName = "widget_festivals.json"
+    static let fileName = "widget_festivals.v2.json"
 
     static func save(_ snapshot: WidgetSnapshot, appGroupID: String) {
         guard let url = containerURL(appGroupID: appGroupID) else { return }

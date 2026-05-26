@@ -22,7 +22,7 @@ struct CalendarTabView: View {
         let appGroupID = AppConfiguration.current.appGroupID
         self.appGroupID = appGroupID
         _viewModel = StateObject(wrappedValue: CalendarViewModel(apiClient: apiClient))
-        _filterModel = StateObject(wrappedValue: FestivalFilterModel(appGroupID: appGroupID))
+        _filterModel = StateObject(wrappedValue: FestivalFilterModel(scope: "calendar", appGroupID: appGroupID))
     }
 
     var body: some View {
@@ -184,8 +184,8 @@ struct CalendarTabView: View {
         if !f.regions.isEmpty {
             parts.append("\(f.regions.count)개 지역")
         }
-        if !f.tags.isEmpty {
-            parts.append("태그 \(f.tags.count)")
+        if !f.primaryCategories.isEmpty {
+            parts.append("카테고리 \(f.primaryCategories.count)")
         }
         return parts.joined(separator: " · ")
     }

@@ -45,6 +45,8 @@ interface LocalEventRow {
   paid_until: string | null;
   priority_score: number;
   updated_at: string;
+  primary_category: string | null;
+  category_tags_json: string | null;
 }
 
 export async function queryLocalEvents(
@@ -440,7 +442,23 @@ function mapLocalEventRow(
     sponsorTier: row.sponsor_tier,
     paidUntil: row.paid_until,
     priorityScore: row.priority_score,
+    primaryCategory:
+      (row.primary_category as LocalEvent["primaryCategory"]) ?? null,
+    categoryTags: parseCategoryTagsJson(row.category_tags_json),
   };
+}
+
+function parseCategoryTagsJson(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === "string");
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 function localEventSort(a: LocalEvent, b: LocalEvent): number {

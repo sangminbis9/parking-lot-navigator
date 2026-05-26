@@ -1,7 +1,7 @@
 // Cloudflare Workers AI wrapper. Uses Llama model on the platform's built-in AI binding.
 // Docs: https://developers.cloudflare.com/workers-ai/models/
 
-const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 export type AiCallOptions = {
   ai: Ai;
@@ -10,6 +10,7 @@ export type AiCallOptions = {
   temperature?: number;
   maxOutputTokens?: number;
   jsonMode?: boolean;
+  model?: string;
 };
 
 type AiTextResponse = {
@@ -33,7 +34,7 @@ export async function callAiText(opts: AiCallOptions): Promise<string> {
   }
   let raw: unknown;
   try {
-    raw = await opts.ai.run(MODEL, payload as never);
+    raw = await opts.ai.run((opts.model ?? DEFAULT_MODEL) as never, payload as never);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
     throw new Error(`workers_ai_run_failed:${message.slice(0, 400)}`);

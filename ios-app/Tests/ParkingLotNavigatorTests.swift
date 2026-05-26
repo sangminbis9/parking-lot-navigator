@@ -26,46 +26,39 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertFalse(recommendations.first?.reasons.isEmpty ?? true)
     }
 
-    func testFestivalTagsPreferUsefulContext() {
+    func testFestivalTagsUsePrimaryCategoryAndRegion() {
         let tags = DiscoverTagBuilder.festivalTags(
-            title: "서울 빛 축제",
-            subtitle: "야간 산책형 라이트 행사",
-            venueName: "서울광장",
+            primaryCategory: .lightNight,
+            categoryTags: ["야경"],
             address: "서울특별시 중구 세종대로 110",
             startDate: "2026-05-12",
-            source: "서울 열린데이터광장",
             rawTags: ["festival", "축제"]
         )
 
-        XCTAssertTrue(tags.contains("빛"))
+        XCTAssertTrue(tags.contains(FestivalPrimaryCategory.lightNight.displayName))
+        XCTAssertTrue(tags.contains("야경"))
         XCTAssertTrue(tags.contains("서울"))
         XCTAssertTrue(tags.contains("중구"))
         XCTAssertTrue(tags.contains("5월"))
         XCTAssertTrue(tags.contains("봄"))
-        XCTAssertTrue(tags.contains("야간"))
-        XCTAssertTrue(tags.contains("서울시"))
         XCTAssertFalse(tags.contains("축제"))
         XCTAssertFalse(tags.contains("festival"))
     }
 
-    func testEventTagsTranslateEnglishCategory() {
+    func testEventTagsUsePrimaryCategory() {
         let tags = DiscoverTagBuilder.eventTags(
-            title: "시민 전시",
-            eventType: "exhibition",
-            description: "무료 공공 전시",
-            venueName: "시민청",
+            primaryCategory: .discount,
+            categoryTags: ["할인"],
+            eventType: "discount",
             address: "서울특별시 중구 세종대로 110",
-            startDate: "2026-04-20",
-            source: "culture portal"
+            startDate: "2026-04-20"
         )
 
-        XCTAssertTrue(tags.contains("전시"))
+        XCTAssertTrue(tags.contains(LocalEventPrimaryCategory.discount.displayName))
         XCTAssertTrue(tags.contains("서울"))
         XCTAssertTrue(tags.contains("중구"))
         XCTAssertTrue(tags.contains("4월"))
         XCTAssertTrue(tags.contains("봄"))
-        XCTAssertTrue(tags.contains("문화포털"))
-        XCTAssertFalse(tags.contains("exhibition"))
     }
 
 }

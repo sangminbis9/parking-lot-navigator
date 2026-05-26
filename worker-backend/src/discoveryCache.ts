@@ -119,6 +119,8 @@ interface DiscoveryItemRow {
   amenities_json: string | null;
   offers_json: string | null;
   data_updated_at: string | null;
+  primary_category: string | null;
+  category_tags_json: string | null;
 }
 
 type DiscoveryItem = Festival | FreeEvent;
@@ -571,6 +573,9 @@ function mapFestivalRow(
             .split(",")
             .map((tag) => tag.trim())
             .filter(Boolean),
+    primaryCategory:
+      (row.primary_category as Festival["primaryCategory"]) ?? null,
+    categoryTags: parseJsonArray<string>(row.category_tags_json),
   };
 }
 
@@ -601,6 +606,9 @@ function mapEventRow(
     price: row.lowest_price_text,
     region: null,
     updatedAt: row.data_updated_at ?? undefined,
+    primaryCategory:
+      (row.primary_category as FreeEvent["primaryCategory"]) ?? null,
+    categoryTags: parseJsonArray<string>(row.category_tags_json),
   };
 }
 

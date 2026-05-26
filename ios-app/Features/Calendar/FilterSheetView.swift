@@ -18,7 +18,7 @@ struct FilterSheetView: View {
                     radiusSection
                     statusSection
                     regionSection
-                    tagSection
+                    categorySection
                 }
                 .padding(20)
             }
@@ -83,16 +83,36 @@ struct FilterSheetView: View {
         }
     }
 
-    private var tagSection: some View {
-        sectionWrapper(title: "태그·장르", subtitle: "여러 개 선택 가능") {
+    private var categorySection: some View {
+        sectionWrapper(title: "카테고리", subtitle: "여러 개 선택 가능") {
             FlowLayout(spacing: 6) {
-                ForEach(FestivalFilter.availableTagOptions, id: \.self) { tag in
-                    chip(label: tag, isOn: draft.tags.contains(tag)) {
-                        toggle(tag: tag)
+                ForEach(FestivalPrimaryCategory.allCases, id: \.self) { category in
+                    categoryChip(category: category, isOn: draft.primaryCategories.contains(category)) {
+                        toggle(category: category)
                     }
                 }
             }
         }
+    }
+
+    private func categoryChip(category: FestivalPrimaryCategory, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: category.systemImage)
+                    .font(.system(size: 11, weight: .bold))
+                Text(category.displayName)
+                    .font(.system(size: 12, weight: isOn ? .bold : .semibold))
+            }
+            .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(isOn ? category.tint : FestivalDesign.surface)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule().stroke(isOn ? category.tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func sectionWrapper<Content: View>(title: String, subtitle: String?, @ViewBuilder content: () -> Content) -> some View {
@@ -143,11 +163,11 @@ struct FilterSheetView: View {
         }
     }
 
-    private func toggle(tag: String) {
-        if let idx = draft.tags.firstIndex(of: tag) {
-            draft.tags.remove(at: idx)
+    private func toggle(category: FestivalPrimaryCategory) {
+        if draft.primaryCategories.contains(category) {
+            draft.primaryCategories.remove(category)
         } else {
-            draft.tags.append(tag)
+            draft.primaryCategories.insert(category)
         }
     }
 }

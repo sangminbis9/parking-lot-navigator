@@ -26,6 +26,35 @@ export type LocalEventType =
   | "etc";
 export type MapItemType = "parking" | "festival" | "event";
 
+export const FESTIVAL_PRIMARY_CATEGORIES = [
+  "music_performance",
+  "food_drink",
+  "nature_flower",
+  "light_night",
+  "tradition_culture",
+  "family_kids",
+  "market_flea",
+  "sports_outdoor",
+  "film_media",
+  "art_exhibition",
+  "etc",
+] as const;
+export type FestivalPrimaryCategory =
+  (typeof FESTIVAL_PRIMARY_CATEGORIES)[number];
+
+export const LOCAL_EVENT_PRIMARY_CATEGORIES = [
+  "discount",
+  "freebie",
+  "new_limited",
+  "popup",
+  "opening",
+  "review_event",
+  "seasonal",
+  "etc",
+] as const;
+export type LocalEventPrimaryCategory =
+  (typeof LOCAL_EVENT_PRIMARY_CATEGORIES)[number];
+
 export interface Festival {
   id: string;
   title: string;
@@ -42,6 +71,8 @@ export interface Festival {
   sourceUrl: string | null;
   imageUrl: string | null;
   tags: string[];
+  primaryCategory?: FestivalPrimaryCategory | null;
+  categoryTags?: string[];
 }
 
 export interface FreeEvent {
@@ -66,6 +97,8 @@ export interface FreeEvent {
   price?: string | null;
   region?: string | null;
   updatedAt?: string;
+  primaryCategory?: LocalEventPrimaryCategory | null;
+  categoryTags?: string[];
 }
 
 export interface LocalEvent {
@@ -96,6 +129,8 @@ export interface LocalEvent {
   sponsorTier: string | null;
   paidUntil: string | null;
   priorityScore: number;
+  primaryCategory?: LocalEventPrimaryCategory | null;
+  categoryTags?: string[];
 }
 
 export interface LocalEventDraft {
