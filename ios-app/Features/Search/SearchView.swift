@@ -23,7 +23,8 @@ struct SearchView: View {
     @State private var allItems: [DiscoverTabItem] = []
     @State private var filteredItems: [DiscoverTabItem] = []
     @State private var availableSources: [String] = []
-    @State private var availableTags: [String] = []
+    @State private var availableFestivalCategories: [FestivalPrimaryCategory] = []
+    @State private var availableEventCategories: [LocalEventPrimaryCategory] = []
     @State private var availableRegions: [String] = []
     @FocusState private var isSearchFocused: Bool
 
@@ -145,8 +146,10 @@ struct SearchView: View {
         .sheet(isPresented: $showsFilters) {
             DiscoverTabFilterSheet(
                 filters: $filters,
+                kind: selectedKind,
                 sources: availableSources,
-                tags: availableTags,
+                festivalCategories: availableFestivalCategories,
+                eventCategories: availableEventCategories,
                 regions: availableRegions
             )
         }
@@ -320,7 +323,12 @@ struct SearchView: View {
         let items = festivals.map(DiscoverTabItem.festival) + events.map(DiscoverTabItem.event)
         allItems = items
         availableSources = uniqueValues(items.map(\.source))
-        availableTags = uniqueValues(items.flatMap(\.tags))
+        availableFestivalCategories = FestivalPrimaryCategory.allCases.filter { category in
+            items.contains { $0.festivalCategory == category }
+        }
+        availableEventCategories = LocalEventPrimaryCategory.allCases.filter { category in
+            items.contains { $0.eventCategory == category }
+        }
         availableRegions = uniqueValues(items.map(\.regionText))
         recomputeFilteredItems()
     }
@@ -344,8 +352,12 @@ struct SearchView: View {
     }
 
     private var activeFilterLabels: [String] {
-        Array(filters.selectedStatuses.map(\.displayText)).sorted()
-            + filters.selectedTags.sorted().map { "#\($0)" }
+        let statusLabels = Array(filters.selectedStatuses.map(\.displayText)).sorted()
+        let festivalLabels = filters.selectedFestivalCategories.map(\.displayName).sorted()
+        let eventLabels = filters.selectedEventCategories.map(\.displayName).sorted()
+        return statusLabels
+            + festivalLabels
+            + eventLabels
             + filters.selectedRegions.sorted()
             + filters.selectedSources.sorted()
     }
@@ -443,6 +455,8 @@ private struct DiscoverTabItem: Identifiable {
     let presentation: DiscoverPresentation
     let tags: [String]
     let regionText: String
+    let festivalCategory: FestivalPrimaryCategory?
+    let eventCategory: LocalEventPrimaryCategory?
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
         let smartTags = festival.discoverTags
@@ -486,7 +500,9 @@ private struct DiscoverTabItem: Identifiable {
                 tags: smartTags
             ),
             tags: smartTags,
-            regionText: DiscoverTabItem.regionText(from: festival.address)
+            regionText: DiscoverTabItem.regionText(from: festival.address),
+            festivalCategory: festival.primaryCategory,
+            eventCategory: nil
         )
     }
 
@@ -534,7 +550,9 @@ private struct DiscoverTabItem: Identifiable {
                 tags: smartTags
             ),
             tags: smartTags,
-            regionText: DiscoverTabItem.regionText(from: event.address)
+            regionText: DiscoverTabItem.regionText(from: event.address),
+            festivalCategory: nil,
+            eventCategory: event.primaryCategory
         )
     }
 
@@ -646,7 +664,8 @@ private enum DiscoverTabSort: String, CaseIterable, Identifiable {
 
 private struct DiscoverTabFilters: Equatable {
     var selectedSources: Set<String> = []
-    var selectedTags: Set<String> = []
+    var selectedFestivalCategories: Set<FestivalPrimaryCategory> = []
+    var selectedEventCategories: Set<LocalEventPrimaryCategory> = []
     var selectedStatuses: Set<DiscoverStatus> = []
     var selectedRegions: Set<String> = []
 
@@ -655,14 +674,27 @@ private struct DiscoverTabFilters: Equatable {
     }
 
     var count: Int {
-        selectedSources.count + selectedTags.count + selectedStatuses.count + selectedRegions.count
+        selectedSources.count
+            + selectedFestivalCategories.count
+            + selectedEventCategories.count
+            + selectedStatuses.count
+            + selectedRegions.count
     }
 
     func includes(_ item: DiscoverTabItem) -> Bool {
         if !selectedSources.isEmpty && !selectedSources.contains(item.source) { return false }
-        if !selectedTags.isEmpty && Set(item.tags).isDisjoint(with: selectedTags) { return false }
         if !selectedStatuses.isEmpty && !selectedStatuses.contains(item.status) { return false }
         if !selectedRegions.isEmpty && !selectedRegions.contains(item.regionText) { return false }
+        if item.isFestival, !selectedFestivalCategories.isEmpty {
+            guard let category = item.festivalCategory, selectedFestivalCategories.contains(category) else {
+                return false
+            }
+        }
+        if item.isEvent, !selectedEventCategories.isEmpty {
+            guard let category = item.eventCategory, selectedEventCategories.contains(category) else {
+                return false
+            }
+        }
         return true
     }
 }
@@ -670,8 +702,10 @@ private struct DiscoverTabFilters: Equatable {
 private struct DiscoverTabFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var filters: DiscoverTabFilters
+    let kind: DiscoverTabKind
     let sources: [String]
-    let tags: [String]
+    let festivalCategories: [FestivalPrimaryCategory]
+    let eventCategories: [LocalEventPrimaryCategory]
     let regions: [String]
 
     var body: some View {
@@ -680,7 +714,12 @@ private struct DiscoverTabFilterSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     filterHeader
                     statusSection
-                    filterSection(title: "장르/태그", values: tags, selection: $filters.selectedTags, prefix: "#")
+                    if kind != .events {
+                        festivalCategorySection
+                    }
+                    if kind != .festivals {
+                        eventCategorySection
+                    }
                     filterSection(title: "지역", values: regions, selection: $filters.selectedRegions)
                     filterSection(title: "주관사/출처", values: sources, selection: $filters.selectedSources)
                 }
@@ -763,6 +802,114 @@ private struct DiscoverTabFilterSheet: View {
         }
         .padding(14)
         .festivalCard()
+    }
+
+    private var festivalCategorySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("축제 카테고리")
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+                if !filters.selectedFestivalCategories.isEmpty {
+                    StatusBadge(text: "\(filters.selectedFestivalCategories.count)", kind: .source)
+                }
+            }
+
+            if festivalCategories.isEmpty {
+                Text("선택할 항목이 없습니다")
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(festivalCategories, id: \.self) { category in
+                        categoryChip(
+                            title: category.displayName,
+                            systemImage: category.systemImage,
+                            tint: category.tint,
+                            isSelected: filters.selectedFestivalCategories.contains(category)
+                        ) {
+                            if filters.selectedFestivalCategories.contains(category) {
+                                filters.selectedFestivalCategories.remove(category)
+                            } else {
+                                filters.selectedFestivalCategories.insert(category)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private var eventCategorySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("이벤트 카테고리")
+                    .font(.headline)
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+                if !filters.selectedEventCategories.isEmpty {
+                    StatusBadge(text: "\(filters.selectedEventCategories.count)", kind: .source)
+                }
+            }
+
+            if eventCategories.isEmpty {
+                Text("선택할 항목이 없습니다")
+                    .font(.subheadline)
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(eventCategories, id: \.self) { category in
+                        categoryChip(
+                            title: category.displayName,
+                            systemImage: category.systemImage,
+                            tint: category.tint,
+                            isSelected: filters.selectedEventCategories.contains(category)
+                        ) {
+                            if filters.selectedEventCategories.contains(category) {
+                                filters.selectedEventCategories.remove(category)
+                            } else {
+                                filters.selectedEventCategories.insert(category)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private func categoryChip(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.bold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(isSelected ? tint.opacity(0.18) : FestivalDesign.cream.opacity(0.42))
+            .foregroundStyle(isSelected ? tint : FestivalDesign.navy)
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    .stroke(isSelected ? tint.opacity(0.4) : FestivalDesign.creamDeep.opacity(0.48), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func filterSection(title: String, values: [String], selection: Binding<Set<String>>, prefix: String = "") -> some View {
