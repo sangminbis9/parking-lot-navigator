@@ -3,11 +3,11 @@ import Foundation
 struct FestivalFilter: Codable, Hashable {
     var regions: [String]
     var radiusKm: Int?
-    var tags: [String]
+    var primaryCategories: Set<FestivalPrimaryCategory>
     var statuses: [DiscoverStatus]
 
     static let allRadiusOptions: [Int] = [10, 20, 50]
-    static let `default` = FestivalFilter(regions: [], radiusKm: 50, tags: [], statuses: [])
+    static let `default` = FestivalFilter(regions: [], radiusKm: 50, primaryCategories: [], statuses: [])
 
     var radiusMeters: Int {
         guard let radiusKm else { return 200_000 }
@@ -15,7 +15,7 @@ struct FestivalFilter: Codable, Hashable {
     }
 
     var isEmpty: Bool {
-        regions.isEmpty && tags.isEmpty && statuses.isEmpty && radiusKm == FestivalFilter.default.radiusKm
+        regions.isEmpty && primaryCategories.isEmpty && statuses.isEmpty && radiusKm == FestivalFilter.default.radiusKm
     }
 
     func matches(_ festival: Festival) -> Bool {
@@ -28,9 +28,8 @@ struct FestivalFilter: Codable, Hashable {
                 return false
             }
         }
-        if !tags.isEmpty {
-            let festivalTags = Set(festival.discoverTags)
-            if !tags.contains(where: { festivalTags.contains($0) }) {
+        if !primaryCategories.isEmpty {
+            guard let category = festival.primaryCategory, primaryCategories.contains(category) else {
                 return false
             }
         }
@@ -42,27 +41,45 @@ struct FestivalFilter: Codable, Hashable {
         "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"
     ]
 
-    static let availableTagOptions: [String] = [
-        "음악", "공연", "전시", "푸드", "꽃", "불꽃", "빛", "전통문화",
-        "마켓", "체험", "스포츠", "책", "가족"
-    ]
+    enum CodingKeys: String, CodingKey {
+        case regions, radiusKm, primaryCategories, statuses
+    }
+
+    init(regions: [String], radiusKm: Int?, primaryCategories: Set<FestivalPrimaryCategory>, statuses: [DiscoverStatus]) {
+        self.regions = regions
+        self.radiusKm = radiusKm
+        self.primaryCategories = primaryCategories
+        self.statuses = statuses
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? []
+        radiusKm = try c.decodeIfPresent(Int.self, forKey: .radiusKm)
+        primaryCategories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .primaryCategories) ?? []
+        statuses = try c.decodeIfPresent([DiscoverStatus].self, forKey: .statuses) ?? []
+    }
 }
 
 enum FestivalFilterStore {
-    static let key = "festivalFilter"
+    private static let keyPrefix = "festivalFilter"
 
-    static func load(appGroupID: String) -> FestivalFilter {
+    static func key(for scope: String) -> String {
+        "\(keyPrefix).\(scope)"
+    }
+
+    static func load(scope: String, appGroupID: String) -> FestivalFilter {
         guard let defaults = UserDefaults(suiteName: appGroupID),
-              let data = defaults.data(forKey: key),
+              let data = defaults.data(forKey: key(for: scope)),
               let filter = try? JSONDecoder().decode(FestivalFilter.self, from: data) else {
             return .default
         }
         return filter
     }
 
-    static func save(_ filter: FestivalFilter, appGroupID: String) {
+    static func save(_ filter: FestivalFilter, scope: String, appGroupID: String) {
         guard let defaults = UserDefaults(suiteName: appGroupID),
               let data = try? JSONEncoder().encode(filter) else { return }
-        defaults.set(data, forKey: key)
+        defaults.set(data, forKey: key(for: scope))
     }
 }

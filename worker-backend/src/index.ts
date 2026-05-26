@@ -24,6 +24,7 @@ import {
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
+import { runTagging } from "./llmTagging.js";
 import { createMerchantApp } from "./merchant/routes.js";
 import { createLegalApp } from "./legal/routes.js";
 import {
@@ -83,6 +84,10 @@ type Env = {
   AGENT_HEAD_INCLUDE_REJECTED?: string;
   AGENT_PIXEL_ENABLED?: string;
   AGENT_PIXEL_BATCH_SIZE?: string;
+  TAGGING_MODEL?: string;
+  TAGGING_BATCH_SIZE?: string;
+  TAGGING_RUN_MAX_ROWS?: string;
+  TAGGING_CONCURRENCY?: string;
 };
 
 type BackendModules = {
@@ -808,6 +813,44 @@ app.post("/admin/run-image-enrichment", async (c) => {
   }
 });
 
+app.post("/admin/run-tagging", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const url = new URL(c.req.raw.url);
+  const maxRowsParam = url.searchParams.get("max_rows");
+  const maxRows = maxRowsParam ? parseInt(maxRowsParam, 10) : undefined;
+  try {
+    const result = await runTagging(c.env, {
+      source: "admin",
+      mode: "incremental",
+      maxRows: Number.isFinite(maxRows) ? (maxRows as number) : undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
+app.post("/admin/run-tagging-backfill", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const url = new URL(c.req.raw.url);
+  const maxRowsParam = url.searchParams.get("max_rows");
+  const maxRows = maxRowsParam ? parseInt(maxRowsParam, 10) : 500;
+  try {
+    const result = await runTagging(c.env, {
+      source: "backfill",
+      mode: "backfill",
+      maxRows,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
 export default {
@@ -852,8 +895,26 @@ export default {
       ctx.waitUntil(runAgentOfficeScheduled(env));
       return;
     }
+    if (controller.cron === "*/20 * * * *") {
+      ctx.waitUntil(runTaggingScheduled(env));
+      return;
+    }
   },
 };
+
+async function runTaggingScheduled(env: Env): Promise<void> {
+  try {
+    const result = await runTagging(env, {
+      source: "cron",
+      mode: "incremental",
+    });
+    if (result.processed > 0) {
+      console.log("tagging cron done", JSON.stringify(result));
+    }
+  } catch (error) {
+    console.error("tagging cron failed", error);
+  }
+}
 
 async function runAgentOfficeScheduled(env: Env): Promise<void> {
   await Promise.all([

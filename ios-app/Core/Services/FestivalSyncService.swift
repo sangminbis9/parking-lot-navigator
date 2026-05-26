@@ -30,7 +30,7 @@ final class FestivalSyncService: ObservableObject {
     }
 
     private func performSync(coordinate: (lat: Double, lng: Double)?) async {
-        let filter = FestivalFilterStore.load(appGroupID: appGroupID)
+        let filter = FestivalFilterStore.load(scope: "calendar", appGroupID: appGroupID)
         let coord = coordinate ?? defaultCoordinate
         let radius = filter.radiusMeters
 

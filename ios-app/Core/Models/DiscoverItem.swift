@@ -37,6 +37,77 @@ struct Festival: Codable, Hashable, Identifiable {
     let sourceUrl: String?
     let imageUrl: String?
     let tags: [String]
+    let primaryCategory: FestivalPrimaryCategory?
+    let categoryTags: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, subtitle, startDate, endDate, status, venueName, address
+        case lat, lng, distanceMeters, source, sourceUrl, imageUrl, tags
+        case primaryCategory, categoryTags
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        subtitle = try c.decodeIfPresent(String.self, forKey: .subtitle)
+        startDate = try c.decode(String.self, forKey: .startDate)
+        endDate = try c.decode(String.self, forKey: .endDate)
+        status = try c.decode(DiscoverStatus.self, forKey: .status)
+        venueName = try c.decodeIfPresent(String.self, forKey: .venueName)
+        address = try c.decode(String.self, forKey: .address)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        distanceMeters = try c.decode(Int.self, forKey: .distanceMeters)
+        source = try c.decode(String.self, forKey: .source)
+        sourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
+        imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        if let raw = try c.decodeIfPresent(String.self, forKey: .primaryCategory) {
+            primaryCategory = FestivalPrimaryCategory(rawValue: raw)
+        } else {
+            primaryCategory = nil
+        }
+        categoryTags = try c.decodeIfPresent([String].self, forKey: .categoryTags)
+    }
+
+    init(
+        id: String,
+        title: String,
+        subtitle: String?,
+        startDate: String,
+        endDate: String,
+        status: DiscoverStatus,
+        venueName: String?,
+        address: String,
+        lat: Double,
+        lng: Double,
+        distanceMeters: Int,
+        source: String,
+        sourceUrl: String?,
+        imageUrl: String?,
+        tags: [String],
+        primaryCategory: FestivalPrimaryCategory? = nil,
+        categoryTags: [String]? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.startDate = startDate
+        self.endDate = endDate
+        self.status = status
+        self.venueName = venueName
+        self.address = address
+        self.lat = lat
+        self.lng = lng
+        self.distanceMeters = distanceMeters
+        self.source = source
+        self.sourceUrl = sourceUrl
+        self.imageUrl = imageUrl
+        self.tags = tags
+        self.primaryCategory = primaryCategory
+        self.categoryTags = categoryTags
+    }
 }
 
 struct FreeEvent: Codable, Hashable, Identifiable {
@@ -67,6 +138,115 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let sponsorTier: String?
     let paidUntil: String?
     let priorityScore: Int
+    let primaryCategory: LocalEventPrimaryCategory?
+    let categoryTags: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, eventType, category, sourceId, startDate, endDate, status
+        case storeName, venueName, address, lat, lng, distanceMeters, source, sourceUrl
+        case imageUrl, benefit, shortDescription, region, updatedAt, confidenceScore
+        case needsReview, isSponsored, sponsorTier, paidUntil, priorityScore
+        case primaryCategory, categoryTags
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        eventType = try c.decode(String.self, forKey: .eventType)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        sourceId = try c.decodeIfPresent(String.self, forKey: .sourceId)
+        startDate = try c.decode(String.self, forKey: .startDate)
+        endDate = try c.decodeIfPresent(String.self, forKey: .endDate)
+        status = try c.decode(LocalEventStatus.self, forKey: .status)
+        storeName = try c.decode(String.self, forKey: .storeName)
+        venueName = try c.decodeIfPresent(String.self, forKey: .venueName)
+        address = try c.decode(String.self, forKey: .address)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        distanceMeters = try c.decode(Int.self, forKey: .distanceMeters)
+        source = try c.decode(String.self, forKey: .source)
+        sourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
+        imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+        benefit = try c.decodeIfPresent(String.self, forKey: .benefit)
+        shortDescription = try c.decodeIfPresent(String.self, forKey: .shortDescription)
+        region = try c.decodeIfPresent(String.self, forKey: .region)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
+        confidenceScore = try c.decodeIfPresent(Double.self, forKey: .confidenceScore)
+        needsReview = try c.decodeIfPresent(Bool.self, forKey: .needsReview)
+        isSponsored = try c.decodeIfPresent(Bool.self, forKey: .isSponsored) ?? false
+        sponsorTier = try c.decodeIfPresent(String.self, forKey: .sponsorTier)
+        paidUntil = try c.decodeIfPresent(String.self, forKey: .paidUntil)
+        priorityScore = try c.decodeIfPresent(Int.self, forKey: .priorityScore) ?? 0
+        if let raw = try c.decodeIfPresent(String.self, forKey: .primaryCategory) {
+            primaryCategory = LocalEventPrimaryCategory(rawValue: raw)
+        } else {
+            primaryCategory = nil
+        }
+        categoryTags = try c.decodeIfPresent([String].self, forKey: .categoryTags)
+    }
+
+    init(
+        id: String,
+        title: String,
+        eventType: String,
+        category: String?,
+        sourceId: String?,
+        startDate: String,
+        endDate: String?,
+        status: LocalEventStatus,
+        storeName: String,
+        venueName: String?,
+        address: String,
+        lat: Double,
+        lng: Double,
+        distanceMeters: Int,
+        source: String,
+        sourceUrl: String?,
+        imageUrl: String?,
+        benefit: String?,
+        shortDescription: String?,
+        region: String?,
+        updatedAt: String?,
+        confidenceScore: Double?,
+        needsReview: Bool?,
+        isSponsored: Bool,
+        sponsorTier: String?,
+        paidUntil: String?,
+        priorityScore: Int,
+        primaryCategory: LocalEventPrimaryCategory? = nil,
+        categoryTags: [String]? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.eventType = eventType
+        self.category = category
+        self.sourceId = sourceId
+        self.startDate = startDate
+        self.endDate = endDate
+        self.status = status
+        self.storeName = storeName
+        self.venueName = venueName
+        self.address = address
+        self.lat = lat
+        self.lng = lng
+        self.distanceMeters = distanceMeters
+        self.source = source
+        self.sourceUrl = sourceUrl
+        self.imageUrl = imageUrl
+        self.benefit = benefit
+        self.shortDescription = shortDescription
+        self.region = region
+        self.updatedAt = updatedAt
+        self.confidenceScore = confidenceScore
+        self.needsReview = needsReview
+        self.isSponsored = isSponsored
+        self.sponsorTier = sponsorTier
+        self.paidUntil = paidUntil
+        self.priorityScore = priorityScore
+        self.primaryCategory = primaryCategory
+        self.categoryTags = categoryTags
+    }
 
     var timelineStatus: DiscoverStatus {
         guard status != .expired else { return .upcoming }
@@ -106,12 +286,10 @@ struct DiscoverPresentation: Hashable {
 extension Festival {
     var discoverTags: [String] {
         DiscoverTagBuilder.festivalTags(
-            title: title,
-            subtitle: subtitle,
-            venueName: venueName,
+            primaryCategory: primaryCategory,
+            categoryTags: categoryTags ?? [],
             address: address,
             startDate: startDate,
-            source: source,
             rawTags: tags
         )
     }
@@ -153,13 +331,11 @@ extension Festival {
 extension FreeEvent {
     var discoverTags: [String] {
         DiscoverTagBuilder.eventTags(
-            title: title,
+            primaryCategory: primaryCategory,
+            categoryTags: categoryTags ?? [],
             eventType: eventType,
-            description: [benefit, shortDescription].compactMap { $0 }.joined(separator: " "),
-            venueName: venueName ?? storeName,
             address: address,
-            startDate: startDate,
-            source: source
+            startDate: startDate
         )
     }
 
@@ -199,123 +375,41 @@ extension FreeEvent {
 
 enum DiscoverTagBuilder {
     static func festivalTags(
-        title: String,
-        subtitle: String?,
-        venueName: String?,
+        primaryCategory: FestivalPrimaryCategory?,
+        categoryTags: [String],
         address: String,
         startDate: String,
-        source: String,
-        rawTags: [String]
-    ) -> [String] {
-        buildTags(
-            title: title,
-            category: nil,
-            description: subtitle,
-            venueName: venueName,
-            address: address,
-            startDate: startDate,
-            source: source,
-            rawTags: rawTags
-        )
-    }
-
-    static func eventTags(
-        title: String,
-        eventType: String,
-        description: String?,
-        venueName: String?,
-        address: String,
-        startDate: String,
-        source: String
-    ) -> [String] {
-        buildTags(
-            title: title,
-            category: eventType,
-            description: description,
-            venueName: venueName,
-            address: address,
-            startDate: startDate,
-            source: source,
-            rawTags: []
-        )
-    }
-
-    private static func buildTags(
-        title: String,
-        category: String?,
-        description: String?,
-        venueName: String?,
-        address: String,
-        startDate: String,
-        source: String,
         rawTags: [String]
     ) -> [String] {
         var tags: [String] = []
-        let searchableText = [title, category, description, venueName, address, source, rawTags.joined(separator: " ")]
-            .compactMap { $0 }
-            .joined(separator: " ")
-
-        appendUnique(inferredGenreTags(from: searchableText), to: &tags)
-        appendUnique(cleanedCategoryTags(from: [category].compactMap { $0 } + rawTags), to: &tags)
-        appendUnique(regionTags(from: address), to: &tags)
-        appendUnique(timeTags(startDate: startDate, text: searchableText), to: &tags)
-
-        if let organizerTag = organizerTag(from: source) {
-            appendUnique([organizerTag], to: &tags)
+        if let primaryCategory {
+            appendUnique([primaryCategory.displayName], to: &tags)
         }
-
+        appendUnique(categoryTags.compactMap { cleanTag($0) }, to: &tags)
+        appendUnique(rawTags.compactMap { cleanTag($0) }.filter { !isGenericTag($0) }, to: &tags)
+        appendUnique(regionTags(from: address), to: &tags)
+        appendUnique(timeTags(startDate: startDate), to: &tags)
         return Array(tags.prefix(8))
     }
 
-    private static func inferredGenreTags(from text: String) -> [String] {
-        let lowercased = text.lowercased()
-        let rules: [(String, [String])] = [
-            ("음악", ["음악", "뮤직", "콘서트", "재즈", "클래식", "버스킹", "music", "concert", "jazz"]),
-            ("영화", ["영화", "시네마", "film", "movie", "cinema"]),
-            ("전시", ["전시", "미술", "아트", "갤러리", "exhibition", "exhibit"]),
-            ("푸드", ["푸드", "먹거리", "음식", "맥주", "와인", "커피", "food", "beer", "wine", "coffee"]),
-            ("빛", ["빛", "라이트", "조명", "불빛", "등불", "달빛", "light"]),
-            ("불꽃", ["불꽃", "불꽃놀이", "firework"]),
-            ("꽃", ["꽃", "벚꽃", "장미", "튤립", "국화", "flower", "blossom"]),
-            ("전통문화", ["전통", "문화재", "한복", "민속", "heritage", "traditional"]),
-            ("마켓", ["마켓", "시장", "플리마켓", "장터", "market"]),
-            ("체험", ["체험", "워크숍", "클래스", "workshop", "class"]),
-            ("공연", ["공연", "연극", "무용", "퍼포먼스", "performance", "theater"]),
-            ("스포츠", ["스포츠", "마라톤", "러닝", "sport", "marathon"]),
-            ("책", ["책", "도서", "문학", "북페어", "book", "literature"]),
-            ("가족", ["가족", "어린이", "키즈", "family", "kids"])
-        ]
-        return rules.compactMap { tag, keywords in
-            keywords.contains(where: { lowercased.contains($0.lowercased()) }) ? tag : nil
+    static func eventTags(
+        primaryCategory: LocalEventPrimaryCategory?,
+        categoryTags: [String],
+        eventType: String,
+        address: String,
+        startDate: String
+    ) -> [String] {
+        var tags: [String] = []
+        if let primaryCategory {
+            appendUnique([primaryCategory.displayName], to: &tags)
         }
-    }
-
-    private static func cleanedCategoryTags(from rawTags: [String]) -> [String] {
-        rawTags.compactMap { normalizedCategoryTag($0) }.filter { !isGenericTag($0) }
-    }
-
-    private static func normalizedCategoryTag(_ value: String) -> String? {
-        let lowercased = value.lowercased()
-        let translated: String?
-        switch lowercased {
-        case "exhibition", "exhibit", "art":
-            translated = "전시"
-        case "concert", "music", "jazz":
-            translated = "음악"
-        case "performance", "theater":
-            translated = "공연"
-        case "market":
-            translated = "마켓"
-        case "sport", "sports", "marathon":
-            translated = "스포츠"
-        case "food", "beer", "wine", "coffee":
-            translated = "푸드"
-        case "festival", "event", "events", "free":
-            translated = nil
-        default:
-            translated = value
+        appendUnique(categoryTags.compactMap { cleanTag($0) }, to: &tags)
+        if let eventTag = cleanTag(eventType), !isGenericTag(eventTag) {
+            appendUnique([eventTag], to: &tags)
         }
-        return translated.flatMap { cleanTag($0) }
+        appendUnique(regionTags(from: address), to: &tags)
+        appendUnique(timeTags(startDate: startDate), to: &tags)
+        return Array(tags.prefix(8))
     }
 
     private static func regionTags(from address: String) -> [String] {
@@ -336,37 +430,12 @@ enum DiscoverTagBuilder {
         return tags
     }
 
-    private static func timeTags(startDate: String, text: String) -> [String] {
+    private static func timeTags(startDate: String) -> [String] {
         var tags: [String] = []
         if let month = month(from: startDate) {
             appendUnique(["\(month)월", seasonTag(for: month)], to: &tags)
         }
-
-        let lowercased = text.lowercased()
-        if ["야간", "밤", "나이트", "달빛", "불빛", "조명", "라이트", "night", "light"].contains(where: { lowercased.contains($0) }) {
-            appendUnique(["야간"], to: &tags)
-        }
-        if ["주말", "토요일", "일요일", "weekend"].contains(where: { lowercased.contains($0.lowercased()) }) {
-            appendUnique(["주말"], to: &tags)
-        }
         return tags
-    }
-
-    private static func organizerTag(from source: String) -> String? {
-        if source.contains("서울") || source.contains("열린데이터") {
-            return "서울시"
-        }
-        if source.localizedCaseInsensitiveContains("culture") || source.contains("문화") {
-            return "문화포털"
-        }
-        if source.localizedCaseInsensitiveContains("data.go.kr") || source.contains("공공데이터") {
-            return nil
-        }
-        guard let cleaned = cleanTag(source), !isGenericTag(cleaned) else { return nil }
-        if ["mock", "provider", "datagokr", "data", "api", "kakao", "local"].contains(cleaned.lowercased()) {
-            return nil
-        }
-        return cleaned
     }
 
     private static func cleanTag(_ value: String) -> String? {

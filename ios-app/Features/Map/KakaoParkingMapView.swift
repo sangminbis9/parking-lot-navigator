@@ -599,104 +599,50 @@ private extension CongestionStatus {
     }
 }
 
-private enum DiscoverPinStyle: CaseIterable {
-    case festivalDefault
-    case festivalNight
-    case festivalNature
-    case festivalFood
-    case festivalPerformance
-    case eventDefault
-    case eventExhibition
-    case eventPerformance
-    case eventEducation
-    case eventMarket
-    case eventSports
+private enum DiscoverPinStyle: Hashable, CaseIterable {
+    case festival(FestivalPrimaryCategory)
+    case festivalUnknown
+    case event(LocalEventPrimaryCategory)
+    case eventUnknown
     case eventSponsored
+
+    static var allCases: [DiscoverPinStyle] {
+        var cases: [DiscoverPinStyle] = []
+        cases.append(contentsOf: FestivalPrimaryCategory.allCases.map { .festival($0) })
+        cases.append(.festivalUnknown)
+        cases.append(contentsOf: LocalEventPrimaryCategory.allCases.map { .event($0) })
+        cases.append(.eventUnknown)
+        cases.append(.eventSponsored)
+        return cases
+    }
 
     var id: String {
         switch self {
-        case .festivalDefault:
-            return "festival-default"
-        case .festivalNight:
-            return "festival-night"
-        case .festivalNature:
-            return "festival-nature"
-        case .festivalFood:
-            return "festival-food"
-        case .festivalPerformance:
-            return "festival-performance"
-        case .eventDefault:
-            return "event-default"
-        case .eventExhibition:
-            return "event-exhibition"
-        case .eventPerformance:
-            return "event-performance"
-        case .eventEducation:
-            return "event-education"
-        case .eventMarket:
-            return "event-market"
-        case .eventSports:
-            return "event-sports"
-        case .eventSponsored:
-            return "event-sponsored"
+        case .festival(let c): return "festival-\(c.rawValue)"
+        case .festivalUnknown: return "festival-unknown"
+        case .event(let c): return "event-\(c.rawValue)"
+        case .eventUnknown: return "event-unknown"
+        case .eventSponsored: return "event-sponsored"
         }
     }
 
     var fill: UIColor {
         switch self {
-        case .festivalDefault:
-            return FestivalDesign.uiCoral
-        case .festivalNight:
-            return FestivalDesign.uiNavy
-        case .festivalNature:
-            return FestivalDesign.uiTeal
-        case .festivalFood:
-            return FestivalDesign.uiLantern
-        case .festivalPerformance:
-            return UIColor(red: 0.93, green: 0.33, blue: 0.54, alpha: 1)
-        case .eventDefault:
-            return FestivalDesign.uiTeal
-        case .eventExhibition:
-            return UIColor(red: 0.40, green: 0.70, blue: 0.82, alpha: 1)
-        case .eventPerformance:
-            return FestivalDesign.uiCoral
-        case .eventEducation:
-            return FestivalDesign.uiParkingBlue
-        case .eventMarket:
-            return UIColor(red: 0.66, green: 0.45, blue: 0.24, alpha: 1)
-        case .eventSports:
-            return UIColor(red: 0.12, green: 0.55, blue: 0.74, alpha: 1)
-        case .eventSponsored:
-            return UIColor(red: 0.97, green: 0.45, blue: 0.18, alpha: 1)
+        case .festival(let c): return c.uiTint
+        case .festivalUnknown: return FestivalDesign.uiCoral
+        case .event(let c): return c.uiTint
+        case .eventUnknown: return FestivalDesign.uiTeal
+        case .eventSponsored: return UIColor(red: 0.97, green: 0.45, blue: 0.18, alpha: 1)
         }
     }
 
     var symbol: String {
         switch self {
-        case .festivalDefault:
-            return "sparkles"
-        case .festivalNight:
-            return "moon.stars.fill"
-        case .festivalNature:
-            return "leaf.fill"
-        case .festivalFood:
-            return "fork.knife"
-        case .festivalPerformance:
-            return "music.note"
-        case .eventDefault:
-            return "calendar"
-        case .eventExhibition:
-            return "paintpalette.fill"
-        case .eventPerformance:
-            return "theatermasks.fill"
-        case .eventEducation:
-            return "book.fill"
-        case .eventMarket:
-            return "bag.fill"
-        case .eventSports:
-            return "figure.run"
-        case .eventSponsored:
-            return "star.fill"
+        case .festival(let c): return c.systemImage
+        case .festivalUnknown: return "sparkles"
+        case .event(let c): return c.systemImage
+        case .eventUnknown: return "calendar"
+        case .eventSponsored: return "star.fill"
         }
     }
 
@@ -710,61 +656,25 @@ private enum DiscoverPinStyle: CaseIterable {
     }
 
     static func festivalStyle(for festival: Festival) -> DiscoverPinStyle {
-        let text = [festival.title, festival.subtitle, festival.venueName, festival.address]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .appending(" \(festival.tags.joined(separator: " "))")
-            .lowercased()
-
-        if text.containsAny(["밤", "야간", "달빛", "빛", "라이트", "light", "night"]) {
-            return .festivalNight
+        if let category = festival.primaryCategory {
+            return .festival(category)
         }
-        if text.containsAny(["숲", "정원", "꽃", "벚꽃", "장미", "자연", "생태", "garden", "flower"]) {
-            return .festivalNature
-        }
-        if text.containsAny(["푸드", "음식", "먹거리", "맥주", "와인", "커피", "food", "beer", "wine"]) {
-            return .festivalFood
-        }
-        if text.containsAny(["음악", "뮤직", "공연", "콘서트", "재즈", "락", "페스티벌", "music", "concert", "jazz"]) {
-            return .festivalPerformance
-        }
-        return .festivalDefault
+        return .festivalUnknown
     }
 
     static func eventStyle(for event: FreeEvent) -> DiscoverPinStyle {
         if event.isSponsored {
             return .eventSponsored
         }
-        let text = [event.title, event.eventType, event.storeName, event.address, event.benefit, event.shortDescription]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-
-        if text.containsAny(["전시", "미술", "갤러리", "박물관", "뮤지엄", "exhibition", "gallery", "museum", "art"]) {
-            return .eventExhibition
+        if let category = event.primaryCategory {
+            return .event(category)
         }
-        if text.containsAny(["공연", "음악", "콘서트", "연극", "무용", "국악", "performance", "concert", "theater", "dance"]) {
-            return .eventPerformance
-        }
-        if text.containsAny(["교육", "강좌", "체험", "워크숍", "클래스", "education", "workshop", "class"]) {
-            return .eventEducation
-        }
-        if text.containsAny(["장터", "마켓", "시장", "플리", "market", "fair"]) {
-            return .eventMarket
-        }
-        if text.containsAny(["스포츠", "체육", "러닝", "걷기", "마라톤", "sports", "running", "marathon"]) {
-            return .eventSports
-        }
-        return .eventDefault
+        return .eventUnknown
     }
 
 }
 
 private extension String {
-    func containsAny(_ needles: [String]) -> Bool {
-        needles.contains { contains($0) }
-    }
-
     var shortMapLabel: String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 12 else { return trimmed }
