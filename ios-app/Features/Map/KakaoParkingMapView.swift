@@ -290,7 +290,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(FestivalDesign.uiCoral)))
             manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
             for style in DiscoverPinStyle.allCases {
-                manager.addPoiStyle(makeStyle(id: style.id, image: .discoverPin(fill: style.fill, symbol: style.symbol)))
+                manager.addPoiStyle(makeStyle(
+                    id: style.id,
+                    image: .discoverPin(fill: style.fill, symbol: style.symbol, prominent: style.isProminent)
+                ))
             }
             stylesReady = true
         }
@@ -565,7 +568,12 @@ private extension MapPinItem {
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard styleID == style.labeledID(for: event.title) else { return nil }
-            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: event.title.shortMapLabel))
+            return (styleID, .discoverPin(
+                fill: style.fill,
+                symbol: style.symbol,
+                label: event.title.shortMapLabel,
+                prominent: style.isProminent
+            ))
         case .cluster(let cluster):
             guard styleID == "cluster-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
             return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale))
@@ -603,6 +611,7 @@ private enum DiscoverPinStyle: CaseIterable {
     case eventEducation
     case eventMarket
     case eventSports
+    case eventSponsored
 
     var id: String {
         switch self {
@@ -628,6 +637,8 @@ private enum DiscoverPinStyle: CaseIterable {
             return "event-market"
         case .eventSports:
             return "event-sports"
+        case .eventSponsored:
+            return "event-sponsored"
         }
     }
 
@@ -655,6 +666,8 @@ private enum DiscoverPinStyle: CaseIterable {
             return UIColor(red: 0.66, green: 0.45, blue: 0.24, alpha: 1)
         case .eventSports:
             return UIColor(red: 0.12, green: 0.55, blue: 0.74, alpha: 1)
+        case .eventSponsored:
+            return UIColor(red: 0.97, green: 0.45, blue: 0.18, alpha: 1)
         }
     }
 
@@ -682,7 +695,14 @@ private enum DiscoverPinStyle: CaseIterable {
             return "bag.fill"
         case .eventSports:
             return "figure.run"
+        case .eventSponsored:
+            return "star.fill"
         }
+    }
+
+    var isProminent: Bool {
+        if case .eventSponsored = self { return true }
+        return false
     }
 
     func labeledID(for title: String) -> String {
@@ -712,6 +732,9 @@ private enum DiscoverPinStyle: CaseIterable {
     }
 
     static func eventStyle(for event: FreeEvent) -> DiscoverPinStyle {
+        if event.isSponsored {
+            return .eventSponsored
+        }
         let text = [event.title, event.eventType, event.storeName, event.address, event.benefit, event.shortDescription]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -798,8 +821,15 @@ private extension UIImage {
         haloPin(core: color, symbol: nil, letter: "P", size: 32, scale: mapPinScale)
     }
 
-    static func discoverPin(fill: UIColor, symbol: String, label: String? = nil) -> UIImage {
-        discoverMarker(fill: fill, symbol: symbol, label: label, size: 34, scale: mapPinScale)
+    static func discoverPin(fill: UIColor, symbol: String, label: String? = nil, prominent: Bool = false) -> UIImage {
+        discoverMarker(
+            fill: fill,
+            symbol: symbol,
+            label: label,
+            size: prominent ? 44 : 34,
+            scale: mapPinScale,
+            ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil
+        )
     }
 
     static func clusterPin(fill: UIColor, count: Int, scale: CGFloat) -> UIImage {
@@ -853,9 +883,16 @@ private extension UIImage {
         }
     }
 
-    static func discoverMarker(fill: UIColor, symbol: String, label: String?, size: CGFloat, scale: CGFloat) -> UIImage {
+    static func discoverMarker(
+        fill: UIColor,
+        symbol: String,
+        label: String?,
+        size: CGFloat,
+        scale: CGFloat,
+        ringColor: UIColor? = nil
+    ) -> UIImage {
         guard let label, !label.isEmpty else {
-            return haloPin(core: fill, symbol: symbol, size: size, scale: scale)
+            return haloPin(core: fill, symbol: symbol, size: size, scale: scale, ringColor: ringColor)
         }
 
         let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
@@ -908,7 +945,8 @@ private extension UIImage {
                 dotted: false,
                 size: size,
                 origin: CGPoint(x: pinOriginX, y: bubbleHeight + gap),
-                context: context
+                context: context,
+                ringColor: ringColor
             )
         }
     }
@@ -919,7 +957,8 @@ private extension UIImage {
         letter: String? = nil,
         size: CGFloat,
         scale: CGFloat,
-        dotted: Bool = false
+        dotted: Bool = false,
+        ringColor: UIColor? = nil
     ) -> UIImage {
         let canvasWidth = size + pinShadowPadding * 2
         let canvasHeight = size + pinTailHeight + pinShadowPadding
@@ -933,7 +972,8 @@ private extension UIImage {
                 dotted: dotted,
                 size: size,
                 origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding),
-                context: context
+                context: context,
+                ringColor: ringColor
             )
         }
     }
@@ -945,7 +985,8 @@ private extension UIImage {
         dotted: Bool,
         size: CGFloat,
         origin: CGPoint,
-        context: UIGraphicsImageRendererContext
+        context: UIGraphicsImageRendererContext,
+        ringColor: UIColor? = nil
     ) {
         let haloRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
         let haloInset: CGFloat = max(size * 0.105, 3)
@@ -977,6 +1018,15 @@ private extension UIImage {
         let haloOutline = UIBezierPath(ovalIn: haloRect)
         haloOutline.lineWidth = 0.75
         haloOutline.stroke()
+
+        // Optional prominent ring (used for sponsored pins)
+        if let ringColor {
+            let ringRect = haloRect.insetBy(dx: -1.2, dy: -1.2)
+            let ring = UIBezierPath(ovalIn: ringRect)
+            ringColor.setStroke()
+            ring.lineWidth = 2.4
+            ring.stroke()
+        }
 
         // Core
         if dotted {

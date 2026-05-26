@@ -67,6 +67,7 @@ ${body}
 export function renderLanding(opts: {
   naverEnabled: boolean;
   kakaoEnabled: boolean;
+  launchPromoFree: boolean;
 }): string {
   const buttons: string[] = [];
   if (opts.naverEnabled) {
@@ -84,13 +85,17 @@ export function renderLanding(opts: {
       `<p class="muted">로그인 제공자가 아직 구성되지 않았습니다.</p>`,
     );
   }
+  const pricingLine = opts.launchPromoFree
+    ? `<p>3개월 게시 <s>₩10,000</s> → <strong style="color:#dc2626;">오픈 기념 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
+    <p class="muted">별도 공지 전까지 결제 없이 무료로 등록할 수 있어요.</p>`
+    : `<p>3개월 게시 ₩10,000. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>`;
   return layout(
     "사업자 이벤트 등록",
     `
 <div class="container">
   <div class="card">
     <h1>내 가게 이벤트 홍보</h1>
-    <p>3개월 게시 ₩10,000. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
+    ${pricingLine}
     ${buttons.join("\n    ")}
   </div>
 </div>
@@ -194,6 +199,7 @@ export const EMPTY_FORM: EventFormValues = {
 export function renderEventForm(opts: {
   values: EventFormValues;
   error?: string;
+  launchPromoFree: boolean;
 }): string {
   const v = opts.values;
   const options = EVENT_TYPE_OPTIONS.map(
@@ -203,6 +209,12 @@ export function renderEventForm(opts: {
   const errorBanner = opts.error
     ? `<div class="error-banner">${htmlEscape(opts.error)}</div>`
     : "";
+  const submitLabel = opts.launchPromoFree
+    ? "무료로 등록하기"
+    : "결제 단계로 이동";
+  const footerNote = opts.launchPromoFree
+    ? `오픈 기념 프로모션: 별도 공지 전까지 <s>₩10,000</s> 무료로 3개월간 노출됩니다.`
+    : `₩10,000 결제가 완료되면 3개월간 앱에 노출됩니다.`;
   return layout(
     "이벤트 등록",
     `
@@ -245,9 +257,9 @@ export function renderEventForm(opts: {
       <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
       <div class="field-help">JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다. 선택 사항.</div>
 
-      <button class="btn btn-primary" type="submit">결제 단계로 이동</button>
+      <button class="btn btn-primary" type="submit">${htmlEscape(submitLabel)}</button>
     </form>
-    <p class="muted" style="margin-top: 12px;">₩10,000 결제가 완료되면 3개월간 앱에 노출됩니다.</p>
+    <p class="muted" style="margin-top: 12px;">${footerNote}</p>
   </div>
 </div>
 <script>
@@ -310,6 +322,32 @@ export function renderEventForm(opts: {
   });
 })();
 </script>
+`,
+  );
+}
+
+export function renderFreeClaim(opts: { event: MerchantEventRow }): string {
+  return layout(
+    "무료 등록",
+    `
+<div class="topbar">
+  <h2>오픈 기념 무료 등록</h2>
+  <a class="muted" href="/merchant/dashboard">대시보드</a>
+</div>
+<div class="container">
+  <div class="card">
+    <h1>${htmlEscape(opts.event.title)}</h1>
+    <p class="muted">${htmlEscape(opts.event.store_name)} · ${htmlEscape(opts.event.address)}</p>
+    <p>3개월 게시 요금 <s>₩10,000</s> → <strong style="color:#dc2626;">오픈 기념 무료</strong></p>
+    <p class="muted">별도 공지 전까지 결제 없이 등록할 수 있어요. 등록 즉시 앱 지도와 리스트에 노출됩니다.</p>
+  </div>
+  <div class="card">
+    <form method="post" action="/merchant/event/${htmlEscape(opts.event.id)}/claim-free">
+      <button class="btn btn-primary" type="submit">무료로 등록 완료</button>
+    </form>
+    <p class="muted" style="margin-top: 10px;">등록 후 3개월간 노출됩니다.</p>
+  </div>
+</div>
 `,
   );
 }
