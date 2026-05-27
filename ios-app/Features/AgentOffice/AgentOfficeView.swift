@@ -84,7 +84,7 @@ struct AgentOfficeView: View {
     }
 
     private var attribution: some View {
-        Text("스프라이트: harishkotra/agent-office (MIT) · 가구: Antea/stcrbcn (CC-BY 4.0)")
+        Text("스프라이트: harishkotra/agent-office · 가구: pixel-agents by Pablo De Lucca (MIT)")
             .font(.caption2)
             .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
     }
@@ -359,27 +359,29 @@ private struct AgentFrame {
 }
 
 private enum OfficeChoreography {
+    // Homes target the floor-tile right in front of each agent's desk.
+    // Grid is 21 cols × 22 rows; values below are (col+0.5)/21 and (row+0.5)/22.
     private static let homes: [String: CGPoint] = [
-        "festa":    CGPoint(x: 0.24, y: 0.54),
-        "scout":    CGPoint(x: 0.76, y: 0.54),
-        "orion":    CGPoint(x: 0.50, y: 0.48),
-        "vera":     CGPoint(x: 0.36, y: 0.58),
-        "pixel":    CGPoint(x: 0.64, y: 0.58),
-        "echo":     CGPoint(x: 0.74, y: 0.78),
-        "sentinel": CGPoint(x: 0.14, y: 0.70)
+        "vera":     CGPoint(x: 0.119, y: 0.341),   // col 2.5, row 7.5
+        "orion":    CGPoint(x: 0.500, y: 0.341),   // col 10.5, row 7.5
+        "pixel":    CGPoint(x: 0.881, y: 0.341),   // col 18.5, row 7.5
+        "festa":    CGPoint(x: 0.119, y: 0.659),   // col 2.5, row 14.5
+        "scout":    CGPoint(x: 0.881, y: 0.659),   // col 18.5, row 14.5
+        "echo":     CGPoint(x: 0.738, y: 0.886),   // col 15.5, row 19.5
+        "sentinel": CGPoint(x: 0.190, y: 0.205)    // col 4,    row 4.5
     ]
 
-    private static let orionDesk = CGPoint(x: 0.50, y: 0.51)
-    private static let boardDrop = CGPoint(x: 0.50, y: 0.74)
+    private static let orionDesk = CGPoint(x: 0.500, y: 0.364)
+    private static let wall = CGPoint(x: 0.500, y: 0.852)   // in front of PublishedWall cork board
 
-    // Sentinel patrol corners
+    // Sentinel patrols the room perimeter
     private static let patrolPath: [CGPoint] = [
-        CGPoint(x: 0.14, y: 0.66),
-        CGPoint(x: 0.32, y: 0.62),
-        CGPoint(x: 0.68, y: 0.62),
-        CGPoint(x: 0.88, y: 0.70),
-        CGPoint(x: 0.78, y: 0.84),
-        CGPoint(x: 0.22, y: 0.84)
+        CGPoint(x: 0.10, y: 0.20),
+        CGPoint(x: 0.50, y: 0.16),
+        CGPoint(x: 0.90, y: 0.20),
+        CGPoint(x: 0.90, y: 0.50),
+        CGPoint(x: 0.50, y: 0.55),
+        CGPoint(x: 0.10, y: 0.50)
     ]
 
     static func frame(for agent: AgentOfficeAgent, at t: TimeInterval, snapshot: AgentOfficeSnapshot, hasLiveActivity: Bool) -> AgentFrame {
@@ -464,13 +466,13 @@ private enum OfficeChoreography {
     }
 
     private static func validatorFrame(t: TimeInterval) -> AgentFrame {
-        // Vera oscillates between desk and Orion: validating role
+        // Vera oscillates between her desk and Orion's desk to validate.
         let home = homes["vera"]!
-        let target = CGPoint(x: 0.46, y: 0.54)
+        let target = CGPoint(x: 0.30, y: 0.341)
         let cycle: Double = 8
         let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
         let p = (sin(tau * .pi * 2) + 1) / 2
-        let pos = routedLerp(home, target, p, corridorY: 0.62)
+        let pos = routedLerp(home, target, p, corridorY: 0.341)
         let walking3 = Int(t * 4) % 3
         let walking = p > 0.05 && p < 0.95
         let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.62)
@@ -904,281 +906,202 @@ private struct Triangle: Shape {
 
 // MARK: - Pixel backdrop (PNG sprite scene)
 
+// MARK: - PixelOfficeBackdrop (pixel-agents tileset)
+//
+// Tile grid: 21 cols × 22 rows. Wall band rows 0–2, floor rows 3–21.
+// Furniture sprites are anchored top-left at (col, row) tiles.
+// Character choreography uses normalized (0..1) coords on the SAME geometry.
+
+private enum OfficeLayout {
+    static let cols = 21
+    static let rows = 22
+    static let wallBandRows = 3  // top rows that show the wall
+
+    struct Furn {
+        let id: String       // imageset suffix (without PA- prefix)
+        let col: Int
+        let row: Int         // top-left grid row (sprite extends down by h tiles)
+        let w: Int           // sprite width in tiles
+        let h: Int           // sprite height in tiles
+        let flipH: Bool      // mirror horizontally
+        init(_ id: String, col: Int, row: Int, w: Int, h: Int, flipH: Bool = false) {
+            self.id = id; self.col = col; self.row = row
+            self.w = w; self.h = h; self.flipH = flipH
+        }
+    }
+
+    // Wall-mounted decor (anchored within rows 0–2)
+    static let wallDecor: [Furn] = [
+        Furn("BOOKSHELF",       col: 1,  row: 1, w: 2, h: 1),
+        Furn("LARGE_PAINTING",  col: 4,  row: 0, w: 2, h: 2),
+        Furn("CLOCK",           col: 7,  row: 0, w: 1, h: 2),
+        Furn("WHITEBOARD",      col: 9,  row: 0, w: 2, h: 2),
+        Furn("SMALL_PAINTING",  col: 12, row: 0, w: 1, h: 2),
+        Furn("LARGE_PAINTING",  col: 14, row: 0, w: 2, h: 2),
+        Furn("SMALL_PAINTING_2",col: 17, row: 0, w: 1, h: 2),
+        Furn("BOOKSHELF",       col: 18, row: 1, w: 2, h: 1),
+    ]
+
+    // Hanging plants (decor pinned near wall band, top edge of floor)
+    static let hangings: [Furn] = [
+        Furn("HANGING_PLANT", col: 0,  row: 3, w: 1, h: 2),
+        Furn("HANGING_PLANT", col: 20, row: 3, w: 1, h: 2),
+    ]
+
+    // Top desk row: vera (left), orion (center boss), pixel (right)
+    static let topDesks: [Furn] = [
+        // vera ~ col 1–3, anchor desk at row 5–6
+        Furn("DESK_FRONT",         col: 1,  row: 5, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 4, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 7, w: 1, h: 2),
+        // orion ~ col 9–11, boss center
+        Furn("DESK_FRONT",         col: 9,  row: 5, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 10, row: 4, w: 1, h: 2),
+        Furn("CUSHIONED_CHAIR_BACK", col: 10, row: 7, w: 1, h: 1),
+        // pixel ~ col 17–19
+        Furn("DESK_FRONT",         col: 17, row: 5, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 4, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 7, w: 1, h: 2),
+    ]
+
+    // Mid-room: festa (left) and scout (right) desks + a mid bookshelf cluster
+    static let midDesks: [Furn] = [
+        Furn("DESK_FRONT",         col: 1,  row: 12, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 11, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 14, w: 1, h: 2),
+        Furn("DOUBLE_BOOKSHELF",   col: 9,  row: 11, w: 2, h: 2),
+        Furn("PLANT_2",            col: 11, row: 11, w: 1, h: 2),
+        Furn("DESK_FRONT",         col: 17, row: 12, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 11, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 14, w: 1, h: 2),
+    ]
+
+    // Meeting nook in the center bottom: sofa + coffee table
+    static let meetingNook: [Furn] = [
+        Furn("SOFA_BACK",   col: 8,  row: 15, w: 2, h: 1),
+        Furn("SOFA_SIDE",   col: 7,  row: 16, w: 1, h: 2),
+        Furn("SOFA_SIDE",   col: 10, row: 16, w: 1, h: 2, flipH: true),
+        Furn("COFFEE_TABLE",col: 8,  row: 17, w: 2, h: 2),
+        Furn("COFFEE",      col: 8,  row: 17, w: 1, h: 1),
+    ]
+
+    // Echo + amenities (bottom-right cluster, leaves bottom-center clear for PublishedWall)
+    static let amenities: [Furn] = [
+        // echo desk
+        Furn("DESK_FRONT",         col: 14, row: 16, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 15, row: 15, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 15, row: 18, w: 1, h: 2),
+        // plants
+        Furn("LARGE_PLANT", col: 0,  row: 16, w: 2, h: 3),
+        Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),
+        Furn("PLANT",       col: 5,  row: 12, w: 1, h: 2),
+        Furn("CACTUS",      col: 18, row: 12, w: 1, h: 2, flipH: true),
+        // misc
+        Furn("BIN", col: 1,  row: 20, w: 1, h: 1),
+        Furn("POT", col: 4,  row: 20, w: 1, h: 1),
+    ]
+
+    static var allFurniture: [Furn] {
+        wallDecor + hangings + topDesks + midDesks + meetingNook + amenities
+    }
+}
+
 private struct PixelOfficeBackdrop: View {
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            let wallBottom = h * 0.30
+            let tile = min(w / CGFloat(OfficeLayout.cols),
+                           h / CGFloat(OfficeLayout.rows))
+            let roomW = tile * CGFloat(OfficeLayout.cols)
+            let roomH = tile * CGFloat(OfficeLayout.rows)
+            let offX = (w - roomW) / 2
+            let offY = (h - roomH) / 2
 
-            ZStack {
-                Group {
-                    PixelTileFloor()
-                        .frame(width: w, height: h - wallBottom)
-                        .position(x: w * 0.50, y: wallBottom + (h - wallBottom) / 2)
+            ZStack(alignment: .topLeading) {
+                FloorTileGrid(tile: tile)
+                    .frame(width: roomW, height: roomH)
 
-                    BackWallBand()
-                        .frame(width: w, height: wallBottom)
-                        .position(x: w * 0.50, y: wallBottom / 2)
-
-                    OfficeRug()
-                        .frame(width: w * 0.54, height: h * 0.13)
-                        .position(x: w * 0.50, y: h * 0.66)
+                ForEach(Array(OfficeLayout.allFurniture.enumerated()), id: \.offset) { _, furn in
+                    PixelTile(name: "PA-\(furn.id)",
+                              widthTiles: furn.w, heightTiles: furn.h,
+                              tile: tile, flipH: furn.flipH)
+                        .offset(x: CGFloat(furn.col) * tile,
+                                y: CGFloat(furn.row) * tile)
                 }
 
-                Group {
-                    Pixel16("Wall-Clock").position(x: w * 0.50, y: h * 0.04)
-                    Pixel16("Wall-Shelf").position(x: w * 0.14, y: h * 0.20)
-                    Pixel16("Wall-Graph").position(x: w * 0.86, y: h * 0.20)
-                }
-
-                Group {
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.18, y: h * 0.35)
-                    Pixel32("Desk-2").position(x: w * 0.34, y: h * 0.34)
-                    Pixel16("Folders").position(x: w * 0.40, y: h * 0.32)
-
-                    Pixel32("Desk-2").position(x: w * 0.66, y: h * 0.34)
-                    Pixel16("Books").position(x: w * 0.60, y: h * 0.32)
-                    Pixel32("Filing-Cabinet-Open").position(x: w * 0.82, y: h * 0.35)
-                }
-
-                Group {
-                    Pixel32("Boss-Desk").position(x: w * 0.50, y: h * 0.39)
-                    Pixel32("Boss-Chair").position(x: w * 0.50, y: h * 0.44)
-                    Pixel16("Papers").position(x: w * 0.44, y: h * 0.37)
-                    Pixel16("Folders-2").position(x: w * 0.56, y: h * 0.37)
-                }
-
-                Group {
-                    Pixel32("Desk").position(x: w * 0.14, y: h * 0.48)
-                    Pixel16("Folders").position(x: w * 0.14, y: h * 0.45)
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.05, y: h * 0.48)
-                }
-
-                Group {
-                    Pixel32("Desk").position(x: w * 0.86, y: h * 0.48)
-                    Pixel16("Folders-2").position(x: w * 0.86, y: h * 0.45)
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.95, y: h * 0.48)
-                }
-
-                Group {
-                    Pixel32("Desk").position(x: w * 0.80, y: h * 0.78)
-                    Pixel16("Printer").position(x: w * 0.88, y: h * 0.77)
-                    Pixel16("Papers").position(x: w * 0.80, y: h * 0.75)
-                }
-
-                Group {
-                    Pixel32("Water-Dispenser").position(x: w * 0.06, y: h * 0.58)
-                    Pixel16("Coffee-Machine").position(x: w * 0.06, y: h * 0.72)
-                    Pixel32("Big-Plant").position(x: w * 0.05, y: h * 0.90)
-                    Pixel32("Big-Plant").position(x: w * 0.95, y: h * 0.90)
-                    Pixel32("Vending-Machine").position(x: w * 0.22, y: h * 0.91)
-                    Pixel32("Big-Office-Printer").position(x: w * 0.94, y: h * 0.66)
-                    Pixel32("Tall-Bookshelf").position(x: w * 0.35, y: h * 0.91)
-                    Pixel32("Big-Round-Table").position(x: w * 0.48, y: h * 0.82)
-                    Pixel16("Small-Plant").position(x: w * 0.62, y: h * 0.91)
-                }
-
-                HStack(spacing: 4) {
-                    Rectangle()
-                        .fill(FestivalDesign.teal)
-                        .frame(width: 6, height: 6)
-                    Text("업무 진행 중")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(FestivalDesign.navy)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(FestivalDesign.surface)
-                .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
-                .position(x: w - 62, y: 22)
+                FloorShadowBaseboard(tile: tile)
+                    .frame(width: roomW, height: tile)
+                    .offset(y: CGFloat(OfficeLayout.wallBandRows) * tile - tile * 0.5)
             }
+            .frame(width: roomW, height: roomH)
+            .offset(x: offX, y: offY)
+
+            HStack(spacing: 4) {
+                Rectangle()
+                    .fill(FestivalDesign.teal)
+                    .frame(width: 6, height: 6)
+                Text("업무 진행 중")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(FestivalDesign.surface)
+            .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
+            .position(x: w - 62, y: 22)
         }
     }
 }
 
-private struct Pixel16: View {
+private struct PixelTile: View {
     let name: String
-    let scale: CGFloat
-    init(_ name: String, scale: CGFloat = 1.6) {
-        self.name = name
-        self.scale = scale
-    }
+    let widthTiles: Int
+    let heightTiles: Int
+    let tile: CGFloat
+    let flipH: Bool
     var body: some View {
         Image(name)
             .resizable()
             .interpolation(.none)
-            .frame(width: 16 * scale, height: 16 * scale)
+            .frame(width: tile * CGFloat(widthTiles),
+                   height: tile * CGFloat(heightTiles))
+            .scaleEffect(x: flipH ? -1 : 1, y: 1, anchor: .center)
     }
 }
 
-private struct Pixel32: View {
-    let name: String
-    let scale: CGFloat
-    init(_ name: String, scale: CGFloat = 1.6) {
-        self.name = name
-        self.scale = scale
-    }
+// Floor: wall band on rows 0..wallBandRows-1 (cream wallpaper),
+// wood-plank floor below using PA-floor_1 tiled per cell.
+private struct FloorTileGrid: View {
+    let tile: CGFloat
     var body: some View {
-        Image(name)
-            .resizable()
-            .interpolation(.none)
-            .frame(width: 32 * scale, height: 32 * scale)
-    }
-}
-
-private struct BackWallBand: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
-            ZStack(alignment: .bottom) {
-                Rectangle()
-                    .fill(Color(red: 0.89, green: 0.86, blue: 0.78))
-                    .frame(width: w, height: h)
-                HStack(spacing: 8) {
-                    PixelWindow()
-                    Color.clear
-                        .frame(width: w * 0.48)
-                    PixelWindow()
-                }
-                .frame(width: w * 0.94, height: h * 0.68)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 12)
-                Rectangle()
-                    .fill(Color(red: 0.74, green: 0.58, blue: 0.42))
-                    .frame(width: w, height: 6)
-                Rectangle()
-                    .fill(Color(red: 0.40, green: 0.27, blue: 0.18))
-                    .frame(width: w, height: 2)
-            }
-        }
-    }
-}
-
-private struct PixelWindow: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
-            ZStack {
-                Rectangle()
-                    .fill(Color(red: 0.53, green: 0.78, blue: 0.92))
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.45),
-                                Color(red: 0.64, green: 0.86, blue: 0.96).opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                PixelSkyline()
-                    .fill(Color(red: 0.36, green: 0.55, blue: 0.68).opacity(0.45))
-                    .frame(width: w, height: h * 0.45)
-                    .position(x: w * 0.50, y: h * 0.78)
-                Rectangle()
-                    .fill(Color(red: 0.34, green: 0.23, blue: 0.17))
-                    .frame(width: 3)
-                Rectangle()
-                    .fill(Color(red: 0.34, green: 0.23, blue: 0.17))
-                    .frame(height: 3)
-                Rectangle()
-                    .stroke(Color(red: 0.25, green: 0.16, blue: 0.11), lineWidth: 3)
-            }
-        }
-    }
-}
-
-private struct PixelSkyline: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        let widths: [CGFloat] = [0.12, 0.10, 0.18, 0.09, 0.16, 0.13, 0.12]
-        var x = rect.minX
-        for (index, widthRatio) in widths.enumerated() {
-            let width = rect.width * widthRatio
-            let top = rect.minY + rect.height * CGFloat([0.45, 0.20, 0.35, 0.10, 0.50, 0.28, 0.42][index])
-            path.addLine(to: CGPoint(x: x, y: rect.maxY))
-            path.addLine(to: CGPoint(x: x, y: top))
-            path.addLine(to: CGPoint(x: x + width, y: top))
-            path.addLine(to: CGPoint(x: x + width, y: rect.maxY))
-            x += width
-        }
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-// MARK: - Floor
-
-private struct PixelTileFloor: View {
-    var body: some View {
-        Canvas { context, size in
-            let tile: CGFloat = 16
-            let light = Color(red: 0.91, green: 0.80, blue: 0.62)
-            let mid = Color(red: 0.84, green: 0.70, blue: 0.50)
-            let dark = Color(red: 0.74, green: 0.58, blue: 0.39)
-            let grout = Color(red: 0.30, green: 0.20, blue: 0.12).opacity(0.45)
-            let dot = Color(red: 0.48, green: 0.32, blue: 0.20).opacity(0.35)
-
-            let cols = Int(ceil(size.width / tile)) + 1
-            let rows = Int(ceil(size.height / tile)) + 1
-            for r in 0..<rows {
-                for c in 0..<cols {
-                    let x = CGFloat(c) * tile
-                    let y = CGFloat(r) * tile
-                    let palette = (c + r) % 4
-                    let rect = CGRect(x: x, y: y, width: tile, height: tile)
-                    let color = palette == 0 ? light : (palette == 2 ? dark : mid)
-                    context.fill(Path(rect), with: .color(color))
-                    let inset: CGFloat = 5
-                    let dotRect = CGRect(x: x + inset, y: y + inset, width: 3, height: 3)
-                    context.fill(Path(dotRect), with: .color(dot))
+        ZStack(alignment: .topLeading) {
+            // Wall (cream with subtle dot pattern)
+            Rectangle()
+                .fill(Color(red: 0.96, green: 0.91, blue: 0.78))
+                .frame(width: tile * CGFloat(OfficeLayout.cols),
+                       height: tile * CGFloat(OfficeLayout.wallBandRows))
+            // Floor tiles
+            ForEach(OfficeLayout.wallBandRows..<OfficeLayout.rows, id: \.self) { r in
+                ForEach(0..<OfficeLayout.cols, id: \.self) { c in
+                    Image("PA-floor_1")
+                        .resizable()
+                        .interpolation(.none)
+                        .frame(width: tile, height: tile)
+                        .offset(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 }
             }
-            for c in 0...cols {
-                let x = CGFloat(c) * tile
-                var p = Path()
-                p.move(to: CGPoint(x: x, y: 0))
-                p.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(p, with: .color(grout), lineWidth: 1)
-            }
-            for r in 0...rows {
-                let y = CGFloat(r) * tile
-                var p = Path()
-                p.move(to: CGPoint(x: 0, y: y))
-                p.addLine(to: CGPoint(x: size.width, y: y))
-                context.stroke(p, with: .color(grout), lineWidth: 1)
-            }
         }
     }
 }
 
-private struct OfficeRug: View {
+// Dark band at the wall/floor seam (baseboard shadow)
+private struct FloorShadowBaseboard: View {
+    let tile: CGFloat
     var body: some View {
-        Canvas { context, size in
-            let cols = 6
-            let rows = 3
-            let cellW = size.width / CGFloat(cols)
-            let cellH = size.height / CGFloat(rows)
-            let a = FestivalDesign.tealSoft
-            let b = FestivalDesign.teal.opacity(0.45)
-            for r in 0..<rows {
-                for c in 0..<cols {
-                    let rect = CGRect(x: CGFloat(c) * cellW, y: CGFloat(r) * cellH,
-                                      width: cellW, height: cellH)
-                    let isA = (c + r) % 2 == 0
-                    context.fill(Path(rect), with: .color(isA ? a : b))
-                }
-            }
-            let border = CGRect(origin: .zero, size: size)
-            context.stroke(Path(border), with: .color(FestivalDesign.navy.opacity(0.55)), lineWidth: 1)
-        }
+        Rectangle()
+            .fill(Color(red: 0.18, green: 0.13, blue: 0.10).opacity(0.35))
+            .frame(height: max(2, tile * 0.18))
     }
 }
 
