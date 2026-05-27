@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="mask08"><rect width="1024" height="1024" rx="224" ry="224"/></clipPath>
+    <linearGradient id="bg08" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9B59E5"/>
+      <stop offset="1" stop-color="#5928B5"/>
+    </linearGradient>
+    <linearGradient id="star08" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFEB6E"/>
+      <stop offset="1" stop-color="#FFA826"/>
+    </linearGradient>
+    <filter id="shadow08" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#mask08)">
+    <rect width="1024" height="1024" fill="url(#bg08)"/>
+    <!-- confetti sprinkle -->
+    <g>
+      <circle cx="140" cy="200" r="12" fill="#FFE94D"/>
+      <circle cx="900" cy="180" r="10" fill="#FFFFFF"/>
+      <circle cx="100" cy="850" r="14" fill="#FFFFFF"/>
+      <circle cx="940" cy="860" r="12" fill="#FFE94D"/>
+      <rect x="180" y="820" width="40" height="12" rx="4" fill="#FFE94D" transform="rotate(-25 200 826)"/>
+      <rect x="820" y="820" width="40" height="12" rx="4" fill="#FFFFFF" transform="rotate(25 840 826)"/>
+      <polygon points="220,140 230,164 254,168 236,184 244,208 220,194 196,208 204,184 186,168 210,164" fill="#FFFFFF" opacity="0.9"/>
+      <polygon points="820,820 830,844 854,848 836,864 844,888 820,874 796,888 804,864 786,848 810,844" fill="#FFE94D" opacity="0.9"/>
+    </g>
+    <!-- accent star top right -->
+    <g filter="url(#shadow08)" transform="translate(820 220) rotate(-12)">
+      <polygon points="0,-90 28,-28 96,-22 44,22 60,90 0,52 -60,90 -44,22 -96,-22 -28,-28" fill="url(#star08)" stroke="#3E1B7F" stroke-width="6"/>
+    </g>
+    <!-- wordmark -->
+    <g transform="translate(512 580)">
+      <text x="0" y="0" text-anchor="middle" font-family="'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif" font-weight="900" font-size="240" fill="#FFFFFF" letter-spacing="-12">이벤트다</text>
+      <rect x="-220" y="40" width="440" height="14" rx="7" fill="#FFE94D"/>
+    </g>
+    <text x="512" y="720" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="56" fill="#FFFFFF" opacity="0.9" letter-spacing="16">EVENT · DA</text>
+  </g>
+</svg>

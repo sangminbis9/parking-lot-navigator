@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="mask07"><rect width="1024" height="1024" rx="224" ry="224"/></clipPath>
+    <linearGradient id="bg07" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF5E62"/>
+      <stop offset="1" stop-color="#FF2E63"/>
+    </linearGradient>
+    <linearGradient id="star07" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFEB6E"/>
+      <stop offset="1" stop-color="#FFA826"/>
+    </linearGradient>
+    <filter id="shadow07" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#mask07)">
+    <rect width="1024" height="1024" fill="url(#bg07)"/>
+    <!-- subtle pattern dots -->
+    <g opacity="0.15" fill="#FFFFFF">
+      <circle cx="120" cy="120" r="8"/>
+      <circle cx="220" cy="120" r="8"/>
+      <circle cx="120" cy="220" r="8"/>
+      <circle cx="900" cy="120" r="8"/>
+      <circle cx="900" cy="900" r="8"/>
+      <circle cx="120" cy="900" r="8"/>
+    </g>
+    <!-- accent star top right -->
+    <g filter="url(#shadow07)" transform="translate(820 220) rotate(-10)">
+      <polygon points="0,-90 28,-28 96,-22 44,22 60,90 0,52 -60,90 -44,22 -96,-22 -28,-28" fill="url(#star07)" stroke="#1A1A1F" stroke-width="8"/>
+    </g>
+    <!-- accent shapes -->
+    <g opacity="0.9">
+      <rect x="120" y="220" width="50" height="16" rx="6" fill="#FFEB6E" transform="rotate(-20 145 228)"/>
+      <circle cx="200" cy="800" r="14" fill="#FFFFFF"/>
+      <polygon points="900,830 910,856 936,860 916,878 924,904 900,890 876,904 884,878 864,860 890,856" fill="#FFFFFF"/>
+    </g>
+    <!-- big "이벤트다" wordmark -->
+    <g transform="translate(512 580)">
+      <text x="0" y="0" text-anchor="middle" font-family="'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif" font-weight="900" font-size="240" fill="#FFFFFF" letter-spacing="-12">이벤트다</text>
+      <!-- underline accent -->
+      <rect x="-220" y="40" width="440" height="14" rx="7" fill="#FFEB6E"/>
+    </g>
+    <!-- small "EVENT.DA" subtitle -->
+    <text x="512" y="720" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="56" fill="#FFFFFF" opacity="0.85" letter-spacing="16">EVENT · DA</text>
+  </g>
+</svg>
