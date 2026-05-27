@@ -112,8 +112,8 @@ private struct OfficeFloorView: View {
                 ZStack {
                     PixelOfficeBackdrop()
                     PublishedWall(items: snapshot.published)
-                        .frame(width: size.width * 0.88, height: size.height * 0.20)
-                        .position(x: size.width * 0.50, y: size.height * 0.88)
+                        .frame(width: size.width * 0.52, height: size.height * 0.17)
+                        .position(x: size.width * 0.50, y: size.height * 0.18)
 
                     ForEach(agents) { agent in
                         let live = liveLine(for: agent.id)
@@ -360,25 +360,26 @@ private struct AgentFrame {
 
 private enum OfficeChoreography {
     private static let homes: [String: CGPoint] = [
-        "festa":    CGPoint(x: 0.16, y: 0.44),
-        "scout":    CGPoint(x: 0.84, y: 0.44),
-        "orion":    CGPoint(x: 0.50, y: 0.34),
-        "vera":     CGPoint(x: 0.36, y: 0.24),
-        "pixel":    CGPoint(x: 0.64, y: 0.24),
-        "echo":     CGPoint(x: 0.78, y: 0.74),
-        "sentinel": CGPoint(x: 0.18, y: 0.16)
+        "festa":    CGPoint(x: 0.24, y: 0.54),
+        "scout":    CGPoint(x: 0.76, y: 0.54),
+        "orion":    CGPoint(x: 0.50, y: 0.48),
+        "vera":     CGPoint(x: 0.36, y: 0.58),
+        "pixel":    CGPoint(x: 0.64, y: 0.58),
+        "echo":     CGPoint(x: 0.74, y: 0.78),
+        "sentinel": CGPoint(x: 0.14, y: 0.70)
     ]
 
-    private static let orionDesk = CGPoint(x: 0.50, y: 0.36)
-    private static let wall = CGPoint(x: 0.50, y: 0.74)
+    private static let orionDesk = CGPoint(x: 0.50, y: 0.51)
+    private static let boardDrop = CGPoint(x: 0.50, y: 0.74)
 
     // Sentinel patrol corners
     private static let patrolPath: [CGPoint] = [
-        CGPoint(x: 0.10, y: 0.16),
-        CGPoint(x: 0.50, y: 0.10),
-        CGPoint(x: 0.90, y: 0.16),
-        CGPoint(x: 0.90, y: 0.62),
-        CGPoint(x: 0.10, y: 0.62)
+        CGPoint(x: 0.14, y: 0.66),
+        CGPoint(x: 0.32, y: 0.62),
+        CGPoint(x: 0.68, y: 0.62),
+        CGPoint(x: 0.88, y: 0.70),
+        CGPoint(x: 0.78, y: 0.84),
+        CGPoint(x: 0.22, y: 0.84)
     ]
 
     static func frame(for agent: AgentOfficeAgent, at t: TimeInterval, snapshot: AgentOfficeSnapshot, hasLiveActivity: Bool) -> AgentFrame {
@@ -415,7 +416,7 @@ private enum OfficeChoreography {
         }
     }
 
-    // 24-second cycle: home(5s) → walk to Orion(4s) → report(4s) → walk to wall(4s) → post(2s) → walk home(5s)
+    // 24-second cycle: home(5s) → walk to Orion(4s) → report(4s) → walk to board drop-off(4s) → post(2s) → walk home(5s)
     private static func collectorFrame(id: String, t: TimeInterval, offset: Double,
                                        carry: AgentFrame.CarryKind, itemCount: Int) -> AgentFrame {
         let cycle: Double = 24
@@ -434,8 +435,8 @@ private enum OfficeChoreography {
                               stage: .idle, carry: nil)
         case 5..<9:
             let p = ease((tau - 5) / 4)
-            let pos = routedLerp(home, orionDesk, p, corridorY: 0.48)
-            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.48)
+            let pos = routedLerp(home, orionDesk, p, corridorY: 0.62)
+            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.62)
             let dir = direction(from: prev, to: pos)
             return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
                               stage: .walkingOut, carry: carry)
@@ -445,17 +446,17 @@ private enum OfficeChoreography {
                               stage: .reporting, carry: carry)
         case 13..<17:
             let p = ease((tau - 13) / 4)
-            let pos = routedLerp(orionDesk, wall, p, corridorY: 0.58)
-            let prev = routedLerp(orionDesk, wall, max(0, p - 0.03), corridorY: 0.58)
+            let pos = routedLerp(orionDesk, boardDrop, p, corridorY: 0.68)
+            let prev = routedLerp(orionDesk, boardDrop, max(0, p - 0.03), corridorY: 0.68)
             return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .walkingToWall, carry: carry)
         case 17..<19:
-            return AgentFrame(position: wall, direction: .up, walking: false, walkPhase: 1,
+            return AgentFrame(position: boardDrop, direction: .up, walking: false, walkPhase: 1,
                               stage: .posting, carry: carry)
         default:
             let p = ease((tau - 19) / 5)
-            let pos = routedLerp(wall, home, p, corridorY: 0.58)
-            let prev = routedLerp(wall, home, max(0, p - 0.03), corridorY: 0.58)
+            let pos = routedLerp(boardDrop, home, p, corridorY: 0.68)
+            let prev = routedLerp(boardDrop, home, max(0, p - 0.03), corridorY: 0.68)
             let dir = direction(from: prev, to: pos)
             return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
                               stage: .returning, carry: nil)
@@ -465,14 +466,14 @@ private enum OfficeChoreography {
     private static func validatorFrame(t: TimeInterval) -> AgentFrame {
         // Vera oscillates between desk and Orion: validating role
         let home = homes["vera"]!
-        let target = CGPoint(x: 0.44, y: 0.32)
+        let target = CGPoint(x: 0.46, y: 0.54)
         let cycle: Double = 8
         let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
         let p = (sin(tau * .pi * 2) + 1) / 2
-        let pos = routedLerp(home, target, p, corridorY: 0.34)
+        let pos = routedLerp(home, target, p, corridorY: 0.62)
         let walking3 = Int(t * 4) % 3
         let walking = p > 0.05 && p < 0.95
-        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.34)
+        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.62)
         let dir = direction(from: prev, to: pos)
         return AgentFrame(position: pos, direction: dir, walking: walking, walkPhase: walking3,
                           stage: .validating, carry: nil)
@@ -484,7 +485,7 @@ private enum OfficeChoreography {
             return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
-        let target = CGPoint(x: 0.58, y: 0.76)
+        let target = CGPoint(x: 0.56, y: 0.76)
         let cycle: Double = 18
         let tau = t.truncatingRemainder(dividingBy: cycle)
         let walking3 = Int(t * 6) % 3
@@ -494,8 +495,8 @@ private enum OfficeChoreography {
                               stage: .validating, carry: nil)
         case 7..<10:
             let p = ease((tau - 7) / 3)
-            let pos = routedLerp(home, target, p, corridorY: 0.58)
-            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.58)
+            let pos = routedLerp(home, target, p, corridorY: 0.68)
+            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.68)
             return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
                               walking: true, walkPhase: walking3, stage: .walkingToWall, carry: nil)
         case 10..<13:
@@ -503,8 +504,8 @@ private enum OfficeChoreography {
                               stage: .posting, carry: nil)
         default:
             let p = ease((tau - 13) / 5)
-            let pos = routedLerp(target, home, p, corridorY: 0.58)
-            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.58)
+            let pos = routedLerp(target, home, p, corridorY: 0.68)
+            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.68)
             return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
                               walking: true, walkPhase: walking3, stage: .returning, carry: nil)
         }
@@ -525,19 +526,19 @@ private enum OfficeChoreography {
                               stage: .idle, carry: nil)
         case 10..<12:
             let p = ease((tau - 10) / 2)
-            let target = CGPoint(x: 0.62, y: 0.76)
-            let pos = routedLerp(home, target, p, corridorY: 0.76)
-            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.76)
+            let target = CGPoint(x: 0.58, y: 0.76)
+            let pos = routedLerp(home, target, p, corridorY: 0.84)
+            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.84)
             return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .walkingToWall, carry: nil)
         case 12..<14:
-            return AgentFrame(position: CGPoint(x: 0.62, y: 0.76), direction: .up, walking: false, walkPhase: 1,
+            return AgentFrame(position: CGPoint(x: 0.58, y: 0.76), direction: .up, walking: false, walkPhase: 1,
                               stage: .posting, carry: nil)
         default:
             let p = ease((tau - 14) / 2)
-            let target = CGPoint(x: 0.62, y: 0.76)
-            let pos = routedLerp(target, home, p, corridorY: 0.76)
-            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.76)
+            let target = CGPoint(x: 0.58, y: 0.76)
+            let pos = routedLerp(target, home, p, corridorY: 0.84)
+            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.84)
             return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
                               stage: .returning, carry: nil)
         }
@@ -908,76 +909,74 @@ private struct PixelOfficeBackdrop: View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            let wallBottom = h * 0.18
+            let wallBottom = h * 0.30
 
             ZStack {
                 Group {
-                    FloorPlanks()
+                    PixelTileFloor()
+                        .frame(width: w, height: h - wallBottom)
+                        .position(x: w * 0.50, y: wallBottom + (h - wallBottom) / 2)
 
                     BackWallBand()
                         .frame(width: w, height: wallBottom)
                         .position(x: w * 0.50, y: wallBottom / 2)
 
                     OfficeRug()
-                        .frame(width: w * 0.58, height: h * 0.17)
-                        .position(x: w * 0.50, y: h * 0.56)
+                        .frame(width: w * 0.54, height: h * 0.13)
+                        .position(x: w * 0.50, y: h * 0.66)
                 }
 
                 Group {
-                    Pixel16("Wall-Note").position(x: w * 0.08, y: h * 0.06)
-                    Pixel16("Wall-Graph").position(x: w * 0.20, y: h * 0.06)
-                    Pixel16("Wall-Shelf").position(x: w * 0.32, y: h * 0.06)
-                    Pixel16("Wall-Clock").position(x: w * 0.50, y: h * 0.05)
-                    Pixel16("Wall-Note-2").position(x: w * 0.68, y: h * 0.06)
-                    Pixel16("Wall-Shelf").position(x: w * 0.80, y: h * 0.06)
-                    Pixel16("Board").position(x: w * 0.92, y: h * 0.06)
+                    Pixel16("Wall-Clock").position(x: w * 0.50, y: h * 0.04)
+                    Pixel16("Wall-Shelf").position(x: w * 0.14, y: h * 0.20)
+                    Pixel16("Wall-Graph").position(x: w * 0.86, y: h * 0.20)
                 }
 
                 Group {
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.22, y: h * 0.22)
-                    Pixel32("Desk-2").position(x: w * 0.36, y: h * 0.20)
-                    Pixel16("Folders").position(x: w * 0.42, y: h * 0.18)
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.18, y: h * 0.35)
+                    Pixel32("Desk-2").position(x: w * 0.34, y: h * 0.34)
+                    Pixel16("Folders").position(x: w * 0.40, y: h * 0.32)
 
-                    Pixel32("Desk-2").position(x: w * 0.64, y: h * 0.20)
-                    Pixel16("Books").position(x: w * 0.58, y: h * 0.18)
-                    Pixel32("Filing-Cabinet-Open").position(x: w * 0.78, y: h * 0.22)
+                    Pixel32("Desk-2").position(x: w * 0.66, y: h * 0.34)
+                    Pixel16("Books").position(x: w * 0.60, y: h * 0.32)
+                    Pixel32("Filing-Cabinet-Open").position(x: w * 0.82, y: h * 0.35)
                 }
 
                 Group {
-                    Pixel32("Boss-Desk").position(x: w * 0.50, y: h * 0.30)
-                    Pixel32("Boss-Chair").position(x: w * 0.50, y: h * 0.40)
-                    Pixel16("Papers").position(x: w * 0.44, y: h * 0.28)
-                    Pixel16("Folders-2").position(x: w * 0.56, y: h * 0.28)
+                    Pixel32("Boss-Desk").position(x: w * 0.50, y: h * 0.39)
+                    Pixel32("Boss-Chair").position(x: w * 0.50, y: h * 0.44)
+                    Pixel16("Papers").position(x: w * 0.44, y: h * 0.37)
+                    Pixel16("Folders-2").position(x: w * 0.56, y: h * 0.37)
                 }
 
                 Group {
-                    Pixel32("Desk").position(x: w * 0.16, y: h * 0.40)
-                    Pixel16("Folders").position(x: w * 0.16, y: h * 0.37)
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.05, y: h * 0.40)
+                    Pixel32("Desk").position(x: w * 0.14, y: h * 0.48)
+                    Pixel16("Folders").position(x: w * 0.14, y: h * 0.45)
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.05, y: h * 0.48)
                 }
 
                 Group {
-                    Pixel32("Desk").position(x: w * 0.84, y: h * 0.40)
-                    Pixel16("Folders-2").position(x: w * 0.84, y: h * 0.37)
-                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.95, y: h * 0.40)
+                    Pixel32("Desk").position(x: w * 0.86, y: h * 0.48)
+                    Pixel16("Folders-2").position(x: w * 0.86, y: h * 0.45)
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.95, y: h * 0.48)
                 }
 
                 Group {
-                    Pixel32("Desk").position(x: w * 0.78, y: h * 0.70)
-                    Pixel16("Printer").position(x: w * 0.86, y: h * 0.69)
-                    Pixel16("Papers").position(x: w * 0.78, y: h * 0.67)
+                    Pixel32("Desk").position(x: w * 0.80, y: h * 0.78)
+                    Pixel16("Printer").position(x: w * 0.88, y: h * 0.77)
+                    Pixel16("Papers").position(x: w * 0.80, y: h * 0.75)
                 }
 
                 Group {
-                    Pixel32("Water-Dispenser").position(x: w * 0.06, y: h * 0.50)
-                    Pixel16("Coffee-Machine").position(x: w * 0.06, y: h * 0.62)
-                    Pixel32("Big-Plant").position(x: w * 0.06, y: h * 0.84)
-                    Pixel32("Big-Plant").position(x: w * 0.94, y: h * 0.84)
-                    Pixel32("Vending-Machine").position(x: w * 0.20, y: h * 0.84)
+                    Pixel32("Water-Dispenser").position(x: w * 0.06, y: h * 0.58)
+                    Pixel16("Coffee-Machine").position(x: w * 0.06, y: h * 0.72)
+                    Pixel32("Big-Plant").position(x: w * 0.05, y: h * 0.90)
+                    Pixel32("Big-Plant").position(x: w * 0.95, y: h * 0.90)
+                    Pixel32("Vending-Machine").position(x: w * 0.22, y: h * 0.91)
                     Pixel32("Big-Office-Printer").position(x: w * 0.94, y: h * 0.66)
-                    Pixel32("Tall-Bookshelf").position(x: w * 0.34, y: h * 0.84)
-                    Pixel32("Big-Round-Table").position(x: w * 0.48, y: h * 0.78)
-                    Pixel16("Small-Plant").position(x: w * 0.60, y: h * 0.86)
+                    Pixel32("Tall-Bookshelf").position(x: w * 0.35, y: h * 0.91)
+                    Pixel32("Big-Round-Table").position(x: w * 0.48, y: h * 0.82)
+                    Pixel16("Small-Plant").position(x: w * 0.62, y: h * 0.91)
                 }
 
                 HStack(spacing: 4) {
@@ -1035,8 +1034,18 @@ private struct BackWallBand: View {
             let h = proxy.size.height
             ZStack(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(red: 0.94, green: 0.90, blue: 0.82))
+                    .fill(Color(red: 0.89, green: 0.86, blue: 0.78))
                     .frame(width: w, height: h)
+                HStack(spacing: 8) {
+                    PixelWindow()
+                    Color.clear
+                        .frame(width: w * 0.48)
+                    PixelWindow()
+                }
+                .frame(width: w * 0.94, height: h * 0.68)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
                 Rectangle()
                     .fill(Color(red: 0.74, green: 0.58, blue: 0.42))
                     .frame(width: w, height: 6)
@@ -1048,15 +1057,74 @@ private struct BackWallBand: View {
     }
 }
 
+private struct PixelWindow: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            ZStack {
+                Rectangle()
+                    .fill(Color(red: 0.53, green: 0.78, blue: 0.92))
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.45),
+                                Color(red: 0.64, green: 0.86, blue: 0.96).opacity(0.15)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                PixelSkyline()
+                    .fill(Color(red: 0.36, green: 0.55, blue: 0.68).opacity(0.45))
+                    .frame(width: w, height: h * 0.45)
+                    .position(x: w * 0.50, y: h * 0.78)
+                Rectangle()
+                    .fill(Color(red: 0.34, green: 0.23, blue: 0.17))
+                    .frame(width: 3)
+                Rectangle()
+                    .fill(Color(red: 0.34, green: 0.23, blue: 0.17))
+                    .frame(height: 3)
+                Rectangle()
+                    .stroke(Color(red: 0.25, green: 0.16, blue: 0.11), lineWidth: 3)
+            }
+        }
+    }
+}
+
+private struct PixelSkyline: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        let widths: [CGFloat] = [0.12, 0.10, 0.18, 0.09, 0.16, 0.13, 0.12]
+        var x = rect.minX
+        for (index, widthRatio) in widths.enumerated() {
+            let width = rect.width * widthRatio
+            let top = rect.minY + rect.height * CGFloat([0.45, 0.20, 0.35, 0.10, 0.50, 0.28, 0.42][index])
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            path.addLine(to: CGPoint(x: x, y: top))
+            path.addLine(to: CGPoint(x: x + width, y: top))
+            path.addLine(to: CGPoint(x: x + width, y: rect.maxY))
+            x += width
+        }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 // MARK: - Floor
 
-private struct FloorPlanks: View {
+private struct PixelTileFloor: View {
     var body: some View {
         Canvas { context, size in
-            let tile: CGFloat = 18
-            let light = Color(red: 0.96, green: 0.86, blue: 0.68)
-            let dark = Color(red: 0.86, green: 0.74, blue: 0.55)
-            let grout = Color(red: 0.30, green: 0.20, blue: 0.12).opacity(0.30)
+            let tile: CGFloat = 16
+            let light = Color(red: 0.91, green: 0.80, blue: 0.62)
+            let mid = Color(red: 0.84, green: 0.70, blue: 0.50)
+            let dark = Color(red: 0.74, green: 0.58, blue: 0.39)
+            let grout = Color(red: 0.30, green: 0.20, blue: 0.12).opacity(0.45)
+            let dot = Color(red: 0.48, green: 0.32, blue: 0.20).opacity(0.35)
 
             let cols = Int(ceil(size.width / tile)) + 1
             let rows = Int(ceil(size.height / tile)) + 1
@@ -1064,9 +1132,13 @@ private struct FloorPlanks: View {
                 for c in 0..<cols {
                     let x = CGFloat(c) * tile
                     let y = CGFloat(r) * tile
-                    let isLight = (c + r) % 2 == 0
+                    let palette = (c + r) % 4
                     let rect = CGRect(x: x, y: y, width: tile, height: tile)
-                    context.fill(Path(rect), with: .color(isLight ? light : dark))
+                    let color = palette == 0 ? light : (palette == 2 ? dark : mid)
+                    context.fill(Path(rect), with: .color(color))
+                    let inset: CGFloat = 5
+                    let dotRect = CGRect(x: x + inset, y: y + inset, width: 3, height: 3)
+                    context.fill(Path(dotRect), with: .color(dot))
                 }
             }
             for c in 0...cols {
@@ -1117,17 +1189,19 @@ private struct PublishedWall: View {
 
     var body: some View {
         ZStack {
-            // Cork board
+            // Opaque pixel cork board. It intentionally sits on an empty
+            // center wall strip so furniture and agents never hide behind it.
             RoundedRectangle(cornerRadius: 6)
-                .fill(FestivalDesign.lantern.opacity(0.28))
+                .fill(Color(red: 0.78, green: 0.55, blue: 0.30))
+                .overlay(PixelBoardDots().opacity(0.42))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(FestivalDesign.creamDeep, lineWidth: 1.4)
+                        .stroke(Color(red: 0.28, green: 0.17, blue: 0.10), lineWidth: 3)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(FestivalDesign.navy.opacity(0.10), lineWidth: 0.5)
-                        .padding(3)
+                        .stroke(Color(red: 0.96, green: 0.75, blue: 0.38), lineWidth: 1)
+                        .padding(4)
                 )
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1138,7 +1212,7 @@ private struct PublishedWall: View {
                     Spacer()
                     Text("\(items.count)건")
                         .font(.system(size: 8))
-                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .foregroundStyle(FestivalDesign.navy.opacity(0.75))
                 }
                 if items.isEmpty {
                     Text("아직 게시된 항목이 없어요.")
@@ -1154,6 +1228,26 @@ private struct PublishedWall: View {
             }
             .padding(6)
         }
+    }
+}
+
+private struct PixelBoardDots: View {
+    var body: some View {
+        Canvas { context, size in
+            let step: CGFloat = 8
+            let dot = Color(red: 0.40, green: 0.23, blue: 0.12)
+            var y: CGFloat = 4
+            while y < size.height {
+                var x: CGFloat = 4
+                while x < size.width {
+                    let rect = CGRect(x: x, y: y, width: 2, height: 2)
+                    context.fill(Path(rect), with: .color(dot))
+                    x += step
+                }
+                y += step
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -1173,7 +1267,7 @@ private struct PublishedCard: View {
         }
         .padding(3)
         .frame(maxWidth: .infinity, minHeight: 36)
-        .background(FestivalDesign.surface.opacity(0.95))
+        .background(FestivalDesign.surface)
         .overlay(
             RoundedRectangle(cornerRadius: 2)
                 .stroke(accent.opacity(0.6), lineWidth: 1)
