@@ -84,7 +84,7 @@ struct AgentOfficeView: View {
     }
 
     private var attribution: some View {
-        Text("픽셀 스프라이트: harishkotra/agent-office (MIT)")
+        Text("스프라이트: harishkotra/agent-office (MIT) · 가구: Antea/stcrbcn (CC-BY 4.0)")
             .font(.caption2)
             .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
     }
@@ -901,7 +901,7 @@ private struct Triangle: Shape {
     }
 }
 
-// MARK: - Pixel backdrop (top-down JRPG)
+// MARK: - Pixel backdrop (PNG sprite scene)
 
 private struct PixelOfficeBackdrop: View {
     var body: some View {
@@ -911,64 +911,74 @@ private struct PixelOfficeBackdrop: View {
             let wallBottom = h * 0.18
 
             ZStack {
-                FloorPlanks()
+                Group {
+                    FloorPlanks()
 
-                BackWall(bottomY: wallBottom)
+                    BackWallBand()
+                        .frame(width: w, height: wallBottom)
+                        .position(x: w * 0.50, y: wallBottom / 2)
 
-                OfficeRug()
-                    .frame(width: w * 0.60, height: h * 0.18)
-                    .position(x: w * 0.50, y: h * 0.58)
+                    OfficeRug()
+                        .frame(width: w * 0.58, height: h * 0.17)
+                        .position(x: w * 0.50, y: h * 0.56)
+                }
 
-                OfficeWindow()
-                    .frame(width: w * 0.20, height: h * 0.12)
-                    .position(x: w * 0.30, y: h * 0.08)
-                OfficeWindow()
-                    .frame(width: w * 0.20, height: h * 0.12)
-                    .position(x: w * 0.70, y: h * 0.08)
+                Group {
+                    Pixel16("Wall-Note").position(x: w * 0.08, y: h * 0.06)
+                    Pixel16("Wall-Graph").position(x: w * 0.20, y: h * 0.06)
+                    Pixel16("Wall-Shelf").position(x: w * 0.32, y: h * 0.06)
+                    Pixel16("Wall-Clock").position(x: w * 0.50, y: h * 0.05)
+                    Pixel16("Wall-Note-2").position(x: w * 0.68, y: h * 0.06)
+                    Pixel16("Wall-Shelf").position(x: w * 0.80, y: h * 0.06)
+                    Pixel16("Board").position(x: w * 0.92, y: h * 0.06)
+                }
 
-                WallClock()
-                    .frame(width: 18, height: 18)
-                    .position(x: w * 0.50, y: h * 0.05)
+                Group {
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.22, y: h * 0.22)
+                    Pixel32("Desk-2").position(x: w * 0.36, y: h * 0.20)
+                    Pixel16("Folders").position(x: w * 0.42, y: h * 0.18)
 
-                FramedPoster(accent: FestivalDesign.lantern, glyph: "🎪")
-                    .frame(width: 22, height: 16)
-                    .position(x: w * 0.50, y: h * 0.13)
+                    Pixel32("Desk-2").position(x: w * 0.64, y: h * 0.20)
+                    Pixel16("Books").position(x: w * 0.58, y: h * 0.18)
+                    Pixel32("Filing-Cabinet-Open").position(x: w * 0.78, y: h * 0.22)
+                }
 
-                Bookshelf()
-                    .frame(width: w * 0.13, height: h * 0.18)
-                    .position(x: w * 0.07, y: h * 0.15)
+                Group {
+                    Pixel32("Boss-Desk").position(x: w * 0.50, y: h * 0.30)
+                    Pixel32("Boss-Chair").position(x: w * 0.50, y: h * 0.40)
+                    Pixel16("Papers").position(x: w * 0.44, y: h * 0.28)
+                    Pixel16("Folders-2").position(x: w * 0.56, y: h * 0.28)
+                }
 
-                FilingCabinet()
-                    .frame(width: w * 0.11, height: h * 0.14)
-                    .position(x: w * 0.93, y: h * 0.16)
+                Group {
+                    Pixel32("Desk").position(x: w * 0.16, y: h * 0.40)
+                    Pixel16("Folders").position(x: w * 0.16, y: h * 0.37)
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.05, y: h * 0.40)
+                }
 
-                IsoDesk(label: "축제팀", accent: FestivalDesign.lantern)
-                    .position(x: w * 0.16, y: h * 0.50)
-                IsoDesk(label: "총괄", accent: FestivalDesign.coral, large: true)
-                    .position(x: w * 0.50, y: h * 0.42)
-                IsoDesk(label: "이벤트팀", accent: FestivalDesign.parkingBlue)
-                    .position(x: w * 0.84, y: h * 0.50)
+                Group {
+                    Pixel32("Desk").position(x: w * 0.84, y: h * 0.40)
+                    Pixel16("Folders-2").position(x: w * 0.84, y: h * 0.37)
+                    Pixel32("Filing-Cabinet-Tall").position(x: w * 0.95, y: h * 0.40)
+                }
 
-                IsoDesk(label: "검증", accent: FestivalDesign.teal, small: true)
-                    .position(x: w * 0.36, y: h * 0.30)
+                Group {
+                    Pixel32("Desk").position(x: w * 0.78, y: h * 0.70)
+                    Pixel16("Printer").position(x: w * 0.86, y: h * 0.69)
+                    Pixel16("Papers").position(x: w * 0.78, y: h * 0.67)
+                }
 
-                IsoDesk(label: "홍보", accent: FestivalDesign.coral.opacity(0.85), small: true)
-                    .position(x: w * 0.80, y: h * 0.78)
-
-                CoffeeStation()
-                    .frame(width: 26, height: 30)
-                    .position(x: w * 0.07, y: h * 0.50)
-
-                WaterCooler()
-                    .frame(width: 20, height: 32)
-                    .position(x: w * 0.93, y: h * 0.50)
-
-                OfficePlant()
-                    .frame(width: 18, height: 26)
-                    .position(x: w * 0.06, y: h * 0.74)
-                OfficePlant()
-                    .frame(width: 18, height: 26)
-                    .position(x: w * 0.94, y: h * 0.74)
+                Group {
+                    Pixel32("Water-Dispenser").position(x: w * 0.06, y: h * 0.50)
+                    Pixel16("Coffee-Machine").position(x: w * 0.06, y: h * 0.62)
+                    Pixel32("Big-Plant").position(x: w * 0.06, y: h * 0.84)
+                    Pixel32("Big-Plant").position(x: w * 0.94, y: h * 0.84)
+                    Pixel32("Vending-Machine").position(x: w * 0.20, y: h * 0.84)
+                    Pixel32("Big-Office-Printer").position(x: w * 0.94, y: h * 0.66)
+                    Pixel32("Tall-Bookshelf").position(x: w * 0.34, y: h * 0.84)
+                    Pixel32("Big-Round-Table").position(x: w * 0.48, y: h * 0.78)
+                    Pixel16("Small-Plant").position(x: w * 0.60, y: h * 0.86)
+                }
 
                 HStack(spacing: 4) {
                     Rectangle()
@@ -983,6 +993,56 @@ private struct PixelOfficeBackdrop: View {
                 .background(FestivalDesign.surface)
                 .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
                 .position(x: w - 62, y: 22)
+            }
+        }
+    }
+}
+
+private struct Pixel16: View {
+    let name: String
+    let scale: CGFloat
+    init(_ name: String, scale: CGFloat = 1.6) {
+        self.name = name
+        self.scale = scale
+    }
+    var body: some View {
+        Image(name)
+            .resizable()
+            .interpolation(.none)
+            .frame(width: 16 * scale, height: 16 * scale)
+    }
+}
+
+private struct Pixel32: View {
+    let name: String
+    let scale: CGFloat
+    init(_ name: String, scale: CGFloat = 1.6) {
+        self.name = name
+        self.scale = scale
+    }
+    var body: some View {
+        Image(name)
+            .resizable()
+            .interpolation(.none)
+            .frame(width: 32 * scale, height: 32 * scale)
+    }
+}
+
+private struct BackWallBand: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            ZStack(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(red: 0.94, green: 0.90, blue: 0.82))
+                    .frame(width: w, height: h)
+                Rectangle()
+                    .fill(Color(red: 0.74, green: 0.58, blue: 0.42))
+                    .frame(width: w, height: 6)
+                Rectangle()
+                    .fill(Color(red: 0.40, green: 0.27, blue: 0.18))
+                    .frame(width: w, height: 2)
             }
         }
     }
@@ -1047,429 +1107,6 @@ private struct OfficeRug: View {
             let border = CGRect(origin: .zero, size: size)
             context.stroke(Path(border), with: .color(FestivalDesign.navy.opacity(0.55)), lineWidth: 1)
         }
-    }
-}
-
-// MARK: - Back wall
-
-private struct BackWall: View {
-    let bottomY: CGFloat
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let wainHeight: CGFloat = 8
-            let mainHeight = bottomY - wainHeight - 1
-            ZStack(alignment: .top) {
-                Rectangle()
-                    .fill(Color(red: 0.95, green: 0.91, blue: 0.83))
-                    .frame(width: w, height: mainHeight)
-
-                WallpaperDots()
-                    .fill(FestivalDesign.navy.opacity(0.10))
-                    .frame(width: w, height: mainHeight)
-                    .clipped()
-
-                Rectangle()
-                    .fill(FestivalDesign.navy.opacity(0.45))
-                    .frame(width: w, height: 1)
-                    .offset(y: mainHeight)
-
-                Rectangle()
-                    .fill(Color(red: 0.74, green: 0.58, blue: 0.42))
-                    .frame(width: w, height: wainHeight)
-                    .offset(y: mainHeight + 1)
-
-                Rectangle()
-                    .fill(Color(red: 0.45, green: 0.32, blue: 0.22))
-                    .frame(width: w, height: 3)
-                    .offset(y: bottomY - 3)
-            }
-        }
-    }
-}
-
-private struct WallpaperDots: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let step: CGFloat = 10
-        var y = rect.minY + 4
-        var row = 0
-        while y <= rect.maxY - 1 {
-            let offset: CGFloat = (row % 2 == 0) ? 0 : step / 2
-            var x = rect.minX + 4 + offset
-            while x <= rect.maxX - 1 {
-                path.addRect(CGRect(x: x, y: y, width: 1, height: 1))
-                x += step
-            }
-            y += step
-            row += 1
-        }
-        return path
-    }
-}
-
-private struct OfficeWindow: View {
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
-
-            Rectangle()
-                .fill(Color(red: 0.74, green: 0.88, blue: 0.98))
-                .padding(2)
-
-            GeometryReader { proxy in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                HStack(alignment: .bottom, spacing: 1) {
-                    Rectangle().fill(FestivalDesign.navy.opacity(0.35)).frame(width: w * 0.14, height: h * 0.42)
-                    Rectangle().fill(FestivalDesign.navy.opacity(0.25)).frame(width: w * 0.18, height: h * 0.58)
-                    Rectangle().fill(FestivalDesign.navy.opacity(0.30)).frame(width: w * 0.10, height: h * 0.30)
-                    Rectangle().fill(FestivalDesign.navy.opacity(0.22)).frame(width: w * 0.20, height: h * 0.50)
-                    Rectangle().fill(FestivalDesign.navy.opacity(0.28)).frame(width: w * 0.14, height: h * 0.38)
-                }
-                .padding(.horizontal, 3)
-                .frame(width: w, height: h, alignment: .bottom)
-            }
-            .padding(2)
-            .clipped()
-
-            Rectangle()
-                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
-                .frame(width: 2)
-            Rectangle()
-                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
-                .frame(height: 2)
-
-            Rectangle()
-                .stroke(FestivalDesign.navy.opacity(0.45), lineWidth: 1)
-        }
-    }
-}
-
-private struct WallClock: View {
-    var body: some View {
-        ZStack {
-            Rectangle().fill(FestivalDesign.surface)
-            Rectangle().stroke(FestivalDesign.navy, lineWidth: 1)
-            Rectangle().fill(FestivalDesign.navy).frame(width: 1, height: 2).offset(y: -6)
-            Rectangle().fill(FestivalDesign.navy).frame(width: 1, height: 2).offset(y: 6)
-            Rectangle().fill(FestivalDesign.navy).frame(width: 2, height: 1).offset(x: -6)
-            Rectangle().fill(FestivalDesign.navy).frame(width: 2, height: 1).offset(x: 6)
-            Rectangle().fill(FestivalDesign.navy).frame(width: 1, height: 5).offset(y: -2)
-            Rectangle().fill(FestivalDesign.coral).frame(width: 1, height: 6).offset(x: 2, y: -1)
-            Rectangle().fill(FestivalDesign.coral).frame(width: 2, height: 2)
-        }
-    }
-}
-
-private struct FramedPoster: View {
-    let accent: Color
-    let glyph: String
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(red: 0.50, green: 0.38, blue: 0.26))
-            Rectangle()
-                .fill(accent)
-                .padding(2)
-            Text(glyph)
-                .font(.system(size: 10))
-        }
-    }
-}
-
-private struct Bookshelf: View {
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(red: 0.55, green: 0.42, blue: 0.30))
-            VStack(spacing: 1) {
-                ForEach(0..<3) { _ in
-                    HStack(spacing: 1) {
-                        BookSpine(color: FestivalDesign.coral)
-                        BookSpine(color: FestivalDesign.teal)
-                        BookSpine(color: FestivalDesign.lantern)
-                        BookSpine(color: FestivalDesign.parkingBlue)
-                        BookSpine(color: FestivalDesign.coral.opacity(0.7))
-                    }
-                    .padding(.horizontal, 2)
-                }
-            }
-            .padding(.vertical, 3)
-            Rectangle().stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-        }
-    }
-}
-
-private struct BookSpine: View {
-    let color: Color
-    var body: some View {
-        Rectangle()
-            .fill(color)
-            .overlay(
-                Rectangle()
-                    .fill(FestivalDesign.surface.opacity(0.8))
-                    .frame(height: 1),
-                alignment: .top
-            )
-    }
-}
-
-private struct FilingCabinet: View {
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(red: 0.78, green: 0.78, blue: 0.80))
-            VStack(spacing: 0) {
-                Spacer()
-                Rectangle()
-                    .fill(Color(red: 0.56, green: 0.56, blue: 0.60))
-                    .frame(height: 1)
-            }
-            HStack(spacing: 0) {
-                Spacer()
-                Rectangle()
-                    .fill(Color(red: 0.56, green: 0.56, blue: 0.60))
-                    .frame(width: 1)
-            }
-            VStack(spacing: 1) {
-                ForEach(0..<3) { _ in
-                    Rectangle()
-                        .fill(Color(red: 0.62, green: 0.62, blue: 0.66))
-                        .overlay(
-                            Rectangle()
-                                .fill(FestivalDesign.navy.opacity(0.7))
-                                .frame(width: 4, height: 1)
-                        )
-                        .padding(.horizontal, 2)
-                }
-            }
-            .padding(.vertical, 2)
-            Rectangle().stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-        }
-    }
-}
-
-// MARK: - Floor furniture
-
-private struct IsoDesk: View {
-    let label: String
-    let accent: Color
-    var large: Bool = false
-    var small: Bool = false
-
-    private var deskW: CGFloat { large ? 56 : (small ? 36 : 46) }
-    private var deskH: CGFloat { large ? 14 : (small ? 9 : 11) }
-
-    var body: some View {
-        VStack(spacing: 1) {
-            ZStack {
-                Rectangle()
-                    .fill(FestivalDesign.navy.opacity(0.22))
-                    .frame(width: deskW + 4, height: 2)
-                    .offset(y: deskH * 0.55 + 10)
-
-                Rectangle()
-                    .fill(Color(red: 0.58, green: 0.42, blue: 0.28))
-                    .frame(width: deskW, height: 3)
-                    .offset(y: deskH * 0.5 + 1)
-
-                Rectangle()
-                    .fill(Color(red: 0.86, green: 0.70, blue: 0.50))
-                    .frame(width: deskW, height: deskH)
-
-                Rectangle()
-                    .stroke(FestivalDesign.navy.opacity(0.45), lineWidth: 1)
-                    .frame(width: deskW, height: deskH)
-
-                Rectangle()
-                    .fill(FestivalDesign.navy)
-                    .frame(width: large ? 18 : 14, height: large ? 12 : 9)
-                    .offset(y: -deskH * 0.4 - (large ? 4 : 3))
-
-                Rectangle()
-                    .fill(accent)
-                    .frame(width: large ? 14 : 10, height: large ? 8 : 6)
-                    .offset(y: -deskH * 0.4 - (large ? 4 : 3))
-
-                Rectangle()
-                    .fill(FestivalDesign.surface)
-                    .frame(width: 2, height: 1)
-                    .offset(x: large ? -4 : -3, y: -deskH * 0.4 - (large ? 6 : 4))
-
-                Rectangle()
-                    .fill(FestivalDesign.navy)
-                    .frame(width: 2, height: 2)
-                    .offset(y: -deskH * 0.4 + (large ? 2 : 1))
-
-                if !small {
-                    LampGlyph()
-                        .offset(x: deskW * 0.32, y: -deskH * 0.4 - 2)
-                }
-
-                Rectangle()
-                    .fill(FestivalDesign.surface)
-                    .frame(width: 5, height: 4)
-                    .overlay(
-                        Rectangle().stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-                    )
-                    .offset(x: -deskW * 0.28, y: 0)
-
-                Rectangle()
-                    .fill(accent.opacity(0.85))
-                    .frame(width: deskW * 0.35, height: 5)
-                    .overlay(
-                        Rectangle().stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-                    )
-                    .offset(y: deskH * 0.55 + 6)
-            }
-            Text(label)
-                .font(.system(size: 7, weight: .bold))
-                .padding(.horizontal, 3)
-                .padding(.vertical, 1)
-                .background(FestivalDesign.surface)
-                .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.75), lineWidth: 1))
-                .foregroundStyle(FestivalDesign.navy)
-                .offset(y: 4)
-        }
-    }
-}
-
-private struct LampGlyph: View {
-    var body: some View {
-        ZStack {
-            Trapezoid()
-                .fill(FestivalDesign.lantern)
-                .frame(width: 6, height: 4)
-                .overlay(Trapezoid().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
-            Rectangle()
-                .fill(FestivalDesign.navy)
-                .frame(width: 1, height: 3)
-                .offset(y: 3)
-            Rectangle()
-                .fill(FestivalDesign.navy)
-                .frame(width: 4, height: 1)
-                .offset(y: 5)
-        }
-    }
-}
-
-private struct CoffeeStation: View {
-    var body: some View {
-        VStack(spacing: 1) {
-            ZStack {
-                Rectangle()
-                    .fill(FestivalDesign.navy)
-                    .frame(width: 14, height: 14)
-                Rectangle()
-                    .fill(FestivalDesign.coral)
-                    .frame(width: 4, height: 4)
-                    .offset(y: -2)
-                Rectangle()
-                    .fill(FestivalDesign.lantern)
-                    .frame(width: 8, height: 1)
-                    .offset(y: 4)
-            }
-            ZStack {
-                Rectangle()
-                    .fill(Color(red: 0.58, green: 0.42, blue: 0.28))
-                    .frame(width: 22, height: 2)
-                    .offset(y: 4)
-                Rectangle()
-                    .fill(Color(red: 0.86, green: 0.70, blue: 0.50))
-                    .frame(width: 22, height: 5)
-                    .overlay(
-                        Rectangle().stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-                    )
-                Rectangle()
-                    .fill(FestivalDesign.surface)
-                    .frame(width: 3, height: 3)
-                    .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
-                    .offset(x: 6, y: -1)
-            }
-        }
-    }
-}
-
-private struct WaterCooler: View {
-    var body: some View {
-        VStack(spacing: -1) {
-            ZStack {
-                Rectangle()
-                    .fill(FestivalDesign.tealSoft)
-                    .frame(width: 12, height: 13)
-                Rectangle()
-                    .stroke(FestivalDesign.teal.opacity(0.8), lineWidth: 1)
-                    .frame(width: 12, height: 13)
-                Rectangle()
-                    .fill(FestivalDesign.surface.opacity(0.6))
-                    .frame(width: 2, height: 4)
-                    .offset(x: -3, y: -2)
-            }
-            ZStack {
-                Rectangle()
-                    .fill(Color(red: 0.82, green: 0.82, blue: 0.85))
-                    .frame(width: 14, height: 16)
-                HStack(spacing: 0) {
-                    Spacer()
-                    Rectangle()
-                        .fill(Color(red: 0.60, green: 0.60, blue: 0.64))
-                        .frame(width: 1, height: 16)
-                }
-                .frame(width: 14)
-                Rectangle()
-                    .stroke(FestivalDesign.navy.opacity(0.55), lineWidth: 1)
-                    .frame(width: 14, height: 16)
-                Rectangle()
-                    .fill(FestivalDesign.navy)
-                    .frame(width: 4, height: 2)
-                    .offset(y: -2)
-                Rectangle()
-                    .fill(FestivalDesign.teal)
-                    .frame(width: 2, height: 2)
-                    .offset(x: 4, y: 5)
-            }
-        }
-    }
-}
-
-private struct OfficePlant: View {
-    var body: some View {
-        VStack(spacing: -2) {
-            ZStack {
-                Rectangle()
-                    .fill(FestivalDesign.teal.opacity(0.85))
-                    .frame(width: 4, height: 10)
-                    .offset(x: -4, y: 1)
-                Rectangle()
-                    .fill(FestivalDesign.teal)
-                    .frame(width: 4, height: 14)
-                Rectangle()
-                    .fill(FestivalDesign.teal.opacity(0.85))
-                    .frame(width: 4, height: 10)
-                    .offset(x: 4, y: 1)
-            }
-            Trapezoid()
-                .fill(Color(red: 0.68, green: 0.48, blue: 0.34))
-                .frame(width: 14, height: 10)
-                .overlay(Trapezoid().stroke(FestivalDesign.navy.opacity(0.65), lineWidth: 1))
-            Rectangle()
-                .fill(FestivalDesign.navy.opacity(0.22))
-                .frame(width: 16, height: 1)
-        }
-    }
-}
-
-private struct Trapezoid: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + rect.width * 0.18, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.18, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }
 
