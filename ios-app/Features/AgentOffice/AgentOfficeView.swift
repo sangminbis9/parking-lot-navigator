@@ -372,7 +372,7 @@ private enum OfficeChoreography {
     ]
 
     private static let orionDesk = CGPoint(x: 0.500, y: 0.364)
-    private static let wall = CGPoint(x: 0.500, y: 0.852)   // in front of PublishedWall cork board
+    private static let boardDrop = CGPoint(x: 0.500, y: 0.852)   // in front of PublishedWall cork board
 
     // Sentinel patrols the room perimeter
     private static let patrolPath: [CGPoint] = [
