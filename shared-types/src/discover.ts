@@ -59,6 +59,7 @@ export interface Festival {
   id: string;
   title: string;
   subtitle: string | null;
+  description?: string | null;
   startDate: string;
   endDate: string;
   status: DiscoverStatus;

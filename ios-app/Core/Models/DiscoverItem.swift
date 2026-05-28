@@ -25,6 +25,7 @@ struct Festival: Codable, Hashable, Identifiable {
     let id: String
     let title: String
     let subtitle: String?
+    let description: String?
     let startDate: String
     let endDate: String
     let status: DiscoverStatus
@@ -41,7 +42,7 @@ struct Festival: Codable, Hashable, Identifiable {
     let categoryTags: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, subtitle, startDate, endDate, status, venueName, address
+        case id, title, subtitle, description, startDate, endDate, status, venueName, address
         case lat, lng, distanceMeters, source, sourceUrl, imageUrl, tags
         case primaryCategory, categoryTags
     }
@@ -51,6 +52,7 @@ struct Festival: Codable, Hashable, Identifiable {
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
         subtitle = try c.decodeIfPresent(String.self, forKey: .subtitle)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
         startDate = try c.decode(String.self, forKey: .startDate)
         endDate = try c.decode(String.self, forKey: .endDate)
         status = try c.decode(DiscoverStatus.self, forKey: .status)
@@ -75,6 +77,7 @@ struct Festival: Codable, Hashable, Identifiable {
         id: String,
         title: String,
         subtitle: String?,
+        description: String? = nil,
         startDate: String,
         endDate: String,
         status: DiscoverStatus,
@@ -93,6 +96,7 @@ struct Festival: Codable, Hashable, Identifiable {
         self.id = id
         self.title = title
         self.subtitle = subtitle
+        self.description = description
         self.startDate = startDate
         self.endDate = endDate
         self.status = status
@@ -311,7 +315,7 @@ extension Festival {
         DiscoverPresentation(
             title: title,
             subtitle: subtitle,
-            description: subtitle,
+            description: description ?? subtitle,
             dateText: "\(startDate) - \(endDate)",
             venueName: venueName,
             address: address,

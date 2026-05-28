@@ -127,6 +127,7 @@ struct MapHomeView: View {
             DiscoverDetailSheet(
                 title: festival.title,
                 subtitle: festival.subtitle,
+                description: festival.description,
                 statusText: festival.status.displayText,
                 dateText: "\(festival.startDate) - \(festival.endDate)",
                 venueName: festival.venueName,
@@ -147,6 +148,7 @@ struct MapHomeView: View {
             DiscoverDetailSheet(
                 title: event.title,
                 subtitle: event.benefit ?? event.shortDescription,
+                description: event.shortDescription,
                 statusText: event.timelineStatus.displayText,
                 dateText: event.dateText,
                 venueName: event.venueName ?? event.storeName,
@@ -2258,6 +2260,7 @@ private struct DiscoverDetailSheet: View {
 
     let title: String
     let subtitle: String?
+    let description: String?
     let statusText: String
     let dateText: String
     let venueName: String?
@@ -2299,6 +2302,13 @@ private struct DiscoverDetailSheet: View {
                         Text(subtitle)
                             .font(.subheadline)
                             .foregroundStyle(FestivalDesign.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let description, !description.isEmpty, description != subtitle {
+                        Text(description)
+                            .font(.body)
+                            .foregroundStyle(FestivalDesign.navy)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 

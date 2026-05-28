@@ -436,7 +436,13 @@ app.get("/discover/festivals", async (c) => {
     ongoingOnly: query.ongoingOnly,
     upcomingWithinDays: query.upcomingWithinDays ?? 30,
   });
-  return c.json({ items, generatedAt: new Date().toISOString() });
+  return c.json({
+    items: items.map((item) => ({
+      ...item,
+      description: item.description ?? item.subtitle ?? null,
+    })),
+    generatedAt: new Date().toISOString(),
+  });
 });
 
 app.get("/discover/events", async (c) => {
@@ -452,7 +458,13 @@ app.get("/api/festivals", async (c) => {
     ongoingOnly: query.ongoingOnly,
     upcomingWithinDays: query.upcomingWithinDays ?? 30,
   });
-  return c.json({ items, generatedAt: new Date().toISOString() });
+  return c.json({
+    items: items.map((item) => ({
+      ...item,
+      description: item.description ?? item.subtitle ?? null,
+    })),
+    generatedAt: new Date().toISOString(),
+  });
 });
 
 app.get("/api/local-events", async (c) => {

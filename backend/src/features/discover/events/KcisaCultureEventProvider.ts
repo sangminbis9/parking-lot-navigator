@@ -248,8 +248,15 @@ export class KcisaCultureEventProvider
         address: spatialCoverage,
         lat: fallbackCoordinate?.lat,
         lng: fallbackCoordinate?.lng,
-        imageUrl: getString(row, ["referenceIdentifier", "thumbnail"]),
-        officialUrl: getString(row, ["url", "sourceUrl"]),
+        imageUrl: firstImageUrl(row, [
+          "thumbnail",
+          "referenceIdentifier",
+          "image",
+          "imageUrl",
+        ]),
+        officialUrl:
+          getString(row, ["url", "sourceUrl"]) ??
+          firstNonImageUrl(row, ["referenceIdentifier"]),
         region: spatialCoverage,
         venue: spatialCoverage,
         updatedAt: getString(row, ["regDate", "modifiedDate"]),
@@ -257,6 +264,52 @@ export class KcisaCultureEventProvider
       },
       resolveCoordinates ? this.input.resolver : undefined,
     );
+  }
+}
+
+function firstImageUrl(
+  row: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = getString(row, [key]);
+    if (value && isLikelyImageUrl(value)) return value;
+  }
+  return null;
+}
+
+function firstNonImageUrl(
+  row: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = getString(row, [key]);
+    if (value && isLikelyHttpUrl(value) && !isLikelyImageUrl(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function isLikelyImageUrl(value: string): boolean {
+  if (!isLikelyHttpUrl(value)) return false;
+  const pathname = new URL(value).pathname.toLowerCase();
+  return (
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".webp") ||
+    pathname.includes("/image") ||
+    pathname.includes("/thumbnail")
+  );
+}
+
+function isLikelyHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 

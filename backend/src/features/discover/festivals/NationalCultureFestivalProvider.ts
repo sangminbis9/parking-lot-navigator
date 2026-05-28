@@ -62,6 +62,7 @@ interface CachedNationalFestival {
   id: string;
   title: string;
   subtitle: string | null;
+  description: string | null;
   startDate: string;
   endDate: string;
   venueName: string | null;
@@ -284,6 +285,11 @@ async function normalizeNationalCultureFestival(
       title,
       subtitle:
         clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
+      description:
+        clean(row.fstvlCo) ??
+        clean(row.relateInfo) ??
+        clean(row.suprtInstt) ??
+        null,
       startDate,
       endDate,
       venueName,

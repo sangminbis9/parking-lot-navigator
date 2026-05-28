@@ -213,13 +213,17 @@ export class CulturePortalEventProvider
         address: getString(row, ["placeAddr", "address", "addr", "area"]),
         lat: getNumber(row, ["gpsY", "gpsy", "lat", "latitude", "y"]),
         lng: getNumber(row, ["gpsX", "gpsx", "lng", "longitude", "x"]),
-        imageUrl: getString(row, ["thumbnail", "image", "imgUrl", "imageUrl"]),
-        officialUrl: getString(row, [
-          "url",
-          "placeUrl",
-          "homepage",
-          "homepageUrl",
+        imageUrl: firstImageUrl(row, [
+          "thumbnail",
+          "thumbnailUrl",
+          "image",
+          "imgUrl",
+          "imageUrl",
+          "referenceIdentifier",
         ]),
+        officialUrl:
+          getString(row, ["url", "placeUrl", "homepage", "homepageUrl"]) ??
+          firstNonImageUrl(row, ["referenceIdentifier"]),
         price: getString(row, ["price", "charge", "useFee"]),
         region: getString(row, ["area", "sido", "region"]),
         venue: getString(row, ["place", "placeName", "venue", "fcltynm"]),
@@ -232,6 +236,52 @@ export class CulturePortalEventProvider
       },
       resolveCoordinates ? this.resolver : undefined,
     );
+  }
+}
+
+function firstImageUrl(
+  row: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = getString(row, [key]);
+    if (value && isLikelyImageUrl(value)) return value;
+  }
+  return null;
+}
+
+function firstNonImageUrl(
+  row: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = getString(row, [key]);
+    if (value && isLikelyHttpUrl(value) && !isLikelyImageUrl(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function isLikelyImageUrl(value: string): boolean {
+  if (!isLikelyHttpUrl(value)) return false;
+  const pathname = new URL(value).pathname.toLowerCase();
+  return (
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".webp") ||
+    pathname.includes("/image") ||
+    pathname.includes("/thumbnail")
+  );
+}
+
+function isLikelyHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 
