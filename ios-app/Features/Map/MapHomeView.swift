@@ -863,8 +863,8 @@ struct MapHomeView: View {
             focusMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
+            let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
             focusMap(to: pin.coordinate, zoomLevel: targetZoom)
-            let anchor = resolvedHologramAnchor(tapPoint: nil)
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 hologramAnchor = anchor
                 hologramPin = pin
@@ -963,16 +963,16 @@ struct MapHomeView: View {
     @ViewBuilder
     private func hologramOverlay(for pin: MapPinItem) -> some View {
         let cardWidth: CGFloat = 268
-        let cardHeight: CGFloat = 110
-        let beamHeight: CGFloat = 18
-        let totalHeight = cardHeight + beamHeight
+        let cardHeight: CGFloat = 104
+        let connectorHeight: CGFloat = 26
+        let totalHeight = cardHeight + connectorHeight
         let containerWidth = max(mapContainerSize.width, cardWidth)
         let containerHeight = max(mapContainerSize.height, totalHeight)
         let halfWidth = cardWidth / 2
         let minX = halfWidth + 8
         let maxX = containerWidth - halfWidth - 8
         let clampedX = min(max(hologramAnchor.x, minX), maxX)
-        let preferredY = hologramAnchor.y - totalHeight / 2 - 44
+        let preferredY = hologramAnchor.y - totalHeight / 2
         let minY = totalHeight / 2 + 60
         let maxY = containerHeight - totalHeight / 2 - 12
         let clampedY = min(max(preferredY, minY), maxY)
@@ -985,6 +985,7 @@ struct MapHomeView: View {
                     subtitle: festival.subtitle ?? festival.venueName,
                     meta: "\(festival.startDate) ~ \(festival.endDate)",
                     statusText: festival.status.displayText,
+                    categoryText: festival.tags.first ?? "축제",
                     imageUrl: festival.imageUrl,
                     tint: FestivalDesign.coral,
                     symbol: "sparkles",
@@ -1002,6 +1003,7 @@ struct MapHomeView: View {
                     subtitle: event.benefit ?? event.shortDescription ?? event.storeName,
                     meta: event.dateText,
                     statusText: event.timelineStatus.displayText,
+                    categoryText: event.eventType,
                     imageUrl: event.imageUrl,
                     tint: FestivalDesign.teal,
                     symbol: "calendar",
