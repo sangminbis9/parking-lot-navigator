@@ -114,6 +114,13 @@ private struct OfficeFloorView: View {
                 ZStack {
                     PixelOfficeBackdrop()
 
+                    // Tap-outside-to-dismiss layer (below agents so agents still receive their own taps)
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
+                        }
+
                     ForEach(agents) { agent in
                         let live = liveLine(for: agent.id)
                         let frame = OfficeChoreography.frame(
@@ -150,7 +157,7 @@ private struct OfficeFloorView: View {
                         .stroke(FestivalDesign.creamDeep.opacity(0.6), lineWidth: 1)
                 )
 
-                // Agent info badge — rendered above clipShape so it is never cropped
+                // Agent info badge — frame-aligned so it never bleeds outside the view
                 if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
                     AgentInfoBadge(
                         agent: sel,
@@ -158,7 +165,9 @@ private struct OfficeFloorView: View {
                     ) {
                         withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
                     }
-                    .position(x: size.width - 68, y: 52)
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .zIndex(100)
                 }
@@ -909,12 +918,14 @@ private struct AgentInfoBadge: View {
                     }
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .frame(width: 156)
+        .frame(width: 190)
         .background(FestivalDesign.surface)
-        .overlay(Rectangle().stroke(agent.status.color.opacity(0.5), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(agent.status.color.opacity(0.45), lineWidth: 1.5))
+        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 10, x: 0, y: 3)
     }
 
     private func shortTime(_ ts: String) -> String {
@@ -1212,6 +1223,7 @@ private struct FloorShadowBaseboard: View {
 }
 
 // MARK: - Board log sheet (shown when user taps the PublishedWall cork board)
+// Renders the same ActivityFeed + ActivityRow style as the main office tab's activity section.
 
 private struct BoardLogSheet: View {
     let activity: [AgentActivityEvent]
@@ -1219,52 +1231,35 @@ private struct BoardLogSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(activity.prefix(20).indices, id: \.self) { i in
-                    let ev = Array(activity.prefix(20))[i]
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(shortTime(ev.ts))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(FestivalDesign.secondaryText)
-                            .frame(width: 42, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(agentLabel(ev.agentId))
-                                .font(.caption.bold())
-                                .foregroundStyle(FestivalDesign.navy)
-                            Text(formatActivityLine(ev) ?? ev.action)
-                                .font(.caption)
-                                .foregroundStyle(FestivalDesign.navy.opacity(0.8))
+            ScrollView {
+                if activity.isEmpty {
+                    Text("아직 활동이 없어요.")
+                        .font(.subheadline)
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(40)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("최근 활동")
+                            .font(.headline)
+                            .foregroundStyle(FestivalDesign.navy)
+                        ForEach(Array(activity.prefix(20))) { event in
+                            ActivityRow(event: event)
                         }
                     }
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .padding(14)
+                    .festivalCard()
+                    .padding(16)
                 }
             }
-            .listStyle(.plain)
-            .navigationTitle("게시판 활동 로그")
+            .background(FestivalDesign.background.ignoresSafeArea())
+            .navigationTitle("에이전트 활동 로그")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("닫기") { dismiss() }
                 }
             }
-        }
-    }
-
-    private func shortTime(_ ts: String) -> String {
-        guard let date = AgentOfficeDateParser.formatter.date(from: ts) else { return "--:--" }
-        return AgentOfficeDateParser.wakeFormatter.string(from: date)
-    }
-
-    private func agentLabel(_ id: String) -> String {
-        switch id {
-        case "festa":    return "Festa"
-        case "scout":    return "Scout"
-        case "orion":    return "Orion"
-        case "pixel":    return "Pixel"
-        case "echo":     return "Echo"
-        case "vera":     return "Vera"
-        case "sentinel": return "Sentinel"
-        default:         return id
         }
     }
 }
