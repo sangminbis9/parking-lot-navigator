@@ -112,8 +112,8 @@ private struct OfficeFloorView: View {
                 ZStack {
                     PixelOfficeBackdrop()
                     PublishedWall(items: snapshot.published)
-                        .frame(width: size.width * 0.52, height: size.height * 0.17)
-                        .position(x: size.width * 0.50, y: size.height * 0.18)
+                        .frame(width: size.width * 0.50, height: size.height * 0.16)
+                        .position(x: size.width * 0.50, y: size.height * 0.83)
 
                     ForEach(agents) { agent in
                         let live = liveLine(for: agent.id)
@@ -367,12 +367,12 @@ private enum OfficeChoreography {
         "pixel":    CGPoint(x: 0.881, y: 0.341),   // col 18.5, row 7.5
         "festa":    CGPoint(x: 0.119, y: 0.659),   // col 2.5, row 14.5
         "scout":    CGPoint(x: 0.881, y: 0.659),   // col 18.5, row 14.5
-        "echo":     CGPoint(x: 0.738, y: 0.886),   // col 15.5, row 19.5
+        "echo":     CGPoint(x: 0.881, y: 0.841),   // col 18.5, row 18.5 (right-side desk)
         "sentinel": CGPoint(x: 0.190, y: 0.205)    // col 4,    row 4.5
     ]
 
     private static let orionDesk = CGPoint(x: 0.500, y: 0.364)
-    private static let boardDrop = CGPoint(x: 0.500, y: 0.852)   // in front of PublishedWall cork board
+    private static let boardDrop = CGPoint(x: 0.500, y: 0.745)   // just above the cork board (row 16.4)
 
     // Sentinel patrols the room perimeter
     private static let patrolPath: [CGPoint] = [
@@ -952,45 +952,45 @@ private enum OfficeLayout {
     static let topDesks: [Furn] = [
         // vera ~ col 1–3, anchor desk at row 5–6
         Furn("DESK_FRONT",         col: 1,  row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 4, w: 1, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 5, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 7, w: 1, h: 2),
         // orion ~ col 9–11, boss center
         Furn("DESK_FRONT",         col: 9,  row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 10, row: 4, w: 1, h: 2),
-        Furn("CUSHIONED_CHAIR_BACK", col: 10, row: 7, w: 1, h: 1),
+        Furn("PC_FRONT_OFF",       col: 10, row: 5, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 10, row: 7, w: 1, h: 2),
         // pixel ~ col 17–19
         Furn("DESK_FRONT",         col: 17, row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 4, w: 1, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 5, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 7, w: 1, h: 2),
     ]
 
     // Mid-room: festa (left) and scout (right) desks + a mid bookshelf cluster
     static let midDesks: [Furn] = [
         Furn("DESK_FRONT",         col: 1,  row: 12, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 11, w: 1, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 12, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 14, w: 1, h: 2),
         Furn("DOUBLE_BOOKSHELF",   col: 9,  row: 11, w: 2, h: 2),
         Furn("PLANT_2",            col: 11, row: 11, w: 1, h: 2),
         Furn("DESK_FRONT",         col: 17, row: 12, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 11, w: 1, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 12, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 14, w: 1, h: 2),
     ]
 
-    // Meeting nook in the center bottom: sofa + coffee table
+    // Meeting nook in the bottom-left: sofa + coffee table (leaves bottom-center for PublishedWall)
     static let meetingNook: [Furn] = [
-        Furn("SOFA_BACK",   col: 8,  row: 15, w: 2, h: 1),
-        Furn("SOFA_SIDE",   col: 7,  row: 16, w: 1, h: 2),
-        Furn("SOFA_SIDE",   col: 10, row: 16, w: 1, h: 2, flipH: true),
-        Furn("COFFEE_TABLE",col: 8,  row: 17, w: 2, h: 2),
-        Furn("COFFEE",      col: 8,  row: 17, w: 1, h: 1),
+        Furn("SOFA_SIDE",   col: 2, row: 16, w: 1, h: 2),
+        Furn("SOFA_BACK",   col: 3, row: 16, w: 2, h: 1),
+        Furn("SOFA_SIDE",   col: 5, row: 16, w: 1, h: 2, flipH: true),
+        Furn("COFFEE_TABLE",col: 3, row: 18, w: 2, h: 2),
+        Furn("COFFEE",      col: 3, row: 18, w: 1, h: 1),
     ]
 
-    // Echo + amenities (bottom-right cluster, leaves bottom-center clear for PublishedWall)
+    // Echo desk on the right + ambient plants/bins (bottom-center stays clear for PublishedWall)
     static let amenities: [Furn] = [
-        // echo desk
-        Furn("DESK_FRONT",         col: 14, row: 16, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 15, row: 15, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 15, row: 18, w: 1, h: 2),
+        // echo desk (right cluster)
+        Furn("DESK_FRONT",         col: 17, row: 16, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 16, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 18, w: 1, h: 2),
         // plants
         Furn("LARGE_PLANT", col: 0,  row: 16, w: 2, h: 3),
         Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),
