@@ -870,14 +870,7 @@ struct MapHomeView: View {
                 hologramPin = pin
             }
             Task {
-                switch pin.kind {
-                case .festival(let festival):
-                    await viewModel.focusParkingAroundFestival(festival)
-                case .event(let event):
-                    await viewModel.focusParkingAroundEvent(event)
-                default:
-                    break
-                }
+                await viewModel.loadParkingPinsAround(pin.coordinate)
                 await viewModel.loadRealtimeParkingLayer(force: true)
             }
         case .parking(let parkingLot):
@@ -1000,6 +993,7 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
+                        clearMapFocus()
                     }
                 )
             case .event(let event):
@@ -1016,6 +1010,7 @@ struct MapHomeView: View {
                         withAnimation(.easeOut(duration: 0.18)) {
                             hologramPin = nil
                         }
+                        clearMapFocus()
                     }
                 )
             default:
