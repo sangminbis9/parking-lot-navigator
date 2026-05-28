@@ -39,10 +39,11 @@ struct MapHomeView: View {
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
     // KakaoMaps SDK가 UIImage 픽셀 크기를 pt로 취급해 렌더링
-    // → screenPoint = 핀 이미지 바닥(픽셀 높이 = (34+7+6) * 0.5 * scale)
+    // → screenPoint = 핀 이미지 바닥. 원형 상단 + 여유 10pt
     private var hologramPinTopOffset: CGFloat {
-        (34 + 7 + 6) * 0.5 * UIScreen.main.scale
+        (34 + 7 + 6) * 0.5 * UIScreen.main.scale + 10
     }
+    private let hologramConnectorTotalHeight: CGFloat = 26  // 20pt bar + 6pt dot
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -51,6 +52,17 @@ struct MapHomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // Connector는 KakaoMap 아래 레이어 → 핀이 connector 앞에 보임
+            Color.clear
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .overlay(alignment: .topLeading) {
+                    if hologramPin != nil {
+                        hologramConnectorLayer()
+                            .transition(.opacity)
+                    }
+                }
+
             KakaoParkingMapView(
                 center: mapCenter,
                 zoomLevel: mapZoomLevel,
@@ -972,15 +984,16 @@ struct MapHomeView: View {
     private func hologramOverlay(for pin: MapPinItem) -> some View {
         let cardWidth: CGFloat = 268
         let containerWidth = max(mapContainerSize.width, cardWidth)
-        let containerHeight = max(mapContainerSize.height, hologramOverlayHeight)
+        let totalHeight = hologramOverlayHeight + hologramConnectorTotalHeight
+        let containerHeight = max(mapContainerSize.height, totalHeight)
         let halfWidth = cardWidth / 2
         let minX = halfWidth + 8
         let maxX = containerWidth - halfWidth - 8
         let clampedX = min(max(hologramAnchor.x, minX), maxX)
-        // position(x,y) centers the view — bottom lands at hologramAnchor.y
-        let preferredY = hologramAnchor.y - hologramOverlayHeight / 2
+        // card는 connector 위 → bottom이 hologramAnchor.y - connectorHeight에 위치
+        let preferredY = hologramAnchor.y - hologramConnectorTotalHeight - hologramOverlayHeight / 2
         let minY = hologramOverlayHeight / 2 + 60
-        let maxY = containerHeight - hologramOverlayHeight / 2 - 12
+        let maxY = containerHeight - totalHeight / 2 - 12
         let clampedY = min(max(preferredY, minY), maxY)
 
         Group {
@@ -1034,6 +1047,38 @@ struct MapHomeView: View {
             }
         )
         .position(x: clampedX, y: clampedY)
+    }
+
+    @ViewBuilder
+    private func hologramConnectorLayer() -> some View {
+        let cardWidth: CGFloat = 268
+        let containerWidth = max(mapContainerSize.width, cardWidth)
+        let halfWidth = cardWidth / 2
+        let clampedX = min(max(hologramAnchor.x, halfWidth + 8), containerWidth - halfWidth - 8)
+        let connectorCenterY = hologramAnchor.y - hologramConnectorTotalHeight / 2
+
+        let tint: Color = {
+            switch hologramPin?.kind {
+            case .festival: return FestivalDesign.coral
+            case .event: return FestivalDesign.teal
+            default: return FestivalDesign.teal
+            }
+        }()
+
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [tint.opacity(0.35), tint.opacity(0.7)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(width: 2, height: 20)
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
+        }
+        .allowsHitTesting(false)
+        .position(x: clampedX, y: connectorCenterY)
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
