@@ -38,8 +38,11 @@ struct MapHomeView: View {
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
-    // 핀 anchorPoint(0.5,1.0) → 이미지 바닥이 좌표. 원형 상단까지 약 24pt
-    private let hologramPinTopOffset: CGFloat = 24
+    // KakaoMaps SDK가 UIImage 픽셀 크기를 pt로 취급해 렌더링
+    // → screenPoint = 핀 이미지 바닥(픽셀 높이 = (34+7+6) * 0.5 * scale)
+    private var hologramPinTopOffset: CGFloat {
+        (34 + 7 + 6) * 0.5 * UIScreen.main.scale
+    }
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
