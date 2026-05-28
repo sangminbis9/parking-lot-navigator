@@ -692,7 +692,7 @@ async function buildCandidateFromBlog(input: {
     address,
     now,
   });
-  const titleFallback = titleText || `${resolvedStoreName} ${keyword}`;
+  const titleFallback = `${resolvedStoreName} ${keyword}`;
   const resolvedTitle = structured.title || titleFallback;
   const description = structured.description ?? (combined || null);
   const resolvedBenefit = benefit ?? structured.benefit;

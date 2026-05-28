@@ -71,7 +71,8 @@ export async function queryLocalEvents(
            AND lng IS NOT NULL
            AND lat BETWEEN ? AND ?
            AND lng BETWEEN ? AND ?
-           AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))`,
+           AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))
+           AND (end_date IS NOT NULL OR start_date >= date('now', '-14 days'))`,
       )
       .bind(
         status,
