@@ -102,6 +102,7 @@ private struct OfficeFloorView: View {
     let agents: [AgentOfficeAgent]
     let snapshot: AgentOfficeSnapshot
     let activity: [AgentActivityEvent]
+    @State private var selectedAgentId: String?
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
@@ -128,7 +129,12 @@ private struct OfficeFloorView: View {
                         AgentRunner(
                             agent: agent,
                             frame: frame,
-                            spokenLine: line
+                            spokenLine: line,
+                            onTap: {
+                                withAnimation(.spring(duration: 0.2)) {
+                                    selectedAgentId = selectedAgentId == agent.id ? nil : agent.id
+                                }
+                            }
                         )
                         .position(x: frame.position.x * size.width,
                                   y: frame.position.y * size.height)
@@ -139,6 +145,16 @@ private struct OfficeFloorView: View {
                     RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                         .stroke(FestivalDesign.creamDeep.opacity(0.6), lineWidth: 1)
                 )
+
+                // Agent info badge — rendered above clipShape so it is never cropped
+                if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
+                    AgentInfoBadge(agent: sel) {
+                        withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
+                    }
+                    .position(x: size.width - 68, y: 52)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .zIndex(100)
+                }
             }
         }
     }
@@ -780,6 +796,7 @@ private struct AgentRunner: View {
     let agent: AgentOfficeAgent
     let frame: AgentFrame
     let spokenLine: String?
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -817,8 +834,57 @@ private struct AgentRunner: View {
                 .foregroundStyle(FestivalDesign.navy)
         }
         .frame(width: 90, height: 90)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(agent.name), \(agent.role)\(spokenLine.map { ", \($0)" } ?? "")")
+    }
+}
+
+// Pixel-style info badge that appears above the office floor when an agent is tapped.
+// Dismiss by tapping the X or tapping the same agent again.
+private struct AgentInfoBadge: View {
+    let agent: AgentOfficeAgent
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // accent bar
+            Rectangle()
+                .fill(agent.status.color)
+                .frame(width: 4)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(agent.status.color)
+                        .frame(width: 5, height: 5)
+                    Text(agent.status.title)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(agent.status.color)
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(FestivalDesign.navy.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(agent.name)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(FestivalDesign.navy)
+                Text(agent.role)
+                    .font(.system(size: 8))
+                    .foregroundStyle(FestivalDesign.navy.opacity(0.65))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+        .frame(width: 120)
+        .background(FestivalDesign.surface)
+        .overlay(Rectangle().stroke(agent.status.color.opacity(0.5), lineWidth: 1))
     }
 }
 
@@ -915,7 +981,7 @@ private struct Triangle: Shape {
 private enum OfficeLayout {
     static let cols = 21
     static let rows = 22
-    static let wallBandRows = 3  // top rows that show the wall
+    static let wallBandRows = 2  // top rows that show the wall (2 keeps more floor visible)
 
     struct Furn {
         let id: String       // imageset suffix (without PA- prefix)
@@ -942,10 +1008,10 @@ private enum OfficeLayout {
         Furn("BOOKSHELF",       col: 18, row: 1, w: 2, h: 1),
     ]
 
-    // Hanging plants (decor pinned near wall band, top edge of floor)
+    // Hanging plants (pinned at wall/floor seam, wallBandRows=2 → row 2)
     static let hangings: [Furn] = [
-        Furn("HANGING_PLANT", col: 0,  row: 3, w: 1, h: 2),
-        Furn("HANGING_PLANT", col: 20, row: 3, w: 1, h: 2),
+        Furn("HANGING_PLANT", col: 0,  row: 2, w: 1, h: 2),
+        Furn("HANGING_PLANT", col: 20, row: 2, w: 1, h: 2),
     ]
 
     // Top desk row: vera (left), orion (center boss), pixel (right)
@@ -974,21 +1040,20 @@ private enum OfficeLayout {
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 14, w: 1, h: 2),
     ]
 
-    // Corridor between desk rows: shared bookshelf + flanking plants (row 9–10)
+    // Corridor (row 9–10): only flanking accent plants — centre kept clear for agent paths
     static let corridor: [Furn] = [
-        Furn("PLANT",          col: 4,  row: 9, w: 1, h: 2),
-        Furn("DOUBLE_BOOKSHELF", col: 9, row: 9, w: 2, h: 2),
-        Furn("PLANT_2",        col: 11, row: 9, w: 1, h: 2),
-        Furn("CACTUS",         col: 16, row: 9, w: 1, h: 2),
+        Furn("PLANT",  col: 4,  row: 9, w: 1, h: 2),   // just right of vera cluster
+        Furn("CACTUS", col: 16, row: 9, w: 1, h: 2),   // just left of pixel cluster
     ]
 
-    // Meeting nook in the bottom-left: sofa + coffee table (leaves bottom-center for PublishedWall)
+    // Meeting nook in the bottom-left: U-shape sofa with table inside the pocket
+    // Layout: [SL][SB][SB][SR] row 16, then table starts at row 17 (inside the U)
     static let meetingNook: [Furn] = [
         Furn("SOFA_SIDE",   col: 2, row: 16, w: 1, h: 2),
         Furn("SOFA_BACK",   col: 3, row: 16, w: 2, h: 1),
         Furn("SOFA_SIDE",   col: 5, row: 16, w: 1, h: 2, flipH: true),
-        Furn("COFFEE_TABLE",col: 3, row: 18, w: 2, h: 2),
-        Furn("COFFEE",      col: 3, row: 18, w: 1, h: 1),
+        Furn("COFFEE_TABLE",col: 3, row: 17, w: 2, h: 2),
+        Furn("COFFEE",      col: 3, row: 17, w: 1, h: 1),
     ]
 
     // Echo desk on the right + corner plants (bottom-center stays clear for PublishedWall)
