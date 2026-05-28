@@ -115,6 +115,7 @@ interface DiscoveryItemRow {
   lowest_price_platform: string | null;
   source_url: string | null;
   image_url: string | null;
+  images_json: string | null;
   tags_json: string | null;
   amenities_json: string | null;
   offers_json: string | null;
@@ -148,6 +149,7 @@ interface DiscoveryRowPayload {
   lowestPricePlatform: string | null;
   sourceUrl: string | null;
   imageUrl: string | null;
+  imagesJson: string | null;
   tagsJson: string | null;
   amenitiesJson: string | null;
   offersJson: string | null;
@@ -402,9 +404,9 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         id, type, source, source_item_id, title, subtitle, category_text,
         start_date, end_date, status, is_free, venue_name, address, lat, lng,
         rating, review_count, lowest_price_text, lowest_price_platform,
-        source_url, image_url, tags_json, amenities_json, offers_json, raw_payload,
+        source_url, image_url, images_json, tags_json, amenities_json, offers_json, raw_payload,
         data_updated_at, first_seen_at, last_seen_at, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         type = excluded.type,
         source = excluded.source,
@@ -425,7 +427,8 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         lowest_price_text = excluded.lowest_price_text,
         lowest_price_platform = excluded.lowest_price_platform,
         source_url = excluded.source_url,
-        image_url = excluded.image_url,
+        image_url = COALESCE(excluded.image_url, image_url),
+        images_json = COALESCE(excluded.images_json, images_json),
         tags_json = excluded.tags_json,
         amenities_json = excluded.amenities_json,
         offers_json = excluded.offers_json,
@@ -464,6 +467,7 @@ function prepareDiscoveryUpsert(
       row.lowestPricePlatform,
       row.sourceUrl,
       row.imageUrl,
+      row.imagesJson,
       row.tagsJson,
       row.amenitiesJson,
       row.offersJson,
@@ -525,6 +529,10 @@ function discoveryRow(
     lowestPricePlatform: null,
     sourceUrl: item.sourceUrl,
     imageUrl: item.imageUrl,
+    imagesJson:
+      item.imageUrls && item.imageUrls.length > 0
+        ? JSON.stringify(item.imageUrls)
+        : null,
     tagsJson: isEvent ? null : JSON.stringify(item.tags),
     amenitiesJson: null,
     offersJson: null,
@@ -569,6 +577,7 @@ function mapFestivalRow(
     source: row.source,
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
+    imageUrls: parseJsonArray<string>(row.images_json),
     tags:
       parseJsonArray<string>(row.tags_json).length > 0
         ? parseJsonArray<string>(row.tags_json)

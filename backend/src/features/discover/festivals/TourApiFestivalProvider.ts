@@ -26,6 +26,7 @@ interface TourApiFestivalItem {
   eventstartdate?: string;
   eventenddate?: string;
   firstimage?: string;
+  firstimage2?: string;
   mapx?: string;
   mapy?: string;
   tel?: string;
@@ -47,6 +48,7 @@ interface CachedTourFestival {
   lat: number;
   lng: number;
   imageUrl: string | null;
+  imageUrls: string[];
   sourceUrl: string | null;
   tags: string[];
 }
@@ -247,6 +249,9 @@ function normalizeTourFestival(
   }
   const startDate = parseDate(item.eventstartdate);
   const endDate = parseDate(item.eventenddate);
+  const imageUrls = [item.firstimage, item.firstimage2]
+    .filter((url): url is string => Boolean(url?.trim()))
+    .filter((url, i, arr) => arr.indexOf(url) === i);
   return {
     id: `tourapi:${item.contentid}`,
     contentId: item.contentid,
@@ -259,7 +264,8 @@ function normalizeTourFestival(
     address: [item.addr1, item.addr2].filter(Boolean).join(" "),
     lat,
     lng,
-    imageUrl: item.firstimage ?? null,
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     sourceUrl: null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),

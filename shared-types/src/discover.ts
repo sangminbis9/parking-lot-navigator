@@ -71,6 +71,7 @@ export interface Festival {
   source: string;
   sourceUrl: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   tags: string[];
   primaryCategory?: FestivalPrimaryCategory | null;
   categoryTags?: string[];
@@ -94,6 +95,7 @@ export interface FreeEvent {
   source: string;
   sourceUrl: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   shortDescription: string | null;
   price?: string | null;
   region?: string | null;

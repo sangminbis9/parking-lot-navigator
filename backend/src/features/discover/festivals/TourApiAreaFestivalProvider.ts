@@ -47,6 +47,7 @@ interface CachedAreaFestival {
   lat: number;
   lng: number;
   imageUrl: string | null;
+  imageUrls: string[];
   sourceUrl: string | null;
   tags: string[];
 }
@@ -239,6 +240,9 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
   ) {
     return null;
   }
+  const imageUrls = [item.firstimage, item.firstimage2]
+    .filter((url): url is string => Boolean(url?.trim()))
+    .filter((url, i, arr) => arr.indexOf(url) === i);
   return {
     id: `area-based-tour:${item.contentid}`,
     contentId: item.contentid,
@@ -251,7 +255,8 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
     address: [item.addr1, item.addr2].filter(Boolean).join(" "),
     lat,
     lng,
-    imageUrl: item.firstimage || item.firstimage2 || null,
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     sourceUrl: null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
