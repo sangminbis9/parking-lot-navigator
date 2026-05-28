@@ -111,7 +111,11 @@ private struct DiscoverResultHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DiscoverHeroImage(imageUrl: presentation.imageUrl, tint: presentation.status == .ongoing ? FestivalDesign.coral : FestivalDesign.teal)
+            DiscoverHeroImage(
+                imageUrl: presentation.imageUrl,
+                imageUrls: presentation.imageUrls,
+                tint: presentation.status == .ongoing ? FestivalDesign.coral : FestivalDesign.teal
+            )
 
             HStack(spacing: 8) {
                 StatusBadge(text: presentation.typeText, kind: .source)
@@ -141,39 +145,57 @@ private struct DiscoverResultHeader: View {
 
 private struct DiscoverHeroImage: View {
     let imageUrl: String?
+    let imageUrls: [String]
     let tint: Color
 
+    private var urls: [URL] {
+        let sources = imageUrls.isEmpty
+            ? [imageUrl].compactMap { $0 }
+            : imageUrls
+        return sources.compactMap { URL(string: $0) }
+    }
+
     var body: some View {
+        if urls.count > 1 {
+            TabView {
+                ForEach(urls, id: \.absoluteString) { url in
+                    heroSlide(url: url)
+                        .tag(url)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .frame(height: 210)
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                    .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+            )
+        } else {
+            singleImage
+        }
+    }
+
+    private var singleImage: some View {
         ZStack {
             LinearGradient(
                 colors: [tint.opacity(0.18), FestivalDesign.cream.opacity(0.62)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            if let imageUrl, let url = URL(string: imageUrl) {
+            if let url = urls.first {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
+                        image.resizable().scaledToFill()
                     default:
                         Image("FestivalMascotGuide")
-                            .resizable()
-                            .scaledToFit()
-                            .padding(28)
+                            .resizable().scaledToFit().padding(28)
                     }
                 }
             } else {
-                HStack {
-                    Spacer()
-                    Image("FestivalMascotGuide")
-                        .resizable()
-                        .scaledToFit()
-                        .padding(26)
-                    Spacer()
-                }
+                Image("FestivalMascotGuide")
+                    .resizable().scaledToFit().padding(26)
+                    .frame(maxWidth: .infinity)
             }
         }
         .frame(height: 190)
@@ -184,10 +206,30 @@ private struct DiscoverHeroImage: View {
         )
         .clipped()
     }
+
+    private func heroSlide(url: URL) -> some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image.resizable().scaledToFill()
+            default:
+                ZStack {
+                    LinearGradient(
+                        colors: [tint.opacity(0.18), FestivalDesign.cream.opacity(0.62)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image("FestivalMascotGuide")
+                        .resizable().scaledToFit().padding(28)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+    }
 }
 
 private struct DiscoverDescriptionCard: View {
-    @EnvironmentObject private var tabRouter: AppTabRouter
     @Environment(\.openURL) private var openURL
     let presentation: DiscoverPresentation
 
@@ -222,47 +264,9 @@ private struct DiscoverDescriptionCard: View {
                 .tint(FestivalDesign.navy)
             }
 
-            if !normalizedTags.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("해시태그")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(normalizedTags, id: \.self) { tag in
-                                Button {
-                                    tabRouter.discoverFilterQuery = tag
-                                    tabRouter.selectedTab = .discover
-                                } label: {
-                                    Text("#\(tag)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(FestivalDesign.coral)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(FestivalDesign.cream.opacity(0.55))
-                                        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
-                                                .stroke(FestivalDesign.coral.opacity(0.18), lineWidth: 1)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-            }
         }
         .padding(14)
         .festivalCard()
-    }
-
-    private var normalizedTags: [String] {
-        Array(Set(presentation.tags.map { tag in
-            tag
-                .replacingOccurrences(of: "#", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }.filter { !$0.isEmpty })).sorted()
     }
 
     private var descriptionText: String {

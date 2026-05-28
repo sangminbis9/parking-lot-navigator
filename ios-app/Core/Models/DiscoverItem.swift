@@ -37,13 +37,14 @@ struct Festival: Codable, Hashable, Identifiable {
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
+    let imageUrls: [String]
     let tags: [String]
     let primaryCategory: FestivalPrimaryCategory?
     let categoryTags: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id, title, subtitle, description, startDate, endDate, status, venueName, address
-        case lat, lng, distanceMeters, source, sourceUrl, imageUrl, tags
+        case lat, lng, distanceMeters, source, sourceUrl, imageUrl, imageUrls, tags
         case primaryCategory, categoryTags
     }
 
@@ -64,6 +65,7 @@ struct Festival: Codable, Hashable, Identifiable {
         source = try c.decode(String.self, forKey: .source)
         sourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+        imageUrls = try c.decodeIfPresent([String].self, forKey: .imageUrls) ?? []
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         if let raw = try c.decodeIfPresent(String.self, forKey: .primaryCategory) {
             primaryCategory = FestivalPrimaryCategory(rawValue: raw)
@@ -89,6 +91,7 @@ struct Festival: Codable, Hashable, Identifiable {
         source: String,
         sourceUrl: String?,
         imageUrl: String?,
+        imageUrls: [String] = [],
         tags: [String],
         primaryCategory: FestivalPrimaryCategory? = nil,
         categoryTags: [String]? = nil
@@ -108,6 +111,7 @@ struct Festival: Codable, Hashable, Identifiable {
         self.source = source
         self.sourceUrl = sourceUrl
         self.imageUrl = imageUrl
+        self.imageUrls = imageUrls
         self.tags = tags
         self.primaryCategory = primaryCategory
         self.categoryTags = categoryTags
@@ -132,6 +136,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
+    let imageUrls: [String]
     let benefit: String?
     let shortDescription: String?
     let region: String?
@@ -148,7 +153,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, title, eventType, category, sourceId, startDate, endDate, status
         case storeName, venueName, address, lat, lng, distanceMeters, source, sourceUrl
-        case imageUrl, benefit, shortDescription, region, updatedAt, confidenceScore
+        case imageUrl, imageUrls, benefit, shortDescription, region, updatedAt, confidenceScore
         case needsReview, isSponsored, sponsorTier, paidUntil, priorityScore
         case primaryCategory, categoryTags
     }
@@ -172,6 +177,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         source = try c.decode(String.self, forKey: .source)
         sourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+        imageUrls = try c.decodeIfPresent([String].self, forKey: .imageUrls) ?? []
         benefit = try c.decodeIfPresent(String.self, forKey: .benefit)
         shortDescription = try c.decodeIfPresent(String.self, forKey: .shortDescription)
         region = try c.decodeIfPresent(String.self, forKey: .region)
@@ -208,6 +214,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         source: String,
         sourceUrl: String?,
         imageUrl: String?,
+        imageUrls: [String] = [],
         benefit: String?,
         shortDescription: String?,
         region: String?,
@@ -238,6 +245,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         self.source = source
         self.sourceUrl = sourceUrl
         self.imageUrl = imageUrl
+        self.imageUrls = imageUrls
         self.benefit = benefit
         self.shortDescription = shortDescription
         self.region = region
@@ -281,6 +289,7 @@ struct DiscoverPresentation: Hashable {
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
+    let imageUrls: [String]
     let price: String?
     let region: String?
     let updatedAt: String?
@@ -324,6 +333,7 @@ extension Festival {
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
+            imageUrls: imageUrls,
             price: nil,
             region: nil,
             updatedAt: nil,
@@ -369,6 +379,7 @@ extension FreeEvent {
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
+            imageUrls: imageUrls,
             price: benefit,
             region: region,
             updatedAt: updatedAt,
