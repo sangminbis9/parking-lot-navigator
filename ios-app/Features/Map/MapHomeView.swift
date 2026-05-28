@@ -31,6 +31,7 @@ struct MapHomeView: View {
     @State private var discoverFilters = DiscoverFilterState()
     @State private var hologramPin: MapPinItem?
     @State private var hologramAnchor: CGPoint = .zero
+    @State private var hologramOverlayHeight: CGFloat = 130
     @State private var mapContainerSize: CGSize = .zero
     @State private var hologramAnchorTimer: Timer?
     @State private var mapProjector = MapProjector()
@@ -963,18 +964,16 @@ struct MapHomeView: View {
     @ViewBuilder
     private func hologramOverlay(for pin: MapPinItem) -> some View {
         let cardWidth: CGFloat = 268
-        let cardHeight: CGFloat = 104
-        let connectorHeight: CGFloat = 26
-        let totalHeight = cardHeight + connectorHeight
         let containerWidth = max(mapContainerSize.width, cardWidth)
-        let containerHeight = max(mapContainerSize.height, totalHeight)
+        let containerHeight = max(mapContainerSize.height, hologramOverlayHeight)
         let halfWidth = cardWidth / 2
         let minX = halfWidth + 8
         let maxX = containerWidth - halfWidth - 8
         let clampedX = min(max(hologramAnchor.x, minX), maxX)
-        let preferredY = hologramAnchor.y - totalHeight / 2
-        let minY = totalHeight / 2 + 60
-        let maxY = containerHeight - totalHeight / 2 - 12
+        // position(x,y) centers the view — bottom lands at hologramAnchor.y
+        let preferredY = hologramAnchor.y - hologramOverlayHeight / 2
+        let minY = hologramOverlayHeight / 2 + 60
+        let maxY = containerHeight - hologramOverlayHeight / 2 - 12
         let clampedY = min(max(preferredY, minY), maxY)
 
         Group {
@@ -1020,6 +1019,13 @@ struct MapHomeView: View {
             }
         }
         .frame(width: cardWidth)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { hologramOverlayHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { hologramOverlayHeight = $0 }
+            }
+        )
         .position(x: clampedX, y: clampedY)
     }
 
