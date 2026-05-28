@@ -38,6 +38,8 @@ struct MapHomeView: View {
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
+    // 핀 anchorPoint(0.5,1.0) → 이미지 바닥이 좌표. 원형 상단까지 약 24pt
+    private let hologramPinTopOffset: CGFloat = 24
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -918,7 +920,7 @@ struct MapHomeView: View {
 
     private func resolvedHologramAnchor(tapPoint: CGPoint?) -> CGPoint {
         if let tapPoint {
-            return tapPoint
+            return CGPoint(x: tapPoint.x, y: tapPoint.y - hologramPinTopOffset)
         }
         if mapContainerSize.width > 0 && mapContainerSize.height > 0 {
             return CGPoint(x: mapContainerSize.width / 2, y: mapContainerSize.height / 2)
@@ -946,7 +948,7 @@ struct MapHomeView: View {
     private func updateHologramAnchorFromProjector() {
         guard let pin = hologramPin else { return }
         guard let point = mapProjector.screenPoint(for: pin.coordinate) else { return }
-        hologramAnchor = point
+        hologramAnchor = CGPoint(x: point.x, y: point.y - hologramPinTopOffset)
     }
 
     private func openHologramDetail(_ pin: MapPinItem) {
