@@ -323,7 +323,7 @@ export async function normalizeEventForMap(
     source: input.source,
     sourceUrl: clean(input.officialUrl),
     imageUrl: clean(input.imageUrl),
-    shortDescription: clean(input.description),
+    shortDescription: cleanDescription(input.description),
     price,
     region: clean(input.region) ?? regionFromAddress(address),
     updatedAt: clean(input.updatedAt) ?? new Date().toISOString(),
@@ -556,6 +556,25 @@ export function clean(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).replace(/\s+/g, " ").trim();
   return text.length > 0 && text !== "null" ? text : null;
+}
+
+export function cleanDescription(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  const normalized = text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized === "-" || normalized === "null") return null;
+  return normalized;
 }
 
 export function toNumber(value: unknown): number | null {

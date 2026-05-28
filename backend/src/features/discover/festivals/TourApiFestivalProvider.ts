@@ -12,6 +12,10 @@ import {
   parseDate,
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
+import {
+  enrichTourApiItems,
+  TourApiDetailClient,
+} from "./tourApiDetailClient.js";
 import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
 
 interface TourApiFestivalItem {
@@ -32,8 +36,10 @@ interface TourApiFestivalItem {
 
 interface CachedTourFestival {
   id: string;
+  contentId: string;
   title: string;
   subtitle: string | null;
+  description: string | null;
   startDate: string;
   endDate: string;
   venueName: null;
@@ -41,6 +47,7 @@ interface CachedTourFestival {
   lat: number;
   lng: number;
   imageUrl: string | null;
+  sourceUrl: string | null;
   tags: string[];
 }
 
@@ -56,6 +63,7 @@ export class TourApiFestivalProvider
     items: CachedTourFestival[];
   } | null = null;
   private inFlightItems: Promise<CachedTourFestival[]> | null = null;
+  private readonly detailClient: TourApiDetailClient;
 
   constructor(
     private readonly serviceKey: string,
@@ -63,6 +71,7 @@ export class TourApiFestivalProvider
     private readonly maxPages: number = tourFestivalMaxPages(),
   ) {
     super("tourapi-festival");
+    this.detailClient = new TourApiDetailClient(serviceKey, baseUrl);
   }
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
@@ -79,7 +88,7 @@ export class TourApiFestivalProvider
             item.lng,
           ),
           source: "tourapi" as const,
-          sourceUrl: null as string | null,
+          sourceUrl: item.sourceUrl,
         }))
         .filter((item) => item.distanceMeters <= query.radiusMeters)
         .filter((item) =>
@@ -151,10 +160,15 @@ export class TourApiFestivalProvider
       .filter((item): item is CachedTourFestival => Boolean(item));
     const today = new Date().toISOString().slice(0, 10);
     const futureOnly = normalized.filter((item) => item.endDate >= today);
-    console.info(
-      `tourapi-festival fetched=${raw.length} normalized=${normalized.length} future=${futureOnly.length}`,
+    const enriched = await enrichTourApiItems(
+      futureOnly,
+      this.detailClient,
+      signal,
     );
-    return futureOnly;
+    console.info(
+      `tourapi-festival fetched=${raw.length} normalized=${normalized.length} future=${futureOnly.length} enriched=${enriched.length}`,
+    );
+    return enriched;
   }
 
   private async fetchPage(
@@ -235,8 +249,10 @@ function normalizeTourFestival(
   const endDate = parseDate(item.eventenddate);
   return {
     id: `tourapi:${item.contentid}`,
+    contentId: item.contentid,
     title: item.title,
     subtitle: item.tel ?? null,
+    description: null,
     startDate,
     endDate,
     venueName: null,
@@ -244,6 +260,7 @@ function normalizeTourFestival(
     lat,
     lng,
     imageUrl: item.firstimage ?? null,
+    sourceUrl: null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),

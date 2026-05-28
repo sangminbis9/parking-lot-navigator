@@ -118,6 +118,7 @@ interface DiscoveryItemRow {
   tags_json: string | null;
   amenities_json: string | null;
   offers_json: string | null;
+  raw_payload: string | null;
   data_updated_at: string | null;
   primary_category: string | null;
   category_tags_json: string | null;
@@ -551,10 +552,12 @@ function mapFestivalRow(
   lat: number,
   lng: number,
 ): Festival {
+  const raw = parseRawPayload(row.raw_payload);
   return {
     id: row.source_item_id,
     title: row.title,
     subtitle: row.subtitle,
+    description: descriptionFromRaw(raw) ?? row.subtitle,
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
     status: row.status ?? "upcoming",
@@ -577,6 +580,33 @@ function mapFestivalRow(
       (row.primary_category as Festival["primaryCategory"]) ?? null,
     categoryTags: parseJsonArray<string>(row.category_tags_json),
   };
+}
+
+function parseRawPayload(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function descriptionFromRaw(raw: Record<string, unknown> | null): string | null {
+  if (!raw) return null;
+  return (
+    stringFromRaw(raw.description) ??
+    stringFromRaw(raw.shortDescription) ??
+    stringFromRaw(raw.subtitle)
+  );
+}
+
+function stringFromRaw(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > 0 ? text : null;
 }
 
 function mapEventRow(

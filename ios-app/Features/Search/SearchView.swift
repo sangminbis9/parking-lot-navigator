@@ -485,7 +485,7 @@ private struct DiscoverTabItem: Identifiable {
             presentation: DiscoverPresentation(
                 title: festival.title,
                 subtitle: festival.subtitle,
-                description: festival.subtitle,
+                description: festival.description ?? festival.subtitle,
                 dateText: "\(festival.startDate) - \(festival.endDate)",
                 venueName: festival.venueName,
                 address: festival.address,

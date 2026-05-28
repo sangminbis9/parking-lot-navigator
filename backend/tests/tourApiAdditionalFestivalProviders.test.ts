@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TourApiAreaFestivalProvider } from "../src/features/discover/festivals/TourApiAreaFestivalProvider.js";
+import { TourApiFestivalProvider } from "../src/features/discover/festivals/TourApiFestivalProvider.js";
 import { TourApiKeywordFestivalProvider } from "../src/features/discover/festivals/TourApiKeywordFestivalProvider.js";
 
 describe("additional TourAPI festival providers", () => {
@@ -94,6 +95,77 @@ describe("additional TourAPI festival providers", () => {
     expect(url.pathname).toBe("/B551011/KorService2/areaBasedList2");
     expect(url.searchParams.get("contentTypeId")).toBe("15");
     expect(url.searchParams.get("areaCode")).toBe("1");
+  });
+
+  it("enriches TourAPI festivals from detailCommon2 and detailImage2", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/searchFestival2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-1",
+            title: "Detailed Festival",
+            addr1: "Seoul",
+            eventstartdate: "20990701",
+            eventenddate: "20990705",
+            mapx: "126.9780",
+            mapy: "37.5665",
+            cat1: "A02",
+            cat2: "A0207",
+            cat3: "A02070100",
+          }),
+        );
+      }
+      if (url.pathname.endsWith("/detailCommon2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-1",
+            overview: "<p>Official festival overview</p>",
+            homepage: '<a href="https://example.com/detail">home</a>',
+          }),
+        );
+      }
+      if (url.pathname.endsWith("/detailImage2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-1",
+            originimgurl: "https://example.com/detail.jpg",
+          }),
+        );
+      }
+      return Promise.resolve(tourResponse({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new TourApiFestivalProvider(
+      "test-key",
+      "https://apis.data.go.kr",
+      1,
+    );
+    const items = await provider.festivals({
+      lat: 37.5665,
+      lng: 126.978,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      title: "Detailed Festival",
+      description: "Official festival overview",
+      sourceUrl: "https://example.com/detail",
+      imageUrl: "https://example.com/detail.jpg",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => new URL(String(input)).pathname === "/B551011/KorService2/detailCommon2",
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => new URL(String(input)).pathname === "/B551011/KorService2/detailImage2",
+      ),
+    ).toBe(true);
   });
 
   it("returns an empty list when provider fetch is aborted", async () => {

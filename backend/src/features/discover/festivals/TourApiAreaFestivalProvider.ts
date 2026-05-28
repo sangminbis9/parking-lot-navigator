@@ -11,6 +11,10 @@ import {
   parseDate,
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
+import {
+  enrichTourApiItems,
+  TourApiDetailClient,
+} from "./tourApiDetailClient.js";
 import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
 
 interface TourAreaItem {
@@ -32,8 +36,10 @@ interface TourAreaItem {
 
 interface CachedAreaFestival {
   id: string;
+  contentId: string;
   title: string;
   subtitle: string | null;
+  description: string | null;
   startDate: string;
   endDate: string;
   venueName: null;
@@ -41,6 +47,7 @@ interface CachedAreaFestival {
   lat: number;
   lng: number;
   imageUrl: string | null;
+  sourceUrl: string | null;
   tags: string[];
 }
 
@@ -75,6 +82,7 @@ export class TourApiAreaFestivalProvider
     items: CachedAreaFestival[];
   } | null = null;
   private inFlightItems: Promise<CachedAreaFestival[]> | null = null;
+  private readonly detailClient: TourApiDetailClient;
 
   constructor(
     private readonly serviceKey: string,
@@ -82,6 +90,7 @@ export class TourApiAreaFestivalProvider
     private readonly maxPages: number = tourFestivalMaxPages(),
   ) {
     super("tourapi-area-festival");
+    this.detailClient = new TourApiDetailClient(serviceKey, baseUrl);
   }
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
@@ -98,7 +107,7 @@ export class TourApiAreaFestivalProvider
             item.lng,
           ),
           source: "area-based-tour",
-          sourceUrl: null,
+          sourceUrl: item.sourceUrl,
         }))
         .filter((item) => item.distanceMeters <= query.radiusMeters)
         .filter((item) =>
@@ -150,10 +159,15 @@ export class TourApiAreaFestivalProvider
       .map(normalizeAreaFestival)
       .filter((item): item is CachedAreaFestival => Boolean(item))
       .filter((item) => item.endDate >= today);
-    console.info(
-      `tourapi-area-festival fetched=${raw.length} normalized=${normalized.length}`,
+    const enriched = await enrichTourApiItems(
+      normalized,
+      this.detailClient,
+      signal,
     );
-    return dedupeAreaFestivals(normalized);
+    console.info(
+      `tourapi-area-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,
+    );
+    return dedupeAreaFestivals(enriched);
   }
 
   private async fetchArea(
@@ -227,8 +241,10 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
   }
   return {
     id: `area-based-tour:${item.contentid}`,
+    contentId: item.contentid,
     title: item.title,
     subtitle: item.tel ?? null,
+    description: null,
     startDate: parseDate(item.eventstartdate),
     endDate: parseDate(item.eventenddate),
     venueName: null,
@@ -236,6 +252,7 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
     lat,
     lng,
     imageUrl: item.firstimage || item.firstimage2 || null,
+    sourceUrl: null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),

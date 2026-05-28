@@ -4,6 +4,14 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function parseNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.floor(parsed)
+    : fallback;
+}
+
 export function culturePortalMaxPages(): number {
   return parsePositiveInt(process.env.CULTURE_PORTAL_MAX_PAGES, 30);
 }
@@ -14,6 +22,10 @@ export function kcisaMaxPages(): number {
 
 export function kopisMaxPages(): number {
   return parsePositiveInt(process.env.KOPIS_MAX_PAGES, 100);
+}
+
+export function kopisDetailMaxItems(): number {
+  return parseNonNegativeInt(process.env.KOPIS_DETAIL_MAX_ITEMS, 20);
 }
 
 export function seoulCultureMaxPages(): number {

@@ -11,6 +11,10 @@ import {
   parseDate,
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
+import {
+  enrichTourApiItems,
+  TourApiDetailClient,
+} from "./tourApiDetailClient.js";
 import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
 
 interface TourKeywordItem {
@@ -32,8 +36,10 @@ interface TourKeywordItem {
 
 interface CachedKeywordFestival {
   id: string;
+  contentId: string;
   title: string;
   subtitle: string | null;
+  description: string | null;
   startDate: string;
   endDate: string;
   venueName: null;
@@ -41,6 +47,7 @@ interface CachedKeywordFestival {
   lat: number;
   lng: number;
   imageUrl: string | null;
+  sourceUrl: string | null;
   tags: string[];
 }
 
@@ -57,6 +64,7 @@ export class TourApiKeywordFestivalProvider
     items: CachedKeywordFestival[];
   } | null = null;
   private inFlightItems: Promise<CachedKeywordFestival[]> | null = null;
+  private readonly detailClient: TourApiDetailClient;
 
   constructor(
     private readonly serviceKey: string,
@@ -64,6 +72,7 @@ export class TourApiKeywordFestivalProvider
     private readonly maxPages: number = tourFestivalMaxPages(),
   ) {
     super("tourapi-keyword-festival");
+    this.detailClient = new TourApiDetailClient(serviceKey, baseUrl);
   }
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
@@ -80,7 +89,7 @@ export class TourApiKeywordFestivalProvider
             item.lng,
           ),
           source: "keyword-tour",
-          sourceUrl: null,
+          sourceUrl: item.sourceUrl,
         }))
         .filter((item) => item.distanceMeters <= query.radiusMeters)
         .filter((item) =>
@@ -135,10 +144,15 @@ export class TourApiKeywordFestivalProvider
       .map(normalizeKeywordFestival)
       .filter((item): item is CachedKeywordFestival => Boolean(item))
       .filter((item) => item.endDate >= today);
-    console.info(
-      `tourapi-keyword-festival fetched=${raw.length} normalized=${normalized.length}`,
+    const enriched = await enrichTourApiItems(
+      normalized,
+      this.detailClient,
+      signal,
     );
-    return dedupeKeywordFestivals(normalized);
+    console.info(
+      `tourapi-keyword-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,
+    );
+    return dedupeKeywordFestivals(enriched);
   }
 
   private async fetchCat3(
@@ -216,8 +230,10 @@ function normalizeKeywordFestival(
   const endDate = parseDate(item.eventenddate);
   return {
     id: `keyword-tour:${item.contentid}`,
+    contentId: item.contentid,
     title: item.title,
     subtitle: item.tel ?? null,
+    description: null,
     startDate,
     endDate,
     venueName: null,
@@ -225,6 +241,7 @@ function normalizeKeywordFestival(
     lat,
     lng,
     imageUrl: item.firstimage || item.firstimage2 || null,
+    sourceUrl: null,
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),
