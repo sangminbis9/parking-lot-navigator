@@ -15,7 +15,7 @@ struct AgentOfficeView: View {
                     snapshot: viewModel.snapshot,
                     activity: viewModel.recentActivity
                 )
-                    .aspectRatio(0.78, contentMode: .fit)
+                    .aspectRatio(CGFloat(OfficeLayout.cols) / CGFloat(OfficeLayout.rows), contentMode: .fit)
                 AgentRoleStrip(agents: viewModel.agents)
                 if !viewModel.recentActivity.isEmpty {
                     ActivityFeed(events: viewModel.recentActivity)
@@ -372,7 +372,7 @@ private enum OfficeChoreography {
     ]
 
     private static let orionDesk = CGPoint(x: 0.500, y: 0.364)
-    private static let boardDrop = CGPoint(x: 0.500, y: 0.745)   // just above the cork board (row 16.4)
+    private static let boardDrop = CGPoint(x: 0.500, y: 0.773)   // in front of PublishedWall cork board (row 17.0)
 
     // Sentinel patrols the room perimeter
     private static let patrolPath: [CGPoint] = [
@@ -964,16 +964,22 @@ private enum OfficeLayout {
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 7, w: 1, h: 2),
     ]
 
-    // Mid-room: festa (left) and scout (right) desks + a mid bookshelf cluster
+    // Mid-room: festa (left) and scout (right) desks — bookshelf/plants are in the corridor above
     static let midDesks: [Furn] = [
         Furn("DESK_FRONT",         col: 1,  row: 12, w: 3, h: 2),
         Furn("PC_FRONT_OFF",       col: 2,  row: 12, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 14, w: 1, h: 2),
-        Furn("DOUBLE_BOOKSHELF",   col: 9,  row: 11, w: 2, h: 2),
-        Furn("PLANT_2",            col: 11, row: 11, w: 1, h: 2),
         Furn("DESK_FRONT",         col: 17, row: 12, w: 3, h: 2),
         Furn("PC_FRONT_OFF",       col: 18, row: 12, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 14, w: 1, h: 2),
+    ]
+
+    // Corridor between desk rows: shared bookshelf + flanking plants (row 9–10)
+    static let corridor: [Furn] = [
+        Furn("PLANT",          col: 4,  row: 9, w: 1, h: 2),
+        Furn("DOUBLE_BOOKSHELF", col: 9, row: 9, w: 2, h: 2),
+        Furn("PLANT_2",        col: 11, row: 9, w: 1, h: 2),
+        Furn("CACTUS",         col: 16, row: 9, w: 1, h: 2),
     ]
 
     // Meeting nook in the bottom-left: sofa + coffee table (leaves bottom-center for PublishedWall)
@@ -985,24 +991,22 @@ private enum OfficeLayout {
         Furn("COFFEE",      col: 3, row: 18, w: 1, h: 1),
     ]
 
-    // Echo desk on the right + ambient plants/bins (bottom-center stays clear for PublishedWall)
+    // Echo desk on the right + corner plants (bottom-center stays clear for PublishedWall)
     static let amenities: [Furn] = [
-        // echo desk (right cluster)
+        // echo desk (right cluster, matches echo home col 18.5 row 18.5)
         Furn("DESK_FRONT",         col: 17, row: 16, w: 3, h: 2),
         Furn("PC_FRONT_OFF",       col: 18, row: 16, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 18, w: 1, h: 2),
-        // plants
-        Furn("LARGE_PLANT", col: 0,  row: 16, w: 2, h: 3),
-        Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),
-        Furn("PLANT",       col: 5,  row: 12, w: 1, h: 2),
-        Furn("CACTUS",      col: 18, row: 12, w: 1, h: 2, flipH: true),
+        // corner plants (outside the sofa/echo zone, not overlapping any desk)
+        Furn("LARGE_PLANT", col: 0,  row: 14, w: 2, h: 3),  // left corner
+        Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),  // right corner beside echo
         // misc
-        Furn("BIN", col: 1,  row: 20, w: 1, h: 1),
-        Furn("POT", col: 4,  row: 20, w: 1, h: 1),
+        Furn("BIN", col: 6, row: 20, w: 1, h: 1),
+        Furn("POT", col: 11, row: 20, w: 1, h: 1),
     ]
 
     static var allFurniture: [Furn] {
-        wallDecor + hangings + topDesks + midDesks + meetingNook + amenities
+        wallDecor + hangings + topDesks + corridor + midDesks + meetingNook + amenities
     }
 }
 
