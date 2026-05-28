@@ -519,7 +519,7 @@ private struct DiscoverTabItem: Identifiable {
             dateText: event.dateText,
             startDate: event.startDate,
             status: event.timelineStatus,
-            typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
+            typeText: koreanEventType(event.eventType),
             source: event.source,
             imageUrl: event.imageUrl,
             searchText: [
@@ -541,7 +541,7 @@ private struct DiscoverTabItem: Identifiable {
                 venueName: event.venueName ?? event.storeName,
                 address: event.address,
                 status: event.timelineStatus,
-                typeText: event.eventType.isEmpty ? "이벤트" : event.eventType,
+                typeText: koreanEventType(event.eventType),
                 source: event.source,
                 sourceUrl: event.sourceUrl,
                 imageUrl: event.imageUrl,
@@ -1129,6 +1129,19 @@ private struct DiscoverTabThumbnail: View {
         }
         .frame(width: 82, height: 82)
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+    }
+}
+
+private func koreanEventType(_ raw: String) -> String {
+    switch raw {
+    case "discount": return "할인·세일"
+    case "freebie": return "무료 증정"
+    case "limited_menu", "new_limited": return "신메뉴·한정"
+    case "popup": return "팝업·이벤트"
+    case "opening", "opening_event": return "오픈 이벤트"
+    case "review_event": return "리뷰 이벤트"
+    case "seasonal": return "시즌·기념일"
+    default: return "이벤트"
     }
 }
 

@@ -343,6 +343,19 @@ extension Festival {
 }
 
 extension FreeEvent {
+    static func koreanEventType(_ raw: String) -> String {
+        switch raw {
+        case "discount": return "할인·세일"
+        case "freebie": return "무료 증정"
+        case "limited_menu", "new_limited": return "신메뉴·한정"
+        case "popup": return "팝업·이벤트"
+        case "opening", "opening_event": return "오픈 이벤트"
+        case "review_event": return "리뷰 이벤트"
+        case "seasonal": return "시즌·기념일"
+        default: return "이벤트"
+        }
+    }
+
     var discoverTags: [String] {
         DiscoverTagBuilder.eventTags(
             primaryCategory: primaryCategory,
@@ -375,7 +388,7 @@ extension FreeEvent {
             venueName: venueName ?? storeName,
             address: address,
             status: timelineStatus,
-            typeText: eventType.isEmpty ? "\u{C774}\u{BCA4}\u{D2B8}" : eventType,
+            typeText: FreeEvent.koreanEventType(eventType),
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
