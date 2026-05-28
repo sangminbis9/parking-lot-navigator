@@ -103,6 +103,7 @@ private struct OfficeFloorView: View {
     let snapshot: AgentOfficeSnapshot
     let activity: [AgentActivityEvent]
     @State private var selectedAgentId: String?
+    @State private var showBoardLog = false
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
@@ -112,9 +113,6 @@ private struct OfficeFloorView: View {
 
                 ZStack {
                     PixelOfficeBackdrop()
-                    PublishedWall(items: snapshot.published)
-                        .frame(width: size.width * 0.50, height: size.height * 0.16)
-                        .position(x: size.width * 0.50, y: size.height * 0.83)
 
                     ForEach(agents) { agent in
                         let live = liveLine(for: agent.id)
@@ -139,6 +137,12 @@ private struct OfficeFloorView: View {
                         .position(x: frame.position.x * size.width,
                                   y: frame.position.y * size.height)
                     }
+
+                    // PublishedWall is the topmost z-layer — agents walk underneath the board
+                    PublishedWall(items: snapshot.published)
+                        .frame(width: size.width * 0.48, height: size.height * 0.13)
+                        .position(x: size.width * 0.50, y: size.height * 0.93)
+                        .onTapGesture { showBoardLog = true }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
                 .overlay(
@@ -148,7 +152,10 @@ private struct OfficeFloorView: View {
 
                 // Agent info badge — rendered above clipShape so it is never cropped
                 if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
-                    AgentInfoBadge(agent: sel) {
+                    AgentInfoBadge(
+                        agent: sel,
+                        recentActivity: activity.filter { $0.agentId == sid }.prefix(5).map { $0 }
+                    ) {
                         withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
                     }
                     .position(x: size.width - 68, y: 52)
@@ -156,6 +163,9 @@ private struct OfficeFloorView: View {
                     .zIndex(100)
                 }
             }
+        }
+        .sheet(isPresented: $showBoardLog) {
+            BoardLogSheet(activity: activity)
         }
     }
 
@@ -377,18 +387,19 @@ private struct AgentFrame {
 private enum OfficeChoreography {
     // Homes target the floor-tile right in front of each agent's desk.
     // Grid is 21 cols × 22 rows; values below are (col+0.5)/21 and (row+0.5)/22.
+    // y = (chair_row + 0.5) / 22 for each agent's chair position
     private static let homes: [String: CGPoint] = [
-        "vera":     CGPoint(x: 0.119, y: 0.341),   // col 2.5, row 7.5
-        "orion":    CGPoint(x: 0.500, y: 0.341),   // col 10.5, row 7.5
-        "pixel":    CGPoint(x: 0.881, y: 0.341),   // col 18.5, row 7.5
-        "festa":    CGPoint(x: 0.119, y: 0.659),   // col 2.5, row 14.5
-        "scout":    CGPoint(x: 0.881, y: 0.659),   // col 18.5, row 14.5
-        "echo":     CGPoint(x: 0.881, y: 0.841),   // col 18.5, row 18.5 (right-side desk)
-        "sentinel": CGPoint(x: 0.190, y: 0.205)    // col 4,    row 4.5
+        "vera":     CGPoint(x: 0.119, y: 0.295),   // col 2.5,  chair row 6  → 6.5/22
+        "orion":    CGPoint(x: 0.500, y: 0.250),   // col 10.5, chair row 5  → 5.5/22
+        "pixel":    CGPoint(x: 0.881, y: 0.295),   // col 18.5, chair row 6  → 6.5/22
+        "festa":    CGPoint(x: 0.119, y: 0.614),   // col 2.5,  chair row 13 → 13.5/22
+        "scout":    CGPoint(x: 0.881, y: 0.614),   // col 18.5, chair row 13 → 13.5/22
+        "echo":     CGPoint(x: 0.881, y: 0.795),   // col 18.5, chair row 17 → 17.5/22
+        "sentinel": CGPoint(x: 0.190, y: 0.205)    // unchanged patrol anchor
     ]
 
-    private static let orionDesk = CGPoint(x: 0.500, y: 0.364)
-    private static let boardDrop = CGPoint(x: 0.500, y: 0.773)   // in front of PublishedWall cork board (row 17.0)
+    private static let orionDesk = CGPoint(x: 0.500, y: 0.250)   // same as orion home
+    private static let boardDrop = CGPoint(x: 0.500, y: 0.860)   // just above PublishedWall (y=0.93)
 
     // Sentinel patrols the room perimeter
     private static let patrolPath: [CGPoint] = [
@@ -453,8 +464,8 @@ private enum OfficeChoreography {
                               stage: .idle, carry: nil)
         case 5..<9:
             let p = ease((tau - 5) / 4)
-            let pos = routedLerp(home, orionDesk, p, corridorY: 0.62)
-            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.62)
+            let pos = routedLerp(home, orionDesk, p, corridorY: 0.43)
+            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.43)
             let dir = direction(from: prev, to: pos)
             return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
                               stage: .walkingOut, carry: carry)
@@ -488,10 +499,10 @@ private enum OfficeChoreography {
         let cycle: Double = 8
         let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
         let p = (sin(tau * .pi * 2) + 1) / 2
-        let pos = routedLerp(home, target, p, corridorY: 0.341)
+        let pos = routedLerp(home, target, p, corridorY: 0.295)
         let walking3 = Int(t * 4) % 3
         let walking = p > 0.05 && p < 0.95
-        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.62)
+        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.295)
         let dir = direction(from: prev, to: pos)
         return AgentFrame(position: pos, direction: dir, walking: walking, walkPhase: walking3,
                           stage: .validating, carry: nil)
@@ -841,15 +852,14 @@ private struct AgentRunner: View {
     }
 }
 
-// Pixel-style info badge that appears above the office floor when an agent is tapped.
-// Dismiss by tapping the X or tapping the same agent again.
+// Pixel-style info badge: agent status + recent 5 activities with timestamps.
 private struct AgentInfoBadge: View {
     let agent: AgentOfficeAgent
+    var recentActivity: [AgentActivityEvent] = []
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            // accent bar
             Rectangle()
                 .fill(agent.status.color)
                 .frame(width: 4)
@@ -878,13 +888,38 @@ private struct AgentInfoBadge: View {
                     .foregroundStyle(FestivalDesign.navy.opacity(0.65))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if !recentActivity.isEmpty {
+                    Rectangle()
+                        .fill(FestivalDesign.navy.opacity(0.15))
+                        .frame(height: 1)
+                        .padding(.top, 2)
+                    ForEach(recentActivity.indices, id: \.self) { i in
+                        let ev = recentActivity[i]
+                        HStack(alignment: .top, spacing: 4) {
+                            Text(shortTime(ev.ts))
+                                .font(.system(size: 7))
+                                .foregroundStyle(FestivalDesign.secondaryText)
+                                .frame(width: 32, alignment: .leading)
+                            Text(formatActivityLine(ev) ?? ev.action)
+                                .font(.system(size: 8))
+                                .foregroundStyle(FestivalDesign.navy)
+                                .lineLimit(1)
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
         }
-        .frame(width: 120)
+        .frame(width: 156)
         .background(FestivalDesign.surface)
         .overlay(Rectangle().stroke(agent.status.color.opacity(0.5), lineWidth: 1))
+    }
+
+    private func shortTime(_ ts: String) -> String {
+        guard let date = AgentOfficeDateParser.formatter.date(from: ts) else { return "--:--" }
+        return AgentOfficeDateParser.wakeFormatter.string(from: date)
     }
 }
 
@@ -1014,30 +1049,30 @@ private enum OfficeLayout {
         Furn("HANGING_PLANT", col: 20, row: 2, w: 1, h: 2),
     ]
 
-    // Top desk row: vera (left), orion (center boss), pixel (right)
+    // Top desk row: vera/pixel shifted 1 up (req 7); orion shifted 2 up (req 7, stays in place per req 6)
     static let topDesks: [Furn] = [
-        // vera ~ col 1–3, anchor desk at row 5–6
-        Furn("DESK_FRONT",         col: 1,  row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 5, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 7, w: 1, h: 2),
-        // orion ~ col 9–11, boss center
-        Furn("DESK_FRONT",         col: 9,  row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 10, row: 5, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 10, row: 7, w: 1, h: 2),
-        // pixel ~ col 17–19
-        Furn("DESK_FRONT",         col: 17, row: 5, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 5, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 7, w: 1, h: 2),
+        // vera ~ col 1–3, row 4–5
+        Furn("DESK_FRONT",         col: 1,  row: 4, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 4, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 6, w: 1, h: 2),
+        // orion ~ col 9–11, row 3–4 (2 rows higher as boss anchor)
+        Furn("DESK_FRONT",         col: 9,  row: 3, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 10, row: 3, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 10, row: 5, w: 1, h: 2),
+        // pixel ~ col 17–19, row 4–5
+        Furn("DESK_FRONT",         col: 17, row: 4, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 4, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 6, w: 1, h: 2),
     ]
 
-    // Mid-room: festa (left) and scout (right) desks — bookshelf/plants are in the corridor above
+    // Mid-room: festa (left) and scout (right) — each shifted 1 row up (req 6 +1 down, req 7 +2 up = net 1 up)
     static let midDesks: [Furn] = [
-        Furn("DESK_FRONT",         col: 1,  row: 12, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 12, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 14, w: 1, h: 2),
-        Furn("DESK_FRONT",         col: 17, row: 12, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 12, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 14, w: 1, h: 2),
+        Furn("DESK_FRONT",         col: 1,  row: 11, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 2,  row: 11, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 13, w: 1, h: 2),
+        Furn("DESK_FRONT",         col: 17, row: 11, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 11, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 13, w: 1, h: 2),
     ]
 
     // Corridor (row 9–10): only flanking accent plants — centre kept clear for agent paths
@@ -1046,22 +1081,22 @@ private enum OfficeLayout {
         Furn("CACTUS", col: 16, row: 9, w: 1, h: 2),   // just left of pixel cluster
     ]
 
-    // Meeting nook in the bottom-left: U-shape sofa with table inside the pocket
-    // Layout: [SL][SB][SB][SR] row 16, then table starts at row 17 (inside the U)
+    // Meeting nook: U-shape sofa (SOFA_FRONT = cushions face south toward table), table inside pocket
+    // Layout row 16: [SL][SF][SF][SR]   row 17: [SL][CT][CT][SR]   row 18: [  ][CT+☕][CT][  ]
     static let meetingNook: [Furn] = [
         Furn("SOFA_SIDE",   col: 2, row: 16, w: 1, h: 2),
-        Furn("SOFA_BACK",   col: 3, row: 16, w: 2, h: 1),
+        Furn("SOFA_FRONT",  col: 3, row: 16, w: 2, h: 1),  // cushions face player (south)
         Furn("SOFA_SIDE",   col: 5, row: 16, w: 1, h: 2, flipH: true),
         Furn("COFFEE_TABLE",col: 3, row: 17, w: 2, h: 2),
-        Furn("COFFEE",      col: 3, row: 17, w: 1, h: 1),
+        Furn("COFFEE",      col: 4, row: 18, w: 1, h: 1),  // centre-right of table surface
     ]
 
     // Echo desk on the right + corner plants (bottom-center stays clear for PublishedWall)
     static let amenities: [Furn] = [
-        // echo desk (right cluster, matches echo home col 18.5 row 18.5)
-        Furn("DESK_FRONT",         col: 17, row: 16, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 16, w: 1, h: 2),
-        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 18, w: 1, h: 2),
+        // echo desk (right cluster, matches echo home col 18.5 row 17.5)
+        Furn("DESK_FRONT",         col: 17, row: 15, w: 3, h: 2),
+        Furn("PC_FRONT_OFF",       col: 18, row: 15, w: 1, h: 2),
+        Furn("WOODEN_CHAIR_BACK",  col: 18, row: 17, w: 1, h: 2),
         // corner plants (outside the sofa/echo zone, not overlapping any desk)
         Furn("LARGE_PLANT", col: 0,  row: 14, w: 2, h: 3),  // left corner
         Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),  // right corner beside echo
@@ -1145,12 +1180,9 @@ private struct FloorTileGrid: View {
     let tile: CGFloat
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Wall (cream with subtle dot pattern)
-            Rectangle()
-                .fill(Color(red: 0.96, green: 0.91, blue: 0.78))
-                .frame(width: tile * CGFloat(OfficeLayout.cols),
-                       height: tile * CGFloat(OfficeLayout.wallBandRows))
-            // Floor tiles
+            // Floor base fills entire frame — no gaps show between tiles
+            Color(red: 0.87, green: 0.73, blue: 0.53)
+            // Floor tiles (PA-floor_1) tiled per cell
             ForEach(OfficeLayout.wallBandRows..<OfficeLayout.rows, id: \.self) { r in
                 ForEach(0..<OfficeLayout.cols, id: \.self) { c in
                     Image("PA-floor_1")
@@ -1160,6 +1192,11 @@ private struct FloorTileGrid: View {
                         .offset(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 }
             }
+            // Wall band painted last so it always covers the top rows cleanly
+            Rectangle()
+                .fill(Color(red: 0.96, green: 0.91, blue: 0.78))
+                .frame(width: tile * CGFloat(OfficeLayout.cols),
+                       height: tile * CGFloat(OfficeLayout.wallBandRows))
         }
     }
 }
@@ -1171,6 +1208,64 @@ private struct FloorShadowBaseboard: View {
         Rectangle()
             .fill(Color(red: 0.18, green: 0.13, blue: 0.10).opacity(0.35))
             .frame(height: max(2, tile * 0.18))
+    }
+}
+
+// MARK: - Board log sheet (shown when user taps the PublishedWall cork board)
+
+private struct BoardLogSheet: View {
+    let activity: [AgentActivityEvent]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(activity.prefix(20).indices, id: \.self) { i in
+                    let ev = Array(activity.prefix(20))[i]
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(shortTime(ev.ts))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(FestivalDesign.secondaryText)
+                            .frame(width: 42, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(agentLabel(ev.agentId))
+                                .font(.caption.bold())
+                                .foregroundStyle(FestivalDesign.navy)
+                            Text(formatActivityLine(ev) ?? ev.action)
+                                .font(.caption)
+                                .foregroundStyle(FestivalDesign.navy.opacity(0.8))
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("게시판 활동 로그")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("닫기") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func shortTime(_ ts: String) -> String {
+        guard let date = AgentOfficeDateParser.formatter.date(from: ts) else { return "--:--" }
+        return AgentOfficeDateParser.wakeFormatter.string(from: date)
+    }
+
+    private func agentLabel(_ id: String) -> String {
+        switch id {
+        case "festa":    return "Festa"
+        case "scout":    return "Scout"
+        case "orion":    return "Orion"
+        case "pixel":    return "Pixel"
+        case "echo":     return "Echo"
+        case "vera":     return "Vera"
+        case "sentinel": return "Sentinel"
+        default:         return id
+        }
     }
 }
 
