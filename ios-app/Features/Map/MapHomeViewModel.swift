@@ -150,15 +150,24 @@ final class MapHomeViewModel: ObservableObject {
 
     func clearMapFocus() {
         let hadDestination = selectedDestination != nil
+        let hadDiscoverContext = selectedDiscoverParkingContext
         selectedDiscoverParkingContext = false
         selectedDestination = nil
         selectedFestival = nil
         selectedEvent = nil
         destinations = []
-        if hadDestination {
+        if hadDestination || hadDiscoverContext {
             selectedParkingLot = nil
             parkingLots = []
         }
+    }
+
+    func loadParkingPinsAround(_ coordinate: CLLocationCoordinate2D) async {
+        selectedDiscoverParkingContext = true
+        selectedDestination = nil
+        selectedParkingLot = nil
+        parkingLots = []
+        await loadNearbyParkingLots(around: coordinate, radiusMeters: 800)
     }
 
     func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
