@@ -13,10 +13,7 @@ struct MapHologramOverlay: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            card
-            connector
-        }
+        card
     }
 
     private var card: some View {
