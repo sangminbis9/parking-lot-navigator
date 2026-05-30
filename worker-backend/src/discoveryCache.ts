@@ -164,7 +164,42 @@ export async function queryFestivalsFromCache(
   options: DiscoveryQueryOptions,
 ): Promise<Festival[]> {
   const rows = await queryDiscoveryRows(db, "festival", lat, lng, options);
-  return rows.map((row) => mapFestivalRow(row, lat, lng));
+  return dedupeFestivals(rows.map((row) => mapFestivalRow(row, lat, lng)));
+}
+
+// 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
+// 키는 정규화된 제목 + 반올림 좌표(약 100m)이며, 같은 그룹에서는 설명·부제·이미지가
+// 더 풍부한 항목을 남긴다(설명이 있는 쪽 우선).
+function dedupeFestivals(festivals: Festival[]): Festival[] {
+  const byKey = new Map<string, Festival>();
+  const order: string[] = [];
+  for (const festival of festivals) {
+    const key = festivalDedupeKey(festival);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, festival);
+      order.push(key);
+    } else if (
+      festivalRichnessScore(festival) > festivalRichnessScore(existing)
+    ) {
+      byKey.set(key, festival);
+    }
+  }
+  return order.map((key) => byKey.get(key)!);
+}
+
+function festivalDedupeKey(festival: Festival): string {
+  const title = festival.title.toLowerCase().replace(/\s+/g, "");
+  return `${title}|${festival.lat.toFixed(3)}|${festival.lng.toFixed(3)}`;
+}
+
+function festivalRichnessScore(festival: Festival): number {
+  let score = 0;
+  if (festival.description && festival.description.trim().length > 0) score += 4;
+  if (festival.subtitle && festival.subtitle.trim().length > 0) score += 2;
+  if ((festival.imageUrls && festival.imageUrls.length > 0) || festival.imageUrl)
+    score += 1;
+  return score;
 }
 
 export async function queryEventsFromCache(
