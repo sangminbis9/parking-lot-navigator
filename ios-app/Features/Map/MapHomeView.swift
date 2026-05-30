@@ -69,8 +69,7 @@ struct MapHomeView: View {
                 pins: pins,
                 onTap: {
                     isSearchFocused = false
-                    clearMapFocus()
-                    hologramPin = nil
+                    handleMapBackgroundTap()
                 },
                 onPinTap: { pin, tapPoint in
                     handlePinTap(pin, tapPoint: tapPoint)
@@ -873,6 +872,18 @@ struct MapHomeView: View {
             }
             await viewModel.loadRealtimeParkingLayer()
         }
+    }
+
+    private func handleMapBackgroundTap() {
+        // 1차 탭: 홀로그램이 떠 있으면 홀로그램만 끄고 주변 주차장은 유지
+        if hologramPin != nil {
+            withAnimation(.easeOut(duration: 0.18)) {
+                hologramPin = nil
+            }
+            return
+        }
+        // 2차 탭(또는 빈 지도 탭): 핀에서 띄운 주변 주차장까지 정리
+        clearMapFocus()
     }
 
     private func handlePinTap(_ pin: MapPinItem, tapPoint: CGPoint?) {
