@@ -16,7 +16,7 @@ export {
 
 type DiscoveryType = "festival" | "event";
 
-const DISCOVERY_RESULT_LIMIT = 1000;
+const DISCOVERY_RESULT_LIMIT = 5000;
 const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
 const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
   festival: 45,
