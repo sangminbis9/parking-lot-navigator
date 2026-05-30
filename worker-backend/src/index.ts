@@ -152,7 +152,7 @@ const discoverQuerySchema = z.object({
 
 const localEventQuerySchema = discoverQuerySchema.extend({
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).default(200),
 });
 
 const mapItemsQuerySchema = localEventQuerySchema.extend({
