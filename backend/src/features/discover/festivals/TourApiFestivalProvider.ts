@@ -256,7 +256,7 @@ function normalizeTourFestival(
     id: `tourapi:${item.contentid}`,
     contentId: item.contentid,
     title: item.title,
-    subtitle: item.tel ?? null,
+    subtitle: null,
     description: null,
     startDate,
     endDate,

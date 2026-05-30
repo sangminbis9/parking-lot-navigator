@@ -203,7 +203,7 @@ export class KopisEventProvider
         title,
         description:
           getString(row, ["sty", "description", "dtguidance", "prfcast"]) ??
-          getString(row, ["prfstate"]),
+          null,
         category: categoryFromText(genre ?? "performance"),
         startDate: getString(row, ["prfpdfrom", "startDate"]),
         endDate: getString(row, ["prfpdto", "endDate"]),

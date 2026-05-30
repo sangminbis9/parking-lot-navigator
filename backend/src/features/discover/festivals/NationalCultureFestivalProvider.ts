@@ -284,7 +284,7 @@ async function normalizeNationalCultureFestival(
       id: `public-data-culture:${await hashKey(sourceItemKey)}`,
       title,
       subtitle:
-        clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? clean(row.phoneNumber),
+        clean(row.fstvlCo) ?? clean(row.suprtInstt) ?? null,
       description:
         clean(row.fstvlCo) ??
         clean(row.relateInfo) ??

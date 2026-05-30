@@ -293,6 +293,7 @@ private struct DiscoverDescriptionCard: View {
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func detailRow(label: String, value: String) -> some View {
@@ -305,6 +306,7 @@ private struct DiscoverDescriptionCard: View {
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
