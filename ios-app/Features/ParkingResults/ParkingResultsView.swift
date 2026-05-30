@@ -60,6 +60,11 @@ struct ParkingResultsView: View {
                     .festivalCard()
             } else if let errorMessage = viewModel.errorMessage {
                 FailureStateView(message: errorMessage) { Task { await viewModel.load() } }
+                    .frame(maxWidth: .infinity)
+                    .festivalCard()
+            } else if viewModel.isEmptyResult {
+                ParkingEmptyStateView()
+                    .frame(maxWidth: .infinity)
                     .festivalCard()
             } else {
                 ForEach(viewModel.recommendations) { recommendation in
@@ -103,6 +108,25 @@ struct ParkingResultsView: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
+    }
+}
+
+private struct ParkingEmptyStateView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "parkingsign.circle")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Text("추천할 주변 주차장이 없어요")
+                .font(.headline)
+                .foregroundStyle(FestivalDesign.navy)
+            Text("이 목적지 반경 800m 안에서 안내할 수 있는 주차장을 찾지 못했어요.")
+                .font(.subheadline)
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
     }
 }
 
