@@ -753,7 +753,7 @@ private extension UIImage {
             let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.12)
             drawHaloPinBody(
                 core: fill,
-                symbol: "circle.grid.2x2.fill",
+                symbol: "party.popper.fill",
                 letter: nil,
                 dotted: false,
                 size: size,
@@ -899,7 +899,8 @@ private extension UIImage {
         ringColor: UIColor? = nil
     ) {
         let haloRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
-        let haloInset: CGFloat = max(size * 0.105, 3)
+        // 테두리(cream halo 링) width 축소 → 줄인 만큼 색상 코어가 커짐
+        let haloInset: CGFloat = max(size * 0.05, 1.5)
         let coreRect = haloRect.insetBy(dx: haloInset, dy: haloInset)
 
         // Tail (cream, behind halo so it appears as continuation of halo edge)
@@ -913,10 +914,11 @@ private extension UIImage {
         tail.close()
 
         context.cgContext.saveGState()
+        // 2D 느낌: 얕고 흐린 그림자만 유지 (지도 위 가독성용)
         context.cgContext.setShadow(
-            offset: CGSize(width: 0, height: 2.5),
-            blur: 5,
-            color: FestivalDesign.uiNavy.withAlphaComponent(0.28).cgColor
+            offset: CGSize(width: 0, height: 1),
+            blur: 2.5,
+            color: FestivalDesign.uiNavy.withAlphaComponent(0.16).cgColor
         )
         FestivalDesign.uiCream.setFill()
         tail.fill()
@@ -949,16 +951,6 @@ private extension UIImage {
             coreColor.setFill()
             UIBezierPath(ovalIn: coreRect).fill()
         }
-
-        // Glossy highlight (top-left)
-        let glossRect = CGRect(
-            x: coreRect.minX + coreRect.width * 0.16,
-            y: coreRect.minY + coreRect.height * 0.12,
-            width: coreRect.width * 0.55,
-            height: coreRect.height * 0.32
-        )
-        UIColor.white.withAlphaComponent(0.28).setFill()
-        UIBezierPath(ovalIn: glossRect).fill()
 
         // Symbol or letter
         if let symbol, let image = UIImage(systemName: symbol) {
