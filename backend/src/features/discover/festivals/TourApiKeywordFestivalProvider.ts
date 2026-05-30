@@ -236,7 +236,7 @@ function normalizeKeywordFestival(
     id: `keyword-tour:${item.contentid}`,
     contentId: item.contentid,
     title: item.title,
-    subtitle: item.tel ?? null,
+    subtitle: null,
     description: null,
     startDate,
     endDate,

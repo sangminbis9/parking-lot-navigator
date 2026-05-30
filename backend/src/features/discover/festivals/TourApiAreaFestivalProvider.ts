@@ -247,7 +247,7 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
     id: `area-based-tour:${item.contentid}`,
     contentId: item.contentid,
     title: item.title,
-    subtitle: item.tel ?? null,
+    subtitle: null,
     description: null,
     startDate: parseDate(item.eventstartdate),
     endDate: parseDate(item.eventenddate),

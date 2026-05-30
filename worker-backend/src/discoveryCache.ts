@@ -565,7 +565,7 @@ function mapFestivalRow(
     id: row.source_item_id,
     title: row.title,
     subtitle: row.subtitle,
-    description: descriptionFromRaw(raw) ?? row.subtitle,
+    description: descriptionFromRaw(raw),
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
     status: row.status ?? "upcoming",
