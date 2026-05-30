@@ -13,7 +13,8 @@ struct SearchView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedKind: DiscoverTabKind = .all
-    @State private var sort: DiscoverTabSort = .date
+    @State private var sort: DiscoverTabSort = .distance
+    @StateObject private var locationProvider = UserLocationProvider()
     @State private var filters = DiscoverTabFilters()
     @State private var showsFilters = false
     @State private var visibleItemCount = 20
@@ -123,6 +124,9 @@ struct SearchView: View {
         }
         .onChange(of: tabRouter.discoverFilterQuery) { _ in
             applyPendingDiscoverFilter()
+        }
+        .onChange(of: locationProvider.coordinate?.latitude) { _ in
+            if sort == .distance { recomputeFilteredItems() }
         }
         .onChange(of: query) { newValue in
             scheduleQueryDebounce(newValue)
@@ -339,7 +343,7 @@ struct SearchView: View {
         let scoped = searched
             .filter { selectedKind.includes($0) }
             .filter { filters.includes($0) }
-        filteredItems = scoped.sorted(by: sort.sort)
+        filteredItems = scoped.sorted(by: sort.comparator(userLocation: locationProvider.coordinate))
     }
 
     private func scheduleQueryDebounce(_ newValue: String) {
@@ -457,6 +461,9 @@ private struct DiscoverTabItem: Identifiable {
     let regionText: String
     let festivalCategory: FestivalPrimaryCategory?
     let eventCategory: LocalEventPrimaryCategory?
+    let lat: Double
+    let lng: Double
+    let distanceMeters: Int
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
         let smartTags = festival.discoverTags
@@ -503,7 +510,10 @@ private struct DiscoverTabItem: Identifiable {
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: festival.address),
             festivalCategory: festival.primaryCategory,
-            eventCategory: nil
+            eventCategory: nil,
+            lat: festival.lat,
+            lng: festival.lng,
+            distanceMeters: festival.distanceMeters
         )
     }
 
@@ -554,8 +564,18 @@ private struct DiscoverTabItem: Identifiable {
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: event.address),
             festivalCategory: nil,
-            eventCategory: event.primaryCategory
+            eventCategory: event.primaryCategory,
+            lat: event.lat,
+            lng: event.lng,
+            distanceMeters: event.distanceMeters
         )
+    }
+
+    func meters(from coordinate: CLLocationCoordinate2D?) -> Double {
+        guard let coordinate else { return Double(distanceMeters) }
+        let userLoc = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let itemLoc = CLLocation(latitude: lat, longitude: lng)
+        return userLoc.distance(from: itemLoc)
     }
 
     var isFestival: Bool {
@@ -635,6 +655,7 @@ private enum DiscoverTabKind: String, CaseIterable, Identifiable {
 }
 
 private enum DiscoverTabSort: String, CaseIterable, Identifiable {
+    case distance
     case date
     case ongoing
     case name
@@ -643,14 +664,24 @@ private enum DiscoverTabSort: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .distance: return "거리순"
         case .date: return "날짜순"
         case .ongoing: return "진행중 우선"
         case .name: return "이름순"
         }
     }
 
+    func comparator(userLocation: CLLocationCoordinate2D?) -> (DiscoverTabItem, DiscoverTabItem) -> Bool {
+        if case .distance = self {
+            return { lhs, rhs in lhs.meters(from: userLocation) < rhs.meters(from: userLocation) }
+        }
+        return sort
+    }
+
     func sort(_ lhs: DiscoverTabItem, _ rhs: DiscoverTabItem) -> Bool {
         switch self {
+        case .distance:
+            return lhs.distanceMeters < rhs.distanceMeters
         case .date:
             if lhs.startDate != rhs.startDate { return lhs.startDate < rhs.startDate }
             return lhs.title < rhs.title
@@ -1130,6 +1161,38 @@ private struct DiscoverTabThumbnail: View {
         .frame(width: 82, height: 82)
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
+}
+
+@MainActor
+private final class UserLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var coordinate: CLLocationCoordinate2D?
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        let status = manager.authorizationStatus
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            manager.requestLocation()
+        } else if status == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.last else { return }
+        Task { @MainActor in self.coordinate = loc.coordinate }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            Task { @MainActor in manager.requestLocation() }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
 
 private func koreanEventType(_ raw: String) -> String {
