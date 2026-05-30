@@ -20,6 +20,8 @@ export type HeadVerdict = {
   id: string;
   verdict: "approve" | "pending" | "reject";
   reason: string;
+  shortDescription: string | null;
+  cleanBenefit: string | null;
 };
 
 export type AgentActivityInsert = {
@@ -44,8 +46,13 @@ const SYSTEM_INSTRUCTION = `당신은 한국 매장(식당/카페/상점)의 로
 
 판정 시 한국어로 한 문장 사유를 작성하세요. 사유는 80자 이내.
 
+approve 또는 pending 판정 시 다음 두 필드를 반드시 작성하세요:
+- shortDescription: 앱 사용자에게 보여줄 이벤트 설명 1-2문장. 매장명 제외, 혜택·기간·조건을 자연스러운 한국어로 정리. 예: "아메리카노 2+1 이벤트를 진행 중입니다. 6월 말까지 매장 방문 시 자동 적용됩니다."
+- cleanBenefit: 핵심 혜택만 담은 짧은 태그 30자 이내. 예: "아메리카노 2+1", "런치 20% 할인", "신규 오픈 기념 무료 음료"
+reject 판정 시 두 필드 모두 null.
+
 응답은 반드시 다음 JSON 스키마:
-{"verdicts":[{"id":"...","verdict":"approve|pending|reject","reason":"..."}]}`;
+{"verdicts":[{"id":"...","verdict":"approve|pending|reject","reason":"...","shortDescription":"...|null","cleanBenefit":"...|null"}]}`;
 
 export async function headValidate(
   candidates: HeadCandidate[],
@@ -67,6 +74,8 @@ export async function headValidate(
       id: v.id,
       verdict: normalizeVerdict(v.verdict),
       reason: typeof v.reason === "string" ? v.reason.slice(0, 200) : "",
+      shortDescription: typeof v.shortDescription === "string" ? v.shortDescription.slice(0, 500) : null,
+      cleanBenefit: typeof v.cleanBenefit === "string" ? v.cleanBenefit.slice(0, 60) : null,
     }));
 }
 
@@ -121,7 +130,9 @@ export async function applyHeadVerdict(
          SET status = ?,
              rejection_reason = ?,
              updated_at = ?,
-             approved_at = CASE WHEN ? = 'approved' AND approved_at IS NULL THEN ? ELSE approved_at END
+             approved_at = CASE WHEN ? = 'approved' AND approved_at IS NULL THEN ? ELSE approved_at END,
+             short_description = CASE WHEN ? IS NOT NULL THEN ? ELSE short_description END,
+             benefit = CASE WHEN ? IS NOT NULL THEN ? ELSE benefit END
        WHERE id = ?`,
     )
     .bind(
@@ -130,6 +141,10 @@ export async function applyHeadVerdict(
       now,
       nextStatus,
       now,
+      verdict.shortDescription,
+      verdict.shortDescription,
+      verdict.cleanBenefit,
+      verdict.cleanBenefit,
       verdict.id,
     )
     .run();
@@ -240,13 +255,16 @@ export async function runHeadReview(
                 le.source_url, le.status, le.rejection_reason, le.confidence_score
            FROM local_events le
           WHERE le.status IN ${statusClause}
-            AND NOT EXISTS (
-              SELECT 1 FROM agent_activity aa
-               WHERE aa.target_id = le.id
-                 AND aa.agent_id = 'orion'
-                 AND aa.action IN ('validate', 'reconsider')
+            AND (
+              NOT EXISTS (
+                SELECT 1 FROM agent_activity aa
+                 WHERE aa.target_id = le.id
+                   AND aa.agent_id = 'orion'
+                   AND aa.action IN ('validate', 'reconsider')
+              )
+              OR le.short_description IS NULL
             )
-          ORDER BY le.updated_at DESC
+          ORDER BY le.short_description ASC, le.updated_at DESC
           LIMIT ?`,
       )
       .bind(limit)

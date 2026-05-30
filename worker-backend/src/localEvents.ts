@@ -25,6 +25,7 @@ interface LocalEventRow {
   id: string;
   title: string;
   description: string | null;
+  short_description: string | null;
   benefit: string | null;
   event_type: LocalEvent["eventType"];
   status: LocalEventStatus;
@@ -434,7 +435,7 @@ function mapLocalEventRow(
     sourceUrl: row.source_url,
     imageUrl: row.image_url,
     benefit: row.benefit,
-    shortDescription: row.description,
+    shortDescription: row.short_description ?? row.description,
     region: null,
     updatedAt: row.updated_at,
     confidenceScore: row.confidence_score,
