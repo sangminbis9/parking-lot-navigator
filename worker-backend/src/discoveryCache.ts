@@ -427,8 +427,8 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         lowest_price_text = excluded.lowest_price_text,
         lowest_price_platform = excluded.lowest_price_platform,
         source_url = excluded.source_url,
-        image_url = COALESCE(excluded.image_url, image_url),
-        images_json = COALESCE(excluded.images_json, images_json),
+        image_url = COALESCE(NULLIF(excluded.image_url, ''), NULLIF(image_url, '')),
+        images_json = COALESCE(NULLIF(excluded.images_json, ''), NULLIF(images_json, '')),
         tags_json = excluded.tags_json,
         amenities_json = excluded.amenities_json,
         offers_json = excluded.offers_json,
@@ -605,11 +605,11 @@ function parseRawPayload(value: string | null): Record<string, unknown> | null {
 
 function descriptionFromRaw(raw: Record<string, unknown> | null): string | null {
   if (!raw) return null;
-  return (
-    stringFromRaw(raw.description) ??
-    stringFromRaw(raw.shortDescription) ??
-    stringFromRaw(raw.subtitle)
-  );
+  for (const key of ["description", "shortDescription"] as const) {
+    const text = stringFromRaw(raw[key]);
+    if (text && text.length >= 25) return text;
+  }
+  return null;
 }
 
 function stringFromRaw(value: unknown): string | null {
