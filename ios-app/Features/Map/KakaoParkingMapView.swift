@@ -555,7 +555,7 @@ private extension MapPinItem {
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: event.title)
         case .cluster(let cluster):
-            return "cluster-\(cluster.count)-\(cluster.tint.stableStyleKey)"
+            return "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)"
         }
     }
 
@@ -575,8 +575,8 @@ private extension MapPinItem {
                 prominent: style.isProminent
             ))
         case .cluster(let cluster):
-            guard styleID == "cluster-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
-            return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale))
+            guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
+            return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale, isParking: cluster.isParking))
         default:
             return nil
         }
@@ -742,7 +742,7 @@ private extension UIImage {
         )
     }
 
-    static func clusterPin(fill: UIColor, count: Int, scale: CGFloat) -> UIImage {
+    static func clusterPin(fill: UIColor, count: Int, scale: CGFloat, isParking: Bool) -> UIImage {
         let size: CGFloat = 34
         let badgeSize: CGFloat = 18
         let canvasWidth = size + pinShadowPadding * 2 + badgeSize * 0.35
@@ -751,10 +751,11 @@ private extension UIImage {
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
             let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.12)
+            // 주차장 클러스터는 단일 주차장 핀과 동일한 "P" 글자 디자인 사용
             drawHaloPinBody(
                 core: fill,
-                symbol: "party.popper.fill",
-                letter: nil,
+                symbol: isParking ? nil : "party.popper.fill",
+                letter: isParking ? "P" : nil,
                 dotted: false,
                 size: size,
                 origin: origin,

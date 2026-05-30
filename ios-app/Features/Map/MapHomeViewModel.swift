@@ -423,6 +423,7 @@ struct MapPinCluster: Identifiable {
     let count: Int
     let memberCoordinates: [CLLocationCoordinate2D]
     let tint: UIColor
+    let isParking: Bool
 }
 
 private extension CLLocationCoordinate2D {

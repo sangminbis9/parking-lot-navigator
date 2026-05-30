@@ -208,7 +208,7 @@ struct MapHomeView: View {
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
             return groups.compactMap { group in
-                if let cluster = clusterPin(for: group, idPrefix: "parking-cluster", tint: FestivalDesign.uiParkingBlue) {
+                if let cluster = clusterPin(for: group, idPrefix: "parking-cluster", tint: FestivalDesign.uiParkingBlue, isParking: true) {
                     return cluster
                 }
                 return group.first.map { source in
@@ -233,7 +233,7 @@ struct MapHomeView: View {
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
             return groups.compactMap { group in
-                if let cluster = clusterPin(for: group, idPrefix: "realtime-parking-cluster", tint: FestivalDesign.uiParkingBlue) {
+                if let cluster = clusterPin(for: group, idPrefix: "realtime-parking-cluster", tint: FestivalDesign.uiParkingBlue, isParking: true) {
                     return cluster
                 }
                 return group.first.map { source in
@@ -269,7 +269,7 @@ struct MapHomeView: View {
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
             return groups.compactMap { group in
-                if let cluster = clusterPin(for: group, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal) {
+                if let cluster = clusterPin(for: group, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal, isParking: false) {
                     return cluster
                 }
                 return group.first.map { source in
@@ -360,7 +360,8 @@ struct MapHomeView: View {
     private func clusterPin<Source: OverlayPinSource>(
         for group: [Source],
         idPrefix: String,
-        tint: UIColor
+        tint: UIColor,
+        isParking: Bool
     ) -> MapPinItem? {
         guard group.count > 1 else { return nil }
         let coordinates = group.map(\.coordinate)
@@ -370,7 +371,8 @@ struct MapHomeView: View {
             coordinate: center,
             count: group.count,
             memberCoordinates: coordinates,
-            tint: tint
+            tint: tint,
+            isParking: isParking
         )
         return MapPinItem(id: cluster.id, coordinate: center, kind: .cluster(cluster))
     }
