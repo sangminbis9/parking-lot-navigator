@@ -260,6 +260,18 @@ private struct DiscoverDescriptionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             detailSection(label: "\u{D589}\u{C0AC} \u{C124}\u{BA85}", value: descriptionText)
+
+            if let sourceUrl = clean(presentation.sourceUrl), let url = URL(string: sourceUrl) {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("\u{C790}\u{C138}\u{D788} \u{C54C}\u{C544}\u{BCF4}\u{AE30}", systemImage: "safari")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(FestivalDesign.navy)
+            }
+
             detailRow(label: "일정", value: presentation.dateText)
             if let venueName = presentation.venueName, !venueName.isEmpty {
                 detailRow(label: "장소", value: venueName)
@@ -276,18 +288,6 @@ private struct DiscoverDescriptionCard: View {
             if let updatedAt = clean(presentation.updatedAt) {
                 detailRow(label: "\u{C5C5}\u{B370}\u{C774}\u{D2B8}", value: updatedAt)
             }
-
-            if let sourceUrl = clean(presentation.sourceUrl), let url = URL(string: sourceUrl) {
-                Button {
-                    openURL(url)
-                } label: {
-                    Label("\u{ACF5}\u{C2DD} \u{C815}\u{BCF4} \u{C5F4}\u{AE30}", systemImage: "safari")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(FestivalDesign.navy)
-            }
-
         }
         .padding(14)
         .festivalCard()
