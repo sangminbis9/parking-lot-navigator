@@ -5,6 +5,7 @@ final class ParkingResultsViewModel: ObservableObject {
     @Published var recommendations: [ParkingRecommendation] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var isEmptyResult = false
 
     private let destination: Destination
     private let apiClient: APIClientProtocol
@@ -18,6 +19,7 @@ final class ParkingResultsViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        isEmptyResult = false
 
         async let nearbyResult = parkingResult {
             try await apiClient.nearbyParking(lat: destination.lat, lng: destination.lng, radiusMeters: 800)
@@ -32,9 +34,12 @@ final class ParkingResultsViewModel: ObservableObject {
 
         if !items.isEmpty {
             recommendations = recommendationEngine.recommendations(for: items, destination: destination)
-        } else {
+        } else if nearby.didFail && realtime.didFail {
             recommendations = []
             errorMessage = "주변 주차장을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+        } else {
+            recommendations = []
+            isEmptyResult = true
         }
         isLoading = false
     }
@@ -97,5 +102,10 @@ final class ParkingResultsViewModel: ObservableObject {
 private extension Result where Success == [ParkingLot] {
     var items: [ParkingLot] {
         (try? get()) ?? []
+    }
+
+    var didFail: Bool {
+        if case .failure = self { return true }
+        return false
     }
 }
