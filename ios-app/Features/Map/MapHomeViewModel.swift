@@ -13,8 +13,6 @@ final class MapHomeViewModel: ObservableObject {
     @Published var festivals: [Festival] = []
     @Published var events: [FreeEvent] = []
     @Published var selectedParkingLot: ParkingLot?
-    @Published var selectedFestival: Festival?
-    @Published var selectedEvent: FreeEvent?
     @Published var selectedDiscoverParkingContext = false
     @Published var showsFestivalLayer = true
     @Published var showsLocalEventLayer = true
@@ -71,43 +69,11 @@ final class MapHomeViewModel: ObservableObject {
         destinations = []
         selectedParkingLot = nil
         parkingLots = []
-        selectedFestival = nil
-        selectedEvent = nil
         recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
         if showsRealtimeParkingLayer {
             await loadRealtimeParkingLayer()
         }
-    }
-
-    func selectFestival(_ festival: Festival) async {
-        selectedFestival = festival
-        selectedEvent = nil
-        await selectDiscoverDestination(
-            id: "festival-\(festival.id)",
-            name: festival.title,
-            address: festival.address,
-            lat: festival.lat,
-            lng: festival.lng,
-            source: festival.source,
-            rawCategory: festival.tags.joined(separator: ","),
-            normalizedCategory: "festival"
-        )
-    }
-
-    func selectEvent(_ event: FreeEvent) async {
-        selectedEvent = event
-        selectedFestival = nil
-        await selectDiscoverDestination(
-            id: "event-\(event.id)",
-            name: event.title,
-            address: event.address,
-            lat: event.lat,
-            lng: event.lng,
-            source: event.source,
-            rawCategory: event.eventType,
-            normalizedCategory: "event"
-        )
     }
 
     func loadNearbyParkingLots(around coordinate: CLLocationCoordinate2D, radiusMeters: Int = 800) async {
@@ -142,8 +108,6 @@ final class MapHomeViewModel: ObservableObject {
 
     func setExploreMode(_ mode: MapExploreMode, viewport: MapViewport) async {
         exploreMode = mode
-        selectedFestival = nil
-        selectedEvent = nil
         guard mode != .parking else { return }
         await loadDiscoverItems(viewport: viewport)
     }
@@ -153,8 +117,6 @@ final class MapHomeViewModel: ObservableObject {
         let hadDiscoverContext = selectedDiscoverParkingContext
         selectedDiscoverParkingContext = false
         selectedDestination = nil
-        selectedFestival = nil
-        selectedEvent = nil
         destinations = []
         if hadDestination || hadDiscoverContext {
             selectedParkingLot = nil
@@ -173,7 +135,6 @@ final class MapHomeViewModel: ObservableObject {
     func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsFestivalLayer = isVisible
         if !isVisible {
-            selectedFestival = nil
             festivals = []
             return
         }
@@ -183,7 +144,6 @@ final class MapHomeViewModel: ObservableObject {
     func setLocalEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsLocalEventLayer = isVisible
         if !isVisible {
-            selectedEvent = nil
             events = []
             return
         }
@@ -335,8 +295,6 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func focusParkingAroundFestival(_ festival: Festival) async {
-        selectedFestival = nil
-        selectedEvent = nil
         await selectDiscoverDestination(
             id: "festival-\(festival.id)",
             name: festival.title,
@@ -350,8 +308,6 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func focusParkingAroundEvent(_ event: FreeEvent) async {
-        selectedEvent = nil
-        selectedFestival = nil
         await selectDiscoverDestination(
             id: "event-\(event.id)",
             name: event.title,
