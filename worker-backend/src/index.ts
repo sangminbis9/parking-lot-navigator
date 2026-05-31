@@ -88,6 +88,7 @@ type Env = {
   TAGGING_BATCH_SIZE?: string;
   TAGGING_RUN_MAX_ROWS?: string;
   TAGGING_CONCURRENCY?: string;
+  OPS_ALERT_WEBHOOK_URL?: string;
 };
 
 type BackendModules = {
@@ -914,6 +915,31 @@ export default {
   },
 };
 
+// Cron 작업 실패를 운영자에게 알린다. webhook URL이 없으면 조용히 통과하므로
+// secret 미설정 환경(로컬/테스트)에서도 안전하다. 알림 자체 실패도 sync를 죽이지 않는다.
+// URL에 "slack"이 들어가면 Slack(`text`), 아니면 Discord(`content`) 형식으로 보낸다.
+async function notifyOpsFailure(
+  env: Env,
+  label: string,
+  error: unknown,
+): Promise<void> {
+  const url = env.OPS_ALERT_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    const message = error instanceof Error ? error.message : String(error);
+    const payload = `🚨 [이벤트다 cron 실패] ${label}\n${message}`.slice(0, 1900);
+    await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        url.includes("slack") ? { text: payload } : { content: payload },
+      ),
+    });
+  } catch (notifyError) {
+    console.error("ops alert webhook failed", notifyError);
+  }
+}
+
 async function runTaggingScheduled(env: Env): Promise<void> {
   try {
     const result = await runTagging(env, {
@@ -925,6 +951,7 @@ async function runTaggingScheduled(env: Env): Promise<void> {
     }
   } catch (error) {
     console.error("tagging cron failed", error);
+    await notifyOpsFailure(env, "tagging cron", error);
   }
 }
 
@@ -940,6 +967,7 @@ async function runHeadReviewScheduled(env: Env): Promise<void> {
     await runHeadReview(env.DB!, env);
   } catch (error) {
     console.error("head review scheduled failed", error);
+    await notifyOpsFailure(env, "head review", error);
   }
 }
 
@@ -948,6 +976,7 @@ async function runImageEnrichmentScheduled(env: Env): Promise<void> {
     await runImageEnrichment(env.DB!, env);
   } catch (error) {
     console.error("image enrichment scheduled failed", error);
+    await notifyOpsFailure(env, "image enrichment", error);
   }
 }
 
@@ -957,6 +986,7 @@ async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
     await syncRealtimeParkingCache(env.DB!, provider);
   } catch (error) {
     console.error("realtime parking sync failed", error);
+    await notifyOpsFailure(env, "realtime parking sync", error);
   }
 }
 
@@ -1026,6 +1056,11 @@ async function syncDiscoveryChunkScheduled(
       `discovery chunk sync failed (chunk ${chunkIndex}/${DISCOVERY_PROVIDER_CHUNK_COUNT})`,
       error,
     );
+    await notifyOpsFailure(
+      env,
+      `discovery chunk ${chunkIndex}/${DISCOVERY_PROVIDER_CHUNK_COUNT}`,
+      error,
+    );
   }
 }
 
@@ -1042,6 +1077,7 @@ async function syncLocalEventsScheduled(
     });
   } catch (error) {
     console.error("local event discovery sync failed", error);
+    await notifyOpsFailure(env, "local event discovery sync", error);
   }
 }
 
