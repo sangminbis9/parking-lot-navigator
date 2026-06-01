@@ -450,38 +450,66 @@ app.get("/discover/events", async (c) => {
   return c.json({ items: [], generatedAt: new Date().toISOString() });
 });
 
-app.get("/api/festivals", async (c) => {
-  const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
-  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
-    radiusMeters:
-      query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
-    ongoingOnly: query.ongoingOnly,
-    upcomingWithinDays: query.upcomingWithinDays ?? 30,
-  });
-  return c.json({
-    items: items.map((item) => ({
-      ...item,
-      description: item.description ?? item.subtitle ?? null,
-    })),
-    generatedAt: new Date().toISOString(),
-  });
-});
+// 짧은 TTL 엣지 캐시. 클라이언트로 반환하는 응답 본문/상태는 그대로 두고(동작 불변),
+// 캐시 저장본에만 Cache-Control을 부여해 colo 단위로 재사용한다. 200 응답만 캐시한다.
+// 캐시 윈도우(ttlSeconds) 내에서는 cron 동기화로 갱신된 데이터가 그만큼 늦게 보일 수 있다.
+async function edgeCached(
+  url: string,
+  ctx: ExecutionContext,
+  ttlSeconds: number,
+  build: () => Promise<Response>,
+): Promise<Response> {
+  // Workers 런타임 전용 caches.default (DOM CacheStorage 타입엔 없어 캐스트).
+  const cache = (caches as unknown as { default: Cache }).default;
+  const cacheKey = new Request(url, { method: "GET" });
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+  const res = await build();
+  if (res.status === 200) {
+    const buf = await res.clone().arrayBuffer();
+    const headers = new Headers(res.headers);
+    headers.set("Cache-Control", `public, max-age=${ttlSeconds}`);
+    ctx.waitUntil(cache.put(cacheKey, new Response(buf, { status: 200, headers })));
+  }
+  return res;
+}
 
-app.get("/api/local-events", async (c) => {
-  const query = localEventQuerySchema.parse(queryObject(c.req.raw.url));
-  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const result = await queryLocalEvents(c.env.DB, {
-    lat: query.lat,
-    lng: query.lng,
-    radiusMeters:
-      query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
-    cursor: query.cursor,
-    limit: query.limit,
-    status: "approved",
-  });
-  return c.json({ ...result, generatedAt: new Date().toISOString() });
-});
+app.get("/api/festivals", async (c) =>
+  edgeCached(c.req.url, c.executionCtx, 60, async () => {
+    const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
+    if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+    const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
+      radiusMeters:
+        query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+      ongoingOnly: query.ongoingOnly,
+      upcomingWithinDays: query.upcomingWithinDays ?? 30,
+    });
+    return c.json({
+      items: items.map((item) => ({
+        ...item,
+        description: item.description ?? item.subtitle ?? null,
+      })),
+      generatedAt: new Date().toISOString(),
+    });
+  }),
+);
+
+app.get("/api/local-events", async (c) =>
+  edgeCached(c.req.url, c.executionCtx, 60, async () => {
+    const query = localEventQuerySchema.parse(queryObject(c.req.raw.url));
+    if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+    const result = await queryLocalEvents(c.env.DB, {
+      lat: query.lat,
+      lng: query.lng,
+      radiusMeters:
+        query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
+      cursor: query.cursor,
+      limit: query.limit,
+      status: "approved",
+    });
+    return c.json({ ...result, generatedAt: new Date().toISOString() });
+  }),
+);
 
 app.get("/api/local-events/:id", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
@@ -542,7 +570,8 @@ app.patch("/api/admin/local-events/:id", async (c) => {
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
 
-app.get("/api/map/items", async (c) => {
+app.get("/api/map/items", async (c) =>
+  edgeCached(c.req.url, c.executionCtx, 60, async () => {
   const query = mapItemsQuerySchema.parse(queryObject(c.req.raw.url));
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const radiusMeters =
@@ -594,7 +623,8 @@ app.get("/api/map/items", async (c) => {
     ),
     generatedAt: new Date().toISOString(),
   });
-});
+  }),
+);
 
 app.get("/discover/clusters", async (c) => {
   const query = discoveryClusterSchema.parse(queryObject(c.req.raw.url));

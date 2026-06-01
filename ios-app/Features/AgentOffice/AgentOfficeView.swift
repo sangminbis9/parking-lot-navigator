@@ -371,8 +371,7 @@ private struct ActivityRow: View {
     }
 
     private func shortTime(_ ts: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: ts) {
+        if let date = AgentOfficeDateParser.formatter.date(from: ts) {
             return date.formatted(date: .omitted, time: .shortened)
         }
         return ts
