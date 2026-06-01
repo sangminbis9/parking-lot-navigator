@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>이벤트다 · App Icon Final Candidates</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --text: #f4f5f7;
+    --muted: #9aa0aa;
+    --accent: #ffd24a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Pretendard', 'Apple SD Gothic Neo', BlinkMacSystemFont, system-ui, sans-serif;
+    padding: 40px;
+    min-height: 100vh;
+  }
+  header {
+    max-width: 1100px;
+    margin: 0 auto 32px;
+  }
+  h1 {
+    font-size: 36px;
+    margin: 0 0 8px;
+    letter-spacing: -0.5px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .grid {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+  }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border: 1px solid #252932;
+  }
+  .icon-wrap {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 22%;
+    overflow: hidden;
+    background: #2a2e38;
+    display: block;
+  }
+  .icon-wrap img {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .meta { display: flex; flex-direction: column; gap: 4px; }
+  .meta .num {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+  .meta .title { font-size: 18px; font-weight: 700; }
+  .meta .desc { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+  .home-row {
+    max-width: 1100px;
+    margin: 48px auto 0;
+    background: linear-gradient(180deg, #0a0a14 0%, #1a1a28 100%);
+    padding: 32px;
+    border-radius: 24px;
+  }
+  .home-row h2 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .home-grid { display: flex; gap: 24px; }
+  .home-grid .item { text-align: center; }
+  .home-grid .home-icon {
+    width: 100px;
+    height: 100px;
+    border-radius: 22%;
+    overflow: hidden;
+    background: #2a2e38;
+  }
+  .home-grid .home-icon img { width: 100%; height: 100%; display: block; }
+  .home-grid .name { color: white; font-size: 12px; margin-top: 8px; font-weight: 500; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>이벤트다 · App Icon — Final Candidates</h1>
+    <div class="sub">
+      최종 후보 2종. 둘 중 하나를 골라 주시면 그 컨셉으로 폴리싱 후 1024×1024 PNG로 export → AppIcon.appiconset에 적용합니다.
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <div class="icon-wrap"><img src="07-wordmark-eventda.svg" alt="07"></div>
+      <div class="meta">
+        <div class="num">07</div>
+        <div class="title">핑크-레드 + 화이트</div>
+        <div class="desc">선명한 핑크-레드 그라데이션 + 화이트 워드마크. 강하고 직관적, 홈스크린에서 눈에 잘 띔.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="icon-wrap"><img src="08-wordmark-purple.svg" alt="08"></div>
+      <div class="meta">
+        <div class="num">08</div>
+        <div class="title">퍼플 + 화이트 + 컨페티</div>
+        <div class="desc">보라 그라데이션 + 화이트, 사방 컨페티로 축제·이벤트 분위기 강화.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-row">
+    <h2>iOS 홈스크린 사이즈 미리보기 (100×100)</h2>
+    <div class="home-grid">
+      <div class="item"><div class="home-icon"><img src="07-wordmark-eventda.svg"></div><div class="name">이벤트다</div></div>
+      <div class="item"><div class="home-icon"><img src="08-wordmark-purple.svg"></div><div class="name">이벤트다</div></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -596,6 +596,7 @@ function mapFestivalRow(
   lng: number,
 ): Festival {
   const raw = parseRawPayload(row.raw_payload);
+  const parsedTags = parseJsonArray<string>(row.tags_json);
   return {
     id: row.source_item_id,
     title: row.title,
@@ -614,8 +615,8 @@ function mapFestivalRow(
     imageUrl: row.image_url,
     imageUrls: parseJsonArray<string>(row.images_json),
     tags:
-      parseJsonArray<string>(row.tags_json).length > 0
-        ? parseJsonArray<string>(row.tags_json)
+      parsedTags.length > 0
+        ? parsedTags
         : (row.category_text ?? "public-culture")
             .split(",")
             .map((tag) => tag.trim())

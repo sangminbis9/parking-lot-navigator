@@ -265,61 +265,6 @@ final class MapHomeViewModel: ObservableObject {
         max(viewport.radiusMeters, localDiscoverRadiusMeters)
     }
 
-    private func selectDiscoverDestination(
-        id: String,
-        name: String,
-        address: String,
-        lat: Double,
-        lng: Double,
-        source: String,
-        rawCategory: String?,
-        normalizedCategory: String
-    ) async {
-        exploreMode = .parking
-        selectedDiscoverParkingContext = true
-        let destination = Destination(
-            id: id,
-            name: name,
-            address: address,
-            lat: lat,
-            lng: lng,
-            source: source,
-            rawCategory: rawCategory,
-            normalizedCategory: normalizedCategory
-        )
-        selectedDestination = destination
-        destinations = []
-        selectedParkingLot = nil
-        parkingLots = []
-        await loadParkingLots(for: destination)
-    }
-
-    func focusParkingAroundFestival(_ festival: Festival) async {
-        await selectDiscoverDestination(
-            id: "festival-\(festival.id)",
-            name: festival.title,
-            address: festival.address,
-            lat: festival.lat,
-            lng: festival.lng,
-            source: festival.source,
-            rawCategory: festival.tags.joined(separator: ","),
-            normalizedCategory: "festival"
-        )
-    }
-
-    func focusParkingAroundEvent(_ event: FreeEvent) async {
-        await selectDiscoverDestination(
-            id: "event-\(event.id)",
-            name: event.title,
-            address: event.address,
-            lat: event.lat,
-            lng: event.lng,
-            source: event.source,
-            rawCategory: event.eventType,
-            normalizedCategory: "event"
-        )
-    }
-
     private func recordSelection(_ destination: Destination, queryText: String) {
         let deviceId = AnonymousDeviceStore.deviceID()
         Task {

@@ -266,15 +266,26 @@ struct CalendarTabView: View {
         return viewModel.festivals(on: day)
     }
 
+    private static let monthTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy\u{B144} M\u{C6D4}"
+        return formatter
+    }()
+
+    private static let agendaDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M\u{C6D4} d\u{C77C} (E)"
+        return formatter
+    }()
+
     private var agendaTitle: String {
         let count = agendaFestivals.count
         if weekendMode {
             return "\u{C774}\u{BC88} \u{C8FC}\u{B9D0} \u{00B7} \(count)\u{AC1C} \u{CD95}\u{C81C}" // 이번 주말 · N개 축제
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "M\u{C6D4} d\u{C77C} (E)"
-        let dayText = selectedDay.map { formatter.string(from: $0) } ?? ""
+        let dayText = selectedDay.map { Self.agendaDayFormatter.string(from: $0) } ?? ""
         return "\(dayText) \u{00B7} \(count)\u{AC1C} \u{CD95}\u{C81C}" // M월 d일 (E) · N개 축제
     }
 
@@ -296,10 +307,7 @@ struct CalendarTabView: View {
     }
 
     private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "yyyy\u{B144} M\u{C6D4}"
-        return formatter.string(from: monthAnchor)
+        Self.monthTitleFormatter.string(from: monthAnchor)
     }
 
     private var filterDescription: String {

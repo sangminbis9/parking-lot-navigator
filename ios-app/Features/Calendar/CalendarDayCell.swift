@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let calendarDayCellCalendar = Calendar(identifier: .gregorian)
+
 struct CalendarDayCell: View {
     let date: Date
     let isCurrentMonth: Bool
@@ -8,15 +10,15 @@ struct CalendarDayCell: View {
     var isSaved: Bool = false
 
     private var dayNumber: Int {
-        Calendar(identifier: .gregorian).component(.day, from: date)
+        calendarDayCellCalendar.component(.day, from: date)
     }
 
     private var weekdayIndex: Int {
-        Calendar(identifier: .gregorian).component(.weekday, from: date) // 1 = Sunday
+        calendarDayCellCalendar.component(.weekday, from: date) // 1 = Sunday
     }
 
     private var isToday: Bool {
-        Calendar(identifier: .gregorian).isDateInToday(date)
+        calendarDayCellCalendar.isDateInToday(date)
     }
 
     var body: some View {
