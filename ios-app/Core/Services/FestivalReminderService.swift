@@ -60,7 +60,7 @@ final class FestivalReminderService: ObservableObject {
         content.sound = .default
 
         var components = Calendar(identifier: .gregorian)
-        components.timeZone = TimeZone(identifier: "Asia/Seoul")
+        components.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
         let dateComponents = components.dateComponents([.year, .month, .day, .hour, .minute], from: triggerDate)
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
         let request = UNNotificationRequest(identifier: Self.identifier(for: festival.id), content: content, trigger: trigger)

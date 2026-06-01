@@ -1598,3 +1598,49 @@ private struct StandaloneParkingMapCard: View {
     }
 }
 
+struct DiscoverThumbnail: View {
+    let imageUrl: String?
+    let tint: Color
+    let symbol: String
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let imageUrl, let url = URL(string: imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        placeholder
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .background(
+            LinearGradient(
+                colors: [tint.opacity(0.15), FestivalDesign.cream.opacity(0.45)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var placeholder: some View {
+        Image(systemName: symbol)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
