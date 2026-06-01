@@ -5,6 +5,7 @@ struct CalendarDayCell: View {
     let isCurrentMonth: Bool
     let isSelected: Bool
     let festivals: [Festival]
+    var isSaved: Bool = false
 
     private var dayNumber: Int {
         Calendar(identifier: .gregorian).component(.day, from: date)
@@ -45,6 +46,14 @@ struct CalendarDayCell: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isToday ? FestivalDesign.coral.opacity(0.7) : Color.clear, lineWidth: 1.2)
         )
+        .overlay(alignment: .topTrailing) {
+            if isSaved {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(isSelected ? FestivalDesign.surface : FestivalDesign.lantern)
+                    .padding(3)
+            }
+        }
         .opacity(isCurrentMonth ? 1 : 0.32)
     }
 
@@ -72,6 +81,9 @@ struct CalendarDayCell: View {
     }
 
     private func dotColor(for festival: Festival) -> Color {
+        if let category = festival.primaryCategory {
+            return category.tint
+        }
         switch festival.status {
         case .ongoing:
             return FestivalDesign.teal

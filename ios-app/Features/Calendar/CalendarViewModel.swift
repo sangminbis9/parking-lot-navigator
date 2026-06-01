@@ -60,6 +60,13 @@ final class CalendarViewModel: ObservableObject {
         return festivalsByDay[key] ?? []
     }
 
+    /// 기준 날짜(포함) 이후 축제가 있는 가장 가까운 날. 빈 날에서 다음 일정으로 점프할 때 사용.
+    func nextFestivalDay(onOrAfter day: Date) -> Date? {
+        let fromKey = Self.dayFormatter.string(from: day)
+        guard let key = festivalsByDay.keys.filter({ $0 >= fromKey }).min() else { return nil }
+        return Self.dayFormatter.date(from: key)
+    }
+
     private func bucket(festivals: [Festival]) -> [String: [Festival]] {
         var result: [String: [Festival]] = [:]
         for festival in festivals {

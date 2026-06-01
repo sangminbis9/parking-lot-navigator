@@ -4,7 +4,9 @@ struct CalendarMonthView: View {
     let monthAnchor: Date
     let festivalsByDay: [String: [Festival]]
     let selectedDay: Date?
+    let savedDayKeys: Set<String>
     let onSelectDay: (Date) -> Void
+    let onSwipeMonth: (Int) -> Void
 
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -28,11 +30,13 @@ struct CalendarMonthView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
                 ForEach(daysInGrid, id: \.id) { entry in
                     if let date = entry.date {
+                        let dayKey = CalendarViewModel.dayFormatter.string(from: date)
                         CalendarDayCell(
                             date: date,
                             isCurrentMonth: entry.isInMonth,
                             isSelected: isSameDay(date, selectedDay),
-                            festivals: festivalsByDay[CalendarViewModel.dayFormatter.string(from: date)] ?? []
+                            festivals: festivalsByDay[dayKey] ?? [],
+                            isSaved: savedDayKeys.contains(dayKey)
                         )
                         .onTapGesture {
                             onSelectDay(date)
@@ -44,6 +48,18 @@ struct CalendarMonthView: View {
             }
             .padding(.horizontal, 8)
         }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    if value.translation.width < 0 {
+                        onSwipeMonth(1)
+                    } else if value.translation.width > 0 {
+                        onSwipeMonth(-1)
+                    }
+                }
+        )
     }
 
     private struct DayEntry: Identifiable {
