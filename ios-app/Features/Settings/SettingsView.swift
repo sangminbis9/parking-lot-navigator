@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var themeStore: FestivalThemeStore
+    @EnvironmentObject private var notificationPrefs: NotificationPreferencesModel
     @State private var providers: [ProviderHealth] = []
     @State private var errorMessage: String?
 
@@ -11,6 +12,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 settingsHeader
                 themeSettingsCard
+                notificationSettingsCard
                 merchantCard
                 appSettingsCard
                 dataSourceCard
@@ -80,6 +82,51 @@ struct SettingsView: View {
                         .font(.headline)
                         .foregroundStyle(FestivalDesign.navy)
                     Text("\(themeStore.selectedTheme.displayName) · 앱 색상 팔레트 설정")
+                        .font(.subheadline)
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
+            .padding(14)
+            .festivalCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var notificationSummary: String {
+        let festivalOn = notificationPrefs.prefs.festival.discoveryEnabled
+        let eventOn = notificationPrefs.prefs.localEvent.discoveryEnabled
+        if festivalOn && eventOn { return "축제·로컬 이벤트 알림 켜짐" }
+        if festivalOn { return "축제 알림 켜짐" }
+        if eventOn { return "로컬 이벤트 알림 켜짐" }
+        return "발견 알림 꺼짐 · 탭하여 설정"
+    }
+
+    private var notificationSettingsCard: some View {
+        NavigationLink {
+            NotificationSettingsView()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(FestivalDesign.cream)
+                    Image(systemName: "bell.badge.fill")
+                        .font(.headline)
+                        .foregroundStyle(FestivalDesign.coral)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("알림")
+                        .font(.headline)
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(notificationSummary)
                         .font(.subheadline)
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)

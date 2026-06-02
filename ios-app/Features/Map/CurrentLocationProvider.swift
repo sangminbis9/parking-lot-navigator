@@ -38,6 +38,9 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         coordinate = locations.last?.coordinate
+        if let coordinate = locations.last?.coordinate {
+            LastKnownLocationStore.save(lat: coordinate.latitude, lng: coordinate.longitude, appGroupID: AppConfiguration.current.appGroupID)
+        }
         manager.stopUpdatingLocation()
         isUpdatingLocation = false
     }

@@ -9,7 +9,7 @@ struct CalendarTabView: View {
     @StateObject private var viewModel: CalendarViewModel
     @StateObject private var filterModel: FestivalFilterModel
     @StateObject private var favoritesStore: FestivalFavoritesStore
-    @StateObject private var reminderService = FestivalReminderService()
+    @StateObject private var reminderService = FestivalReminderService(appGroupID: AppConfiguration.current.appGroupID)
     @StateObject private var locationProvider = CurrentLocationProvider()
 
     @State private var monthAnchor: Date = Date()
