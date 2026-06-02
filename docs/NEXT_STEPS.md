@@ -1,14 +1,14 @@
 # Next Steps
 
-Last updated: 2026-05-26
+Last updated: 2026-06-02
 
 ## Current Status
 
 - Branch: `master`
-- Latest pushed commit: `c65a3a5 Derive widget bundle id from app bundle id to fix embed validation`
+- Latest pushed commit: `3e64067 Add customizable festival/local-event notification settings with background discovery`
 - Product direction is festival/event discovery first, with parking/realtime as support for visiting selected destinations, plus a paid local-event registration funnel for merchants.
 - Realtime parking and festival/event layers use overlap-collapsed pins.
-- iOS build number is `1.0 (134)` in `ios-app/project.yml`. Latest Codemagic 빌드가 성공한 시점의 번호이며, 다음 TestFlight 업로드 시 `≥ 135` 로 bump 한다.
+- iOS build number is `1.0 (164)` in `ios-app/project.yml`. 알림 설정 기능 변경분이라 다음 Codemagic 빌드로 컴파일 확인이 필요하다(이 번호의 빌드는 아직 미검증). 성공 빌드 확인 후 다음 TestFlight 업로드 시 `≥ 165` 로 bump 한다.
 - Calendar tab (새 6번째 탭) + Medium WidgetKit widget (`UpcomingFestivalsWidget`) + 공유 필터(지역/반경/태그/상태)는 v1 로 출시되어 Codemagic 빌드까지 통과한 상태.
 - Worker discovery and parking reads use D1/user endpoints with cron/admin sync for external provider calls.
 - CI `deploy-worker` uses `wrangler versions secret put` to stage multiple secrets safely before the final `wrangler deploy`.
@@ -40,6 +40,14 @@ Validation done:
 - `pnpm -C worker-backend typecheck` passes.
 - Production smoke: `/api/local-events` returns approved-only non-sponsored rows; pending_payment row exists in D1 and is correctly hidden.
 - D1 row counts (2026-05-19 snapshot): approved/non-sponsored 23, pending/non-sponsored 4, pending_payment/sponsored 1.
+
+## Recently Shipped (Calendar revamp + Notifications)
+
+- 캘린더 탭 개편(`c587edd`): 하단 인라인 어젠다, 카테고리 색 dot, 스와이프 월 이동, 저장(별표) + 시작 전 로컬 알림 리마인더, "오늘 / 이번 주말" 프리셋.
+- 프로젝트 정밀 최적화(`cea4fca`): Worker GET 60s 엣지 캐시 + tags 단일 파싱, iOS 포매터/Calendar hoist, MapHomeView 데드코드 제거.
+- 커스터마이즈 알림 설정(`3e64067`): 설정 → "알림" 전용 화면에서 축제/로컬 이벤트를 각각 분리해 발견 알림(카테고리/지역/반경)·리마인더 시점/시각·방해 금지 시간·하루 한도를 설정. `BGAppRefreshTask` 로 백그라운드 신규 발견 → 로컬 알림. APNs 미사용(best-effort).
+  - 검증 필요: Codemagic 빌드(164)로 컴파일 확인. 실기기에서 설정 진입·권한 프롬프트·값 영속·`BGTaskScheduler` 시뮬레이션(`_simulateLaunchForTaskWithIdentifier:`) 확인.
+  - 60s 엣지 캐시 활성화를 위한 Worker deploy 가 아직 남아 있으면 함께 처리한다(WSL 토큰 만료로 미배포 상태일 수 있음).
 
 ## After Toss Production Keys Arrive
 
@@ -81,6 +89,13 @@ Blocking external item: 사업자등록증 발급 (in progress, applied 2026-05-
 - 위젯 deep link 진입 (이벤트 상세 직진입).
 - 필터 프리셋 저장 / 즐겨찾기 지역 기억.
 - 백엔드 `/api/festivals` 에 `from`/`to` 날짜 범위 파라미터 추가 (현재는 90일 윈도우로 충분).
+
+### Notifications v1.1 후보
+
+- 서버 푸시(APNs): Apple Push 키 + Worker 구독 엔드포인트/D1 디바이스 토큰 테이블 + cron 매칭 발송. BGTask best-effort 한계(지연/누락)를 보완해 즉시성 확보.
+- 알림 탭 → 해당 축제/이벤트 상세 딥링크 라우팅 (`UNUserNotificationCenterDelegate`).
+- 로컬 이벤트 저장(별표) + 마감 임박 리마인더 (현재 로컬 이벤트는 저장 기능 없이 카테고리/지역 기반 발견 알림만).
+- 개별 항목 알림(현재는 도메인별 요약 1건)과 알림 그룹/요약 정책 정교화.
 
 ### Merchant funnel hardening
 
