@@ -1,59 +1,59 @@
-# Decisions
+# 결정 사항
 
-Last updated: 2026-05-26
+마지막 업데이트: 2026-05-26
 
-## Product Direction
+## 제품 방향
 
-- Shift the main app experience from realtime parking to local festival/event discovery.
-- Keep parking recommendations as a practical support flow after the user chooses a destination, event, or festival.
-- Preserve the existing parking flow as a secondary path: destination search -> nearby parking recommendations.
-- Continue expanding from Seoul-centered parking recommendations to nationwide parking recommendations.
-- Build the app as a destination companion: choose an event/festival/place, then compare nearby parking without leaving the map context.
-- Keep realtime parking as a map toggle, off by default.
-- Use Cloudflare Worker as production backend.
-- Use Cloudflare D1 for normalized parking data and realtime cache.
-- Keep map discovery controls simple: one user-facing toggle named "이벤트" for all event/festival providers.
-- Keep provider/source distinctions in data and filters, not as separate map toggles.
+- 메인 앱 경험을 실시간 주차에서 로컬 축제/이벤트 발견 중심으로 전환한다.
+- 주차 추천은 사용자가 목적지·이벤트·축제를 고른 뒤의 실용적 보조 흐름으로 유지한다.
+- 기존 주차 흐름은 보조 경로로 보존한다: 목적지 검색 → 주변 주차장 추천.
+- 서울 중심 주차 추천에서 전국 주차 추천으로 계속 확장한다.
+- 앱을 목적지 동반자로 만든다: 이벤트/축제/장소를 고른 뒤 지도 맥락을 벗어나지 않고 주변 주차를 비교한다.
+- 실시간 주차는 지도 토글로 유지하며 기본값은 꺼짐이다.
+- 프로덕션 백엔드로 Cloudflare Worker 를 사용한다.
+- 정규화된 주차 데이터와 실시간 캐시는 Cloudflare D1 을 사용한다.
+- 지도 발견 컨트롤은 단순하게 유지한다: 모든 이벤트/축제 provider 를 묶는 사용자 노출 토글 하나, 이름은 "이벤트".
+- provider/source 구분은 별도 지도 토글이 아니라 데이터와 필터 안에서 유지한다.
 
-## Brand/UI Direction
+## 브랜드/UI 방향
 
-- Use the ticket-shaped festival mascot as the recognizable app character.
-- Prefer mascot-led empty states, guide/tip surfaces, detail placeholders, and friendly discovery moments.
-- The mascot can change pose/form by context, but should remain clearly the same character.
-- Figma is the design reference source, but implementation should keep SwiftUI structure maintainable and app-native.
-- The visual tone should feel like a festival/event guide rather than a parking utility.
+- 티켓 모양의 축제 마스코트를 앱의 대표 캐릭터로 사용한다.
+- 마스코트 주도의 빈 상태, 안내/팁 화면, 상세 플레이스홀더, 친근한 발견 순간을 선호한다.
+- 마스코트는 맥락에 따라 포즈/형태를 바꿀 수 있지만, 같은 캐릭터임이 분명히 유지되어야 한다.
+- Figma 는 디자인 참조 소스이지만, 구현은 SwiftUI 구조를 유지보수 가능하고 앱 네이티브하게 유지해야 한다.
+- 시각적 톤은 주차 유틸리티보다 축제/이벤트 가이드처럼 느껴져야 한다.
 
-## Data Strategy
+## 데이터 전략
 
-- Avoid calling large public APIs directly for every app request.
-- Store nationwide static parking data in D1.
-- Use D1 for fast nearby search.
-- Merge regional realtime providers on top of static/provider candidates.
-- Use Kakao Local `category_group_code=PK6` as a fallback for broad candidate coverage.
-- Expand event/festival discovery nationally through official APIs before scraping.
-- Current discovery sources include TourAPI, national culture festival standard data, Seoul Open Data, Culture Portal, KOPIS, KCISA id 428, and KCISA id 196.
-- Rows without usable coordinates can be geocoded by Kakao Local during sync where configured; unresolved rows are omitted from map pin display.
-- Several official list APIs have sparse descriptions. Prefer showing upstream descriptions when present and a generated structured summary when absent; add detail API enrichment later.
+- 모든 앱 요청마다 대형 공공 API 를 직접 호출하지 않는다.
+- 전국 정적 주차 데이터를 D1 에 저장한다.
+- 빠른 주변 검색에 D1 을 사용한다.
+- 지역별 실시간 provider 를 정적/provider 후보 위에 병합한다.
+- 폭넓은 후보 커버리지를 위한 fallback 으로 Kakao Local `category_group_code=PK6` 을 사용한다.
+- 스크래핑에 앞서 공식 API 를 통해 이벤트/축제 발견을 전국으로 확장한다.
+- 현재 발견 소스에는 TourAPI, 전국 문화축제 표준 데이터, 서울 열린데이터, 문화포털, KOPIS, KCISA id 428, KCISA id 196 이 포함된다.
+- 사용 가능한 좌표가 없는 행은 설정된 곳에서 sync 중 Kakao Local 로 지오코딩할 수 있다. 해결되지 않은 행은 지도 핀 표시에서 제외된다.
+- 여러 공식 목록 API 는 설명이 빈약하다. 가능하면 상위(upstream) 설명을 그대로 보여주고, 없을 때는 생성된 구조화 요약을 보여준다. 상세 API enrichment 는 추후 추가한다.
 
-## Realtime Strategy
+## 실시간 전략
 
-- Use D1 realtime cache for map-wide realtime display.
-- Sync cadence target: about 5 minutes.
-- Realtime toggle should show nationwide data, not only the current viewport.
-- Realtime parking pins render from the loaded realtime lot list instead of numeric server/app clusters.
-- Realtime parking pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
-- Event detail parking recommendations should merge normal nearby parking and realtime parking before ranking.
-- If realtime parking fails, nearby parking recommendations should continue to render.
+- 지도 전역 실시간 표시에 D1 실시간 캐시를 사용한다.
+- sync 주기 목표: 약 5분.
+- 실시간 토글은 현재 viewport 만이 아니라 전국 데이터를 보여줘야 한다.
+- 실시간 주차 핀은 숫자형 서버/앱 클러스터 대신 로드된 실시간 주차장 목록에서 렌더링한다.
+- 화면상 겹치는 실시간 주차 핀은 축소 상태에서 대표 핀 하나로 합쳐지고, 확대하면 작은 오프셋으로 분리된다.
+- 이벤트 상세의 주차 추천은 랭킹 전에 일반 주변 주차와 실시간 주차를 병합해야 한다.
+- 실시간 주차가 실패해도 주변 주차 추천은 계속 렌더링되어야 한다.
 
-## Seoul Realtime Details
+## 서울 실시간 세부
 
-- `GetParkingInfo` has realtime counts but no coordinates.
-- `GetParkInfo` has metadata and some coordinates.
-- Seoul realtime provider merges `GetParkingInfo` and `GetParkInfo` by `PKLT_CD`.
-- For remaining Seoul realtime rows without coordinates, Kakao address search may be used in large-radius realtime sync contexts.
-- Hangang `TbParkingInfoView` has coordinates and capacity, but does not provide realtime available spaces.
+- `GetParkingInfo` 는 실시간 대수는 있지만 좌표가 없다.
+- `GetParkInfo` 는 메타데이터와 일부 좌표가 있다.
+- 서울 실시간 provider 는 `PKLT_CD` 로 `GetParkingInfo` 와 `GetParkInfo` 를 병합한다.
+- 좌표가 없는 나머지 서울 실시간 행은 대반경 실시간 sync 맥락에서 Kakao 주소 검색을 사용할 수 있다.
+- 한강 `TbParkingInfoView` 는 좌표와 수용 대수가 있지만 실시간 가용 면수는 제공하지 않는다.
 
-## Calendar & Widget Decisions
+## 캘린더 & 위젯 결정
 
 - 캘린더는 메인 탭 바의 **새 탭**으로 추가. 탭 순서는 `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정`.
 - 위젯은 **Medium 사이즈만** 지원 (다가오는 축제 3개 카드). Small/Large 는 v1.1 이후 후보.
@@ -62,28 +62,28 @@ Last updated: 2026-05-26
 - EventKit 연동(iOS 기본 캘린더 추가 버튼)은 v1 에서 제외하고 v1.1 로 deferred. NSCalendarsUsageDescription, PrivacyInfo 갱신을 함께 다룰 때 도입.
 - 위젯 extension Bundle ID 는 `$(APP_BUNDLE_ID).UpcomingFestivalsWidget` 으로 project.yml inline 파생. Codemagic xcconfig 에 별도 변수를 추가하지 않는다 (변수 누락으로 ValidateEmbeddedBinary 가 실패한 사고를 회피).
 
-## iOS Map Layer Decisions
+## iOS 지도 레이어 결정
 
-- Realtime parking toggle label should be simple and not duplicate the parking symbol.
-- Festival/event providers are displayed through one map toggle named "이벤트".
-- Festival/event layers do not use numeric clustering. They render actual pins.
-- Festival/event pins hide title labels until deep zoom.
-- Festival/event pins that overlap in screen space collapse to one representative pin while zoomed out, then separate with small offsets after zooming in.
-- The map bottom panel uses tabs for parking recommendations and a unified discovery list.
-- The discovery list uses already-loaded local data for search and sorting; default sort is distance, with date and name options.
-- Discovery list distance sorting/display uses the user's current location when available, falling back to provider distance only before location is known.
-- Map pin taps and event tab row taps should open the same event detail + nearby parking recommendation screen.
-- The event tab should load discovery data only when selected, unload after leaving, and render rows in pages of 20 to avoid SwiftUI list/diff stalls.
+- 실시간 주차 토글 라벨은 단순해야 하며 주차 심볼을 중복하지 않아야 한다.
+- 축제/이벤트 provider 는 "이벤트" 라는 지도 토글 하나로 표시한다.
+- 축제/이벤트 레이어는 숫자형 클러스터링을 사용하지 않는다. 실제 핀을 렌더링한다.
+- 축제/이벤트 핀은 깊게 확대하기 전까지 제목 라벨을 숨긴다.
+- 화면상 겹치는 축제/이벤트 핀은 축소 상태에서 대표 핀 하나로 합쳐지고, 확대하면 작은 오프셋으로 분리된다.
+- 지도 하단 패널은 주차 추천과 통합 발견 목록에 탭을 사용한다.
+- 발견 목록은 이미 로드된 로컬 데이터로 검색·정렬한다. 기본 정렬은 거리이며 날짜·이름 옵션이 있다.
+- 발견 목록의 거리 정렬/표시는 가능할 때 사용자의 현재 위치를 사용하고, 위치를 알기 전에만 provider 거리로 폴백한다.
+- 지도 핀 탭과 이벤트 탭 행 탭은 동일한 이벤트 상세 + 주변 주차 추천 화면을 연다.
+- 이벤트 탭은 선택될 때만 발견 데이터를 로드하고, 떠난 뒤 언로드하며, SwiftUI 목록/diff 정체를 피하기 위해 20개 단위 페이지로 행을 렌더링한다.
 
-## Build/Release
+## 빌드/릴리스
 
-- When committing changes, bump iOS build number by one.
-- Before TestFlight upload, confirm Codemagic's publish log shows a `Version code` higher than the previous App Store Connect build.
-- A publish attempt on 2026-05-09 failed because the uploaded IPA still had build number 79 while App Store Connect already had build 79.
-- A later publish attempt failed because the uploaded IPA still had build number 95 while App Store Connect already had build 95.
-- Current build metadata target is `1.0 (134)` (Codemagic 빌드 성공 시점 기준).
-- Codemagic/TestFlight is used for iOS build validation. Codemagic 코드 사이닝은 **수동(Manual)** 방식이며, 새 app extension target 추가 시 별도 distribution provisioning profile 을 발급해 업로드해야 한다.
+- 변경을 커밋할 때 iOS 빌드 번호를 1 올린다.
+- TestFlight 업로드 전에 Codemagic 의 publish 로그가 이전 App Store Connect 빌드보다 높은 `Version code` 를 보이는지 확인한다.
+- 2026-05-09 의 publish 시도는 App Store Connect 에 이미 빌드 79 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 79 여서 실패했다.
+- 이후 publish 시도는 App Store Connect 에 이미 빌드 95 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 95 여서 실패했다.
+- 현재 빌드 메타데이터 목표는 `1.0 (134)` (Codemagic 빌드 성공 시점 기준).
+- iOS 빌드 검증에는 Codemagic/TestFlight 를 사용한다. Codemagic 코드 사이닝은 **수동(Manual)** 방식이며, 새 app extension target 추가 시 별도 distribution provisioning profile 을 발급해 업로드해야 한다.
 - 신규 app extension 추가 시 체크리스트: ① Apple Developer Portal 에서 App ID 등록 ② App Groups capability 의 **Configure 버튼**으로 기존 그룹에 명시 매핑 (체크박스만 켜는 것은 부족) ③ 동일 distribution certificate 로 provisioning profile 발급 후 Codemagic Provisioning profiles 슬롯에 업로드 ④ project.yml 에서 Bundle ID 를 `$(APP_BUNDLE_ID).XXX` 형태로 inline 파생.
-- GitHub Actions also runs an iOS simulator validation workflow on pushes and pull requests.
-- Backend tests run in CI/Codemagic.
-- Local Windows environment may not have `node`, `npm`, `swift`, or `xcodebuild`.
+- GitHub Actions 도 push 와 pull request 에서 iOS 시뮬레이터 검증 workflow 를 실행한다.
+- 백엔드 테스트는 CI/Codemagic 에서 실행된다.
+- 로컬 Windows 환경에는 `node`, `npm`, `swift`, `xcodebuild` 가 없을 수 있다.
