@@ -4,6 +4,8 @@
 - [ ] App Group entitlement 확정
 - [ ] Associated Domains 필요 여부 확정
 - [ ] 위치 권한 사용 목적 문구 작성
+- [ ] 알림 권한 동작 확인 (발견 알림 첫 활성화 시에만 요청, 로컬 알림 전용·APNs 미사용)
+- [ ] 백그라운드 모드 확인 (`UIBackgroundModes=[fetch]`, `BGTaskSchedulerPermittedIdentifiers=[com.parkingnav.discovery.refresh]` — 심사 시 백그라운드 사용 사유 설명 가능하도록)
 - [ ] 공유 확장 설명 작성
 - [ ] 외부 데이터 출처와 실시간 정보 한계 고지
 - [ ] Kakao Mobility SDK 상용 사용 권한 확인

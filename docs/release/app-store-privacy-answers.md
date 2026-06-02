@@ -94,12 +94,18 @@
 
 ## 4. 데이터 보호 권고 사항
 
-- 위치 데이터는 단말 외부에 영구 저장하지 않음 (요청 단위 1회 사용 후 폐기)
+- 위치 데이터는 단말 외부 서버에 영구 저장하지 않음. 단, 백그라운드 발견 알림을 위해 **마지막 좌표 1건을 단말 내 App Group `UserDefaults` 에 캐시**한다(외부 전송은 API 조회 파라미터로 1회 사용 후 폐기, 기존과 동일).
 - 모든 외부 통신은 HTTPS (App Transport Security 기본값 유지)
 - 머천트 세션 쿠키는 HttpOnly Secure SameSite=Lax
 - R2 업로드 머천트 이미지는 EXIF 제거 적용 예정 (P2)
 
 ---
+
+## 4-1. 알림 / 백그라운드 (참고)
+
+- 알림은 전부 **로컬 알림**(`UNUserNotificationCenter`)이며 **APNs/서버 푸시를 사용하지 않는다** → 디바이스 푸시 토큰을 수집/전송하지 않음. App Privacy 의 별도 데이터 카테고리에 해당하지 않는다.
+- `UIBackgroundModes=[fetch]` + `BGAppRefreshTask`(`com.parkingnav.discovery.refresh`)로 백그라운드에서 기존 공개 API(`/api/festivals`, `/api/local-events`)만 조회한다. 새로 수집/저장하는 개인정보는 없으며, 사용하는 위치는 이미 §2(Precise Location)에 고지한 항목이다.
+- 알림 권한은 사용자가 설정에서 발견 알림을 처음 켤 때만 요청한다(거부 시 배너로 iOS 설정 링크 안내).
 
 ## 5. 입력 시 주의
 

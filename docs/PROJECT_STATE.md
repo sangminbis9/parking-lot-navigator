@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-05-26
+Last updated: 2026-06-02
 
 ## Project
 
@@ -168,7 +168,7 @@ Major discovery providers:
   - `FestivalMascotConcept`
 - SwiftUI map/discovery UI now uses the mascot and a warmer festival palette across search, list, empty states, detail imagery, and helper/tip surfaces.
 - Figma redesign reference: `Festival-Event-App-Redesign`.
-- Tab bar order is `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정` (six tabs). The 캘린더 tab is a themed monthly grid; tapping a day opens a sheet listing that day's festivals.
+- Tab bar order is `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정` (six tabs). The 캘린더 tab is a themed monthly grid with an inline agenda below it: selecting a day lists that day's festivals in place (no detail sheet), with per-festival 즐겨찾기 저장(별표) and 시작 전 로컬 알림(종) 토글, swipe-to-change-month, and "오늘 / 이번 주말" presets.
 - Shared filter axes used by the calendar and widget: 지역(시·도), 거리 반경(10/20/50km/무제한), 태그/장르, 진행 상태(진행중/예정). Filter state is persisted in App Group `UserDefaults` and consumed by both surfaces.
 
 ## Calendar + Widget Architecture
@@ -182,9 +182,26 @@ Major discovery providers:
 - iOS deployment target 16.0 호환을 위해 `containerBackground(_:for: .widget)` 은 iOS 17+ 분기로 처리.
 - EventKit 연동(축제 → 기본 캘린더 추가)은 v1.1 로 deferred. v1 에서는 NSCalendarsUsageDescription 미도입.
 
+## Notifications (로컬 알림, 서버 푸시 없음)
+
+- 알림은 전부 **로컬 알림**(`UNUserNotificationCenter`)이다. APNs/서버 푸시 인프라는 없다.
+- 설정 → "알림"(`NotificationSettingsView`)에서 축제/로컬 이벤트 알림을 **각각 별도 섹션**으로 커스터마이즈한다: 마스터 on/off, 카테고리 다중 선택, 지역(시·도)/반경(10/20/50km), 축제 한정 "저장한 축제 리마인더" 시점(당일/1·3·7일 전)·시각, 공통 방해 금지 시간·하루 최대 알림 수.
+- 설정값은 App Group `UserDefaults` 키 `notificationPreferences` 에 저장한다(`NotificationPreferencesStore` / `NotificationPreferencesModel`).
+- **새 항목 발견 알림**: `DiscoveryNotificationService` 가 `BGAppRefreshTask`(id `com.parkingnav.discovery.refresh`)로 깨어나 관심 조건에 맞는 좌표/반경으로 `/api/festivals`·`/api/local-events` 를 조회 → 카테고리 필터 → 이미 알린 ID 집합과 비교해 신규만 추출 → 방해 금지 시간/일일 한도를 적용해 **도메인별 요약 1건**의 로컬 알림을 보낸다. 알린 ID·일일 카운터·마지막 좌표(`lastKnownLocation.*`)도 App Group 에 저장한다.
+- 조회 중심 좌표: 선택 지역이 있으면 시·도 centroid 평균, 없으면 `CurrentLocationProvider` 가 저장한 마지막 좌표, 그래도 없으면 서울시청.
+- 백그라운드 실행 시점은 iOS 가 결정하므로 best-effort(지연/누락 가능). 발견 알림이 모두 꺼지면 `BGTaskScheduler` 예약을 취소한다.
+- 저장한 축제 리마인더(`FestivalReminderService`)는 위 설정의 on/off·시점·시각을 따른다(이전엔 시작 전날 오전 9시 고정).
+- iOS Info.plist 추가: `UIBackgroundModes=[fetch]`, `BGTaskSchedulerPermittedIdentifiers=[com.parkingnav.discovery.refresh]`. 위치는 when-in-use 만 사용(백그라운드 위치·Always 권한 불필요).
+
 ## Recent Useful Commits
 
-Latest (2026-05-26):
+Latest (2026-06-02):
+
+- `3e64067 Add customizable festival/local-event notification settings with background discovery`
+- `c587edd Revamp calendar tab: inline agenda, category-colored dots, swipe nav, save & local-notification reminders`
+- `cea4fca Optimize: 60s edge cache + single tags parse (Worker), hoist formatters/Calendar (iOS), remove dead discover-list code`
+
+Earlier (2026-05-26):
 
 - `c65a3a5 Derive widget bundle id from app bundle id to fix embed validation`
 - `f3465f2 Add festival calendar tab, Medium widget, and shared filter store`
