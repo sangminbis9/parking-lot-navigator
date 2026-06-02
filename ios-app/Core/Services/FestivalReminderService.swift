@@ -8,6 +8,11 @@ final class FestivalReminderService: ObservableObject {
     @Published private(set) var scheduledIds: Set<String> = []
 
     private let center = UNUserNotificationCenter.current()
+    private let appGroupID: String
+
+    init(appGroupID: String) {
+        self.appGroupID = appGroupID
+    }
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -49,8 +54,11 @@ final class FestivalReminderService: ObservableObject {
     /// 축제 시작 전날 오전 9시 알림 예약. 권한이 없으면 false, 예약 시점이 과거면 무시.
     @discardableResult
     func schedule(for festival: SavedFestival) async -> Bool {
+        let prefs = NotificationPreferencesStore.load(appGroupID: appGroupID).festival
+        guard prefs.savedReminderEnabled else { return false }
         guard await requestAuthorizationIfNeeded() else { return false }
-        guard let triggerDate = reminderDate(for: festival.startDate), triggerDate > Date() else {
+        guard let triggerDate = reminderDate(for: festival.startDate, leadDays: prefs.leadDays, hour: prefs.reminderHour),
+              triggerDate > Date() else {
             return false
         }
 
@@ -79,12 +87,11 @@ final class FestivalReminderService: ObservableObject {
         scheduledIds.remove(id)
     }
 
-    /// 시작일 전날 오전 9시. 시작일이 내일이면 결과가 미래이므로 그대로 예약된다.
-    private func reminderDate(for startDate: String) -> Date? {
+    /// 시작일에서 `leadDays`일 전, 지정한 `hour`시(Asia/Seoul). leadDays=0이면 당일.
+    private func reminderDate(for startDate: String, leadDays: Int, hour: Int) -> Date? {
         guard let start = Self.dayFormatter.date(from: startDate) else { return nil }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
-        guard let dayBefore = calendar.date(byAdding: .day, value: -1, to: start) else { return nil }
-        return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: dayBefore)
+        let calendar = Calendar.seoul
+        guard let targetDay = calendar.date(byAdding: .day, value: -leadDays, to: start) else { return nil }
+        return calendar.date(bySettingHour: hour, minute: 0, second: 0, of: targetDay)
     }
 }

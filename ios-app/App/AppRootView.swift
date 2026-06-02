@@ -49,6 +49,7 @@ struct AppRootView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var themeStore: FestivalThemeStore
     @EnvironmentObject private var festivalSync: FestivalSyncService
+    @EnvironmentObject private var discoveryService: DiscoveryNotificationService
     @StateObject private var router = Router()
     @StateObject private var tabRouter = AppTabRouter()
     @Environment(\.scenePhase) private var scenePhase
@@ -90,6 +91,7 @@ struct AppRootView: View {
         }
         .task {
             festivalSync.sync(coordinate: nil)
+            discoveryService.scheduleNextRefresh()
         }
         .onChange(of: themeStore.selectedTheme) { _ in
             Self.configureTabBarAppearance()
@@ -100,6 +102,8 @@ struct AppRootView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 festivalSync.syncIfStale(coordinate: nil)
+            } else if phase == .background {
+                discoveryService.scheduleNextRefresh()
             }
         }
     }
