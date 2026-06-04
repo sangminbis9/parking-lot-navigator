@@ -7,10 +7,14 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
     case mint
     case sky
     case lavender
+    case crayon
 
     static let storageKey = "festivalTheme"
 
     var id: String { rawValue }
+
+    /// 손그림(크레파스) 룩을 쓰는 테마인지. 형태/테두리/그림자/질감 분기에 사용한다.
+    var isHandDrawn: Bool { self == .crayon }
 
     var displayName: String {
         switch self {
@@ -19,6 +23,7 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
         case .mint: return "민트 그린"
         case .sky: return "스카이 블루"
         case .lavender: return "라벤더"
+        case .crayon: return "크레파스"
         }
     }
 
@@ -29,6 +34,7 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
         case .mint: return "산뜻한 야외 이벤트 톤"
         case .sky: return "맑은 가족 나들이 톤"
         case .lavender: return "감성 문화행사 톤"
+        case .crayon: return "손그림 스티커북 감성"
         }
     }
 
@@ -109,6 +115,22 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
                 parkingBlue: Color(red: 0.25, green: 0.39, blue: 0.74),
                 parkingSoft: Color(red: 0.91, green: 0.94, blue: 1.0)
             )
+        case .crayon:
+            // 손그림 스티커북 톤: 따뜻한 아이보리/크림 + 오렌지/잎색/코랄 포인트, 차콜브라운 본문.
+            return FestivalThemePalette(
+                background: Color(red: 1.0, green: 0.973, blue: 0.925),   // #FFF8EC
+                surface: Color(red: 1.0, green: 0.992, blue: 0.969),      // #FFFDF7
+                cream: Color(red: 1.0, green: 0.957, blue: 0.855),        // #FFF4DA
+                creamDeep: Color(red: 0.910, green: 0.788, blue: 0.627),  // #E8C9A0
+                coral: Color(red: 0.969, green: 0.608, blue: 0.322),      // #F79B52 (primary)
+                lantern: Color(red: 0.949, green: 0.706, blue: 0.255),    // #F2B441
+                teal: Color(red: 0.369, green: 0.604, blue: 0.227),       // #5E9A3A (leaf)
+                tealSoft: Color(red: 0.918, green: 0.965, blue: 0.847),   // #EAF6D8
+                navy: Color(red: 0.184, green: 0.165, blue: 0.141),       // #2F2A24 (charcoal brown)
+                secondaryText: Color(red: 0.478, green: 0.416, blue: 0.357), // #7A6A5B
+                parkingBlue: Color(red: 0.306, green: 0.518, blue: 0.769),   // #4E84C4
+                parkingSoft: Color(red: 0.890, green: 0.933, blue: 0.969)    // #E3EEF7
+            )
         }
     }
 
@@ -168,8 +190,13 @@ enum FestivalDesign {
     static var parkingBlue: Color { palette.parkingBlue }
     static var parkingSoft: Color { palette.parkingSoft }
 
-    static let cardRadius: CGFloat = 8
-    static let controlRadius: CGFloat = 8
+    static var isHandDrawn: Bool { FestivalTheme.current.isHandDrawn }
+
+    static var cardRadius: CGFloat { isHandDrawn ? 18 : 8 }
+    static var controlRadius: CGFloat { isHandDrawn ? 14 : 8 }
+
+    /// 손그림 테마의 거친 차콜 외곽선 색. (비손그림 테마에서는 사용하지 않음)
+    static var outline: Color { Color(red: 0.176, green: 0.161, blue: 0.145) } // #2D2925
 
     static var uiCream: UIColor { UIColor(cream) }
     static var uiCoral: UIColor { UIColor(coral) }
@@ -209,14 +236,36 @@ struct FestivalCardBackground: ViewModifier {
     var isSelected = false
 
     func body(content: Content) -> some View {
-        content
+        if FestivalDesign.isHandDrawn {
+            handDrawnBody(content)
+        } else {
+            content
+                .background(isSelected ? FestivalDesign.tealSoft : FestivalDesign.surface)
+                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                        .stroke(isSelected ? FestivalDesign.teal : FestivalDesign.creamDeep.opacity(0.42), lineWidth: isSelected ? 1.5 : 1)
+                )
+                .shadow(color: FestivalDesign.navy.opacity(isSelected ? 0.11 : 0.06), radius: isSelected ? 10 : 7, y: 3)
+        }
+    }
+
+    // 손그림 카드: 거친 차콜 외곽선 + 블러 없는 오프셋 스티커 그림자.
+    private func handDrawnBody(_ content: Content) -> some View {
+        let shape = RoughRoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+        return content
             .background(isSelected ? FestivalDesign.tealSoft : FestivalDesign.surface)
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                    .stroke(isSelected ? FestivalDesign.teal : FestivalDesign.creamDeep.opacity(0.42), lineWidth: isSelected ? 1.5 : 1)
+            .clipShape(shape)
+            .background(
+                shape
+                    .fill(FestivalDesign.outline.opacity(0.82))
+                    .offset(x: 2.5, y: 4)
             )
-            .shadow(color: FestivalDesign.navy.opacity(isSelected ? 0.11 : 0.06), radius: isSelected ? 10 : 7, y: 3)
+            .overlay(
+                shape
+                    .stroke(isSelected ? FestivalDesign.coral : FestivalDesign.outline,
+                            lineWidth: isSelected ? 2.6 : 2)
+            )
     }
 }
 

@@ -84,6 +84,7 @@ struct AppRootView: View {
             FestivalTabBar(selection: $tabRouter.selectedTab)
                 .ignoresSafeArea(.container, edges: .bottom)
         }
+        .paperGrainOverlay()
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
         .onAppear {
