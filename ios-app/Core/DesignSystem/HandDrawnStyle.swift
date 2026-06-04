@@ -19,6 +19,12 @@ struct RoughRoundedRectangle: InsettableShape {
     var seed: Double = 17
     private var insetAmount: CGFloat = 0
 
+    init(cornerRadius: CGFloat, roughness: CGFloat = 1.8, seed: Double = 17) {
+        self.cornerRadius = cornerRadius
+        self.roughness = roughness
+        self.seed = seed
+    }
+
     func inset(by amount: CGFloat) -> some InsettableShape {
         var copy = self
         copy.insetAmount += amount
