@@ -14,39 +14,66 @@ function htmlEscape(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// 앱 기본 테마(FestivalTheme.honey) 팔레트를 웹용 hex로 옮긴 토큰.
+// ios-app/Core/DesignSystem/FestivalDesign.swift 의 honey palette와 동기화한다.
 const baseStyle = `
+  :root {
+    --festival-bg: #FFFCF5;        /* background */
+    --festival-surface: #FFFFFF;   /* surface */
+    --festival-cream: #FFF2C7;     /* cream */
+    --festival-cream-deep: #EBDBBD;/* creamDeep */
+    --festival-coral: #FF8066;     /* coral (primary) */
+    --festival-lantern: #FFC738;   /* lantern */
+    --festival-teal: #2BA6A3;      /* teal */
+    --festival-teal-soft: #DEF5F0; /* tealSoft */
+    --festival-navy: #263645;      /* navy (본문) */
+    --festival-muted: #5C636B;     /* secondaryText */
+  }
   *, *::before, *::after { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif; margin: 0; background: #f7f8fa; color: #1f2329; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif; margin: 0; background: var(--festival-bg); color: var(--festival-navy); }
   .container { max-width: 480px; margin: 0 auto; padding: 24px 20px 80px; }
-  h1 { font-size: 22px; margin: 0 0 8px; }
-  h2 { font-size: 18px; margin: 0 0 8px; }
-  p { line-height: 1.55; margin: 0 0 12px; color: #4b5563; }
-  label { display: block; font-size: 13px; font-weight: 600; color: #1f2329; margin: 14px 0 6px; }
-  input, textarea, select { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #d1d5db; background: #fff; font-size: 15px; color: #1f2329; font-family: inherit; }
+  h1 { font-size: 22px; margin: 0 0 8px; color: var(--festival-navy); }
+  h2 { font-size: 18px; margin: 0 0 8px; color: var(--festival-navy); }
+  p { line-height: 1.55; margin: 0 0 12px; color: var(--festival-muted); }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--festival-navy); margin: 14px 0 6px; }
+  input, textarea, select { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--festival-cream-deep); background: var(--festival-surface); font-size: 15px; color: var(--festival-navy); font-family: inherit; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--festival-coral); outline-offset: -1px; border-color: var(--festival-coral); }
   textarea { resize: vertical; min-height: 96px; }
-  .field-help { font-size: 12px; color: #6b7280; margin-top: 4px; }
-  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 14px; }
+  .field-help { font-size: 12px; color: var(--festival-muted); margin-top: 4px; }
+  .card { background: var(--festival-surface); border: 1px solid var(--festival-cream-deep); border-radius: 12px; padding: 20px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(38, 54, 69, 0.07); }
   .btn { display: block; width: 100%; padding: 14px 16px; border-radius: 10px; border: 0; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none; margin-top: 16px; box-sizing: border-box; }
   .btn-naver { background: #03c75a; color: #fff; }
   .btn-kakao { background: #fee500; color: #1f2329; }
-  .btn-primary { background: #2563eb; color: #fff; }
-  .btn-link { background: #1f2329; color: #fff; }
-  .btn-secondary { background: #f3f4f6; color: #1f2329; }
-  .muted { color: #6b7280; font-size: 13px; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: #fff; border-bottom: 1px solid #e5e7eb; }
-  .topbar h2 { font-size: 16px; margin: 0; }
+  .btn-primary { background: var(--festival-coral); color: #fff; }
+  .btn-link { background: var(--festival-navy); color: #fff; }
+  .btn-secondary { background: var(--festival-cream); color: var(--festival-navy); }
+  .muted { color: var(--festival-muted); font-size: 13px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: var(--festival-surface); border-bottom: 1px solid var(--festival-cream-deep); }
+  .topbar h2 { font-size: 16px; margin: 0; color: var(--festival-coral); }
   form.inline { display: inline; }
-  form.inline button { border: 0; background: none; color: #6b7280; font-size: 13px; cursor: pointer; padding: 0; }
+  form.inline button { border: 0; background: none; color: var(--festival-muted); font-size: 13px; cursor: pointer; padding: 0; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
-  .badge-approved { background: #d1fae5; color: #047857; }
-  .badge-pending { background: #fef3c7; color: #92400e; }
-  .badge-expired { background: #e5e7eb; color: #4b5563; }
+  .badge-approved { background: var(--festival-teal-soft); color: #14706E; }
+  .badge-pending { background: var(--festival-cream); color: #8A6116; }
+  .badge-expired { background: #F1ECE0; color: var(--festival-muted); }
   .badge-rejected { background: #fee2e2; color: #b91c1c; }
-  .event-row { padding: 14px 0; border-top: 1px solid #f3f4f6; }
+  .event-row { padding: 14px 0; border-top: 1px solid #F5EFDF; }
   .event-row:first-child { border-top: 0; }
   .event-title { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
-  .event-meta { font-size: 12px; color: #6b7280; }
+  .event-meta { font-size: 12px; color: var(--festival-muted); }
   .error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .consent-box { display: flex; gap: 10px; align-items: flex-start; background: var(--festival-cream); border: 1px solid var(--festival-cream-deep); border-radius: 10px; padding: 12px 14px; margin-top: 18px; }
+  .consent-box input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--festival-coral); flex: none; }
+  .consent-box label { display: inline; margin: 0; font-size: 13px; line-height: 1.6; }
+  .legal-links { margin-top: 6px; font-size: 13px; color: var(--festival-muted); }
+  .legal-link { border: 0; background: none; padding: 0; color: var(--festival-teal); text-decoration: underline; cursor: pointer; font-size: inherit; font-family: inherit; }
+  .legal-note { margin-top: 14px; text-align: center; }
+  dialog.legal-modal { border: 0; border-radius: 14px; padding: 0; width: min(680px, 92vw); height: min(80vh, 720px); box-shadow: 0 12px 40px rgba(38, 54, 69, 0.25); }
+  dialog.legal-modal::backdrop { background: rgba(38, 54, 69, 0.45); }
+  .legal-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--festival-cream-deep); background: var(--festival-bg); }
+  .legal-modal-head strong { color: var(--festival-navy); font-size: 15px; }
+  .legal-modal-close { border: 0; background: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--festival-muted); padding: 4px 8px; }
+  .legal-modal iframe { display: block; width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
 `;
 
 function layout(title: string, body: string): string {
@@ -62,6 +89,50 @@ function layout(title: string, body: string): string {
 ${body}
 </body>
 </html>`;
+}
+
+// 약관/정책 문서를 페이지 이동 없이 팝업(dialog + iframe)으로 보여준다.
+// 문서 본문은 /legal 라우트(worker-backend/src/legal/routes.ts)를 그대로 재사용한다.
+function legalLink(id: "terms" | "privacy" | "refund", label: string): string {
+  return `<button type="button" class="legal-link" data-legal="${id}">${htmlEscape(label)}</button>`;
+}
+
+function legalModal(): string {
+  return `
+<dialog class="legal-modal" id="legal-modal">
+  <div class="legal-modal-head">
+    <strong id="legal-modal-title"></strong>
+    <button type="button" class="legal-modal-close" id="legal-modal-close" aria-label="닫기">&#10005;</button>
+  </div>
+  <iframe id="legal-modal-frame" title="약관 문서"></iframe>
+</dialog>
+<script>
+(function() {
+  var docs = {
+    terms: ['이용약관', '/legal/terms'],
+    privacy: ['개인정보처리방침', '/legal/privacy'],
+    refund: ['환불·취소 정책', '/legal/refund-policy']
+  };
+  var modal = document.getElementById('legal-modal');
+  var title = document.getElementById('legal-modal-title');
+  var frame = document.getElementById('legal-modal-frame');
+  Array.prototype.forEach.call(document.querySelectorAll('.legal-link'), function(btn) {
+    btn.addEventListener('click', function() {
+      var doc = docs[btn.getAttribute('data-legal')];
+      if (!doc) return;
+      if (typeof modal.showModal !== 'function') {
+        window.open(doc[1], '_blank');
+        return;
+      }
+      title.textContent = doc[0];
+      if (frame.getAttribute('src') !== doc[1]) frame.setAttribute('src', doc[1]);
+      modal.showModal();
+    });
+  });
+  document.getElementById('legal-modal-close').addEventListener('click', function() { modal.close(); });
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.close(); });
+})();
+</script>`;
 }
 
 export function renderLanding(opts: {
@@ -97,8 +168,10 @@ export function renderLanding(opts: {
     <h1>내 가게 이벤트 홍보</h1>
     ${pricingLine}
     ${buttons.join("\n    ")}
+    <p class="muted legal-note">시작하기를 누르면 ${legalLink("terms", "이용약관")} 및 ${legalLink("privacy", "개인정보처리방침")}에 동의하는 것으로 간주됩니다.</p>
   </div>
 </div>
+${legalModal()}
 `,
   );
 }
@@ -257,6 +330,14 @@ export function renderEventForm(opts: {
       <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
       <div class="field-help">JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다. 선택 사항.</div>
 
+      <div class="consent-box">
+        <input type="checkbox" id="agree-legal" name="agree_legal" required />
+        <div>
+          <label for="agree-legal">(필수) 아래 약관과 정책을 모두 확인했으며 이에 동의합니다.</label>
+          <div class="legal-links">${legalLink("terms", "이용약관")} · ${legalLink("privacy", "개인정보처리방침")} · ${legalLink("refund", "환불·취소 정책")}</div>
+        </div>
+      </div>
+
       <button class="btn btn-primary" type="submit">${htmlEscape(submitLabel)}</button>
     </form>
     <p class="muted" style="margin-top: 12px;">${footerNote}</p>
@@ -322,6 +403,7 @@ export function renderEventForm(opts: {
   });
 })();
 </script>
+${legalModal()}
 `,
   );
 }
