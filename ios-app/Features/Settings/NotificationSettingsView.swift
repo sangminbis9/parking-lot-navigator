@@ -225,11 +225,6 @@ struct NotificationSettingsView: View {
                     .foregroundStyle(FestivalDesign.navy)
             }
 
-            Divider()
-
-            Stepper(value: intBinding(\.maxNotificationsPerDay), in: 1...20) {
-                toggleLabel("하루 최대 알림 수", "\(model.prefs.maxNotificationsPerDay)건")
-            }
         }
         .padding(14)
         .festivalCard()

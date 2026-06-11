@@ -40,3 +40,43 @@ jobs:
       - name: Apply local events schema
         working-directory: worker-backend
         run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0004_local_events.sql
+
+      - name: Apply local events naver place source schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0005_local_event_naver_place_source.sql
+
+      - name: Apply local events naver blog source schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0006_local_event_naver_blog_source.sql
+
+      - name: Apply merchant signup schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0007_merchant_signup.sql
+
+      - name: Apply local events pending payment schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0008_local_event_pending_payment.sql
+
+      - name: Apply agent activity schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0009_agent_activity.sql
+
+      - name: Apply geocode cache schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0010_geocode_cache.sql
+
+      - name: Apply discovery tagging schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0011_discovery_tagging.sql
+
+      - name: Apply local events tagging schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0012_local_events_tagging.sql
+
+      - name: Apply discovery images schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0013_discovery_images.sql
+
+      - name: Apply local event short description schema
+        working-directory: worker-backend
+        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0014_local_event_short_description.sql
