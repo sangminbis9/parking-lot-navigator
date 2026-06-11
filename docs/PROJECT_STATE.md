@@ -1,6 +1,6 @@
 # 프로젝트 상태
 
-마지막 업데이트: 2026-06-02
+마지막 업데이트: 2026-06-11
 
 ## 프로젝트
 
@@ -147,6 +147,8 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
   - 프로덕션 키는 "API 개별 연동 키" 가 아니라 **결제위젯 연동 키** 계열(`live_gck_...` / `live_gsk_...`)이어야 한다.
 - 결제 흐름: 폼 제출 시 `pending_payment` 행 생성 → `/merchant/event/:id/pay` 에서 Toss 위젯 렌더링 → 성공 콜백이 `/merchant/event/:id/payment/success` 에 도달, orderId/금액 검증, `confirmTossPayment` 호출, 이후 `markEventApproved` 가 상태를 `approved` 로 전환.
 - iOS link-out: 설정 화면에 "내 가게 이벤트 등록" 카드가 있어 Safari 로 `/merchant` 를 연다 (App Store 가이드라인 3.1.3(b) B2B 예외로 Apple IAP 회피 — 인앱 구매 프롬프트 없음).
+- 머천트 웹 페이지 스타일: 앱 기본 테마(허니 옐로)의 `FestivalDesign` 팔레트를 CSS 변수(`--festival-*`)로 옮겨 적용 (`worker-backend/src/merchant/pages.ts` 의 `baseStyle`). 네이버/카카오 로그인 버튼은 각 브랜드 색 유지.
+- 약관/정책 동의: 랜딩에는 "시작하면 동의 간주" 안내, 이벤트 등록 폼에는 **필수 동의 체크박스**(`agree_legal`, 클라이언트 `required` + `POST /merchant/event/new` 서버 검증). 이용약관/개인정보처리방침/환불·취소 정책은 기존 `/legal/*` 라우트를 네이티브 `<dialog>` + iframe 팝업으로 재사용한다 (`showModal` 미지원 브라우저는 새 탭 폴백).
 
 ## Cloudflare 리소스
 
@@ -168,6 +170,8 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
   - `FestivalMascotConcept`
 - SwiftUI 지도/발견 UI 는 이제 검색, 목록, 빈 상태, 상세 이미지, 도우미/팁 화면 전반에서 마스코트와 더 따뜻한 축제 팔레트를 사용한다.
 - Figma 리디자인 참조: `Festival-Event-App-Redesign`.
+- 테마 시스템: 설정 → 테마에서 6종 선택 — 허니 옐로(기본)/피치 코랄/민트 그린/스카이 블루/라벤더/**크레파스**. `FestivalTheme`(enum, UserDefaults `festivalTheme` 영속) + `FestivalThemePalette`(12색) + `FestivalDesign`(static 토큰 accessor) 구조이며, 컴포넌트는 색/radius/도형/폰트를 모두 토큰으로 참조한다.
+- 크레파스 테마는 `isHandDrawn` 분기로 **룩 전체**가 손그림으로 바뀐다: ① 번들된 개구쟁이체(Gaegu, OFL — `Resources/Fonts/`, `Font.festival`/`FestivalDesign.uiFont` 토큰 264곳) ② 카드 왁스 이중 스트로크 + 오프셋 스티커 그림자(`FestivalCardBackground`) ③ 컨트롤/칩 손그림 외곽선(`FestivalDesign.controlShape`/`chipShape`, `RoughRoundedRectangle`) ④ 종이 알갱이 + 사선 크레용 해칭 질감(`PaperTexture`, 루트 `paperGrainOverlay()`) ⑤ 네비/탭바·지도 마커 라벨 손글씨. 다른 테마는 비분기 경로라 시각적 영향이 없다. 핵심 파일: `Core/DesignSystem/FestivalDesign.swift`, `Core/DesignSystem/HandDrawnStyle.swift`.
 - 탭 바 순서는 `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정` (6개 탭). 캘린더 탭은 테마가 적용된 월간 그리드이며 아래에 인라인 어젠다가 있다: 날짜를 선택하면 그날의 축제를 그 자리에서 목록으로 보여주고(상세 시트 없음), 축제별 즐겨찾기 저장(별표)과 시작 전 로컬 알림(종) 토글, 스와이프 월 이동, "오늘 / 이번 주말" 프리셋을 제공한다.
 - 캘린더와 위젯이 사용하는 공유 필터 축: 지역(시·도), 거리 반경(10/20/50km/무제한), 태그/장르, 진행 상태(진행중/예정). 필터 상태는 App Group `UserDefaults` 에 영속되어 두 화면이 함께 사용한다.
 
@@ -195,7 +199,15 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 ## 최근 유용한 커밋
 
-최신 (2026-06-02):
+최신 (2026-06-11):
+
+- `dd87743 Make crayon theme fully hand-drawn: Gaegu handwriting font, rough controls and chips, wax double-stroke cards, crayon paper hatching`
+- `f55a2a4 Style merchant pages with app honey theme and add legal consent popups`
+- `d5e67c8 Remove max daily notification cap and update D1 migration workflow`
+- `f47daa3 Fix build: add explicit RoughRoundedRectangle init`
+- `5da1818 Add hand-drawn 크레파스(Crayon) theme to theme picker`
+
+이전 (2026-06-02):
 
 - `3e64067 Add customizable festival/local-event notification settings with background discovery`
 - `c587edd Revamp calendar tab: inline agenda, category-colored dots, swipe nav, save & local-notification reminders`

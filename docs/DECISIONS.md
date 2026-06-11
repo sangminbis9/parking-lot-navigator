@@ -1,6 +1,6 @@
 # 결정 사항
 
-마지막 업데이트: 2026-05-26
+마지막 업데이트: 2026-06-11
 
 ## 제품 방향
 
@@ -22,6 +22,21 @@
 - 마스코트는 맥락에 따라 포즈/형태를 바꿀 수 있지만, 같은 캐릭터임이 분명히 유지되어야 한다.
 - Figma 는 디자인 참조 소스이지만, 구현은 SwiftUI 구조를 유지보수 가능하고 앱 네이티브하게 유지해야 한다.
 - 시각적 톤은 주차 유틸리티보다 축제/이벤트 가이드처럼 느껴져야 한다.
+
+## 테마 시스템 결정
+
+- 테마는 디자인 토큰 방식으로만 추가한다: 새 테마 = `FestivalTheme` case + 12색 palette. UI 구조/기능 흐름은 바꾸지 않고, 기존 테마의 코드 경로는 그대로 둔다(회귀 0 원칙).
+- 크레파스(손그림) 테마는 색뿐 아니라 형태/테두리/그림자/질감/폰트까지 `isHandDrawn` 분기 토큰으로 바꾼다: `cardRadius`/`controlRadius`(computed), `controlShape`/`chipShape`(AnyShape), `Font.festival`/`uiFont`, `FestivalCardBackground` 분기, `paperGrainOverlay`.
+- 손그림 외곽선은 시드 고정 결정적(deterministic) jitter 로 그린다(`RoughRoundedRectangle`) — 프레임마다 떨리지 않고 스크롤 재그리기에도 동일해야 한다. 질감은 외부 이미지 없이 `Canvas` 코드로만 만든다.
+- 크레파스 손글씨 폰트는 개구쟁이체(Gaegu, SIL OFL)를 `Resources/Fonts/` 에 번들한다(Regular/Bold + OFL.txt). 폰트는 크레파스 테마에서만 활성화되고 다른 테마는 시스템 폰트를 유지한다. 가독성 보정으로 +1pt bump.
+- 지도 클러스터 숫자(7~9pt)처럼 가독성이 임계인 초소형 텍스트는 크레파스에서도 시스템 폰트를 유지한다.
+
+## 머천트 웹 페이지 결정
+
+- 머천트 웹 페이지(`/merchant`)는 사용자별 앱 테마를 알 수 없으므로 **앱 기본 테마(허니 옐로) 팔레트로 고정**한다. iOS `FestivalDesign` honey palette 와 CSS 변수(`--festival-*`)를 1:1 로 동기화한다.
+- 네이버/카카오 로그인 버튼은 테마와 무관하게 각 브랜드 가이드 색을 유지한다.
+- 약관/정책 문서는 본문을 중복 작성하지 않고 기존 `/legal/*` 라우트를 `<dialog>` + iframe 팝업으로 재사용한다.
+- 이벤트 등록은 이용약관/개인정보처리방침/환불·취소 정책에 대한 필수 동의를 받는다 — 클라이언트 `required` 체크박스 + 서버 측 `agree_legal` 검증(400) 이중화.
 
 ## 데이터 전략
 
@@ -81,7 +96,7 @@
 - TestFlight 업로드 전에 Codemagic 의 publish 로그가 이전 App Store Connect 빌드보다 높은 `Version code` 를 보이는지 확인한다.
 - 2026-05-09 의 publish 시도는 App Store Connect 에 이미 빌드 79 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 79 여서 실패했다.
 - 이후 publish 시도는 App Store Connect 에 이미 빌드 95 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 95 여서 실패했다.
-- 현재 빌드 메타데이터 목표는 `1.0 (134)` (Codemagic 빌드 성공 시점 기준).
+- 현재 빌드 메타데이터 목표는 `1.0 (167)` (2026-06-11 크레파스 손그림 강화 반영, Codemagic 검증 대기).
 - iOS 빌드 검증에는 Codemagic/TestFlight 를 사용한다. Codemagic 코드 사이닝은 **수동(Manual)** 방식이며, 새 app extension target 추가 시 별도 distribution provisioning profile 을 발급해 업로드해야 한다.
 - 신규 app extension 추가 시 체크리스트: ① Apple Developer Portal 에서 App ID 등록 ② App Groups capability 의 **Configure 버튼**으로 기존 그룹에 명시 매핑 (체크박스만 켜는 것은 부족) ③ 동일 distribution certificate 로 provisioning profile 발급 후 Codemagic Provisioning profiles 슬롯에 업로드 ④ project.yml 에서 Bundle ID 를 `$(APP_BUNDLE_ID).XXX` 형태로 inline 파생.
 - GitHub Actions 도 push 와 pull request 에서 iOS 시뮬레이터 검증 workflow 를 실행한다.
