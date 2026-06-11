@@ -24,7 +24,7 @@ struct CalendarDayCell: View {
     var body: some View {
         VStack(spacing: 4) {
             Text("\(dayNumber)")
-                .font(.system(size: 13, weight: isToday ? .bold : .semibold))
+                .font(.festival(size: 13, weight: isToday ? .bold : .semibold))
                 .foregroundStyle(numberColor)
             HStack(spacing: 3) {
                 ForEach(0..<min(festivals.count, 3), id: \.self) { idx in
@@ -34,7 +34,7 @@ struct CalendarDayCell: View {
                 }
                 if festivals.count > 3 {
                     Text("+")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.festival(size: 9, weight: .bold))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -51,7 +51,7 @@ struct CalendarDayCell: View {
         .overlay(alignment: .topTrailing) {
             if isSaved {
                 Image(systemName: "star.fill")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.festival(size: 7, weight: .bold))
                     .foregroundStyle(isSelected ? FestivalDesign.surface : FestivalDesign.lantern)
                     .padding(3)
             }

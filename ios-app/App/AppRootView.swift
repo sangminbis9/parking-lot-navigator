@@ -163,11 +163,11 @@ struct AppRootView: View {
         let titleColor = UIColor(FestivalDesign.coral)
         appearance.titleTextAttributes = [
             .foregroundColor: titleColor,
-            .font: UIFont.systemFont(ofSize: 17, weight: .bold)
+            .font: FestivalDesign.uiFont(size: 17, weight: .bold)
         ]
         appearance.largeTitleTextAttributes = [
             .foregroundColor: titleColor,
-            .font: UIFont.systemFont(ofSize: 34, weight: .bold)
+            .font: FestivalDesign.uiFont(size: 34, weight: .bold)
         ]
 
         UINavigationBar.appearance().standardAppearance = appearance
@@ -200,8 +200,10 @@ private struct FestivalTabBar: View {
         )
         .overlay(
             Rectangle()
-                .fill(FestivalDesign.creamDeep.opacity(0.55))
-                .frame(height: 1),
+                .fill(FestivalDesign.isHandDrawn
+                    ? FestivalDesign.outline.opacity(0.75)
+                    : FestivalDesign.creamDeep.opacity(0.55))
+                .frame(height: FestivalDesign.isHandDrawn ? 2 : 1),
             alignment: .top
         )
         .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 8, y: -2)
@@ -215,15 +217,15 @@ private struct FestivalTabBar: View {
         } label: {
             VStack(spacing: 4) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
+                    FestivalDesign.controlShape
                         .fill(isSelected ? FestivalDesign.tealSoft : Color.clear)
                         .frame(width: 38, height: 25)
                     Image(systemName: tab.systemImage)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.festival(size: 15, weight: .bold))
                         .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
                 }
                 Text(tab.title)
-                    .font(.system(size: 10, weight: isSelected ? .bold : .semibold))
+                    .font(.festival(size: 10, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? FestivalDesign.navy : FestivalDesign.secondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
@@ -232,7 +234,7 @@ private struct FestivalTabBar: View {
             .padding(.top, 3)
             .padding(.bottom, 2)
             .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(FestivalDesign.controlShape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)

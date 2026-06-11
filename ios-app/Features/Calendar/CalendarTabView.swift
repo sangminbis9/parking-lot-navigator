@@ -96,7 +96,7 @@ struct CalendarTabView: View {
                 shiftMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.surface)
@@ -105,15 +105,15 @@ struct CalendarTabView: View {
             Spacer()
             VStack(spacing: 2) {
                 Text(monthTitle)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.festival(size: 17, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                 if viewModel.state.isLoading {
                     Text("\u{BD88}\u{B7EC}\u{C624}\u{B294} \u{C911}\u{2026}")
-                        .font(.system(size: 10))
+                        .font(.festival(size: 10))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
                     Text("\(viewModel.allFestivals.count)\u{AC1C} \u{CD95}\u{C81C} \u{00B7} \u{D544}\u{D130} \(filterDescription)")
-                        .font(.system(size: 10))
+                        .font(.festival(size: 10))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -122,7 +122,7 @@ struct CalendarTabView: View {
                 shiftMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.surface)
@@ -132,7 +132,7 @@ struct CalendarTabView: View {
                 presentingSaved = true
             } label: {
                 Image(systemName: favoritesStore.saved.isEmpty ? "bookmark" : "bookmark.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.lantern)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
@@ -142,7 +142,7 @@ struct CalendarTabView: View {
                 presentingFilter = true
             } label: {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.coral)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
@@ -182,12 +182,12 @@ struct CalendarTabView: View {
 
     private func presetLabel(_ text: String, filled: Bool = false) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.festival(size: 12, weight: .semibold))
             .foregroundStyle(filled ? FestivalDesign.surface : FestivalDesign.coral)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(filled ? FestivalDesign.coral : FestivalDesign.cream.opacity(0.55))
-            .clipShape(Capsule())
+            .clipShape(FestivalDesign.chipShape)
     }
 
     // MARK: - Agenda
@@ -196,13 +196,13 @@ struct CalendarTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text(agendaTitle)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .padding(.horizontal, 16)
 
                 if case .failed(let message) = viewModel.state {
                     Text(message)
-                        .font(.system(size: 12))
+                        .font(.festival(size: 12))
                         .foregroundStyle(FestivalDesign.coral)
                         .padding(.horizontal, 16)
                 } else if agendaFestivals.isEmpty {
@@ -228,22 +228,22 @@ struct CalendarTabView: View {
     private var emptyAgenda: some View {
         VStack(spacing: 10) {
             Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 30))
+                .font(.festival(size: 30))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text("\u{C774} \u{B0A0}\u{C740} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 이 날은 축제가 없어요
-                .font(.system(size: 14, weight: .semibold))
+                .font(.festival(size: 14, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             if viewModel.nextFestivalDay(onOrAfter: selectedDay ?? Date()) != nil {
                 Button {
                     jumpToNextUpcoming()
                 } label: {
                     Text("\u{B2E4}\u{C74C} \u{C608}\u{C815} \u{CD95}\u{C81C} \u{BCF4}\u{AE30}") // 다음 예정 축제 보기
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.festival(size: 13, weight: .bold))
                         .foregroundStyle(FestivalDesign.surface)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(FestivalDesign.coral)
-                        .clipShape(Capsule())
+                        .clipShape(FestivalDesign.chipShape)
                 }
             }
         }
@@ -425,27 +425,27 @@ private struct AgendaRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(festival.status.displayText)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.festival(size: 10, weight: .bold))
                         .foregroundStyle(statusColor)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(statusColor.opacity(0.12))
-                        .clipShape(Capsule())
+                        .clipShape(FestivalDesign.chipShape)
                     Text(festival.startDate == festival.endDate ? festival.startDate : "\(festival.startDate) ~ \(festival.endDate)")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.festival(size: 11, weight: .medium))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 Text(festival.title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.festival(size: 15, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .multilineTextAlignment(.leading)
                 if let venue = festival.venueName, !venue.isEmpty {
                     Text(venue)
-                        .font(.system(size: 12))
+                        .font(.festival(size: 12))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 Text(festival.address)
-                    .font(.system(size: 11))
+                    .font(.festival(size: 11))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
             }
@@ -453,14 +453,14 @@ private struct AgendaRow: View {
             VStack(spacing: 10) {
                 Button(action: onToggleSave) {
                     Image(systemName: isSaved ? "star.fill" : "star")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.festival(size: 16, weight: .semibold))
                         .foregroundStyle(isSaved ? FestivalDesign.lantern : FestivalDesign.secondaryText)
                 }
                 .buttonStyle(.plain)
                 if isSaved {
                     Button(action: onToggleReminder) {
                         Image(systemName: isReminderOn ? "bell.fill" : "bell")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.festival(size: 15, weight: .semibold))
                             .foregroundStyle(isReminderOn ? FestivalDesign.coral : FestivalDesign.secondaryText)
                     }
                     .buttonStyle(.plain)
@@ -494,13 +494,13 @@ private struct SavedFestivalsSheet: View {
                     if store.saved.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "bookmark")
-                                .font(.system(size: 32))
+                                .font(.festival(size: 32))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                             Text("\u{C800}\u{C7A5}\u{D55C} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 저장한 축제가 없어요
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.festival(size: 14, weight: .semibold))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                             Text("\u{CE98}\u{B9B0}\u{B354}\u{C5D0}\u{C11C} \u{BCC4}\u{D45C}\u{B97C} \u{D0ED}\u{D574} \u{CD95}\u{C81C}\u{B97C} \u{C800}\u{C7A5}\u{D574} \u{BCF4}\u{C138}\u{C694}.") // 캘린더에서 별표를 탭해 축제를 저장해 보세요.
-                                .font(.system(size: 12))
+                                .font(.festival(size: 12))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                                 .multilineTextAlignment(.center)
                         }
@@ -529,15 +529,15 @@ private struct SavedFestivalsSheet: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(saved.startDate == saved.endDate ? saved.startDate : "\(saved.startDate) ~ \(saved.endDate)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.festival(size: 11, weight: .medium))
                     .foregroundStyle(FestivalDesign.secondaryText)
                 Text(saved.title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.festival(size: 15, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .multilineTextAlignment(.leading)
                 if let venue = saved.venueName, !venue.isEmpty {
                     Text(venue)
-                        .font(.system(size: 12))
+                        .font(.festival(size: 12))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -547,7 +547,7 @@ private struct SavedFestivalsSheet: View {
                     onToggleReminder(saved)
                 } label: {
                     Image(systemName: reminderService.isScheduled(id: saved.id) ? "bell.fill" : "bell")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.festival(size: 15, weight: .semibold))
                         .foregroundStyle(reminderService.isScheduled(id: saved.id) ? FestivalDesign.coral : FestivalDesign.secondaryText)
                 }
                 .buttonStyle(.plain)
@@ -556,7 +556,7 @@ private struct SavedFestivalsSheet: View {
                     store.remove(id: saved.id)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.festival(size: 14, weight: .semibold))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 .buttonStyle(.plain)

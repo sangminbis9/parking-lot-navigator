@@ -384,7 +384,7 @@ struct MapHomeView: View {
     private var searchPanel: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.teal)
             TextField(
                 "",
@@ -410,7 +410,7 @@ struct MapHomeView: View {
                             .controlSize(.small)
                     } else {
                         Image(systemName: "arrow.right")
-                            .font(.subheadline.weight(.bold))
+                            .font(.festival(.subheadline, weight: .bold))
                     }
                 }
                 .frame(width: 34, height: 34)
@@ -426,9 +426,9 @@ struct MapHomeView: View {
         .padding(.trailing, 6)
         .padding(.vertical, 6)
         .background(FestivalDesign.surface)
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        .clipShape(FestivalDesign.controlShape)
         .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+            FestivalDesign.controlShape
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
     }
@@ -484,14 +484,14 @@ struct MapHomeView: View {
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.caption.weight(.bold))
+                .font(.festival(.caption, weight: .bold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
                 .foregroundStyle(isOn ? .white : FestivalDesign.secondaryText)
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                .clipShape(FestivalDesign.controlShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    FestivalDesign.controlShape
                         .stroke(isOn ? Color.white.opacity(0.25) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
                 )
                 .shadow(color: isOn ? tint.opacity(0.22) : .clear, radius: 7, y: 3)
@@ -518,10 +518,10 @@ struct MapHomeView: View {
                                 .padding(.top, 2)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(destination.name)
-                                    .font(.headline)
+                                    .font(.festival(.headline))
                                     .foregroundStyle(FestivalDesign.navy)
                                 Text(destination.address)
-                                    .font(.subheadline)
+                                    .font(.festival(.subheadline))
                                     .foregroundStyle(FestivalDesign.secondaryText)
                                     .lineLimit(2)
                             }
@@ -603,19 +603,19 @@ struct MapHomeView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         Text("주변 축제부터 둘러보세요")
-                            .font(.headline)
+                            .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
                         Text("\(discoverItemCount)")
-                            .font(.caption.weight(.bold))
+                            .font(.festival(.caption, weight: .bold))
                             .foregroundStyle(FestivalDesign.teal)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(FestivalDesign.tealSoft)
-                            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                            .clipShape(FestivalDesign.controlShape)
                             .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(discoverItemCount)개")
                     }
                     Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
 
@@ -647,7 +647,7 @@ struct MapHomeView: View {
                 isHomeDiscoveryPanelDismissed = true
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
+                    .font(.festival(.caption, weight: .bold))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(width: 28, height: 28)
                     .background(FestivalDesign.cream.opacity(0.55))
@@ -694,10 +694,10 @@ struct MapHomeView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(destination.name)
-                            .font(.headline)
+                            .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
                         Text(destination.address)
-                            .font(.caption)
+                            .font(.festival(.caption))
                             .foregroundStyle(FestivalDesign.secondaryText)
                             .lineLimit(1)
                     }
@@ -709,7 +709,7 @@ struct MapHomeView: View {
 
                 if viewModel.recommendedParkingLots.isEmpty && !viewModel.isLoadingParking {
                     Text("\u{C8FC}\u{BCC0} \u{C8FC}\u{CC28}\u{C7A5}\u{C744} \u{CC3E}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}.")
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -754,7 +754,7 @@ struct MapHomeView: View {
 
     private func inlineError(_ message: String) -> some View {
         Text(message)
-            .font(.subheadline)
+            .font(.festival(.subheadline))
             .foregroundStyle(.white)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1320,7 +1320,7 @@ private struct MapFloatingIcon: View {
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: size * 0.38, weight: .bold))
+            .font(.festival(size: size * 0.38, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(
@@ -1351,15 +1351,15 @@ private struct HomeMapPillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption.weight(.bold))
+            .font(.festival(.caption, weight: .bold))
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(isFilled ? tint : tint.opacity(0.12))
             .foregroundStyle(isFilled ? .white : tint)
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
             .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                FestivalDesign.controlShape
                     .stroke(isFilled ? .white.opacity(0.2) : tint.opacity(0.25), lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
@@ -1442,7 +1442,7 @@ private struct ParkingMapCard: View {
             HStack(spacing: 6) {
                 if isDestinationParking {
                     Text("\u{BAA9}\u{C801}\u{C9C0} \u{C8FC}\u{CC28}\u{C7A5}")
-                        .font(.caption2.weight(.bold))
+                        .font(.festival(.caption2, weight: .bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(FestivalDesign.teal.opacity(0.16))
@@ -1450,29 +1450,29 @@ private struct ParkingMapCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 Text("\(parkingLot.distanceFromDestinationMeters)m")
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
                 Spacer()
             }
 
             Text(parkingLot.name)
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
                 .lineLimit(2)
             HStack(spacing: 6) {
                 Text("\u{CD94}\u{CC9C} \(recommendation.scorePercent)\u{C810}")
-                    .font(.caption.weight(.bold))
+                    .font(.festival(.caption, weight: .bold))
                     .foregroundStyle(FestivalDesign.teal)
                 Text(recommendation.primaryReason)
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
             }
             Text(parkingLot.displayStatus)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(statusColor)
             Text(parkingLot.feeSummary ?? "\u{C694}\u{AE08} \u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .lineLimit(1)
 
@@ -1525,11 +1525,11 @@ private struct StandaloneParkingMapCard: View {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(parkingLot.name)
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)
                     Text(parkingLot.address)
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
@@ -1584,10 +1584,10 @@ private struct StandaloneParkingMapCard: View {
     private func parkingInfoPill(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption2.weight(.semibold))
+                .font(.festival(.caption2, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
-                .font(.caption.weight(.semibold))
+                .font(.festival(.caption, weight: .semibold))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1638,7 +1638,7 @@ struct DiscoverThumbnail: View {
 
     private var placeholder: some View {
         Image(systemName: symbol)
-            .font(.title3.weight(.semibold))
+            .font(.festival(.title3, weight: .semibold))
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

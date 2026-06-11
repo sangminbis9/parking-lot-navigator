@@ -35,10 +35,10 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("앱 안내와 데이터 상태")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("축제 탐색과 주차 추천에 쓰이는 연결 정보를 확인합니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
@@ -72,17 +72,17 @@ struct SettingsView: View {
                     Circle()
                         .fill(FestivalDesign.cream)
                     Image(systemName: "paintpalette.fill")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.coral)
                 }
                 .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("테마")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                     Text("\(themeStore.selectedTheme.displayName) · 앱 색상 팔레트 설정")
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
@@ -90,7 +90,7 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
+                    .font(.festival(.caption, weight: .bold))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
             .padding(14)
@@ -117,17 +117,17 @@ struct SettingsView: View {
                     Circle()
                         .fill(FestivalDesign.cream)
                     Image(systemName: "bell.badge.fill")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.coral)
                 }
                 .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("알림")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                     Text(notificationSummary)
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
@@ -135,7 +135,7 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
+                    .font(.festival(.caption, weight: .bold))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
             .padding(14)
@@ -147,26 +147,26 @@ struct SettingsView: View {
     private var merchantCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("내 가게 운영")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("내 가게의 할인, 무료 제공, 팝업, 오픈 이벤트를 앱 지도에 노출해보세요. 등록과 결제는 외부 웹페이지에서 진행됩니다.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Link(destination: merchantURL) {
                 HStack(spacing: 8) {
                     Image(systemName: "building.2.fill")
                     Text("내 가게 이벤트 등록")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.festival(.subheadline, weight: .semibold))
                     Spacer()
                     Image(systemName: "arrow.up.right.square")
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                 }
                 .padding(.vertical, 10)
                 .padding(.horizontal, 12)
                 .background(FestivalDesign.navy)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                .clipShape(FestivalDesign.controlShape)
             }
         }
         .padding(14)
@@ -176,7 +176,7 @@ struct SettingsView: View {
     private var appSettingsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("앱 설정")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             settingRow("API 서버", AppConfiguration.current.apiBaseURL.absoluteString)
             settingRow("내비 제공자", AppConfiguration.current.navigationProvider)
@@ -188,13 +188,13 @@ struct SettingsView: View {
     private var dataSourceCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("데이터 출처")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("Kakao Local, 서울 열린데이터광장, data.go.kr provider를 백엔드에서 통합합니다.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("실시간 정보는 제공처 갱신 지연과 현장 상황에 따라 다를 수 있습니다.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
         }
         .padding(14)
@@ -205,7 +205,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Provider 상태")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Spacer()
                 StatusBadge(text: "\(providers.count)개", kind: .source)
@@ -220,28 +220,28 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top) {
                         Text(provider.name)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.festival(.subheadline, weight: .semibold))
                             .foregroundStyle(FestivalDesign.navy)
                         Spacer()
                         StatusBadge(text: provider.status, kind: provider.status == "up" ? .realtime : .warning)
                     }
                     Text("품질 점수 \(provider.qualityScore, specifier: "%.2f")")
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                     if let error = provider.lastError {
                         Text(error)
-                            .font(.caption)
+                            .font(.festival(.caption))
                             .foregroundStyle(FestivalDesign.coral)
                     }
                 }
                 .padding(10)
                 .background(FestivalDesign.cream.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                .clipShape(FestivalDesign.controlShape)
             }
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.coral)
             }
         }
@@ -252,17 +252,17 @@ struct SettingsView: View {
     private func settingRow(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.festival(.caption, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(FestivalDesign.cream.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        .clipShape(FestivalDesign.controlShape)
     }
 
     private func load() async {
@@ -301,10 +301,10 @@ struct ThemeSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(themeStore.selectedTheme.displayName)
-                        .font(.title3.weight(.bold))
+                        .font(.festival(.title3, weight: .bold))
                         .foregroundStyle(FestivalDesign.navy)
                     Text(themeStore.selectedTheme.description)
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
 
@@ -313,7 +313,7 @@ struct ThemeSettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("미리보기")
-                    .font(.caption.weight(.semibold))
+                    .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.secondaryText)
 
                 HStack(spacing: 8) {
@@ -324,18 +324,18 @@ struct ThemeSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("오늘 갈 축제를 찾아볼까요?")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                     Text("선택한 파스텔 톤은 배경과 카드에 쓰이고, 글씨는 항상 진한 색으로 유지됩니다.")
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
                 .background(FestivalDesign.surface)
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                .clipShape(FestivalDesign.controlShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    FestivalDesign.controlShape
                         .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
                 )
             }
@@ -359,10 +359,10 @@ struct ThemeSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("파스텔 팔레트")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("메인 색만 바꾸는 것이 아니라, 어울리는 보조색과 본문색까지 함께 조정합니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -382,15 +382,15 @@ struct ThemeSettingsView: View {
             Image(systemName: "textformat.size")
                 .foregroundStyle(FestivalDesign.coral)
             Text("파스텔 배경 위에는 흰 글씨를 쓰지 않고, 진한 본문색과 보조 회색을 사용합니다.")
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .background(FestivalDesign.cream.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        .clipShape(FestivalDesign.controlShape)
         .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+            FestivalDesign.controlShape
                 .stroke(FestivalDesign.creamDeep.opacity(0.42), lineWidth: 1)
         )
     }
@@ -411,17 +411,17 @@ struct ThemeSettingsView: View {
                     Spacer(minLength: 0)
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.subheadline.weight(.bold))
+                            .font(.festival(.subheadline, weight: .bold))
                             .foregroundStyle(FestivalDesign.coral)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(theme.displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.festival(.subheadline, weight: .semibold))
                         .foregroundStyle(FestivalDesign.navy)
                     Text(theme.description)
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
@@ -429,9 +429,9 @@ struct ThemeSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(11)
             .background(isSelected ? palette.tealSoft.opacity(0.9) : palette.cream.opacity(0.28))
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
             .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                FestivalDesign.controlShape
                     .stroke(isSelected ? FestivalDesign.coral : palette.creamDeep.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
             )
         }
@@ -441,12 +441,12 @@ struct ThemeSettingsView: View {
 
     private func previewPill(_ title: String, tint: Color) -> some View {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(.festival(.caption, weight: .semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(tint.opacity(0.14))
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
     }
 
     private func themeSwatch(_ color: Color) -> some View {

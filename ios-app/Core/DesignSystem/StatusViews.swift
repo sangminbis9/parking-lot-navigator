@@ -13,7 +13,7 @@ struct StatusBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.festival(.caption, weight: .semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(background)
@@ -47,7 +47,7 @@ struct LoadingStateView: View {
         VStack(spacing: 12) {
             ProgressView()
             Text(text)
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -61,9 +61,9 @@ struct FailureStateView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("문제가 발생했습니다")
-                .font(.headline)
+                .font(.festival(.headline))
             Text(message)
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
             Button("다시 시도", action: retry)

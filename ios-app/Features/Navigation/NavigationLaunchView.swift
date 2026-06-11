@@ -43,14 +43,14 @@ struct NavigationLaunchView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(parkingLot.name)
-                    .font(.title3.weight(.bold))
+                    .font(.festival(.title3, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                 Text(parkingLot.address)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
                 Text("\(destination.name) 방문 전 경로를 확인해요.")
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
             Spacer()
@@ -62,7 +62,7 @@ struct NavigationLaunchView: View {
     private var routeInfoCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("경로 정보")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             infoRow("직선 거리", "\(parkingLot.distanceFromDestinationMeters)m")
             if let estimatedDistanceMeters {
@@ -79,7 +79,7 @@ struct NavigationLaunchView: View {
     private var parkingInfoCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("주차 정보")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             infoRow("실시간 상태", parkingLot.displayStatus)
             infoRow("가능 대수", parkingLot.availableSpaces.map(String.init) ?? "정보 없음")
@@ -110,7 +110,7 @@ struct NavigationLaunchView: View {
             .tint(FestivalDesign.teal)
 
             Text("앱에서는 경로를 미리 확인하고, 실제 이동 전 안내는 선택한 지도 앱에서 시작합니다.")
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
         }
         .padding(14)
@@ -123,7 +123,7 @@ struct NavigationLaunchView: View {
                 .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .multilineTextAlignment(.trailing)
         }
@@ -252,12 +252,12 @@ private struct PreviewPinView: View {
 
             if let symbolName {
                 Image(systemName: symbolName)
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.festival(size: 7, weight: .bold))
                     .foregroundStyle(.white)
                     .offset(y: 4)
             } else {
                 Text("P")
-                    .font(.system(size: 7.2, weight: .heavy))
+                    .font(.festival(size: 7.2, weight: .heavy))
                     .foregroundStyle(.white)
                     .offset(y: 3.5)
             }

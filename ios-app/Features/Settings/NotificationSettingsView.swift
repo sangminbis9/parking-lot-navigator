@@ -39,17 +39,17 @@ struct NotificationSettingsView: View {
             ZStack {
                 Circle().fill(FestivalDesign.cream)
                 Image(systemName: "bell.badge.fill")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.coral)
             }
             .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("관심 알림 받기")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("관심 지역·카테고리에 새 축제나 로컬 이벤트가 생기면 알려드려요. 기기 상태에 따라 알림 시점은 다소 늦어질 수 있습니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -65,11 +65,11 @@ struct NotificationSettingsView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(FestivalDesign.coral)
                 Text("알림 권한이 꺼져 있어요")
-                    .font(.subheadline.weight(.bold))
+                    .font(.festival(.subheadline, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
             }
             Text("iOS 설정에서 알림을 허용해야 새 소식을 받을 수 있습니다.")
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
@@ -78,12 +78,12 @@ struct NotificationSettingsView: View {
                 }
             } label: {
                 Text("설정 열기")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.festival(.subheadline, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 14)
                     .background(FestivalDesign.navy)
-                    .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                    .clipShape(FestivalDesign.controlShape)
             }
             .buttonStyle(.plain)
         }
@@ -140,7 +140,7 @@ struct NotificationSettingsView: View {
                     selection: hourBinding(\.festival.reminderHour),
                     displayedComponents: .hourAndMinute
                 )
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
             }
         }
@@ -218,10 +218,10 @@ struct NotificationSettingsView: View {
 
             if model.prefs.quietHoursEnabled {
                 DatePicker("시작", selection: hourBinding(\.quietStartHour), displayedComponents: .hourAndMinute)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.navy)
                 DatePicker("종료", selection: hourBinding(\.quietEndHour), displayedComponents: .hourAndMinute)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.navy)
             }
 
@@ -235,10 +235,10 @@ struct NotificationSettingsView: View {
     private func sectionTitle(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.subheadline.weight(.bold))
+                .font(.festival(.subheadline, weight: .bold))
                 .foregroundStyle(FestivalDesign.coral)
             Text(title)
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
         }
     }
@@ -246,10 +246,10 @@ struct NotificationSettingsView: View {
     private func toggleLabel(_ title: String, _ subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
             Text(subtitle)
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -258,11 +258,11 @@ struct NotificationSettingsView: View {
     private func fieldTitle(_ title: String, _ subtitle: String?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(.festival(size: 13, weight: .bold))
                 .foregroundStyle(FestivalDesign.navy)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 11))
+                    .font(.festival(size: 11))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
         }
@@ -290,17 +290,17 @@ struct NotificationSettingsView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.festival(size: 11, weight: .bold))
                 Text(label)
-                    .font(.system(size: 12, weight: isOn ? .bold : .semibold))
+                    .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
             }
             .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(isOn ? tint : FestivalDesign.surface)
-            .clipShape(Capsule())
+            .clipShape(FestivalDesign.chipShape)
             .overlay(
-                Capsule().stroke(isOn ? tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+                FestivalDesign.chipShape.stroke(isOn ? tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -309,14 +309,14 @@ struct NotificationSettingsView: View {
     private func plainChip(label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: isOn ? .bold : .semibold))
+                .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
                 .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)
-                .clipShape(Capsule())
+                .clipShape(FestivalDesign.chipShape)
                 .overlay(
-                    Capsule().stroke(isOn ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+                    FestivalDesign.chipShape.stroke(isOn ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

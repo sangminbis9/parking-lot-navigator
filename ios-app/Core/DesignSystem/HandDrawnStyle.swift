@@ -124,11 +124,14 @@ struct RoughRoundedRectangle: InsettableShape {
     }
 }
 
-/// 코드만으로 만든 종이 질감. 외부 이미지에 의존하지 않는다.
-/// 결정적 배치라 스크롤 중 다시 그려도 동일하게 보인다.
+/// 코드만으로 만든 종이 질감: 미세 반점 + 사선 크레용 해칭(빗금).
+/// 외부 이미지에 의존하지 않고, 결정적 배치라 스크롤 중 다시 그려도 동일하게 보인다.
 struct PaperTexture: View {
     var body: some View {
         Canvas { context, size in
+            let charcoal = Color(red: 0.176, green: 0.161, blue: 0.145) // FestivalDesign.outline
+
+            // 1) 종이 알갱이 반점.
             let step: CGFloat = 9
             let cols = max(1, Int(size.width / step))
             let rows = max(1, Int(size.height / step))
@@ -143,7 +146,39 @@ struct PaperTexture: View {
                     let d = 0.7 + handDrawnHash(Double(row) + Double(col) * 0.5) * 0.9
                     let alpha = 0.025 + h * 0.03
                     let rect = CGRect(x: x, y: y, width: d, height: d)
-                    context.fill(Path(ellipseIn: rect), with: .color(.black.opacity(alpha)))
+                    context.fill(Path(ellipseIn: rect), with: .color(charcoal.opacity(alpha)))
+                }
+            }
+
+            // 2) 사선 크레용 해칭: 드문드문한 짧은 빗금이 왁스로 문지른 종이 느낌을 준다.
+            let hatchStep: CGFloat = 34
+            let hatchCols = max(1, Int(size.width / hatchStep))
+            let hatchRows = max(1, Int(size.height / hatchStep))
+            for row in 0..<hatchRows {
+                for col in 0..<hatchCols {
+                    let h = handDrawnHash(Double(row) * 47.3 + Double(col) * 19.1 + 5)
+                    guard h > 0.72 else { continue }
+                    let jx = (handDrawnHash(Double(row) * 3.7 + Double(col) * 11.9) - 0.5) * hatchStep
+                    let jy = (handDrawnHash(Double(row) * 13.1 + Double(col) * 4.3) - 0.5) * hatchStep
+                    let cx = CGFloat(col) * hatchStep + hatchStep / 2 + jx
+                    let cy = CGFloat(row) * hatchStep + hatchStep / 2 + jy
+                    let len = 5 + handDrawnHash(Double(row) * 1.3 + Double(col) * 8.7) * 9
+                    // 대략 -35도 사선 + 약간의 각도 흔들림.
+                    let tilt = -0.61 + (handDrawnHash(Double(row) * 6.1 + Double(col) * 2.3) - 0.5) * 0.3
+                    let dx = cos(tilt) * len / 2
+                    let dy = sin(tilt) * len / 2
+                    var stroke = Path()
+                    stroke.move(to: CGPoint(x: cx - dx, y: cy - dy))
+                    stroke.addQuadCurve(
+                        to: CGPoint(x: cx + dx, y: cy + dy),
+                        control: CGPoint(x: cx + (handDrawnHash(Double(row) + Double(col)) - 0.5) * 3, y: cy)
+                    )
+                    let alpha = 0.028 + h * 0.025
+                    context.stroke(
+                        stroke,
+                        with: .color(charcoal.opacity(alpha)),
+                        style: StrokeStyle(lineWidth: 1.1 + handDrawnHash(Double(col) * 5.3) * 0.8, lineCap: .round)
+                    )
                 }
             }
         }

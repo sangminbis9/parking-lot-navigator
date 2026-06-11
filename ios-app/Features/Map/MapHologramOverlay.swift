@@ -32,42 +32,42 @@ struct MapHologramOverlay: View {
                         HStack(spacing: 5) {
                             if let statusText, !statusText.isEmpty {
                                 Text(statusText)
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.festival(size: 10, weight: .bold))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Capsule().fill(tint))
+                                    .background(FestivalDesign.chipShape.fill(tint))
                             }
                             if let categoryText, !categoryText.isEmpty {
                                 Text(categoryText)
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.festival(size: 10, weight: .medium))
                                     .foregroundColor(tint)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Capsule().fill(tint.opacity(0.12)))
+                                    .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
                             }
                         }
                         Text(title)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.festival(size: 14, weight: .semibold))
                             .foregroundColor(FestivalDesign.navy)
                             .lineLimit(1)
                         if let subtitle, !subtitle.isEmpty {
                             Text(subtitle)
-                                .font(.system(size: 11))
+                                .font(.festival(size: 11))
                                 .foregroundColor(FestivalDesign.secondaryText)
                                 .lineLimit(1)
                         }
                         if let meta, !meta.isEmpty {
                             Text(meta)
-                                .font(.system(size: 10))
+                                .font(.festival(size: 10))
                                 .foregroundColor(FestivalDesign.secondaryText.opacity(0.85))
                                 .lineLimit(1)
                         }
                         HStack(spacing: 3) {
                             Text("상세 보기")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.festival(size: 11, weight: .semibold))
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.festival(size: 10, weight: .bold))
                         }
                         .foregroundColor(tint)
                         .padding(.top, 1)
@@ -84,7 +84,7 @@ struct MapHologramOverlay: View {
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.festival(size: 9, weight: .bold))
                     .foregroundColor(FestivalDesign.secondaryText)
                     .frame(width: 20, height: 20)
                     .background(Circle().fill(Color(.systemGray6)))
