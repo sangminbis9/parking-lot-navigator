@@ -99,7 +99,6 @@ struct NotificationPreferences: Codable, Hashable {
     var quietHoursEnabled: Bool
     var quietStartHour: Int             // 방해 금지 시작 시각 (0–23)
     var quietEndHour: Int               // 방해 금지 종료 시각 (0–23)
-    var maxNotificationsPerDay: Int
 
     static let allRadiusOptions: [Int] = [10, 20, 50]
 
@@ -108,8 +107,7 @@ struct NotificationPreferences: Codable, Hashable {
         localEvent: .default,
         quietHoursEnabled: true,
         quietStartHour: 22,
-        quietEndHour: 8,
-        maxNotificationsPerDay: 5
+        quietEndHour: 8
     )
 
     /// 발견 알림이 하나라도 켜져 있는지. 백그라운드 예약 필요 여부 판단에 사용.
@@ -127,7 +125,7 @@ struct NotificationPreferences: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case festival, localEvent, quietHoursEnabled, quietStartHour, quietEndHour, maxNotificationsPerDay
+        case festival, localEvent, quietHoursEnabled, quietStartHour, quietEndHour
     }
 
     init(
@@ -135,15 +133,13 @@ struct NotificationPreferences: Codable, Hashable {
         localEvent: LocalEventNotificationPrefs,
         quietHoursEnabled: Bool,
         quietStartHour: Int,
-        quietEndHour: Int,
-        maxNotificationsPerDay: Int
+        quietEndHour: Int
     ) {
         self.festival = festival
         self.localEvent = localEvent
         self.quietHoursEnabled = quietHoursEnabled
         self.quietStartHour = quietStartHour
         self.quietEndHour = quietEndHour
-        self.maxNotificationsPerDay = maxNotificationsPerDay
     }
 
     init(from decoder: Decoder) throws {
@@ -154,7 +150,6 @@ struct NotificationPreferences: Codable, Hashable {
         quietHoursEnabled = try c.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? d.quietHoursEnabled
         quietStartHour = try c.decodeIfPresent(Int.self, forKey: .quietStartHour) ?? d.quietStartHour
         quietEndHour = try c.decodeIfPresent(Int.self, forKey: .quietEndHour) ?? d.quietEndHour
-        maxNotificationsPerDay = try c.decodeIfPresent(Int.self, forKey: .maxNotificationsPerDay) ?? d.maxNotificationsPerDay
     }
 }
 

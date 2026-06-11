@@ -63,63 +63,50 @@ final class DiscoveryNotificationService: ObservableObject {
         let currentHour = Calendar.seoul.component(.hour, from: Date())
         guard !prefs.isWithinQuietHours(hour: currentHour) else { return }
 
-        var sentToday = dailyCount()
-
-        if prefs.festival.discoveryEnabled, sentToday < prefs.maxNotificationsPerDay {
-            if await discoverFestivals(prefs.festival) {
-                sentToday += 1
-            }
+        if prefs.festival.discoveryEnabled {
+            await discoverFestivals(prefs.festival)
         }
-        if prefs.localEvent.discoveryEnabled, sentToday < prefs.maxNotificationsPerDay {
-            if await discoverLocalEvents(prefs.localEvent) {
-                sentToday += 1
-            }
+        if prefs.localEvent.discoveryEnabled {
+            await discoverLocalEvents(prefs.localEvent)
         }
-        setDailyCount(sentToday)
     }
 
-    /// 신규 축제가 있으면 요약 알림을 보내고 true 반환.
-    private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async -> Bool {
+    /// 신규 축제가 있으면 요약 알림을 보낸다.
+    private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
         let coord = coordinate(forRegions: prefs.regions)
         let radius = prefs.radiusKm * 1_000
-        guard let festivals = try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else {
-            return false
-        }
+        guard let festivals = try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else { return }
         let matched = festivals.filter { festival in
             prefs.categories.isEmpty || festival.primaryCategory.map { prefs.categories.contains($0) } ?? false
         }
         let key = "discovery.notifiedIDs.festival"
         let known = notifiedIDs(key: key)
         let newItems = matched.filter { !known.contains($0.id) }
-        guard !newItems.isEmpty else { return false }
+        guard !newItems.isEmpty else { return }
 
         let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{CD95}\u{C81C}" // 근처 새 축제
         let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{CD95}\u{C81C} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 축제 N건이 있어요.
         await scheduleSummary(idPrefix: "discovery-festival", title: title, body: body)
         addNotifiedIDs(newItems.map(\.id), key: key)
-        return true
     }
 
-    /// 신규 로컬 이벤트가 있으면 요약 알림을 보내고 true 반환.
-    private func discoverLocalEvents(_ prefs: LocalEventNotificationPrefs) async -> Bool {
+    /// 신규 로컬 이벤트가 있으면 요약 알림을 보낸다.
+    private func discoverLocalEvents(_ prefs: LocalEventNotificationPrefs) async {
         let coord = coordinate(forRegions: prefs.regions)
         let radius = prefs.radiusKm * 1_000
-        guard let events = try? await apiClient.nearbyEvents(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else {
-            return false
-        }
+        guard let events = try? await apiClient.nearbyEvents(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else { return }
         let matched = events.filter { event in
             prefs.categories.isEmpty || event.primaryCategory.map { prefs.categories.contains($0) } ?? false
         }
         let key = "discovery.notifiedIDs.localEvent"
         let known = notifiedIDs(key: key)
         let newItems = matched.filter { !known.contains($0.id) }
-        guard !newItems.isEmpty else { return false }
+        guard !newItems.isEmpty else { return }
 
         let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{C774}\u{BCA4}\u{D2B8}" // 근처 새 이벤트
         let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{B85C}\u{CEEC} \u{C774}\u{BCA4}\u{D2B8} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 로컬 이벤트 N건이 있어요.
         await scheduleSummary(idPrefix: "discovery-localEvent", title: title, body: body)
         addNotifiedIDs(newItems.map(\.id), key: key)
-        return true
     }
 
     private func scheduleSummary(idPrefix: String, title: String, body: String) async {
@@ -171,37 +158,6 @@ final class DiscoveryNotificationService: ObservableObject {
         defaults.set(current, forKey: key)
     }
 
-    private struct DailyCounter: Codable {
-        var day: String
-        var count: Int
-    }
-
-    private static let dayKey = "discovery.dailyCounter"
-
-    private func dailyCount() -> Int {
-        guard let data = defaults()?.data(forKey: Self.dayKey),
-              let counter = try? JSONDecoder().decode(DailyCounter.self, from: data),
-              counter.day == Self.todayKey() else {
-            return 0
-        }
-        return counter.count
-    }
-
-    private func setDailyCount(_ count: Int) {
-        guard let defaults = defaults() else { return }
-        let counter = DailyCounter(day: Self.todayKey(), count: count)
-        if let data = try? JSONEncoder().encode(counter) {
-            defaults.set(data, forKey: Self.dayKey)
-        }
-    }
-
-    private static func todayKey() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
-    }
 }
 
 /// 백그라운드 발견 조회의 fallback 중심점으로 쓸 마지막 알려진 좌표. 포그라운드에서 위치를 얻을 때 갱신한다.
