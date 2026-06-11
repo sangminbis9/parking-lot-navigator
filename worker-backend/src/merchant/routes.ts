@@ -319,6 +319,17 @@ export function createMerchantApp() {
       );
     }
 
+    if (form.get("agree_legal") === null) {
+      return c.html(
+        renderEventForm({
+          values,
+          error: "이용약관, 개인정보처리방침, 환불·취소 정책에 동의해야 등록할 수 있습니다.",
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+
     const geocode = await geocodeAddress(
       c.env.KAKAO_REST_API_KEY,
       c.env.KAKAO_LOCAL_BASE_URL,
