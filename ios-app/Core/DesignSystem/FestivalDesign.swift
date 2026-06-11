@@ -198,6 +198,68 @@ enum FestivalDesign {
     /// 손그림 테마의 거친 차콜 외곽선 색. (비손그림 테마에서는 사용하지 않음)
     static var outline: Color { Color(red: 0.176, green: 0.161, blue: 0.145) } // #2D2925
 
+    /// 버튼/입력 등 컨트롤용 모양. 크레파스 테마에서는 손그림 외곽선, 그 외에는 기존 RoundedRectangle 그대로.
+    static var controlShape: AnyShape {
+        isHandDrawn
+            ? AnyShape(RoughRoundedRectangle(cornerRadius: controlRadius, roughness: 1.4, seed: 29))
+            : AnyShape(RoundedRectangle(cornerRadius: controlRadius))
+    }
+
+    /// 칩/뱃지용 캡슐 모양. 크레파스 테마에서는 손그림 캡슐(반지름이 높이의 절반으로 클램프됨).
+    static var chipShape: AnyShape {
+        isHandDrawn
+            ? AnyShape(RoughRoundedRectangle(cornerRadius: 400, roughness: 1.2, seed: 41))
+            : AnyShape(Capsule())
+    }
+
+    // MARK: 크레파스 손글씨 폰트 (개구쟁이체, OFL)
+
+    /// 손글씨 폰트는 같은 포인트 크기에서 작게 보여 +1pt 보정한다.
+    static let crayonFontSizeBump: CGFloat = 1
+
+    static func crayonFontName(for weight: Font.Weight) -> String {
+        switch weight {
+        case .semibold, .bold, .heavy, .black:
+            return "Gaegu-Bold"
+        default:
+            return "Gaegu-Regular"
+        }
+    }
+
+    static func crayonUIFontName(for weight: UIFont.Weight) -> String {
+        weight.rawValue >= UIFont.Weight.semibold.rawValue ? "Gaegu-Bold" : "Gaegu-Regular"
+    }
+
+    /// UIKit appearance(네비바/탭바/지도 마커)용 테마 인식 폰트.
+    static func uiFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        if isHandDrawn, let font = UIFont(name: crayonUIFontName(for: weight), size: size + crayonFontSizeBump) {
+            return font
+        }
+        return .systemFont(ofSize: size, weight: weight)
+    }
+
+    /// 텍스트 스타일의 기본(Large 카테고리) 포인트 크기.
+    static func textStyleBaseSize(_ style: Font.TextStyle) -> CGFloat {
+        switch style {
+        case .largeTitle: return 34
+        case .title: return 28
+        case .title2: return 22
+        case .title3: return 20
+        case .headline: return 17
+        case .body: return 17
+        case .callout: return 16
+        case .subheadline: return 15
+        case .footnote: return 13
+        case .caption: return 12
+        case .caption2: return 11
+        @unknown default: return 17
+        }
+    }
+
+    static func textStyleDefaultWeight(_ style: Font.TextStyle) -> Font.Weight {
+        style == .headline ? .semibold : .regular
+    }
+
     static var uiCream: UIColor { UIColor(cream) }
     static var uiCoral: UIColor { UIColor(coral) }
     static var uiLantern: UIColor { UIColor(lantern) }
@@ -232,6 +294,30 @@ enum FestivalDesign {
     }
 }
 
+extension Font {
+    /// 테마 인식 폰트. 크레파스 테마에서는 손글씨(개구쟁이체), 그 외 테마에서는 기존 시스템 폰트 그대로.
+    static func festival(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        if FestivalDesign.isHandDrawn {
+            return .custom(FestivalDesign.crayonFontName(for: weight), fixedSize: size + FestivalDesign.crayonFontSizeBump)
+        }
+        return .system(size: size, weight: weight)
+    }
+
+    /// 텍스트 스타일 기반 테마 인식 폰트. 크레파스 테마에서는 Dynamic Type을 따라 스케일된다.
+    static func festival(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> Font {
+        if FestivalDesign.isHandDrawn {
+            let resolvedWeight = weight ?? FestivalDesign.textStyleDefaultWeight(style)
+            let size = FestivalDesign.textStyleBaseSize(style) + FestivalDesign.crayonFontSizeBump
+            return .custom(FestivalDesign.crayonFontName(for: resolvedWeight), size: size, relativeTo: style)
+        }
+        let base = Font.system(style)
+        if let weight {
+            return base.weight(weight)
+        }
+        return base
+    }
+}
+
 struct FestivalCardBackground: ViewModifier {
     var isSelected = false
 
@@ -251,20 +337,24 @@ struct FestivalCardBackground: ViewModifier {
     }
 
     // 손그림 카드: 거친 차콜 외곽선 + 블러 없는 오프셋 스티커 그림자.
+    // 외곽선은 시드가 다른 두 패스를 겹쳐 그려 크레용 왁스 특유의 두 겹 선 느낌을 낸다.
     private func handDrawnBody(_ content: Content) -> some View {
-        let shape = RoughRoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+        let strokeColor = isSelected ? FestivalDesign.coral : FestivalDesign.outline
+        let shape = RoughRoundedRectangle(cornerRadius: FestivalDesign.cardRadius, roughness: 2.3, seed: 17)
+        let wobble = RoughRoundedRectangle(cornerRadius: FestivalDesign.cardRadius, roughness: 3.1, seed: 53)
         return content
             .background(isSelected ? FestivalDesign.tealSoft : FestivalDesign.surface)
             .clipShape(shape)
             .background(
                 shape
-                    .fill(FestivalDesign.outline.opacity(0.82))
-                    .offset(x: 2.5, y: 4)
+                    .fill(FestivalDesign.outline.opacity(0.85))
+                    .offset(x: 3, y: 4.5)
             )
             .overlay(
-                shape
-                    .stroke(isSelected ? FestivalDesign.coral : FestivalDesign.outline,
-                            lineWidth: isSelected ? 2.6 : 2)
+                shape.stroke(strokeColor, lineWidth: isSelected ? 2.6 : 2.2)
+            )
+            .overlay(
+                wobble.stroke(strokeColor.opacity(0.35), lineWidth: isSelected ? 3.4 : 3)
             )
     }
 }
@@ -281,7 +371,7 @@ extension View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(title)
-                        .font(.headline.weight(.bold))
+                        .font(.festival(.headline, weight: .bold))
                         .foregroundStyle(FestivalDesign.coral)
                 }
             }

@@ -40,10 +40,10 @@ struct ParkingDetailView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(parkingLot.name)
-                        .font(.title3.weight(.bold))
+                        .font(.festival(.title3, weight: .bold))
                         .foregroundStyle(FestivalDesign.navy)
                     Text(parkingLot.address)
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 Spacer()
@@ -61,19 +61,19 @@ struct ParkingDetailView: View {
     private var recommendationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("추천 이유")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             HStack {
                 Text("추천 점수")
                     .foregroundStyle(FestivalDesign.secondaryText)
                 Spacer()
                 Text("\(recommendation.scorePercent)점")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.teal)
             }
             ForEach(recommendation.reasons, id: \.self) { reason in
                 Label(reason, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.navy)
             }
         }
@@ -84,7 +84,7 @@ struct ParkingDetailView: View {
     private var infoCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("주차 정보")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             detailRow("거리", "\(parkingLot.distanceFromDestinationMeters)m")
             detailRow("총면수", parkingLot.totalCapacity.map(String.init) ?? "정보 없음")
@@ -102,7 +102,7 @@ struct ParkingDetailView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(FestivalDesign.coral)
             Text("주차 정보 업데이트가 지연되었을 수 있습니다. 현장 상황과 실제 진입 가능 여부를 확인해 주세요.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.coral)
         }
         .padding(14)
@@ -140,7 +140,7 @@ struct ParkingDetailView: View {
                 .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .multilineTextAlignment(.trailing)
         }

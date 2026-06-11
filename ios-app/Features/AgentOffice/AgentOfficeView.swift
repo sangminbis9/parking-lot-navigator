@@ -45,18 +45,18 @@ struct AgentOfficeView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("오리온 요약", systemImage: "brain.head.profile")
-                    .font(.headline)
+                    .font(.festival(.headline))
                 Spacer()
                 Text(viewModel.snapshot.updatedAt, style: .time)
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
             Text(viewModel.snapshot.summary)
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.coral)
             }
         }
@@ -67,11 +67,11 @@ struct AgentOfficeView: View {
     private func providerSection(title: String, providers: [ProviderHealth]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             if providers.isEmpty {
                 Text("아직 제공자 상태가 도착하지 않았어요.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
             } else {
                 ForEach(providers) { provider in
@@ -85,7 +85,7 @@ struct AgentOfficeView: View {
 
     private var attribution: some View {
         Text("스프라이트: harishkotra/agent-office · 가구: pixel-agents by Pablo De Lucca (MIT)")
-            .font(.caption2)
+            .font(.festival(.caption2))
             .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
     }
 }
@@ -248,7 +248,7 @@ private struct AgentRoleStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("에이전트 담당")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -285,15 +285,15 @@ private struct AgentRoleCard: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(agent.name)
-                        .font(.subheadline.weight(.bold))
+                        .font(.festival(.subheadline, weight: .bold))
                         .foregroundStyle(FestivalDesign.navy)
                     Text(agent.role)
-                        .font(.caption.weight(.semibold))
+                        .font(.festival(.caption, weight: .semibold))
                         .foregroundStyle(agent.status.color)
                 }
             }
             Text(agent.line)
-                .font(.caption)
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -301,9 +301,9 @@ private struct AgentRoleCard: View {
         .frame(width: 150, alignment: .leading)
         .padding(10)
         .background(FestivalDesign.cream.opacity(0.34))
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+        .clipShape(FestivalDesign.controlShape)
         .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+            FestivalDesign.controlShape
                 .stroke(agent.status.color.opacity(0.22), lineWidth: 1)
         )
     }
@@ -315,7 +315,7 @@ private struct ActivityFeed: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("최근 활동")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             ForEach(events.prefix(12)) { event in
                 ActivityRow(event: event)
@@ -352,18 +352,18 @@ private struct ActivityRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(event.agentId.uppercased())
-                        .font(.caption.bold())
+                        .font(.festival(.caption, weight: .bold))
                         .foregroundStyle(accent)
                     Text(event.action)
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                     Spacer()
                     Text(shortTime(event.ts))
-                        .font(.caption2)
+                        .font(.festival(.caption2))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
                 Text(formatActivityLine(event) ?? (event.targetTitle ?? "—"))
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.navy)
                     .lineLimit(2)
             }
@@ -844,11 +844,11 @@ private struct AgentRunner: View {
             }
 
             Text(agent.name)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.festival(size: 8, weight: .semibold))
                 .padding(.horizontal, 3)
                 .padding(.vertical, 1)
                 .background(FestivalDesign.surface.opacity(0.9))
-                .clipShape(Capsule())
+                .clipShape(FestivalDesign.chipShape)
                 .offset(y: 32)
                 .foregroundStyle(FestivalDesign.navy)
         }
@@ -878,21 +878,21 @@ private struct AgentInfoBadge: View {
                         .fill(agent.status.color)
                         .frame(width: 5, height: 5)
                     Text(agent.status.title)
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.festival(size: 8, weight: .bold))
                         .foregroundStyle(agent.status.color)
                     Spacer()
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.festival(size: 8, weight: .bold))
                             .foregroundStyle(FestivalDesign.navy.opacity(0.5))
                     }
                     .buttonStyle(.plain)
                 }
                 Text(agent.name)
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(.festival(size: 12, weight: .heavy))
                     .foregroundStyle(FestivalDesign.navy)
                 Text(agent.role)
-                    .font(.system(size: 8))
+                    .font(.festival(size: 8))
                     .foregroundStyle(FestivalDesign.navy.opacity(0.65))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -906,11 +906,11 @@ private struct AgentInfoBadge: View {
                         let ev = recentActivity[i]
                         HStack(alignment: .top, spacing: 4) {
                             Text(shortTime(ev.ts))
-                                .font(.system(size: 7))
+                                .font(.festival(size: 7))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                                 .frame(width: 32, alignment: .leading)
                             Text(formatActivityLine(ev) ?? ev.action)
-                                .font(.system(size: 8))
+                                .font(.festival(size: 8))
                                 .foregroundStyle(FestivalDesign.navy)
                                 .lineLimit(1)
                         }
@@ -946,7 +946,7 @@ private struct CarryMarker: View {
                         .stroke(FestivalDesign.navy.opacity(0.6), lineWidth: 1)
                 )
             Text(symbol)
-                .font(.system(size: 8))
+                .font(.festival(size: 8))
         }
     }
 
@@ -973,11 +973,11 @@ private struct PixelBubble: View {
     var body: some View {
         VStack(spacing: 1) {
             Text(speaker)
-                .font(.system(size: 7, weight: .heavy))
+                .font(.festival(size: 7, weight: .heavy))
                 .tracking(0.4)
                 .foregroundStyle(accent)
             Text(text)
-                .font(.system(size: 9))
+                .font(.festival(size: 9))
                 .foregroundStyle(FestivalDesign.navy)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -1156,7 +1156,7 @@ private struct PixelOfficeBackdrop: View {
                     .fill(FestivalDesign.teal)
                     .frame(width: 6, height: 6)
                 Text("업무 진행 중")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.festival(size: 9, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
             }
             .padding(.horizontal, 6)
@@ -1233,14 +1233,14 @@ private struct BoardLogSheet: View {
             ScrollView {
                 if activity.isEmpty {
                     Text("아직 활동이 없어요.")
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .frame(maxWidth: .infinity)
                         .padding(40)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("최근 활동")
-                            .font(.headline)
+                            .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
                         ForEach(Array(activity.prefix(20))) { event in
                             ActivityRow(event: event)
@@ -1288,16 +1288,16 @@ private struct PublishedWall: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("게시판")
-                        .font(.system(size: 9, weight: .heavy))
+                        .font(.festival(size: 9, weight: .heavy))
                         .foregroundStyle(FestivalDesign.navy)
                     Spacer()
                     Text("\(items.count)건")
-                        .font(.system(size: 8))
+                        .font(.festival(size: 8))
                         .foregroundStyle(FestivalDesign.navy.opacity(0.75))
                 }
                 if items.isEmpty {
                     Text("아직 게시된 항목이 없어요.")
-                        .font(.system(size: 9))
+                        .font(.festival(size: 9))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
                     HStack(spacing: 4) {
@@ -1338,9 +1338,9 @@ private struct PublishedCard: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(symbol)
-                .font(.system(size: 11))
+                .font(.festival(size: 11))
             Text(item.title)
-                .font(.system(size: 7, weight: .semibold))
+                .font(.festival(size: 7, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
@@ -1399,16 +1399,16 @@ private struct ProviderHealthRow: View {
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.name)
-                    .font(.subheadline.bold())
+                    .font(.festival(.subheadline, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                 Text(provider.lastError ?? "품질 \(Int(provider.qualityScore * 100))%")
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
             Spacer()
             Text(providerStatusText)
-                .font(.caption.bold())
+                .font(.festival(.caption, weight: .bold))
                 .foregroundStyle(color)
         }
         .padding(.vertical, 6)

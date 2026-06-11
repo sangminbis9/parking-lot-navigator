@@ -25,6 +25,11 @@
   </array>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <key>UIAppFonts</key>
+  <array>
+    <string>Gaegu-Regular.ttf</string>
+    <string>Gaegu-Bold.ttf</string>
+  </array>
   <key>UIRequiresFullScreen</key>
   <true/>
   <key>UIBackgroundModes</key>

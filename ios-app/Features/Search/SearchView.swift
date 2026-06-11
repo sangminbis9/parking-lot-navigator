@@ -59,7 +59,7 @@ struct SearchView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text("축제 / 이벤트")
-                            .font(.headline)
+                            .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
                         Spacer()
                         StatusBadge(text: "\(filteredItems.count)개", kind: .source)
@@ -175,10 +175,10 @@ struct SearchView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("지금 가볼 만한 축제")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("목록에서 장소를 고르면 근처 주차장을 바로 추천합니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
@@ -235,7 +235,7 @@ struct SearchView: View {
                         selectedKind = kind
                     } label: {
                         Label(kind.title, systemImage: kind.systemImage)
-                            .font(.caption.weight(.bold))
+                            .font(.festival(.caption, weight: .bold))
                             .lineLimit(1)
                             .frame(maxWidth: .infinity)
                     }
@@ -252,7 +252,7 @@ struct SearchView: View {
                     }
                 } label: {
                     Label(sort.title, systemImage: "arrow.up.arrow.down")
-                        .font(.caption.weight(.semibold))
+                        .font(.festival(.caption, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(DiscoverControlButtonStyle(tint: FestivalDesign.teal, isActive: false))
@@ -261,7 +261,7 @@ struct SearchView: View {
                     showsFilters = true
                 } label: {
                     Label(filters.hasFilters ? "필터 \(filters.count)" : "필터", systemImage: filters.hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .font(.caption.weight(.semibold))
+                        .font(.festival(.caption, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(DiscoverControlButtonStyle(tint: FestivalDesign.coral, isActive: filters.hasFilters))
@@ -279,18 +279,18 @@ struct SearchView: View {
                 HStack(spacing: 8) {
                     ForEach(chips, id: \.self) { label in
                         Text(label)
-                            .font(.caption.weight(.semibold))
+                            .font(.festival(.caption, weight: .semibold))
                             .foregroundStyle(FestivalDesign.coral)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                             .background(FestivalDesign.cream.opacity(0.55))
-                            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                            .clipShape(FestivalDesign.controlShape)
                     }
                     Button {
                         filters = DiscoverTabFilters()
                     } label: {
                         Label("초기화", systemImage: "xmark.circle.fill")
-                            .font(.caption.weight(.semibold))
+                            .font(.festival(.caption, weight: .semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(FestivalDesign.secondaryText)
@@ -307,10 +307,10 @@ struct SearchView: View {
                 .frame(width: 132, height: 132)
                 .accessibilityHidden(true)
             Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "표시할 축제가 없습니다" : "검색 결과가 없습니다")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("검색어를 바꾸거나 잠시 후 다시 확인해 주세요.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -789,10 +789,10 @@ private struct DiscoverTabFilterSheet: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("보고 싶은 축제를 골라볼게요")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("장르, 지역, 진행 상태, 출처를 조합해서 목록을 좁힙니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
@@ -816,7 +816,7 @@ private struct DiscoverTabFilterSheet: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("상태")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             FlowLayout(spacing: 8) {
                 ForEach([DiscoverStatus.ongoing, .upcoming], id: \.self) { status in
@@ -841,7 +841,7 @@ private struct DiscoverTabFilterSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("축제 카테고리")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Spacer()
                 if !filters.selectedFestivalCategories.isEmpty {
@@ -851,7 +851,7 @@ private struct DiscoverTabFilterSheet: View {
 
             if festivalCategories.isEmpty {
                 Text("선택할 항목이 없습니다")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -881,7 +881,7 @@ private struct DiscoverTabFilterSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("이벤트 카테고리")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Spacer()
                 if !filters.selectedEventCategories.isEmpty {
@@ -891,7 +891,7 @@ private struct DiscoverTabFilterSheet: View {
 
             if eventCategories.isEmpty {
                 Text("선택할 항목이 없습니다")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -927,18 +927,18 @@ private struct DiscoverTabFilterSheet: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
-                    .font(.caption2.weight(.bold))
+                    .font(.festival(.caption2, weight: .bold))
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.festival(.caption, weight: .semibold))
                     .lineLimit(1)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(isSelected ? tint.opacity(0.18) : FestivalDesign.cream.opacity(0.42))
             .foregroundStyle(isSelected ? tint : FestivalDesign.navy)
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
             .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                FestivalDesign.controlShape
                     .stroke(isSelected ? tint.opacity(0.4) : FestivalDesign.creamDeep.opacity(0.48), lineWidth: 1)
             )
         }
@@ -949,7 +949,7 @@ private struct DiscoverTabFilterSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Spacer()
                 if !selection.wrappedValue.isEmpty {
@@ -959,7 +959,7 @@ private struct DiscoverTabFilterSheet: View {
 
             if values.isEmpty {
                 Text("선택할 항목이 없습니다")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -982,15 +982,15 @@ private struct DiscoverTabFilterSheet: View {
     private func filterChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.festival(.caption, weight: .semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isSelected ? FestivalDesign.coral.opacity(0.16) : FestivalDesign.cream.opacity(0.42))
                 .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.navy)
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+                .clipShape(FestivalDesign.controlShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                    FestivalDesign.controlShape
                         .stroke(isSelected ? FestivalDesign.coral.opacity(0.28) : FestivalDesign.creamDeep.opacity(0.48), lineWidth: 1)
                 )
         }
@@ -1016,9 +1016,9 @@ private struct DiscoverSegmentButtonStyle: ButtonStyle {
             .padding(.vertical, 9)
             .background(isSelected ? tint.opacity(0.16) : FestivalDesign.surface)
             .foregroundStyle(isSelected ? tint : FestivalDesign.secondaryText)
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
             .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                FestivalDesign.controlShape
                     .stroke(isSelected ? tint.opacity(0.32) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -1035,9 +1035,9 @@ private struct DiscoverControlButtonStyle: ButtonStyle {
             .padding(.vertical, 9)
             .background(isActive ? tint.opacity(0.16) : FestivalDesign.cream.opacity(0.35))
             .foregroundStyle(isActive ? tint : FestivalDesign.navy)
-            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.controlRadius))
+            .clipShape(FestivalDesign.controlShape)
             .overlay(
-                RoundedRectangle(cornerRadius: FestivalDesign.controlRadius)
+                FestivalDesign.controlShape
                     .stroke(isActive ? tint.opacity(0.3) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -1105,18 +1105,18 @@ private struct DiscoverTabRow: View {
                     StatusBadge(text: item.status.displayText, kind: item.status == .ongoing ? .realtime : .neutral)
                 }
                 Text(item.title)
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                     .lineLimit(2)
                 Text(item.subtitle)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
                 Text(item.dateText)
-                    .font(.caption.weight(.semibold))
+                    .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.teal)
                 Text(item.address)
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
             }
@@ -1218,10 +1218,10 @@ struct DestinationRow: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(destination.name)
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text(destination.address)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }

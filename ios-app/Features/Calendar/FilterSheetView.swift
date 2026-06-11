@@ -37,7 +37,7 @@ struct FilterSheetView: View {
                         filterModel.update(draft)
                         dismiss()
                     }
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.festival(size: 15, weight: .bold))
                     .foregroundStyle(FestivalDesign.coral)
                 }
             }
@@ -99,17 +99,17 @@ struct FilterSheetView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: category.systemImage)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.festival(size: 11, weight: .bold))
                 Text(category.displayName)
-                    .font(.system(size: 12, weight: isOn ? .bold : .semibold))
+                    .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
             }
             .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(isOn ? category.tint : FestivalDesign.surface)
-            .clipShape(Capsule())
+            .clipShape(FestivalDesign.chipShape)
             .overlay(
-                Capsule().stroke(isOn ? category.tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+                FestivalDesign.chipShape.stroke(isOn ? category.tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -119,11 +119,11 @@ struct FilterSheetView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(.festival(size: 11))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -134,14 +134,14 @@ struct FilterSheetView: View {
     private func chip(label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: isOn ? .bold : .semibold))
+                .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
                 .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)
-                .clipShape(Capsule())
+                .clipShape(FestivalDesign.chipShape)
                 .overlay(
-                    Capsule().stroke(isOn ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
+                    FestivalDesign.chipShape.stroke(isOn ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

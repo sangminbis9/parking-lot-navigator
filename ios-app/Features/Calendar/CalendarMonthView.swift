@@ -20,7 +20,7 @@ struct CalendarMonthView: View {
             HStack(spacing: 0) {
                 ForEach(0..<7, id: \.self) { idx in
                     Text(weekdaySymbols[idx])
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.festival(size: 11, weight: .semibold))
                         .foregroundStyle(idx == 0 ? FestivalDesign.coral : (idx == 6 ? FestivalDesign.parkingBlue : FestivalDesign.secondaryText))
                         .frame(maxWidth: .infinity)
                 }

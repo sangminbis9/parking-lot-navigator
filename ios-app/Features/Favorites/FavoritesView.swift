@@ -35,10 +35,10 @@ struct FavoritesView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("다시 가고 싶은 장소")
-                    .font(.headline)
+                    .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("축제와 목적지를 저장해두면 주차 추천까지 빠르게 이어집니다.")
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
             }
@@ -68,10 +68,10 @@ struct FavoritesView: View {
                 .accessibilityHidden(true)
 
             Text("아직 즐겨찾기가 없습니다")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("마음에 드는 목적지를 저장하면 이곳에서 바로 찾을 수 있어요.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 18)
@@ -84,7 +84,7 @@ struct FavoritesView: View {
     private func destinationSection(title: String, destinations: [Destination]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
 
             ForEach(destinations) { destination in

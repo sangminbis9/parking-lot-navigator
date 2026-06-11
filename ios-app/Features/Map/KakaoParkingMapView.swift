@@ -806,7 +806,7 @@ private extension UIImage {
             return haloPin(core: fill, symbol: symbol, size: size, scale: scale, ringColor: ringColor)
         }
 
-        let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        let font = FestivalDesign.uiFont(size: 14, weight: .semibold)
         let horizontalPadding: CGFloat = 9
         let bubbleHeight: CGFloat = 24
         let gap: CGFloat = 4
@@ -967,7 +967,7 @@ private extension UIImage {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: size * 0.46, weight: .heavy),
+                .font: FestivalDesign.uiFont(size: size * 0.46, weight: .heavy),
                 .foregroundColor: UIColor.white,
                 .paragraphStyle: paragraph
             ]

@@ -43,10 +43,10 @@ struct ParkingResultsView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("주변 주차장 추천")
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                     Text("축제 정보 확인 후 바로 이동할 수 있게 아래에 모아뒀어요.")
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -90,13 +90,13 @@ struct ParkingResultsView: View {
             )
             VStack(spacing: 10) {
                 Image(systemName: "map")
-                    .font(.system(size: 34, weight: .semibold))
+                    .font(.festival(size: 34, weight: .semibold))
                     .foregroundStyle(FestivalDesign.teal)
                 Text("목적지 주변 주차 미리보기")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.festival(.subheadline, weight: .semibold))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("상세 화면에서 경로와 실시간 정보를 이어서 확인할 수 있어요.")
-                    .font(.caption)
+                    .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .multilineTextAlignment(.center)
             }
@@ -115,13 +115,13 @@ private struct ParkingEmptyStateView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "parkingsign.circle")
-                .font(.system(size: 34, weight: .semibold))
+                .font(.festival(size: 34, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text("추천할 주변 주차장이 없어요")
-                .font(.headline)
+                .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             Text("이 목적지 반경 800m 안에서 안내할 수 있는 주차장을 찾지 못했어요.")
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -146,18 +146,18 @@ private struct DiscoverResultHeader: View {
                 StatusBadge(text: presentation.status.displayText, kind: presentation.status == .ongoing ? .realtime : .neutral)
                 Spacer(minLength: 0)
                 Text(presentation.source)
-                    .font(.caption.weight(.semibold))
+                    .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.secondaryText)
             }
 
             Text(presentation.title)
-                .font(.title3.weight(.bold))
+                .font(.festival(.title3, weight: .bold))
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let subtitle = presentation.subtitle, !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -310,10 +310,10 @@ private struct DiscoverDescriptionCard: View {
     private func detailSection(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.caption.weight(.semibold))
+                .font(.festival(.caption, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
-                .font(.subheadline)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -323,10 +323,10 @@ private struct DiscoverDescriptionCard: View {
     private func detailRow(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.caption.weight(.semibold))
+                .font(.festival(.caption, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -347,11 +347,11 @@ private struct ParkingGuideHeader: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(destination.name)
-                    .font(.title3.weight(.bold))
+                    .font(.festival(.title3, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .lineLimit(2)
                 Text(destination.address)
-                    .font(.subheadline)
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(2)
                 StatusBadge(text: "반경 800m", kind: .source)
@@ -375,27 +375,27 @@ struct ParkingLotRow: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(parkingLot.name)
-                        .font(.headline)
+                        .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)
                     Text(parkingLot.address)
-                        .font(.subheadline)
+                        .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .lineLimit(2)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {
                     Text("\(recommendation.scorePercent)점")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.festival(.subheadline, weight: .semibold))
                         .foregroundStyle(FestivalDesign.teal)
                     Text("\(parkingLot.distanceFromDestinationMeters)m")
-                        .font(.caption)
+                        .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
 
             Text(recommendation.primaryReason)
-                .font(.subheadline.weight(.semibold))
+                .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
 
             ScrollView(.horizontal, showsIndicators: false) {
