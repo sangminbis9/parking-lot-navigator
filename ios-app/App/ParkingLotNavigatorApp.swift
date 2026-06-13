@@ -10,6 +10,8 @@ struct ParkingLotNavigatorApp: App {
     @StateObject private var festivalSync: FestivalSyncService
     @StateObject private var notificationPrefs: NotificationPreferencesModel
     @StateObject private var discoveryService: DiscoveryNotificationService
+    @StateObject private var festivalFavorites: FestivalFavoritesStore
+    @StateObject private var eventFavorites: LocalEventFavoritesStore
     private let apiClient: APIClientProtocol = APIClient()
 
     init() {
@@ -29,6 +31,8 @@ struct ParkingLotNavigatorApp: App {
             apiClient: client,
             appGroupID: appGroupID
         ))
+        _festivalFavorites = StateObject(wrappedValue: FestivalFavoritesStore(appGroupID: appGroupID))
+        _eventFavorites = StateObject(wrappedValue: LocalEventFavoritesStore(appGroupID: appGroupID))
     }
 
     var body: some Scene {
@@ -39,6 +43,8 @@ struct ParkingLotNavigatorApp: App {
                 .environmentObject(festivalSync)
                 .environmentObject(notificationPrefs)
                 .environmentObject(discoveryService)
+                .environmentObject(festivalFavorites)
+                .environmentObject(eventFavorites)
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }
