@@ -107,6 +107,13 @@ struct AppRootView: View {
                 discoveryService.scheduleNextRefresh()
             }
         }
+        .onReceive(DeepLinkRouter.shared.$pendingFestival) { festival in
+            guard let festival else { return }
+            DeepLinkRouter.shared.pendingFestival = nil
+            tabRouter.selectedTab = .discover
+            router.path.removeAll()
+            router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
+        }
     }
 
     private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -216,14 +223,9 @@ private struct FestivalTabBar: View {
             selection = tab
         } label: {
             VStack(spacing: 4) {
-                ZStack {
-                    FestivalDesign.controlShape
-                        .fill(isSelected ? FestivalDesign.tealSoft : Color.clear)
-                        .frame(width: 38, height: 25)
-                    Image(systemName: tab.systemImage)
-                        .font(.festival(size: 15, weight: .bold))
-                        .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
-                }
+                Image(systemName: tab.systemImage)
+                    .font(.festival(size: 15, weight: .bold))
+                    .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
                 Text(tab.title)
                     .font(.festival(size: 10, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? FestivalDesign.navy : FestivalDesign.secondaryText)
@@ -233,8 +235,6 @@ private struct FestivalTabBar: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 3)
             .padding(.bottom, 2)
-            .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
-            .clipShape(FestivalDesign.controlShape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)

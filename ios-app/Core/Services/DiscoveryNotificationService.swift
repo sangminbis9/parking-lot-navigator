@@ -71,7 +71,7 @@ final class DiscoveryNotificationService: ObservableObject {
         }
     }
 
-    /// 신규 축제가 있으면 요약 알림을 보낸다.
+    /// 신규 축제를 1건씩 개별 알림으로 보낸다.
     private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
         let coord = coordinate(forRegions: prefs.regions)
         let radius = prefs.radiusKm * 1_000
@@ -84,10 +84,31 @@ final class DiscoveryNotificationService: ObservableObject {
         let newItems = matched.filter { !known.contains($0.id) }
         guard !newItems.isEmpty else { return }
 
-        let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{CD95}\u{C81C}" // 근처 새 축제
-        let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{CD95}\u{C81C} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 축제 N건이 있어요.
-        await scheduleSummary(idPrefix: "discovery-festival", title: title, body: body)
+        for festival in newItems {
+            await scheduleIndividualFestivalNotification(festival)
+        }
         addNotifiedIDs(newItems.map(\.id), key: key)
+    }
+
+    private func scheduleIndividualFestivalNotification(_ festival: Festival) async {
+        let emoji = festival.primaryCategory?.emoji ?? "🎪"
+        let content = UNMutableNotificationContent()
+        content.title = "\(emoji) \(festival.title)"
+        let venue = festival.venueName ?? festival.address
+        content.body = "\(venue) · \(festival.startDate) ~ \(festival.endDate)"
+        content.sound = .default
+
+        if let data = try? JSONEncoder().encode(festival),
+           let jsonString = String(data: data, encoding: .utf8) {
+            content.userInfo = ["festivalJSON": jsonString]
+        }
+
+        let request = UNNotificationRequest(
+            identifier: "discovery-festival-\(festival.id)-\(Int(Date().timeIntervalSince1970))",
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
     }
 
     /// 신규 로컬 이벤트가 있으면 요약 알림을 보낸다.

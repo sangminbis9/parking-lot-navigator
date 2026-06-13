@@ -4,6 +4,7 @@ import KakaoSDKCommon
 
 @main
 struct ParkingLotNavigatorApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var destinationStore = DestinationStore()
     @StateObject private var themeStore = FestivalThemeStore()
     @StateObject private var festivalSync: FestivalSyncService
