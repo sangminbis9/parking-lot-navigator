@@ -112,8 +112,11 @@ struct NotificationSettingsView: View {
                 Divider()
                 fieldTitle("카테고리", "비워두면 전체")
                 festivalCategoryChips
-                fieldTitle("지역", "비워두면 현재 위치 반경")
-                regionChips(selected: model.prefs.festival.regions) { toggleFestivalRegion($0) }
+                fieldTitle("지역", "도시 ▾ 를 눌러 세부 지역 선택")
+                RegionAccordionPicker(selected: Binding(
+                    get: { model.prefs.festival.regions },
+                    set: { model.prefs.festival.regions = $0 }
+                ))
                 if model.prefs.festival.regions.isEmpty {
                     fieldTitle("반경", nil)
                     radiusChips(selected: model.prefs.festival.radiusKm) { model.prefs.festival.radiusKm = $0 }
@@ -149,7 +152,7 @@ struct NotificationSettingsView: View {
     }
 
     private var festivalCategoryChips: some View {
-        FlowLayout(spacing: 6) {
+        RegionFlowLayout(spacing: 6) {
             ForEach(FestivalPrimaryCategory.allCases, id: \.self) { category in
                 categoryChip(
                     label: category.displayName,
@@ -178,8 +181,11 @@ struct NotificationSettingsView: View {
                 Divider()
                 fieldTitle("카테고리", "비워두면 전체")
                 localEventCategoryChips
-                fieldTitle("지역", "비워두면 현재 위치 반경")
-                regionChips(selected: model.prefs.localEvent.regions) { toggleLocalEventRegion($0) }
+                fieldTitle("지역", "도시 ▾ 를 눌러 세부 지역 선택")
+                RegionAccordionPicker(selected: Binding(
+                    get: { model.prefs.localEvent.regions },
+                    set: { model.prefs.localEvent.regions = $0 }
+                ))
                 if model.prefs.localEvent.regions.isEmpty {
                     fieldTitle("반경", nil)
                     radiusChips(selected: model.prefs.localEvent.radiusKm) { model.prefs.localEvent.radiusKm = $0 }
@@ -191,7 +197,7 @@ struct NotificationSettingsView: View {
     }
 
     private var localEventCategoryChips: some View {
-        FlowLayout(spacing: 6) {
+        RegionFlowLayout(spacing: 6) {
             ForEach(LocalEventPrimaryCategory.allCases, id: \.self) { category in
                 categoryChip(
                     label: category.displayName,
@@ -264,16 +270,6 @@ struct NotificationSettingsView: View {
                 Text(subtitle)
                     .font(.festival(size: 11))
                     .foregroundStyle(FestivalDesign.secondaryText)
-            }
-        }
-    }
-
-    private func regionChips(selected: [String], toggle: @escaping (String) -> Void) -> some View {
-        FlowLayout(spacing: 6) {
-            ForEach(Array(FestivalFilter.koreanRegions).sorted(), id: \.self) { region in
-                plainChip(label: region, isOn: selected.contains(region)) {
-                    toggle(region)
-                }
             }
         }
     }
@@ -358,22 +354,6 @@ struct NotificationSettingsView: View {
         }
     }
 
-    private func toggleFestivalRegion(_ region: String) {
-        if let idx = model.prefs.festival.regions.firstIndex(of: region) {
-            model.prefs.festival.regions.remove(at: idx)
-        } else {
-            model.prefs.festival.regions.append(region)
-        }
-    }
-
-    private func toggleLocalEventRegion(_ region: String) {
-        if let idx = model.prefs.localEvent.regions.firstIndex(of: region) {
-            model.prefs.localEvent.regions.remove(at: idx)
-        } else {
-            model.prefs.localEvent.regions.append(region)
-        }
-    }
-
     private func leadDayLabel(_ days: Int) -> String {
         switch days {
         case 0: return "당일"
@@ -399,49 +379,5 @@ struct NotificationSettingsView: View {
     private func refreshPermissionState() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         permissionDenied = settings.authorizationStatus == .denied && model.prefs.anyDiscoveryEnabled
-    }
-}
-
-private struct FlowLayout: Layout {
-    let spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var rowWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0
-        var maxRowWidth: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if rowWidth + size.width > width {
-                totalHeight += rowHeight + spacing
-                maxRowWidth = max(maxRowWidth, rowWidth - spacing)
-                rowWidth = size.width + spacing
-                rowHeight = size.height
-            } else {
-                rowWidth += size.width + spacing
-                rowHeight = max(rowHeight, size.height)
-            }
-        }
-        totalHeight += rowHeight
-        maxRowWidth = max(maxRowWidth, rowWidth - spacing)
-        return CGSize(width: maxRowWidth, height: totalHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: size.width, height: size.height))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
     }
 }

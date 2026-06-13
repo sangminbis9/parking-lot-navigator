@@ -37,10 +37,17 @@ struct LocalEventFilter: Codable, Hashable {
             return false
         }
         if !regions.isEmpty {
-            let eventRegions = event.discoverTags.filter { FestivalFilter.koreanRegions.contains($0) }
-            if eventRegions.isEmpty || !regions.contains(where: { eventRegions.contains($0) }) {
-                return false
+            let selectedProvinces = regions.filter { FestivalFilter.koreanRegions.contains($0) }
+            let selectedCities = regions.filter { !FestivalFilter.koreanRegions.contains($0) }
+            var matched = false
+            if !selectedProvinces.isEmpty {
+                let tags = event.discoverTags.filter { FestivalFilter.koreanRegions.contains($0) }
+                if tags.contains(where: { selectedProvinces.contains($0) }) { matched = true }
             }
+            if !matched, !selectedCities.isEmpty {
+                if selectedCities.contains(where: { event.address.contains($0) }) { matched = true }
+            }
+            if !matched { return false }
         }
         if !primaryCategories.isEmpty {
             guard let category = event.primaryCategory, primaryCategories.contains(category) else {
