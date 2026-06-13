@@ -9,6 +9,8 @@ struct MapHologramOverlay: View {
     let imageUrl: String?
     let tint: Color
     let symbol: String
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)? = nil
     let onDetails: () -> Void
     let onClose: () -> Void
 
@@ -77,19 +79,31 @@ struct MapHologramOverlay: View {
                 .padding(.top, 10)
                 .padding(.leading, 10)
                 .padding(.bottom, 10)
-                .padding(.trailing, 34)
+                .padding(.trailing, onToggleFavorite != nil ? 56 : 34)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.festival(size: 9, weight: .bold))
-                    .foregroundColor(FestivalDesign.secondaryText)
-                    .frame(width: 20, height: 20)
-                    .background(Circle().fill(Color(.systemGray6)))
+            HStack(spacing: 4) {
+                if let onToggleFavorite {
+                    Button(action: onToggleFavorite) {
+                        Image(systemName: isFavorite ? "star.fill" : "star")
+                            .font(.festival(size: 9, weight: .bold))
+                            .foregroundColor(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                            .frame(width: 20, height: 20)
+                            .background(Circle().fill(Color(.systemGray6)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.festival(size: 9, weight: .bold))
+                        .foregroundColor(FestivalDesign.secondaryText)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Color(.systemGray6)))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(8)
         }
         .background(Color.white)

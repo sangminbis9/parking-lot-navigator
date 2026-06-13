@@ -1094,6 +1094,15 @@ private struct FlowLayout: Layout {
 
 private struct DiscoverTabRow: View {
     let item: DiscoverTabItem
+    @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
+    @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
+
+    private var isFavorite: Bool {
+        switch item.kind {
+        case .festival(let festival): return festivalFavorites.contains(id: festival.id)
+        case .event(let event): return eventFavorites.contains(id: event.id)
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -1121,6 +1130,18 @@ private struct DiscoverTabRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            Button {
+                switch item.kind {
+                case .festival(let festival): festivalFavorites.toggle(festival)
+                case .event(let event): eventFavorites.toggle(event)
+                }
+            } label: {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.festival(size: 18, weight: .semibold))
+                    .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

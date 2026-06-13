@@ -8,7 +8,7 @@ struct CalendarTabView: View {
     @EnvironmentObject private var festivalSync: FestivalSyncService
     @StateObject private var viewModel: CalendarViewModel
     @StateObject private var filterModel: FestivalFilterModel
-    @StateObject private var favoritesStore: FestivalFavoritesStore
+    @EnvironmentObject private var favoritesStore: FestivalFavoritesStore
     @StateObject private var reminderService = FestivalReminderService(appGroupID: AppConfiguration.current.appGroupID)
     @StateObject private var locationProvider = CurrentLocationProvider()
 
@@ -32,7 +32,6 @@ struct CalendarTabView: View {
         self.appGroupID = appGroupID
         _viewModel = StateObject(wrappedValue: CalendarViewModel(apiClient: apiClient))
         _filterModel = StateObject(wrappedValue: FestivalFilterModel(scope: "calendar", appGroupID: appGroupID))
-        _favoritesStore = StateObject(wrappedValue: FestivalFavoritesStore(appGroupID: appGroupID))
     }
 
     var body: some View {
@@ -40,7 +39,7 @@ struct CalendarTabView: View {
             header
             CalendarMonthView(
                 monthAnchor: monthAnchor,
-                festivalsByDay: viewModel.festivalsByDay,
+                festivalsByDay: favoriteFestivalsByDay,
                 selectedDay: selectedDay,
                 savedDayKeys: savedDayKeys,
                 onSelectDay: handleSelectDay,
@@ -227,25 +226,16 @@ struct CalendarTabView: View {
 
     private var emptyAgenda: some View {
         VStack(spacing: 10) {
-            Image(systemName: "calendar.badge.exclamationmark")
+            Image(systemName: "star")
                 .font(.festival(size: 30))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            Text("\u{C774} \u{B0A0}\u{C740} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 이 날은 축제가 없어요
+            Text("즐겨찾기한 축제가 없어요")
                 .font(.festival(size: 14, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            if viewModel.nextFestivalDay(onOrAfter: selectedDay ?? Date()) != nil {
-                Button {
-                    jumpToNextUpcoming()
-                } label: {
-                    Text("\u{B2E4}\u{C74C} \u{C608}\u{C815} \u{CD95}\u{C81C} \u{BCF4}\u{AE30}") // 다음 예정 축제 보기
-                        .font(.festival(size: 13, weight: .bold))
-                        .foregroundStyle(FestivalDesign.surface)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(FestivalDesign.coral)
-                        .clipShape(FestivalDesign.chipShape)
-                }
-            }
+            Text("이벤트 탭 목록에서 ☆ 을 탭해\n관심 축제를 추가해보세요")
+                .font(.festival(size: 12))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
@@ -253,17 +243,37 @@ struct CalendarTabView: View {
 
     // MARK: - Derived
 
+    private var favoriteFestivalsByDay: [String: [Festival]] {
+        let savedIDs = Set(favoritesStore.saved.map(\.id))
+        let favorites = viewModel.allFestivals.filter { savedIDs.contains($0.id) }
+        var result: [String: [Festival]] = [:]
+        for festival in favorites {
+            guard let start = CalendarViewModel.dayFormatter.date(from: festival.startDate) else { continue }
+            let end = CalendarViewModel.dayFormatter.date(from: festival.endDate) ?? start
+            var cursor = start
+            var safety = 0
+            while cursor <= end, safety < 200 {
+                let key = CalendarViewModel.dayFormatter.string(from: cursor)
+                result[key, default: []].append(festival)
+                guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+                cursor = next
+                safety += 1
+            }
+        }
+        return result
+    }
+
     private var agendaFestivals: [Festival] {
         guard let day = selectedDay else { return [] }
         if weekendMode {
-            var combined = viewModel.festivals(on: day)
+            var combined = favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
             if let sunday = calendar.date(byAdding: .day, value: 1, to: day) {
-                combined += viewModel.festivals(on: sunday)
+                combined += favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: sunday)] ?? []
             }
             var seen = Set<String>()
             return combined.filter { seen.insert($0.id).inserted }
         }
-        return viewModel.festivals(on: day)
+        return favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
     }
 
     private static let monthTitleFormatter: DateFormatter = {

@@ -5,6 +5,8 @@ struct ParkingResultsView: View {
     let apiClient: APIClientProtocol
     let presentation: DiscoverPresentation?
     @EnvironmentObject private var router: Router
+    @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
+    @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
     @StateObject private var viewModel: ParkingResultsViewModel
 
     init(destination: Destination, apiClient: APIClientProtocol, presentation: DiscoverPresentation? = nil) {
@@ -14,11 +16,38 @@ struct ParkingResultsView: View {
         _viewModel = StateObject(wrappedValue: ParkingResultsViewModel(destination: destination, apiClient: apiClient))
     }
 
+    private var isFavorite: Bool {
+        let rawId = destination.id.hasPrefix("festival-")
+            ? String(destination.id.dropFirst("festival-".count))
+            : destination.id.hasPrefix("event-")
+                ? String(destination.id.dropFirst("event-".count))
+                : destination.id
+        if destination.normalizedCategory == "festival" {
+            return festivalFavorites.contains(id: rawId)
+        } else if destination.normalizedCategory == "event" {
+            return eventFavorites.contains(id: rawId)
+        }
+        return false
+    }
+
+    private func toggleFavorite() {
+        guard let presentation else { return }
+        if destination.normalizedCategory == "festival" {
+            festivalFavorites.toggle(SavedFestival(destination: destination, presentation: presentation))
+        } else if destination.normalizedCategory == "event" {
+            eventFavorites.toggle(SavedEvent(destination: destination, presentation: presentation))
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if let presentation {
-                    DiscoverResultHeader(presentation: presentation)
+                    DiscoverResultHeader(
+                        presentation: presentation,
+                        isFavorite: isFavorite,
+                        onToggleFavorite: { toggleFavorite() }
+                    )
                     DiscoverDescriptionCard(presentation: presentation)
                 } else {
                     ParkingGuideHeader(destination: destination)
@@ -132,6 +161,8 @@ private struct ParkingEmptyStateView: View {
 
 private struct DiscoverResultHeader: View {
     let presentation: DiscoverPresentation
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -145,6 +176,14 @@ private struct DiscoverResultHeader: View {
                 StatusBadge(text: presentation.typeText, kind: .source)
                 StatusBadge(text: presentation.status.displayText, kind: presentation.status == .ongoing ? .realtime : .neutral)
                 Spacer(minLength: 0)
+                if let onToggleFavorite {
+                    Button(action: onToggleFavorite) {
+                        Image(systemName: isFavorite ? "star.fill" : "star")
+                            .font(.festival(size: 20, weight: .semibold))
+                            .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Text(presentation.source)
                     .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.secondaryText)

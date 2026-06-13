@@ -24,6 +24,20 @@ struct SavedFestival: Codable, Hashable, Identifiable {
         self.lng = festival.lng
         self.source = festival.source
     }
+
+    init(destination: Destination, presentation: DiscoverPresentation) {
+        let rawId = destination.id.hasPrefix("festival-") ? String(destination.id.dropFirst("festival-".count)) : destination.id
+        let parts = presentation.dateText.components(separatedBy: " - ")
+        self.id = rawId
+        self.title = presentation.title
+        self.startDate = parts.first ?? ""
+        self.endDate = parts.last ?? parts.first ?? ""
+        self.venueName = presentation.venueName
+        self.address = presentation.address
+        self.lat = destination.lat
+        self.lng = destination.lng
+        self.source = presentation.source
+    }
 }
 
 extension SavedFestival {
@@ -88,6 +102,18 @@ final class FestivalFavoritesStore: ObservableObject {
             return false
         }
         saved.append(SavedFestival(festival: festival))
+        persist()
+        return true
+    }
+
+    @discardableResult
+    func toggle(_ savedFestival: SavedFestival) -> Bool {
+        if let idx = saved.firstIndex(where: { $0.id == savedFestival.id }) {
+            saved.remove(at: idx)
+            persist()
+            return false
+        }
+        saved.append(savedFestival)
         persist()
         return true
     }

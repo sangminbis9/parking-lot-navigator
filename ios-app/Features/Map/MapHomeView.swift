@@ -10,6 +10,8 @@ struct MapHomeView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var tabRouter: AppTabRouter
     @EnvironmentObject private var destinationStore: DestinationStore
+    @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
+    @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
@@ -942,6 +944,8 @@ struct MapHomeView: View {
                     imageUrl: festival.imageUrl,
                     tint: FestivalDesign.coral,
                     symbol: "sparkles",
+                    isFavorite: festivalFavorites.contains(id: festival.id),
+                    onToggleFavorite: { festivalFavorites.toggle(festival) },
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
                         withAnimation(.easeOut(duration: 0.18)) {
@@ -960,6 +964,8 @@ struct MapHomeView: View {
                     imageUrl: event.imageUrl,
                     tint: FestivalDesign.teal,
                     symbol: "calendar",
+                    isFavorite: eventFavorites.contains(id: event.id),
+                    onToggleFavorite: { eventFavorites.toggle(event) },
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
                         withAnimation(.easeOut(duration: 0.18)) {
