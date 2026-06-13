@@ -1,10 +1,12 @@
 import Foundation
+import Combine
 
-final class DeepLinkRouter {
+final class DeepLinkRouter: ObservableObject {
     static let shared = DeepLinkRouter()
     private init() {}
 
     private(set) var pendingQuery: String?
+    @Published var pendingFestival: Festival?
 
     func urlForDestinationSearch(_ query: String) -> URL {
         var components = URLComponents()

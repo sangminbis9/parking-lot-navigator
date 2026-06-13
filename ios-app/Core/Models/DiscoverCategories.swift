@@ -60,6 +60,22 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .etc: return Color(red: 0.424, green: 0.459, blue: 0.490)               // #6C757D
         }
     }
+
+    var emoji: String {
+        switch self {
+        case .musicPerformance:  return "🎵"
+        case .foodDrink:         return "🍽️"
+        case .natureFlower:      return "🌸"
+        case .lightNight:        return "✨"
+        case .traditionCulture:  return "🏛️"
+        case .familyKids:        return "👨‍👩‍👧"
+        case .marketFlea:        return "🛍️"
+        case .sportsOutdoor:     return "🏃"
+        case .filmMedia:         return "🎬"
+        case .artExhibition:     return "🎨"
+        case .etc:               return "🎪"
+        }
+    }
 }
 
 enum LocalEventPrimaryCategory: String, CaseIterable, Codable, Hashable {
