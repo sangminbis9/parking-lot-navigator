@@ -72,20 +72,14 @@ struct FilterSheetView: View {
     }
 
     private var regionSection: some View {
-        sectionWrapper(title: "지역", subtitle: "여러 개 선택 가능") {
-            FlowLayout(spacing: 6) {
-                ForEach(Array(FestivalFilter.koreanRegions).sorted(), id: \.self) { region in
-                    chip(label: region, isOn: draft.regions.contains(region)) {
-                        toggle(region: region)
-                    }
-                }
-            }
+        sectionWrapper(title: "지역", subtitle: "도시 ▾ 를 눌러 세부 지역 선택") {
+            RegionAccordionPicker(selected: $draft.regions)
         }
     }
 
     private var categorySection: some View {
         sectionWrapper(title: "카테고리", subtitle: "여러 개 선택 가능") {
-            FlowLayout(spacing: 6) {
+            RegionFlowLayout(spacing: 6) {
                 ForEach(FestivalPrimaryCategory.allCases, id: \.self) { category in
                     categoryChip(category: category, isOn: draft.primaryCategories.contains(category)) {
                         toggle(category: category)
@@ -155,63 +149,11 @@ struct FilterSheetView: View {
         }
     }
 
-    private func toggle(region: String) {
-        if let idx = draft.regions.firstIndex(of: region) {
-            draft.regions.remove(at: idx)
-        } else {
-            draft.regions.append(region)
-        }
-    }
-
     private func toggle(category: FestivalPrimaryCategory) {
         if draft.primaryCategories.contains(category) {
             draft.primaryCategories.remove(category)
         } else {
             draft.primaryCategories.insert(category)
-        }
-    }
-}
-
-private struct FlowLayout: Layout {
-    let spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var rowWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0
-        var maxRowWidth: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if rowWidth + size.width > width {
-                totalHeight += rowHeight + spacing
-                maxRowWidth = max(maxRowWidth, rowWidth - spacing)
-                rowWidth = size.width + spacing
-                rowHeight = size.height
-            } else {
-                rowWidth += size.width + spacing
-                rowHeight = max(rowHeight, size.height)
-            }
-        }
-        totalHeight += rowHeight
-        maxRowWidth = max(maxRowWidth, rowWidth - spacing)
-        return CGSize(width: maxRowWidth, height: totalHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: size.width, height: size.height))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
         }
     }
 }
