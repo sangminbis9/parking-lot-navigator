@@ -235,6 +235,8 @@ private struct FestivalTabBar: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 3)
             .padding(.bottom, 2)
+            .background(isSelected ? FestivalDesign.cream.opacity(0.55) : Color.clear)
+            .clipShape(FestivalDesign.controlShape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
