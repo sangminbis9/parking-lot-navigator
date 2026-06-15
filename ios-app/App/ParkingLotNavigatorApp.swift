@@ -15,6 +15,7 @@ struct ParkingLotNavigatorApp: App {
     private let apiClient: APIClientProtocol = APIClient()
 
     init() {
+        URLCache.shared = URLCache(memoryCapacity: 50 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024)
         let appKey = AppConfiguration.current.kakaoNativeAppKey
         if !appKey.isEmpty {
             SDKInitializer.InitSDK(appKey: appKey)

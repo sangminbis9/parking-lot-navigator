@@ -11,6 +11,7 @@ struct MapHologramOverlay: View {
     let symbol: String
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
+    var isSponsored: Bool = false
     let onDetails: () -> Void
     let onClose: () -> Void
 
@@ -111,7 +112,10 @@ struct MapHologramOverlay: View {
         .shadow(color: Color.black.opacity(0.14), radius: 14, x: 0, y: 5)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                .stroke(
+                    isSponsored ? FestivalDesign.lantern : Color.black.opacity(0.07),
+                    lineWidth: isSponsored ? 1.5 : 1
+                )
         )
     }
 

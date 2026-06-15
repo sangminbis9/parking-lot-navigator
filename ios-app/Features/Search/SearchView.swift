@@ -343,7 +343,17 @@ struct SearchView: View {
         let scoped = searched
             .filter { selectedKind.includes($0) }
             .filter { filters.includes($0) }
-        filteredItems = scoped.sorted(by: sort.comparator(userLocation: locationProvider.coordinate))
+
+        if case .distance = sort, let coord = locationProvider.coordinate {
+            // 거리순 정렬: 비교마다 CLLocation을 생성하면 O(n log n) 할당 → 미리 1회 계산
+            let userLoc = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+            filteredItems = scoped
+                .map { ($0, CLLocation(latitude: $0.lat, longitude: $0.lng).distance(from: userLoc)) }
+                .sorted { $0.1 < $1.1 }
+                .map(\.0)
+        } else {
+            filteredItems = scoped.sorted(by: sort.comparator(userLocation: locationProvider.coordinate))
+        }
     }
 
     private func scheduleQueryDebounce(_ newValue: String) {
@@ -464,6 +474,7 @@ private struct DiscoverTabItem: Identifiable {
     let lat: Double
     let lng: Double
     let distanceMeters: Int
+    let isSponsored: Bool
 
     static func festival(_ festival: Festival) -> DiscoverTabItem {
         let smartTags = festival.discoverTags
@@ -513,7 +524,8 @@ private struct DiscoverTabItem: Identifiable {
             eventCategory: nil,
             lat: festival.lat,
             lng: festival.lng,
-            distanceMeters: festival.distanceMeters
+            distanceMeters: festival.distanceMeters,
+            isSponsored: false
         )
     }
 
@@ -567,7 +579,8 @@ private struct DiscoverTabItem: Identifiable {
             eventCategory: event.primaryCategory,
             lat: event.lat,
             lng: event.lng,
-            distanceMeters: event.distanceMeters
+            distanceMeters: event.distanceMeters,
+            isSponsored: event.isSponsored
         )
     }
 
@@ -1112,6 +1125,9 @@ private struct DiscoverTabRow: View {
                 HStack(spacing: 6) {
                     StatusBadge(text: item.typeText, kind: .source)
                     StatusBadge(text: item.status.displayText, kind: item.status == .ongoing ? .realtime : .neutral)
+                    if item.isSponsored {
+                        StatusBadge(text: "스폰서", kind: .sponsor)
+                    }
                 }
                 Text(item.title)
                     .font(.festival(.headline))
