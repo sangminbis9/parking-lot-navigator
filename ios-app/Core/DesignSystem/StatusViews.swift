@@ -9,6 +9,7 @@ struct StatusBadge: View {
         case warning
         case neutral
         case source
+        case sponsor
     }
 
     var body: some View {
@@ -27,6 +28,7 @@ struct StatusBadge: View {
         case .warning: return FestivalDesign.coral.opacity(0.14)
         case .neutral: return FestivalDesign.cream.opacity(0.45)
         case .source: return FestivalDesign.parkingSoft
+        case .sponsor: return FestivalDesign.lantern.opacity(0.18)
         }
     }
 
@@ -36,6 +38,7 @@ struct StatusBadge: View {
         case .warning: return FestivalDesign.coral
         case .neutral: return FestivalDesign.secondaryText
         case .source: return FestivalDesign.parkingBlue
+        case .sponsor: return FestivalDesign.lantern
         }
     }
 }

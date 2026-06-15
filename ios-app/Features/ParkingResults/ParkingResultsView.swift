@@ -39,6 +39,14 @@ struct ParkingResultsView: View {
         }
     }
 
+    private var shareURL: URL {
+        if let sourceUrl = presentation?.sourceUrl,
+           let url = URL(string: sourceUrl) {
+            return url
+        }
+        return DeepLinkRouter.shared.urlForDestination(id: destination.id)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -46,7 +54,8 @@ struct ParkingResultsView: View {
                     DiscoverResultHeader(
                         presentation: presentation,
                         isFavorite: isFavorite,
-                        onToggleFavorite: { toggleFavorite() }
+                        onToggleFavorite: { toggleFavorite() },
+                        shareURL: shareURL
                     )
                     DiscoverDescriptionCard(presentation: presentation)
                 } else {
@@ -163,6 +172,7 @@ private struct DiscoverResultHeader: View {
     let presentation: DiscoverPresentation
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
+    var shareURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -183,6 +193,13 @@ private struct DiscoverResultHeader: View {
                             .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
                     }
                     .buttonStyle(.plain)
+                }
+                if let shareURL {
+                    ShareLink(item: shareURL) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.festival(size: 18, weight: .semibold))
+                            .foregroundStyle(FestivalDesign.secondaryText)
+                    }
                 }
                 Text(presentation.source)
                     .font(.festival(.caption, weight: .semibold))

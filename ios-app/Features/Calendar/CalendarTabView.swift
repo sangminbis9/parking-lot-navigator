@@ -35,11 +35,13 @@ struct CalendarTabView: View {
     }
 
     var body: some View {
+        let byDay = favoriteFestivalsByDay
+        let agendaItems = agendaFestivals(from: byDay)
         VStack(spacing: 0) {
             header
             CalendarMonthView(
                 monthAnchor: monthAnchor,
-                festivalsByDay: favoriteFestivalsByDay,
+                festivalsByDay: byDay,
                 selectedDay: selectedDay,
                 savedDayKeys: savedDayKeys,
                 onSelectDay: handleSelectDay,
@@ -50,7 +52,7 @@ struct CalendarTabView: View {
                 .padding(.vertical, 10)
             Divider()
                 .overlay(FestivalDesign.creamDeep.opacity(0.4))
-            agendaSection
+            agendaSection(items: agendaItems)
         }
         .background(FestivalDesign.background)
         .task {
@@ -191,10 +193,10 @@ struct CalendarTabView: View {
 
     // MARK: - Agenda
 
-    private var agendaSection: some View {
+    private func agendaSection(items: [Festival]) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text(agendaTitle)
+                Text(agendaTitle(count: items.count))
                     .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                     .padding(.horizontal, 16)
@@ -204,10 +206,10 @@ struct CalendarTabView: View {
                         .font(.festival(size: 12))
                         .foregroundStyle(FestivalDesign.coral)
                         .padding(.horizontal, 16)
-                } else if agendaFestivals.isEmpty {
+                } else if items.isEmpty {
                     emptyAgenda
                 } else {
-                    ForEach(agendaFestivals) { festival in
+                    ForEach(items) { festival in
                         AgendaRow(
                             festival: festival,
                             isSaved: favoritesStore.contains(id: festival.id),
@@ -263,17 +265,17 @@ struct CalendarTabView: View {
         return result
     }
 
-    private var agendaFestivals: [Festival] {
+    private func agendaFestivals(from byDay: [String: [Festival]]) -> [Festival] {
         guard let day = selectedDay else { return [] }
         if weekendMode {
-            var combined = favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
+            var combined = byDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
             if let sunday = calendar.date(byAdding: .day, value: 1, to: day) {
-                combined += favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: sunday)] ?? []
+                combined += byDay[CalendarViewModel.dayFormatter.string(from: sunday)] ?? []
             }
             var seen = Set<String>()
             return combined.filter { seen.insert($0.id).inserted }
         }
-        return favoriteFestivalsByDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
+        return byDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
     }
 
     private static let monthTitleFormatter: DateFormatter = {
@@ -290,8 +292,7 @@ struct CalendarTabView: View {
         return formatter
     }()
 
-    private var agendaTitle: String {
-        let count = agendaFestivals.count
+    private func agendaTitle(count: Int) -> String {
         if weekendMode {
             return "\u{C774}\u{BC88} \u{C8FC}\u{B9D0} \u{00B7} \(count)\u{AC1C} \u{CD95}\u{C81C}" // 이번 주말 · N개 축제
         }

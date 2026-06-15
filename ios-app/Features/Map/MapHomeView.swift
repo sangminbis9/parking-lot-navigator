@@ -273,21 +273,8 @@ struct MapHomeView: View {
         }
     }
 
-    private var discoverItemCount: Int {
-        visibleDiscoverSources.count
-    }
-
-    private var firstDiscoverListItem: DiscoverListItem? {
-        let referenceCoordinate = locationProvider.coordinate
-        switch visibleDiscoverSources.first {
-        case .festival(let festival):
-            return DiscoverListItem.festival(festival, referenceCoordinate: referenceCoordinate)
-        case .event(let event):
-            return DiscoverListItem.event(event, referenceCoordinate: referenceCoordinate)
-        case nil:
-            return nil
-        }
-    }
+    // discoverItemCount / firstDiscoverListItem는 homeDiscoveryPanel 내부로 통합
+    // — visibleDiscoverSources(CLLocation 계산 포함)가 한 render에 2회 이상 호출되는 것을 방지
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
         switch source {
@@ -594,7 +581,17 @@ struct MapHomeView: View {
     }
 
     private var homeDiscoveryPanel: some View {
-        ZStack(alignment: .topTrailing) {
+        let sources = visibleDiscoverSources
+        let itemCount = sources.count
+        let ref = locationProvider.coordinate
+        let firstItem: DiscoverListItem? = {
+            switch sources.first {
+            case .festival(let f): return .festival(f, referenceCoordinate: ref)
+            case .event(let e): return .event(e, referenceCoordinate: ref)
+            case nil: return nil
+            }
+        }()
+        return ZStack(alignment: .topTrailing) {
             HStack(spacing: 12) {
                 Image("FestivalMascotGuide")
                     .resizable()
@@ -607,14 +604,14 @@ struct MapHomeView: View {
                         Text("주변 축제부터 둘러보세요")
                             .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
-                        Text("\(discoverItemCount)")
+                        Text("\(itemCount)")
                             .font(.festival(.caption, weight: .bold))
                             .foregroundStyle(FestivalDesign.teal)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(FestivalDesign.tealSoft)
                             .clipShape(FestivalDesign.controlShape)
-                            .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(discoverItemCount)개")
+                            .accessibilityLabel("현재 지도 기준 주변 이벤트와 축제 \(itemCount)개")
                     }
                     Text("마음에 드는 장소를 고르면 근처 주차장까지 이어서 안내합니다.")
                         .font(.festival(.caption))
@@ -630,14 +627,14 @@ struct MapHomeView: View {
                         .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.teal, isFilled: true))
 
                         Button {
-                            if let first = firstDiscoverListItem {
+                            if let first = firstItem {
                                 openDiscoverResults(first.kind)
                             }
                         } label: {
                             Label("추천 보기", systemImage: "mappin.and.ellipse")
                         }
                         .buttonStyle(HomeMapPillButtonStyle(tint: FestivalDesign.coral, isFilled: false))
-                        .disabled(discoverItemCount == 0)
+                        .disabled(itemCount == 0)
                     }
                 }
                 Spacer(minLength: 0)
@@ -966,6 +963,7 @@ struct MapHomeView: View {
                     symbol: "calendar",
                     isFavorite: eventFavorites.contains(id: event.id),
                     onToggleFavorite: { eventFavorites.toggle(event) },
+                    isSponsored: event.isSponsored,
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
                         withAnimation(.easeOut(duration: 0.18)) {

@@ -16,6 +16,14 @@ final class DeepLinkRouter: ObservableObject {
         return components.url!
     }
 
+    func urlForDestination(id: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "parkingnavigator"
+        components.host = "discover"
+        components.queryItems = [URLQueryItem(name: "id", value: id)]
+        return components.url!
+    }
+
     func handle(_ url: URL) {
         guard url.scheme == "parkingnavigator" else { return }
         if url.host == "search" {
