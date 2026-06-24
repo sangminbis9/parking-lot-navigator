@@ -433,10 +433,26 @@ export async function syncLocalEventDiscovery(
   const seenSourceIds = new Set<string>();
   let kakaoLookups = 0;
 
-  outer: for (const region of regions) {
-    for (const keyword of EVENT_QUERY_KEYWORDS) {
+  // 키워드 시작 위치를 chunkIndex로 회전: 청크마다 다른 키워드가 먼저 처리됨
+  const rotatedKeywords = rotateArray([...EVENT_QUERY_KEYWORDS], chunkIndex);
+
+  // Phase 1: Naver 검색 전부 실행 → Kakao 조회 전 후보 수집
+  interface PreKakaoCandidate {
+    region: RegionCenter;
+    blogItem: NaverBlogItem;
+    link: string;
+    titleText: string;
+    descText: string;
+    combined: string;
+    storeName: string;
+    keyword: string;
+  }
+  const preKakao: PreKakaoCandidate[] = [];
+
+  phase1: for (const region of regions) {
+    for (const keyword of rotatedKeywords) {
       for (const source of NAVER_SEARCH_SOURCES) {
-        if (result.searchedQueries >= maxQueries) break outer;
+        if (result.searchedQueries >= maxQueries) break phase1;
         result.searchedQueries += 1;
         const query = `${region.name} ${keyword}`;
         let blogItems: NaverBlogItem[];
@@ -454,7 +470,7 @@ export async function syncLocalEventDiscovery(
             `naver_${source.id}_search:${message.slice(0, 80)}`,
           );
           noteSkip(`naver_${source.id}_search_failed`);
-          if (/Too many subrequests/i.test(message)) break outer;
+          if (/Too many subrequests/i.test(message)) break phase1;
           continue;
         }
 
@@ -491,75 +507,119 @@ export async function syncLocalEventDiscovery(
             noteSkip("no_store_name");
             continue;
           }
-          if (kakaoLookups >= maxKakaoLookups) {
-            noteSkip("kakao_lookup_budget_exhausted");
-            continue;
-          }
-
-          try {
-            kakaoLookups += 1;
-            const outcome = await buildCandidateFromBlog({
-              env: options.env,
-              blogItem,
-              link,
-              titleText,
-              descText,
-              combined,
-              storeName,
-              region,
-              keyword,
-              generatedAt,
-              now,
-            });
-            if (outcome.kind === "skip") {
-              noteSkip(outcome.reason);
-              continue;
-            }
-            const candidate = outcome.candidate;
-            if (
-              candidate.item.sourceId &&
-              seenSourceIds.has(candidate.item.sourceId)
-            ) {
-              noteSkip("candidate_source_duplicate");
-              continue;
-            }
-            if (candidate.item.sourceId)
-              seenSourceIds.add(candidate.item.sourceId);
-
-            result.candidates += 1;
-            if (!options.dryRun) {
-              await upsertLocalEvent(options.db, candidate.item, {
-                provider: result.provider,
-                query: candidate.query,
-                blogItem: candidate.blogItem,
-                storeName: candidate.storeName,
-                kakaoPlace: candidate.kakaoPlace,
-              });
-              await logAgentActivity(options.db, {
-                agentId: "scout",
-                action: "found",
-                targetKind: "local_event",
-                targetId: candidate.item.id,
-                targetTitle: candidate.item.title,
-                payload: {
-                  storeName: candidate.item.storeName,
-                  region: candidate.item.region,
-                  confidenceScore: candidate.item.confidenceScore,
-                  initialStatus: candidate.item.status,
-                },
-              });
-            }
-            result.saved += options.dryRun ? 0 : 1;
-            if (candidate.item.status === "approved") result.approved += 1;
-            if (candidate.item.status === "pending") result.pending += 1;
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : "unknown_error";
-            noteSkip(`exception:${message.slice(0, 60)}`);
-            result.errors.push(message);
-          }
+          preKakao.push({
+            region,
+            blogItem,
+            link,
+            titleText,
+            descText,
+            combined,
+            storeName,
+            keyword,
+          });
         }
       }
+    }
+  }
+
+  // Phase 2: 매장별 Kakao 조회 1회 + 후보 빌드
+  // 같은 (지역+매장명)에 대한 Kakao 결과를 캐싱 → 중복 subrequest 방지
+  const kakaoCache = new Map<string, KakaoKeywordPlace[]>();
+
+  for (const c of preKakao) {
+    const storeKey = `${c.region.name}:${normalizeName(c.storeName)}`;
+
+    if (!kakaoCache.has(storeKey)) {
+      if (kakaoLookups >= maxKakaoLookups) {
+        noteSkip("kakao_lookup_budget_exhausted");
+        continue;
+      }
+      try {
+        kakaoLookups += 1;
+        const places = await searchKakaoKeyword(
+          options.env,
+          `${c.region.name} ${c.storeName}`,
+          c.region,
+        );
+        kakaoCache.set(storeKey, places);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "unknown_error";
+        kakaoCache.set(storeKey, []); // 실패도 캐싱 → 같은 매장 재조회 방지
+        if (/Too many subrequests/i.test(msg)) break;
+        noteSkip(`kakao_lookup_failed:${msg.slice(0, 40)}`);
+        continue;
+      }
+    }
+
+    const places = kakaoCache.get(storeKey);
+    // storeKey가 캐시에 없으면 위에서 budget_exhausted로 continue된 케이스
+    if (!places) continue;
+    if (places.length === 0) {
+      noteSkip("kakao_lookup_empty");
+      continue;
+    }
+
+    try {
+      const outcome = await buildCandidateFromBlog({
+        env: options.env,
+        blogItem: c.blogItem,
+        link: c.link,
+        titleText: c.titleText,
+        descText: c.descText,
+        combined: c.combined,
+        storeName: c.storeName,
+        region: c.region,
+        keyword: c.keyword,
+        generatedAt,
+        now,
+        kakaoPlaces: places,
+      });
+      if (outcome.kind === "skip") {
+        noteSkip(outcome.reason);
+        continue;
+      }
+      const candidate = outcome.candidate;
+      if (
+        candidate.item.sourceId &&
+        seenSourceIds.has(candidate.item.sourceId)
+      ) {
+        noteSkip("candidate_source_duplicate");
+        continue;
+      }
+      if (candidate.item.sourceId)
+        seenSourceIds.add(candidate.item.sourceId);
+
+      result.candidates += 1;
+      if (!options.dryRun) {
+        await upsertLocalEvent(options.db, candidate.item, {
+          provider: result.provider,
+          query: candidate.query,
+          blogItem: candidate.blogItem,
+          storeName: candidate.storeName,
+          kakaoPlace: candidate.kakaoPlace,
+        });
+        await logAgentActivity(options.db, {
+          agentId: "scout",
+          action: "found",
+          targetKind: "local_event",
+          targetId: candidate.item.id,
+          targetTitle: candidate.item.title,
+          payload: {
+            storeName: candidate.item.storeName,
+            region: candidate.item.region,
+            confidenceScore: candidate.item.confidenceScore,
+            initialStatus: candidate.item.status,
+          },
+        });
+      }
+      result.saved += options.dryRun ? 0 : 1;
+      if (candidate.item.status === "approved") result.approved += 1;
+      if (candidate.item.status === "pending") result.pending += 1;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unknown_error";
+      noteSkip(`exception:${message.slice(0, 60)}`);
+      result.errors.push(message);
     }
   }
 
@@ -641,6 +701,7 @@ async function buildCandidateFromBlog(input: {
   keyword: string;
   generatedAt: string;
   now: Date;
+  kakaoPlaces?: KakaoKeywordPlace[]; // phase 2에서 미리 조회해 전달, 없으면 직접 조회
 }): Promise<CandidateOutcome> {
   const {
     env,
@@ -658,14 +719,18 @@ async function buildCandidateFromBlog(input: {
 
   const kakaoQuery = `${region.name} ${storeName}`;
   let kakaoPlaces: KakaoKeywordPlace[];
-  try {
-    kakaoPlaces = await searchKakaoKeyword(env, kakaoQuery, region);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown_error";
-    return {
-      kind: "skip",
-      reason: `kakao_lookup_failed:${message.slice(0, 40)}`,
-    };
+  if (input.kakaoPlaces !== undefined) {
+    kakaoPlaces = input.kakaoPlaces;
+  } else {
+    try {
+      kakaoPlaces = await searchKakaoKeyword(env, kakaoQuery, region);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      return {
+        kind: "skip",
+        reason: `kakao_lookup_failed:${message.slice(0, 40)}`,
+      };
+    }
   }
   if (kakaoPlaces.length === 0) {
     return { kind: "skip", reason: "kakao_lookup_empty" };
@@ -1134,6 +1199,13 @@ function sliceChunk<T>(
   const start = chunkIndex * base + Math.min(chunkIndex, remainder);
   const size = base + (chunkIndex < remainder ? 1 : 0);
   return items.slice(start, start + size);
+}
+
+function rotateArray<T>(arr: T[], offset: number): T[] {
+  const n = arr.length;
+  if (n === 0) return arr;
+  const o = ((offset % n) + n) % n;
+  return [...arr.slice(o), ...arr.slice(0, o)];
 }
 
 function clampNumber(value: number, min: number, max: number): number {
