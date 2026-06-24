@@ -1,6 +1,6 @@
 # 프로젝트 상태
 
-마지막 업데이트: 2026-06-11
+마지막 업데이트: 2026-06-24
 
 ## 프로젝트
 
@@ -24,7 +24,7 @@
 - Worker D1 바인딩: `DB`
 - D1 데이터베이스: `parking-lot-navigator`
 - D1 데이터베이스 id: `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`
-- Worker cron: 실시간 주차 캐시 sync 를 위해 5분마다.
+- Worker cron: `* * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/20 * * * *` LLM 태깅.
 
 ## 시크릿
 
@@ -118,11 +118,11 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 ## 로컬 이벤트 (축제와 별개 도메인)
 
 - 로컬 이벤트는 D1 테이블 `local_events` 에 있다. 식당/카페/상점 할인, 무료 제공, 팝업, 한정 메뉴, 오픈 이벤트를 나타낸다.
-- 프로덕션 발견은 Naver Open API + Kakao Local Keyword 를 사용한다:
-  1. 85개 지역 중심에 걸쳐 21개 이벤트형 키워드(카페·맛집·식당·디저트·베이커리·팝업 변형)로 Naver 블로그 / 카페 글 / 뉴스 검색.
-  2. Kakao Local Keyword Search 가 각 게시물의 매장명을 place id, 주소, 좌표에 매칭한다.
-  3. 매칭은 Kakao place id 별로 중복 제거된다. `end_date` 가 없는 이벤트도 점수가 임계값을 넘으면 approved 될 수 있다.
-- Worker subrequest 예산은 호출당 분배된다: `LOCAL_EVENT_SEARCH_MAX_QUERIES = 17`, `LOCAL_EVENT_MAX_KAKAO_LOOKUPS = 30` 으로 무료 등급의 50 subrequest 상한 아래를 유지한다.
+- 프로덕션 발견은 두-패스(two-pass) 구조로 Naver Open API + Kakao Local Keyword 를 사용한다:
+  1. **Phase 1** — 85개 지역 중심에 걸쳐 21개 이벤트형 키워드로 Naver 블로그/카페/뉴스 전체 수집. Kakao 호출 없음. `chunkIndex` 로 키워드 순서를 회전해 매 cron 호출마다 다른 키워드를 우선 처리한다.
+  2. **Phase 2** — 수집된 후보를 `(지역명:정규화된 매장명)` 키로 dedup 후 Kakao Local Keyword Search 1회. 같은 매장 다수 게시물이 있어도 Kakao 조회는 1회만 소비한다.
+  3. Kakao place id 로 최종 중복 제거. `end_date` 가 없는 이벤트도 점수가 임계값을 넘으면 approved 가능. `end_date` 가 어제 이전인 이벤트는 API 응답에서 제외.
+- Worker subrequest 예산: `LOCAL_EVENT_SEARCH_MAX_QUERIES = 17`, `LOCAL_EVENT_MAX_KAKAO_LOOKUPS = 30` 으로 무료 등급의 50 subrequest 상한 아래를 유지한다.
 - 자동 승인 임계값: `LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.75"`.
 - 상태 값: `pending`, `pending_payment`, `approved`, `rejected`, `expired`.
 - 공개 API (`/api/local-events`) 는 `status = 'approved'` 이고 `(is_sponsored = 0 OR paid_until > now)` 인 행만 제공한다. pending 및 미결제 머천트 이벤트는 제외된다.
@@ -154,8 +154,8 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 - D1 바인딩: `DB` (`parking-lot-navigator`, id `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`).
 - R2 바인딩: `MERCHANT_IMAGES` (버킷 `merchant-images`).
-- Worker 트리거: cron `* * * * *` (실시간 주차), `0 * * * *` (시간당 유지보수), `15 * * * *` (로컬 이벤트 sync 청크), `30 */3 * * *` (head agent 리뷰).
-- Workers AI 바인딩: `AI` (`orion` head agent 가 사용).
+- Worker 트리거: cron `* * * * *` (실시간 주차), `*/9 * * * *` (발견 청크), `15 * * * *` (로컬 이벤트 sync), `30 */3 * * *` (head agent 리뷰), `*/20 * * * *` (LLM 태깅).
+- Workers AI 바인딩: `AI` (`orion` head agent 및 LLM 태깅 사용).
 
 ## 현재 iOS UX/브랜드
 
@@ -177,7 +177,7 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 ## 캘린더 + 위젯 아키텍처
 
-- 캘린더 탭은 `/api/festivals` (별칭 `/discover/festivals`) 응답을 `upcomingWithinDays=90` 으로 받아 `[Date: [Festival]]` 버킷으로 정리하고, 날짜 셀에 dot 인디케이터(진행 중 → teal, 예정 → lantern)를 표시한다.
+- 캘린더 탭은 `/api/festivals` 응답을 `upcomingWithinDays=90` 으로 받아 `[Date: [Festival]]` 버킷으로 정리하고, 날짜 셀에 dot 인디케이터(진행 중 → teal, 예정 → lantern)를 표시한다. (`/api/festivals` 가 60s edge cache 적용 앱 전용 엔드포인트이며, `/discover/festivals` 는 캐시 없는 내부/레거시 경로이다.)
 - iOS 홈 화면 **Medium 위젯** `UpcomingFestivalsWidget` 가 다가오는 축제 3개를 카드 형태로 노출한다. 위젯은 네트워크를 직접 호출하지 않고 App Group container 의 `widget_festivals.json` 캐시만 읽는다.
 - `FestivalSyncService` (앱 본체) 가 cold start, foreground 진입, 필터 변경 시 `/api/festivals` 를 호출 → 필터 적용 → 상위 ~20개를 `SharedFestivalCache` 에 저장 → `WidgetCenter.shared.reloadTimelines(ofKind: "UpcomingFestivalsWidget")` 를 호출한다.
 - App Group ID 는 기존 메인 앱이 쓰던 `group.com.sangminbis9.ParkingLotNavigator` 를 재사용한다. 위젯 entitlements 도 동일한 그룹을 참조한다.
@@ -199,7 +199,18 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 ## 최근 유용한 커밋
 
-최신 (2026-06-11):
+최신 (2026-06-24):
+
+- `f3e1e22 Bump build number to 174`
+- `74c57fc Fix expired local event filter and festival API endpoint`
+- `b511932 Two-pass local event discovery: defer Kakao lookups to Phase 2 with per-store dedup and keyword rotation by chunkIndex`
+- `8fba71d Create mascot app icon`
+- `786996d Add share button, sponsor badge, and performance optimizations (build 173)`
+- `4c52261 Add favorite star button to card list, hologram, detail header; calendar shows only favorited festivals`
+- `85b82bf Restore tab item background box while keeping icon-only box removed`
+- `6b7fae8 Expand region filter to city level with accordion picker UI`
+
+이전 (2026-06-11):
 
 - `dd87743 Make crayon theme fully hand-drawn: Gaegu handwriting font, rough controls and chips, wax double-stroke cards, crayon paper hatching`
 - `f55a2a4 Style merchant pages with app honey theme and add legal consent popups`
