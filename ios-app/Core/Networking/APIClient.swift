@@ -51,7 +51,7 @@ final class APIClient: APIClientProtocol {
     }
 
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival] {
-        var components = URLComponents(url: endpoint("discover/festivals"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: endpoint("api/festivals"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
