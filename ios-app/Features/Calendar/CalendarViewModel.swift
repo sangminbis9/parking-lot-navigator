@@ -36,7 +36,8 @@ final class CalendarViewModel: ObservableObject {
             let raw = try await apiClient.nearbyFestivals(
                 lat: coord.lat,
                 lng: coord.lng,
-                radiusMeters: filter.radiusMeters
+                radiusMeters: filter.radiusMeters,
+                upcomingWithinDays: filter.dateRange.upcomingWithinDays
             )
             apply(festivals: raw, filter: filter)
             state = .loaded

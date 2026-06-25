@@ -12,6 +12,7 @@ struct MapHomeView: View {
     @EnvironmentObject private var destinationStore: DestinationStore
     @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
     @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
+    @EnvironmentObject private var festivalFilterModel: FestivalFilterModel
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
@@ -27,6 +28,7 @@ struct MapHomeView: View {
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var isHomeDiscoveryPanelDismissed = false
+    @State private var presentingFestivalFilter = false
     @State private var discoverListQuery = ""
     @State private var hologramPin: MapPinItem?
     @State private var hologramAnchor: CGPoint = .zero
@@ -120,13 +122,26 @@ struct MapHomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task {
             locationProvider.request()
-            await viewModel.loadInitialDiscoverLayers(viewport: mapViewport)
+            await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
             stopHologramAnchorTracking()
+        }
+        .sheet(isPresented: $presentingFestivalFilter) {
+            FilterSheetView(filterModel: festivalFilterModel)
+        }
+        .onChange(of: festivalFilterModel.filter) { _ in
+            guard viewModel.showsFestivalLayer else { return }
+            discoverRefreshTask?.cancel()
+            discoverRefreshTask = Task {
+                await viewModel.loadDiscoverLayers(
+                    viewport: mapViewport,
+                    filter: festivalFilterModel.filter
+                )
+            }
         }
         .onChange(of: hologramPin?.id) { _ in
             if hologramPin != nil {
@@ -444,7 +459,7 @@ struct MapHomeView: View {
                     tint: FestivalDesign.coral,
                     isOn: viewModel.showsFestivalLayer
                 ) {
-                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport) }
+                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                 }
                 layerToggle(
                     title: "\u{C774}\u{BCA4}\u{D2B8}",
@@ -453,6 +468,33 @@ struct MapHomeView: View {
                     isOn: viewModel.showsLocalEventLayer
                 ) {
                     Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
+                }
+                if viewModel.showsFestivalLayer {
+                    Button {
+                        presentingFestivalFilter = true
+                    } label: {
+                        Image(systemName: festivalFilterModel.filter.isEmpty
+                              ? "slider.horizontal.3"
+                              : "slider.horizontal.3")
+                            .font(.festival(.caption, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(festivalFilterModel.filter.isEmpty
+                                        ? FestivalDesign.surface.opacity(0.92)
+                                        : FestivalDesign.coral.opacity(0.15))
+                            .foregroundStyle(festivalFilterModel.filter.isEmpty
+                                             ? FestivalDesign.secondaryText
+                                             : FestivalDesign.coral)
+                            .clipShape(FestivalDesign.controlShape)
+                            .overlay(
+                                FestivalDesign.controlShape
+                                    .stroke(festivalFilterModel.filter.isEmpty
+                                            ? FestivalDesign.creamDeep.opacity(0.45)
+                                            : FestivalDesign.coral.opacity(0.5), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("축제 필터")
                 }
                 if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                     ProgressView()
@@ -1063,7 +1105,7 @@ struct MapHomeView: View {
         discoverRefreshTask = Task {
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
-            await viewModel.loadDiscoverLayers(viewport: viewport)
+            await viewModel.loadDiscoverLayers(viewport: viewport, filter: festivalFilterModel.filter)
             await MainActor.run {
                 lastDiscoverRefreshViewport = viewport
             }

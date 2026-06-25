@@ -132,13 +132,13 @@ final class MapHomeViewModel: ObservableObject {
         await loadNearbyParkingLots(around: coordinate, radiusMeters: 800)
     }
 
-    func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+    func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport, filter: FestivalFilter = .default) async {
         showsFestivalLayer = isVisible
         if !isVisible {
             festivals = []
             return
         }
-        await loadDiscoverLayers(viewport: viewport)
+        await loadDiscoverLayers(viewport: viewport, filter: filter)
     }
 
     func setLocalEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
@@ -177,11 +177,11 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingRealtimeParking = false
     }
 
-    func loadInitialDiscoverLayers(viewport: MapViewport) async {
-        await loadDiscoverLayers(viewport: viewport, showsError: false)
+    func loadInitialDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default) async {
+        await loadDiscoverLayers(viewport: viewport, filter: filter, showsError: false)
     }
 
-    func loadDiscoverLayers(viewport: MapViewport, showsError: Bool = false) async {
+    func loadDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default, showsError: Bool = false) async {
         isLoadingDiscover = true
         errorMessage = nil
         var failedLoads = 0
@@ -189,7 +189,7 @@ final class MapHomeViewModel: ObservableObject {
 
         if showsFestivalLayer {
             attemptedLoads += 1
-            switch await loadFestivalLayer(viewport: viewport) {
+            switch await loadFestivalLayer(viewport: viewport, filter: filter) {
             case .success(let items):
                 festivals = items
             case .failure:
@@ -219,7 +219,7 @@ final class MapHomeViewModel: ObservableObject {
             case .parking:
                 break
             case .festivals:
-                festivals = try await discoverFestivals(viewport: viewport)
+                festivals = try await discoverFestivals(viewport: viewport, filter: .default)
             case .events:
                 events = try await discoverEvents(viewport: viewport)
             }
@@ -229,12 +229,14 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingDiscover = false
     }
 
-    private func discoverFestivals(viewport: MapViewport) async throws -> [Festival] {
-        return try await apiClient.nearbyFestivals(
+    private func discoverFestivals(viewport: MapViewport, filter: FestivalFilter) async throws -> [Festival] {
+        let raw = try await apiClient.nearbyFestivals(
             lat: viewport.center.latitude,
             lng: viewport.center.longitude,
-            radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
+            radiusMeters: viewportDiscoverRadiusMeters(for: viewport),
+            upcomingWithinDays: filter.dateRange.upcomingWithinDays
         )
+        return raw.filter { filter.matches($0) }
     }
 
     private func discoverEvents(viewport: MapViewport) async throws -> [FreeEvent] {
@@ -245,9 +247,9 @@ final class MapHomeViewModel: ObservableObject {
         )
     }
 
-    private func loadFestivalLayer(viewport: MapViewport) async -> Result<[Festival], Error> {
+    private func loadFestivalLayer(viewport: MapViewport, filter: FestivalFilter) async -> Result<[Festival], Error> {
         do {
-            return .success(try await discoverFestivals(viewport: viewport))
+            return .success(try await discoverFestivals(viewport: viewport, filter: filter))
         } catch {
             return .failure(error)
         }

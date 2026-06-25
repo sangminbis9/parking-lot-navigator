@@ -6,6 +6,39 @@ struct FilterSheetView: View {
 
     @State private var draft: FestivalFilter
 
+    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+    private var maxCustomDate: Date {
+        Calendar.current.date(byAdding: .year, value: 1, to: today) ?? today
+    }
+
+    private let customDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private var fromDate: Date {
+        draft.customFromDate.flatMap { customDateFormatter.date(from: $0) } ?? today
+    }
+
+    private var toDate: Date {
+        draft.customToDate.flatMap { customDateFormatter.date(from: $0) } ?? today
+    }
+
+    private func selectCustomFrom(_ date: Date) {
+        draft.dateRange = .custom
+        draft.customFromDate = customDateFormatter.string(from: date)
+        if toDate < date {
+            draft.customToDate = draft.customFromDate
+        }
+    }
+
+    private func selectCustomTo(_ date: Date) {
+        draft.dateRange = .custom
+        draft.customToDate = customDateFormatter.string(from: date)
+    }
+
     init(filterModel: FestivalFilterModel) {
         self.filterModel = filterModel
         _draft = State(initialValue: filterModel.filter)
@@ -15,8 +48,8 @@ struct FilterSheetView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    dateRangeSection
                     radiusSection
-                    statusSection
                     regionSection
                     categorySection
                 }
@@ -59,13 +92,62 @@ struct FilterSheetView: View {
         }
     }
 
-    private var statusSection: some View {
-        sectionWrapper(title: "기간", subtitle: nil) {
-            HStack(spacing: 8) {
-                ForEach(FestivalDateRange.allCases, id: \.self) { range in
-                    chip(label: range.displayLabel, isOn: draft.dateRange == range) {
-                        draft.dateRange = range
+    private var dateRangeSection: some View {
+        sectionWrapper(title: "조회 기간", subtitle: nil) {
+            VStack(alignment: .leading, spacing: 8) {
+                // 프리셋 칩 (custom 제외)
+                RegionFlowLayout(spacing: 6) {
+                    ForEach(FestivalDateRange.allCases.filter { $0 != .custom }, id: \.self) { range in
+                        chip(
+                            label: range.displayLabel,
+                            isOn: draft.dateRange == range
+                        ) {
+                            draft.dateRange = range
+                            draft.customFromDate = nil
+                            draft.customToDate = nil
+                        }
                     }
+                }
+                // 날짜 직접 선택 칩
+                chip(label: "날짜 직접 선택", isOn: draft.dateRange == .custom) {
+                    if draft.dateRange != .custom {
+                        draft.dateRange = .custom
+                        draft.customFromDate = customDateFormatter.string(from: today)
+                        draft.customToDate = customDateFormatter.string(from: today)
+                    }
+                }
+                // DatePicker (custom 선택 시 표시)
+                if draft.dateRange == .custom {
+                    VStack(alignment: .leading, spacing: 6) {
+                        DatePicker(
+                            "시작일",
+                            selection: Binding(
+                                get: { fromDate },
+                                set: { selectCustomFrom($0) }
+                            ),
+                            in: today...maxCustomDate,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .environment(\.locale, Locale(identifier: "ko_KR"))
+                        .font(.festival(size: 13))
+
+                        DatePicker(
+                            "종료일",
+                            selection: Binding(
+                                get: { toDate },
+                                set: { selectCustomTo($0) }
+                            ),
+                            in: fromDate...maxCustomDate,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .environment(\.locale, Locale(identifier: "ko_KR"))
+                        .font(.festival(size: 13))
+                    }
+                    .padding(10)
+                    .background(FestivalDesign.cream.opacity(0.5))
+                    .clipShape(FestivalDesign.chipShape)
                 }
             }
         }

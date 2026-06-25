@@ -52,6 +52,10 @@ struct AppRootView: View {
     @EnvironmentObject private var discoveryService: DiscoveryNotificationService
     @StateObject private var router = Router()
     @StateObject private var tabRouter = AppTabRouter()
+    @StateObject private var festivalFilterModel = FestivalFilterModel(
+        scope: "shared",
+        appGroupID: AppConfiguration.current.appGroupID
+    )
     @Environment(\.scenePhase) private var scenePhase
 
     init(apiClient: APIClientProtocol) {
@@ -87,6 +91,7 @@ struct AppRootView: View {
         .paperGrainOverlay()
         .tint(FestivalDesign.coral)
         .environmentObject(tabRouter)
+        .environmentObject(festivalFilterModel)
         .onAppear {
             Self.configureTabBarAppearance()
         }
