@@ -12,6 +12,56 @@
 
 앱의 핵심 기능은 목적지 주변 주차장, 축제, 로컬 매장 이벤트를 지도와 리스트로 보여주는 것이다.
 
+## iOS 앱 현재 상태
+
+- 현재 빌드번호: `177` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`)
+- iOS 최소 지원 버전: 16+, SwiftUI
+
+### 축제 필터 구조 (build 177 이후)
+
+축제 필터는 캘린더 탭과 지도 탭이 `FestivalFilterModel` 하나를 공유한다.
+
+**주요 타입 (`ios-app/Core/Storage/FestivalFilterStore.swift`)**
+
+- `FestivalDateRange`: `String, Codable, CaseIterable` enum — 7 cases: `ongoingOnly` / `oneMonth` / `twoMonths` / `threeMonths` / `sixMonths` / `oneYear` / `custom`
+  - `upcomingWithinDays`: ongoingOnly=365, oneMonth=30, twoMonths=60, threeMonths=90, sixMonths=180, oneYear=365, custom=365
+  - `ongoingOnly`는 API를 넓게(365일) 호출하고 클라이언트에서 `festival.status == .ongoing`만 통과시킨다.
+  - `custom`은 API를 최대(365일)로 호출하고 클라이언트에서 날짜 겹침으로 2차 필터링한다.
+- `FestivalFilter`: `dateRange: FestivalDateRange`, `customFromDate: String?` ("yyyy-MM-dd"), `customToDate: String?`, `regions: [String]`, `radiusKm: Int?`, `primaryCategories: Set<FestivalPrimaryCategory>`
+  - 기본값: `dateRange = .ongoingOnly`, `radiusKm = 50`, 나머지 빈 값
+  - `statuses: [DiscoverStatus]` 필드는 제거됨 — 기간 필터가 대체
+
+**공유 구조 (`ios-app/App/AppRootView.swift`)**
+
+```
+AppRootView
+  @StateObject festivalFilterModel  (scope: "shared", AppGroup)
+  └─ .environmentObject(festivalFilterModel)
+       ├─ CalendarTabView   @EnvironmentObject
+       └─ MapHomeView       @EnvironmentObject
+```
+
+- UserDefaults scope: `"festivalFilter.shared"` (이전 `"festivalFilter.calendar"`는 더 이상 사용 안 함)
+- 필터 변경은 `FestivalFilterModel.update(_:)`로 처리하면 두 탭에 즉시 반영된다.
+
+**APIClient (`ios-app/Core/Networking/APIClient.swift`)**
+
+```swift
+func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival]
+```
+
+- `upcomingWithinDays`는 `filter.dateRange.upcomingWithinDays`에서 계산한다.
+- Worker `/api/festivals`는 `upcomingWithinDays: 0–365`를 지원한다.
+
+**FilterSheetView 섹션 순서 (build 177 이후)**
+
+1. 조회 기간 (`dateRangeSection`) — 프리셋 칩 6개 + "날짜 직접 선택" 칩 + DatePicker (custom 시)
+2. 거리 반경
+3. 지역
+4. 카테고리
+
+---
+
 ## 중요한 도메인 규칙
 
 - 기존 공공 API 기반 "이벤트" 데이터는 현재 "축제" 도메인으로 취급한다.
