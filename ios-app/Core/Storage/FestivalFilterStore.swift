@@ -1,13 +1,51 @@
 import Foundation
 
+enum FestivalDateRange: String, Codable, CaseIterable {
+    case ongoingOnly
+    case oneMonth
+    case twoMonths
+    case threeMonths
+    case sixMonths
+    case oneYear
+    case custom
+
+    var upcomingWithinDays: Int {
+        switch self {
+        case .ongoingOnly: return 365
+        case .oneMonth: return 30
+        case .twoMonths: return 60
+        case .threeMonths: return 90
+        case .sixMonths: return 180
+        case .oneYear, .custom: return 365
+        }
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .ongoingOnly: return "진행중"
+        case .oneMonth: return "1개월 이내"
+        case .twoMonths: return "2개월 이내"
+        case .threeMonths: return "3개월 이내"
+        case .sixMonths: return "6개월 이내"
+        case .oneYear: return "1년 이내"
+        case .custom: return "날짜 직접 선택"
+        }
+    }
+}
+
 struct FestivalFilter: Codable, Hashable {
     var regions: [String]
     var radiusKm: Int?
     var primaryCategories: Set<FestivalPrimaryCategory>
-    var statuses: [DiscoverStatus]
+    var dateRange: FestivalDateRange
+    var customFromDate: String?
+    var customToDate: String?
 
     static let allRadiusOptions: [Int] = [10, 20, 50]
-    static let `default` = FestivalFilter(regions: [], radiusKm: 50, primaryCategories: [], statuses: [])
+    static let `default` = FestivalFilter(
+        regions: [], radiusKm: 50, primaryCategories: [],
+        dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
+    )
 
     var radiusMeters: Int {
         guard let radiusKm else { return 200_000 }
@@ -15,11 +53,23 @@ struct FestivalFilter: Codable, Hashable {
     }
 
     var isEmpty: Bool {
-        regions.isEmpty && primaryCategories.isEmpty && statuses.isEmpty && radiusKm == FestivalFilter.default.radiusKm
+        regions.isEmpty && primaryCategories.isEmpty
+            && dateRange == .ongoingOnly
+            && radiusKm == FestivalFilter.default.radiusKm
     }
 
     func matches(_ festival: Festival) -> Bool {
-        if !statuses.isEmpty, !statuses.contains(festival.status) { return false }
+        switch dateRange {
+        case .ongoingOnly:
+            if festival.status != .ongoing { return false }
+        case .custom:
+            if let from = customFromDate, let to = customToDate {
+                if festival.startDate > to { return false }
+                if festival.endDate < from { return false }
+            }
+        default:
+            break
+        }
         if !regions.isEmpty {
             let selectedProvinces = regions.filter { Self.koreanRegions.contains($0) }
             let selectedCities = regions.filter { !Self.koreanRegions.contains($0) }
@@ -100,14 +150,17 @@ struct FestivalFilter: Codable, Hashable {
     static let allCityNames: Set<String> = Set(regionHierarchy.flatMap(\.cities))
 
     enum CodingKeys: String, CodingKey {
-        case regions, radiusKm, primaryCategories, statuses
+        case regions, radiusKm, primaryCategories, dateRange, customFromDate, customToDate
     }
 
-    init(regions: [String], radiusKm: Int?, primaryCategories: Set<FestivalPrimaryCategory>, statuses: [DiscoverStatus]) {
+    init(regions: [String], radiusKm: Int?, primaryCategories: Set<FestivalPrimaryCategory>,
+         dateRange: FestivalDateRange, customFromDate: String?, customToDate: String?) {
         self.regions = regions
         self.radiusKm = radiusKm
         self.primaryCategories = primaryCategories
-        self.statuses = statuses
+        self.dateRange = dateRange
+        self.customFromDate = customFromDate
+        self.customToDate = customToDate
     }
 
     init(from decoder: Decoder) throws {
@@ -115,7 +168,9 @@ struct FestivalFilter: Codable, Hashable {
         regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? []
         radiusKm = try c.decodeIfPresent(Int.self, forKey: .radiusKm)
         primaryCategories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .primaryCategories) ?? []
-        statuses = try c.decodeIfPresent([DiscoverStatus].self, forKey: .statuses) ?? []
+        dateRange = try c.decodeIfPresent(FestivalDateRange.self, forKey: .dateRange) ?? .ongoingOnly
+        customFromDate = try c.decodeIfPresent(String.self, forKey: .customFromDate)
+        customToDate = try c.decodeIfPresent(String.self, forKey: .customToDate)
     }
 }
 

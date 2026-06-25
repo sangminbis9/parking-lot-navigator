@@ -61,4 +61,71 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertTrue(tags.contains("봄"))
     }
 
+    func testFestivalDateRangeUpcomingWithinDays() {
+        XCTAssertEqual(FestivalDateRange.ongoingOnly.upcomingWithinDays, 365)
+        XCTAssertEqual(FestivalDateRange.oneMonth.upcomingWithinDays, 30)
+        XCTAssertEqual(FestivalDateRange.twoMonths.upcomingWithinDays, 60)
+        XCTAssertEqual(FestivalDateRange.threeMonths.upcomingWithinDays, 90)
+        XCTAssertEqual(FestivalDateRange.sixMonths.upcomingWithinDays, 180)
+        XCTAssertEqual(FestivalDateRange.oneYear.upcomingWithinDays, 365)
+        XCTAssertEqual(FestivalDateRange.custom.upcomingWithinDays, 365)
+    }
+
+    func testFestivalFilterMatchesOngoingOnly() {
+        let filter = FestivalFilter(
+            regions: [], radiusKm: nil, primaryCategories: [],
+            dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
+        )
+        let ongoing = Festival.mock(status: .ongoing)
+        let upcoming = Festival.mock(status: .upcoming)
+        XCTAssertTrue(filter.matches(ongoing))
+        XCTAssertFalse(filter.matches(upcoming))
+    }
+
+    func testFestivalFilterMatchesCustomDateRange() {
+        let filter = FestivalFilter(
+            regions: [], radiusKm: nil, primaryCategories: [],
+            dateRange: .custom, customFromDate: "2026-07-10", customToDate: "2026-07-20"
+        )
+        // 겹치는 축제: 7/5~7/12
+        let overlaps = Festival.mock(status: .upcoming, startDate: "2026-07-05", endDate: "2026-07-12")
+        // 범위 밖: 7/21~7/25
+        let after = Festival.mock(status: .upcoming, startDate: "2026-07-21", endDate: "2026-07-25")
+        // 범위 밖: 7/1~7/9
+        let before = Festival.mock(status: .upcoming, startDate: "2026-07-01", endDate: "2026-07-09")
+        XCTAssertTrue(filter.matches(overlaps))
+        XCTAssertFalse(filter.matches(after))
+        XCTAssertFalse(filter.matches(before))
+    }
+
+}
+
+private extension Festival {
+    static func mock(
+        status: DiscoverStatus,
+        startDate: String = "2026-06-01",
+        endDate: String = "2026-06-30"
+    ) -> Festival {
+        Festival(
+            id: UUID().uuidString,
+            title: "테스트 축제",
+            subtitle: nil,
+            description: nil,
+            startDate: startDate,
+            endDate: endDate,
+            status: status,
+            venueName: nil,
+            address: "서울",
+            lat: 37.5,
+            lng: 126.9,
+            distanceMeters: 100,
+            source: "mock",
+            sourceUrl: nil,
+            imageUrl: nil,
+            imageUrls: [],
+            tags: [],
+            primaryCategory: nil,
+            categoryTags: nil
+        )
+    }
 }
