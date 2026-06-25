@@ -60,11 +60,11 @@ struct FilterSheetView: View {
     }
 
     private var statusSection: some View {
-        sectionWrapper(title: "진행 상태", subtitle: nil) {
+        sectionWrapper(title: "기간", subtitle: nil) {
             HStack(spacing: 8) {
-                ForEach([DiscoverStatus.ongoing, .upcoming], id: \.self) { status in
-                    chip(label: status.displayText, isOn: draft.statuses.contains(status)) {
-                        toggle(status: status)
+                ForEach(FestivalDateRange.allCases, id: \.self) { range in
+                    chip(label: range.displayLabel, isOn: draft.dateRange == range) {
+                        draft.dateRange = range
                     }
                 }
             }
@@ -139,14 +139,6 @@ struct FilterSheetView: View {
                 )
         }
         .buttonStyle(.plain)
-    }
-
-    private func toggle(status: DiscoverStatus) {
-        if let idx = draft.statuses.firstIndex(of: status) {
-            draft.statuses.remove(at: idx)
-        } else {
-            draft.statuses.append(status)
-        }
     }
 
     private func toggle(category: FestivalPrimaryCategory) {
