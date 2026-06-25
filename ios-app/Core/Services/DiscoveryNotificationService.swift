@@ -75,7 +75,7 @@ final class DiscoveryNotificationService: ObservableObject {
     private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
         let coord = coordinate(forRegions: prefs.regions)
         let radius = prefs.radiusKm * 1_000
-        guard let festivals = try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else { return }
+        guard let festivals = try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius, upcomingWithinDays: 365) else { return }
         let matched = festivals.filter { festival in
             prefs.categories.isEmpty || festival.primaryCategory.map { prefs.categories.contains($0) } ?? false
         }

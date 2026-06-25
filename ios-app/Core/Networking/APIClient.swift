@@ -4,7 +4,7 @@ protocol APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival]
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
@@ -50,13 +50,13 @@ final class APIClient: APIClientProtocol {
         return response.items
     }
 
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival] {
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
         var components = URLComponents(url: endpoint("api/festivals"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
-            URLQueryItem(name: "upcomingWithinDays", value: "90")
+            URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays))
         ]
         let response: DiscoverFestivalsResponse = try await get(components.url!)
         return response.items
@@ -168,9 +168,15 @@ final class MockAPIClient: APIClientProtocol {
         ]
     }
 
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int) async throws -> [Festival] {
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
         [
-            Festival(id: "mock-festival", title: "Seoul Light Festival", subtitle: "Night walk festival", startDate: "2026-04-15", endDate: "2026-04-22", status: .ongoing, venueName: "Seoul Plaza", address: "110 Sejong-daero, Jung-gu, Seoul", lat: lat + 0.001, lng: lng + 0.001, distanceMeters: 160, source: "mock", sourceUrl: nil, imageUrl: nil, tags: ["festival"])
+            Festival(id: "mock-festival", title: "Seoul Light Festival", subtitle: "Night walk festival",
+                     description: nil, startDate: "2026-04-15", endDate: "2026-04-22",
+                     status: .ongoing, venueName: "Seoul Plaza",
+                     address: "110 Sejong-daero, Jung-gu, Seoul",
+                     lat: lat + 0.001, lng: lng + 0.001, distanceMeters: 160,
+                     source: "mock", sourceUrl: nil, imageUrl: nil, imageUrls: [], tags: ["festival"],
+                     primaryCategory: nil, categoryTags: nil)
         ]
     }
 

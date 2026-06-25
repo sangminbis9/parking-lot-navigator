@@ -124,7 +124,7 @@ final class AgentOfficeViewModel: ObservableObject {
 
         async let parkingProviders = apiClient.providerHealth()
         async let discoveryProviders = apiClient.discoveryProviderHealth()
-        async let festivalsResult: [Festival]? = try? apiClient.nearbyFestivals(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
+        async let festivalsResult: [Festival]? = try? apiClient.nearbyFestivals(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius, upcomingWithinDays: 365)
         async let eventsResult: [FreeEvent]? = try? apiClient.nearbyEvents(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
         async let activityResult: [AgentActivityEvent]? = try? apiClient.agentActivity(since: nil, limit: 80)
 

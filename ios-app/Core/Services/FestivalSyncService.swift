@@ -30,7 +30,7 @@ final class FestivalSyncService: ObservableObject {
     }
 
     private func performSync(coordinate: (lat: Double, lng: Double)?) async {
-        let filter = FestivalFilterStore.load(scope: "calendar", appGroupID: appGroupID)
+        let filter = FestivalFilterStore.load(scope: "shared", appGroupID: appGroupID)
         let coord = coordinate ?? defaultCoordinate
         let radius = filter.radiusMeters
 
@@ -38,7 +38,8 @@ final class FestivalSyncService: ObservableObject {
             let festivals = try await apiClient.nearbyFestivals(
                 lat: coord.lat,
                 lng: coord.lng,
-                radiusMeters: radius
+                radiusMeters: radius,
+                upcomingWithinDays: filter.dateRange.upcomingWithinDays
             )
             let filtered = festivals
                 .filter { filter.matches($0) }

@@ -424,7 +424,8 @@ struct SearchView: View {
             async let festivalItems = apiClient.nearbyFestivals(
                 lat: koreaCenter.latitude,
                 lng: koreaCenter.longitude,
-                radiusMeters: discoverRadiusMeters
+                radiusMeters: discoverRadiusMeters,
+                upcomingWithinDays: 365
             )
             async let eventItems = apiClient.nearbyEvents(
                 lat: koreaCenter.latitude,

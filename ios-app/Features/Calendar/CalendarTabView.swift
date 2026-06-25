@@ -7,7 +7,7 @@ struct CalendarTabView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var festivalSync: FestivalSyncService
     @StateObject private var viewModel: CalendarViewModel
-    @StateObject private var filterModel: FestivalFilterModel
+    @EnvironmentObject private var filterModel: FestivalFilterModel
     @EnvironmentObject private var favoritesStore: FestivalFavoritesStore
     @StateObject private var reminderService = FestivalReminderService(appGroupID: AppConfiguration.current.appGroupID)
     @StateObject private var locationProvider = CurrentLocationProvider()
@@ -19,7 +19,6 @@ struct CalendarTabView: View {
     @State private var presentingSaved = false
     @State private var showNotificationDeniedAlert = false
 
-    private let appGroupID: String
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
@@ -28,10 +27,7 @@ struct CalendarTabView: View {
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
-        let appGroupID = AppConfiguration.current.appGroupID
-        self.appGroupID = appGroupID
         _viewModel = StateObject(wrappedValue: CalendarViewModel(apiClient: apiClient))
-        _filterModel = StateObject(wrappedValue: FestivalFilterModel(scope: "calendar", appGroupID: appGroupID))
     }
 
     var body: some View {
