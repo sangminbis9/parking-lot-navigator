@@ -14,8 +14,42 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `177` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`)
+- 현재 빌드번호: `178` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`)
 - iOS 최소 지원 버전: 16+, SwiftUI
+
+### 공연 기능 구조 (build 178 이후)
+
+공연은 KOPIS source 이벤트(`source='kopis'`)와 음악/공연 카테고리 축제(`primary_category='music_performance'`)를 하나의 `PerformanceItem` union으로 묶어 달력 섹션과 지도 레이어 두 곳에 노출한다.
+
+**주요 타입 (`ios-app/Core/Models/DiscoverItem.swift`)**
+
+- `PerformanceItem: Identifiable` enum — `.festival(Festival)` | `.event(FreeEvent)`
+  - `id`: `"perf-festival-<id>"` / `"perf-event-<id>"`
+  - `startDate`, `endDate`, `lat`, `lng`, `presentation`, `discoverDestination` computed properties
+  - `FreeEvent.endDate`는 `String?` → `PerformanceItem.endDate`는 `e.endDate ?? e.startDate`로 non-optional 반환
+- `DiscoverPerformancesResponse: Decodable` — `festivals: [Festival]`, `events: [FreeEvent]`, `generatedAt: String`
+
+**API (`ios-app/Core/Networking/APIClient.swift`)**
+
+```swift
+func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent])
+```
+
+**Worker `/api/performances`**
+
+- `worker-backend/src/discoveryCache.ts`: `queryPerformancesFromCache()` — D1에서 kopis 이벤트 + music_performance 축제를 Promise.all로 병렬 쿼리
+- `worker-backend/src/index.ts`: `GET /api/performances?lat=&lng=&radiusMeters=&upcomingWithinDays=`
+- `KOPIS_MAX_PAGES = "100"`, `KOPIS_DETAIL_MAX_ITEMS = "50"`, HTTP 429 → 빈 배열 반환 → 루프 조기 종료
+
+**달력 탭 (`ios-app/Features/Calendar/`)**
+
+- `PerformanceViewModel`: `@MainActor ObservableObject`, 날짜 기준 필터링 (`startDate <= dayKey && endDate >= dayKey`)
+- `CalendarTabView`: 축제 어젠다 아래 "근처 공연" 섹션 추가, `@StateObject performanceViewModel`
+
+**지도 탭 (`ios-app/Features/Map/`)**
+
+- `MapHomeViewModel`: `showsPerformanceLayer`, `performances`, `setPerformanceLayerVisible`, `loadPerformanceLayer`
+- `MapHomeView`: `discoverSources`에 dedup 로직 (`seenFestivalIds`/`seenEventIds`로 중복 핀 방지), 공연 토글 버튼 (`"music.note"`, `musicPerformance.tint`)
 
 ### 축제 필터 구조 (build 177 이후)
 
