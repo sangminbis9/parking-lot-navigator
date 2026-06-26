@@ -7,7 +7,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let center: CLLocationCoordinate2D
     let zoomLevel: Int
     let pins: [MapPinItem]
-    let selectedPinID: String?
     let onTap: () -> Void
     let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
@@ -29,7 +28,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
         pinch.delegate = context.coordinator
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
-        context.coordinator.selectedPinID = selectedPinID
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
@@ -46,7 +44,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
     func updateUIView(_ uiView: KMViewContainer, context: Context) {
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
-        context.coordinator.selectedPinID = selectedPinID
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
@@ -73,7 +70,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
             zoomLevel: 13
         )
         var latestPins: [MapPinItem] = []
-        var selectedPinID: String?
         var onTap: (() -> Void)?
         var onPinTap: ((MapPinItem, CGPoint?) -> Void)?
         var onCameraIdle: ((MapViewport) -> Void)?
@@ -216,8 +212,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 MapPinSnapshot(
                     pin: $0,
                     showsDiscoverLabels: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels,
-                    isSelected: $0.id == selectedPinID
+                    showsAllDiscoverLabels: showsAllDiscoverLabels
                 )
             }
             if renderedPinSnapshot != pinSnapshot {
@@ -367,8 +362,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             for pin in latestPins {
                 let styleID = pin.styleID(
                     showsDiscoverLabel: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels,
-                    isSelected: pin.id == selectedPinID
+                    showsAllDiscoverLabels: showsAllDiscoverLabels
                 )
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
@@ -503,13 +497,12 @@ private struct MapPinSnapshot: Equatable {
     let styleID: String
     let poiID: String
 
-    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) {
+    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool) {
         id = pin.id
         coordinate = pin.coordinate
         styleID = pin.styleID(
             showsDiscoverLabel: showsDiscoverLabels,
-            showsAllDiscoverLabels: showsAllDiscoverLabels,
-            isSelected: isSelected
+            showsAllDiscoverLabels: showsAllDiscoverLabels
         )
         poiID = pin.poiID
     }
@@ -532,11 +525,7 @@ private extension MapPinItem {
         }
     }
 
-    func styleID(
-        showsDiscoverLabel: Bool = false,
-        showsAllDiscoverLabels: Bool = false,
-        isSelected: Bool = false
-    ) -> String {
+    func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false) -> String {
         switch kind {
         case .currentLocation:
             return "current-location"
@@ -559,12 +548,10 @@ private extension MapPinItem {
             }
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
-            if isSelected { return style.selectedID }
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: festival.title)
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
-            if isSelected { return style.selectedID }
             guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
             return style.labeledID(for: event.title)
         case .cluster(let cluster):
@@ -576,16 +563,10 @@ private extension MapPinItem {
         switch kind {
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
-            if styleID == style.selectedID {
-                return (styleID, style.selectedImage)
-            }
             guard styleID == style.labeledID(for: festival.title) else { return nil }
             return (styleID, style.image(label: festival.title.shortMapLabel))
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
-            if styleID == style.selectedID {
-                return (styleID, style.selectedImage)
-            }
             guard styleID == style.labeledID(for: event.title) else { return nil }
             return (styleID, style.image(label: event.title.shortMapLabel))
         case .cluster(let cluster):
@@ -665,31 +646,33 @@ private enum DiscoverPinStyle: Hashable, CaseIterable {
         return false
     }
 
+    var isLocalEvent: Bool {
+        switch self {
+        case .event, .eventUnknown, .eventSponsored:
+            return true
+        case .festival, .festivalUnknown:
+            return false
+        }
+    }
+
     var baseImage: UIImage {
         image(label: nil)
     }
 
-    var selectedID: String {
-        "\(id)-selected"
-    }
-
-    var selectedImage: UIImage {
-        .localEventPin(
-            fill: fill,
-            symbol: symbol,
-            label: nil,
-            prominent: true,
-            selected: true
-        )
-    }
-
     func image(label: String?) -> UIImage {
-        .localEventPin(
+        if isLocalEvent {
+            return .localEventPin(
+                fill: fill,
+                symbol: symbol,
+                label: label,
+                prominent: isProminent
+            )
+        }
+        return .discoverPin(
             fill: fill,
             symbol: symbol,
             label: label,
-            prominent: isProminent,
-            selected: false
+            prominent: isProminent
         )
     }
 
@@ -784,21 +767,14 @@ private extension UIImage {
         )
     }
 
-    static func localEventPin(
-        fill: UIColor,
-        symbol: String,
-        label: String? = nil,
-        prominent: Bool = false,
-        selected: Bool = false
-    ) -> UIImage {
+    static func localEventPin(fill: UIColor, symbol: String, label: String? = nil, prominent: Bool = false) -> UIImage {
         localEventMarker(
             fill: fill,
             symbol: symbol,
             label: label,
-            size: selected ? 50 : (prominent ? 44 : 34),
+            size: prominent ? 44 : 34,
             scale: mapPinScale,
-            ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil,
-            selected: selected
+            ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil
         )
     }
 
@@ -927,18 +903,10 @@ private extension UIImage {
         label: String?,
         size: CGFloat,
         scale: CGFloat,
-        ringColor: UIColor? = nil,
-        selected: Bool = false
+        ringColor: UIColor? = nil
     ) -> UIImage {
         guard let label, !label.isEmpty else {
-            return localEventTicketPin(
-                fill: fill,
-                symbol: symbol,
-                size: size,
-                scale: scale,
-                ringColor: ringColor,
-                selected: selected
-            )
+            return localEventTicketPin(fill: fill, symbol: symbol, size: size, scale: scale, ringColor: ringColor)
         }
 
         let font = FestivalDesign.uiFont(size: 14, weight: .semibold)
@@ -949,8 +917,7 @@ private extension UIImage {
         let bubbleWidth = min(labelWidth, 128)
         let pinCanvasWidth = size + pinShadowPadding * 2
         let canvasWidth = max(pinCanvasWidth, bubbleWidth + pinShadowPadding * 2)
-        let effectHeight = selected ? size * 0.18 : 0
-        let canvasHeight = effectHeight + bubbleHeight + gap + size + pinTailHeight
+        let canvasHeight = bubbleHeight + gap + size + pinTailHeight
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
 
         return renderer.image { context in
@@ -988,10 +955,9 @@ private extension UIImage {
                 fill: fill,
                 symbol: symbol,
                 size: size,
-                origin: CGPoint(x: (canvasWidth - size) / 2, y: effectHeight + bubbleHeight + gap),
+                origin: CGPoint(x: (canvasWidth - size) / 2, y: bubbleHeight + gap),
                 context: context,
-                ringColor: ringColor,
-                selected: selected
+                ringColor: ringColor
             )
         }
     }
@@ -1001,12 +967,10 @@ private extension UIImage {
         symbol: String,
         size: CGFloat,
         scale: CGFloat,
-        ringColor: UIColor? = nil,
-        selected: Bool = false
+        ringColor: UIColor? = nil
     ) -> UIImage {
         let canvasWidth = size + pinShadowPadding * 2
-        let effectHeight = selected ? size * 0.24 : 0
-        let canvasHeight = effectHeight + size + pinTailHeight + pinShadowPadding
+        let canvasHeight = size + pinTailHeight + pinShadowPadding
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
         return renderer.image { context in
             context.cgContext.scaleBy(x: scale, y: scale)
@@ -1014,10 +978,9 @@ private extension UIImage {
                 fill: fill,
                 symbol: symbol,
                 size: size,
-                origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding + effectHeight),
+                origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding),
                 context: context,
-                ringColor: ringColor,
-                selected: selected
+                ringColor: ringColor
             )
         }
     }
@@ -1123,8 +1086,7 @@ private extension UIImage {
         size: CGFloat,
         origin: CGPoint,
         context: UIGraphicsImageRendererContext,
-        ringColor: UIColor? = nil,
-        selected: Bool = false
+        ringColor: UIColor? = nil
     ) {
         let bodyRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
         let tailTipY = origin.y + size + pinTailHeight - 0.5
@@ -1137,10 +1099,6 @@ private extension UIImage {
         tail.close()
 
         let body = UIBezierPath(roundedRect: bodyRect, cornerRadius: size * 0.24)
-
-        if selected {
-            drawSelectedPinEffect(above: bodyRect, fill: fill, context: context)
-        }
 
         context.cgContext.saveGState()
         context.cgContext.setShadow(
@@ -1246,55 +1204,6 @@ private extension UIImage {
             let iconRect = badgeRect.insetBy(dx: badgeSize * 0.24, dy: badgeSize * 0.24)
             image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
-    }
-
-    static func drawSelectedPinEffect(
-        above bodyRect: CGRect,
-        fill: UIColor,
-        context: UIGraphicsImageRendererContext
-    ) {
-        let center = CGPoint(x: bodyRect.midX, y: bodyRect.minY - bodyRect.height * 0.05)
-
-        context.cgContext.saveGState()
-        context.cgContext.setShadow(
-            offset: CGSize(width: 0, height: 0.5),
-            blur: 2.0,
-            color: FestivalDesign.uiNavy.withAlphaComponent(0.12).cgColor
-        )
-
-        fill.withAlphaComponent(0.20).setStroke()
-        let halo = UIBezierPath(arcCenter: center, radius: bodyRect.width * 0.33, startAngle: .pi * 1.08, endAngle: .pi * 1.92, clockwise: true)
-        halo.lineWidth = max(1.2, bodyRect.width * 0.035)
-        halo.lineCapStyle = .round
-        halo.stroke()
-
-        UIColor.white.withAlphaComponent(0.92).setFill()
-        drawSparkle(center: CGPoint(x: center.x - bodyRect.width * 0.25, y: center.y - bodyRect.height * 0.11), radius: bodyRect.width * 0.055)
-        UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 0.96).setFill()
-        drawSparkle(center: CGPoint(x: center.x + bodyRect.width * 0.25, y: center.y - bodyRect.height * 0.12), radius: bodyRect.width * 0.065)
-        UIColor.white.withAlphaComponent(0.86).setFill()
-        UIBezierPath(ovalIn: CGRect(
-            x: center.x - bodyRect.width * 0.015,
-            y: center.y - bodyRect.height * 0.19,
-            width: bodyRect.width * 0.03,
-            height: bodyRect.width * 0.03
-        )).fill()
-
-        context.cgContext.restoreGState()
-    }
-
-    static func drawSparkle(center: CGPoint, radius: CGFloat) {
-        let path = UIBezierPath()
-        path.move(to: CGPoint(x: center.x, y: center.y - radius))
-        path.addLine(to: CGPoint(x: center.x + radius * 0.34, y: center.y - radius * 0.34))
-        path.addLine(to: CGPoint(x: center.x + radius, y: center.y))
-        path.addLine(to: CGPoint(x: center.x + radius * 0.34, y: center.y + radius * 0.34))
-        path.addLine(to: CGPoint(x: center.x, y: center.y + radius))
-        path.addLine(to: CGPoint(x: center.x - radius * 0.34, y: center.y + radius * 0.34))
-        path.addLine(to: CGPoint(x: center.x - radius, y: center.y))
-        path.addLine(to: CGPoint(x: center.x - radius * 0.34, y: center.y - radius * 0.34))
-        path.close()
-        path.fill()
     }
 
     static func drawHaloPinBody(
