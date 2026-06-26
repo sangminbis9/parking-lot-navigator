@@ -292,7 +292,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             for style in DiscoverPinStyle.allCases {
                 manager.addPoiStyle(makeStyle(
                     id: style.id,
-                    image: .discoverPin(fill: style.fill, symbol: style.symbol, prominent: style.isProminent)
+                    image: style.baseImage
                 ))
             }
             stylesReady = true
@@ -564,16 +564,11 @@ private extension MapPinItem {
         case .festival(let festival):
             let style = DiscoverPinStyle.festivalStyle(for: festival)
             guard styleID == style.labeledID(for: festival.title) else { return nil }
-            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: festival.title.shortMapLabel))
+            return (styleID, style.image(label: festival.title.shortMapLabel))
         case .event(let event):
             let style = DiscoverPinStyle.eventStyle(for: event)
             guard styleID == style.labeledID(for: event.title) else { return nil }
-            return (styleID, .discoverPin(
-                fill: style.fill,
-                symbol: style.symbol,
-                label: event.title.shortMapLabel,
-                prominent: style.isProminent
-            ))
+            return (styleID, style.image(label: event.title.shortMapLabel))
         case .cluster(let cluster):
             guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
             return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale, isParking: cluster.isParking))
@@ -649,6 +644,36 @@ private enum DiscoverPinStyle: Hashable, CaseIterable {
     var isProminent: Bool {
         if case .eventSponsored = self { return true }
         return false
+    }
+
+    var isLocalEvent: Bool {
+        switch self {
+        case .event, .eventUnknown, .eventSponsored:
+            return true
+        case .festival, .festivalUnknown:
+            return false
+        }
+    }
+
+    var baseImage: UIImage {
+        image(label: nil)
+    }
+
+    func image(label: String?) -> UIImage {
+        if isLocalEvent {
+            return .localEventPin(
+                fill: fill,
+                symbol: symbol,
+                label: label,
+                prominent: isProminent
+            )
+        }
+        return .discoverPin(
+            fill: fill,
+            symbol: symbol,
+            label: label,
+            prominent: isProminent
+        )
     }
 
     func labeledID(for title: String) -> String {
@@ -728,7 +753,7 @@ private extension UIImage {
     }
 
     static func parkingPin(_ color: UIColor) -> UIImage {
-        haloPin(core: color, symbol: nil, letter: "P", size: 32, scale: mapPinScale)
+        cuteParkingPin(fill: color, scale: mapPinScale)
     }
 
     static func discoverPin(fill: UIColor, symbol: String, label: String? = nil, prominent: Bool = false) -> UIImage {
@@ -740,6 +765,84 @@ private extension UIImage {
             scale: mapPinScale,
             ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil
         )
+    }
+
+    static func localEventPin(fill: UIColor, symbol: String, label: String? = nil, prominent: Bool = false) -> UIImage {
+        localEventMarker(
+            fill: fill,
+            symbol: symbol,
+            label: label,
+            size: prominent ? 44 : 34,
+            scale: mapPinScale,
+            ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil
+        )
+    }
+
+    static func cuteParkingPin(fill: UIColor, scale: CGFloat) -> UIImage {
+        let size: CGFloat = 34
+        let canvasWidth = size + pinShadowPadding * 2
+        let canvasHeight = size + pinTailHeight + pinShadowPadding
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
+
+            let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding)
+            let bodyRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
+            let tailTip = CGPoint(x: bodyRect.midX, y: bodyRect.maxY + pinTailHeight - 0.5)
+            let tail = UIBezierPath()
+            tail.move(to: CGPoint(x: bodyRect.midX - size * 0.13, y: bodyRect.maxY - 3))
+            tail.addLine(to: CGPoint(x: bodyRect.midX + size * 0.13, y: bodyRect.maxY - 3))
+            tail.addLine(to: tailTip)
+            tail.close()
+
+            context.cgContext.saveGState()
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1.2),
+                blur: 3,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor
+            )
+            FestivalDesign.uiCream.setFill()
+            UIBezierPath(roundedRect: bodyRect, cornerRadius: size * 0.34).fill()
+            tail.fill()
+            context.cgContext.restoreGState()
+
+            let inset = size * 0.12
+            let coreRect = bodyRect.insetBy(dx: inset, dy: inset)
+            fill.setFill()
+            UIBezierPath(roundedRect: coreRect, cornerRadius: coreRect.width * 0.32).fill()
+
+            UIColor.white.withAlphaComponent(0.96).setStroke()
+            let shine = UIBezierPath()
+            shine.move(to: CGPoint(x: coreRect.minX + coreRect.width * 0.23, y: coreRect.minY + coreRect.height * 0.28))
+            shine.addLine(to: CGPoint(x: coreRect.minX + coreRect.width * 0.38, y: coreRect.minY + coreRect.height * 0.20))
+            shine.lineWidth = 1.2
+            shine.lineCapStyle = .round
+            shine.stroke()
+
+            FestivalDesign.uiNavy.withAlphaComponent(0.14).setStroke()
+            let outline = UIBezierPath(roundedRect: bodyRect, cornerRadius: size * 0.34)
+            outline.lineWidth = 0.8
+            outline.stroke()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: FestivalDesign.uiFont(size: size * 0.46, weight: .heavy),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            let text = "P" as NSString
+            let textSize = text.size(withAttributes: attributes)
+            text.draw(
+                in: CGRect(
+                    x: coreRect.midX - textSize.width / 2,
+                    y: coreRect.midY - textSize.height / 2 - 0.4,
+                    width: textSize.width,
+                    height: textSize.height
+                ),
+                withAttributes: attributes
+            )
+        }
     }
 
     static func clusterPin(fill: UIColor, count: Int, scale: CGFloat, isParking: Bool) -> UIImage {
@@ -791,6 +894,94 @@ private extension UIImage {
                 .paragraphStyle: paragraph
             ]
             NSString(string: badgeText).draw(in: badgeRect.insetBy(dx: 1, dy: 3.3), withAttributes: attributes)
+        }
+    }
+
+    static func localEventMarker(
+        fill: UIColor,
+        symbol: String,
+        label: String?,
+        size: CGFloat,
+        scale: CGFloat,
+        ringColor: UIColor? = nil
+    ) -> UIImage {
+        guard let label, !label.isEmpty else {
+            return localEventTicketPin(fill: fill, symbol: symbol, size: size, scale: scale, ringColor: ringColor)
+        }
+
+        let font = FestivalDesign.uiFont(size: 14, weight: .semibold)
+        let horizontalPadding: CGFloat = 9
+        let bubbleHeight: CGFloat = 24
+        let gap: CGFloat = 4
+        let labelWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width + horizontalPadding * 2)
+        let bubbleWidth = min(labelWidth, 128)
+        let pinCanvasWidth = size + pinShadowPadding * 2
+        let canvasWidth = max(pinCanvasWidth, bubbleWidth + pinShadowPadding * 2)
+        let canvasHeight = bubbleHeight + gap + size + pinTailHeight
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
+
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
+
+            let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 2, width: bubbleWidth, height: bubbleHeight)
+            let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 11)
+            context.cgContext.saveGState()
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1.5),
+                blur: 4,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor
+            )
+            FestivalDesign.uiCream.setFill()
+            bubble.fill()
+            context.cgContext.restoreGState()
+            fill.withAlphaComponent(0.52).setStroke()
+            bubble.lineWidth = 1.1
+            bubble.stroke()
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byTruncatingTail
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: FestivalDesign.uiNavy,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: label).draw(
+                in: bubbleRect.insetBy(dx: horizontalPadding, dy: 3),
+                withAttributes: attributes
+            )
+
+            drawLocalEventTicketBody(
+                fill: fill,
+                symbol: symbol,
+                size: size,
+                origin: CGPoint(x: (canvasWidth - size) / 2, y: bubbleHeight + gap),
+                context: context,
+                ringColor: ringColor
+            )
+        }
+    }
+
+    static func localEventTicketPin(
+        fill: UIColor,
+        symbol: String,
+        size: CGFloat,
+        scale: CGFloat,
+        ringColor: UIColor? = nil
+    ) -> UIImage {
+        let canvasWidth = size + pinShadowPadding * 2
+        let canvasHeight = size + pinTailHeight + pinShadowPadding
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: scale, y: scale)
+            drawLocalEventTicketBody(
+                fill: fill,
+                symbol: symbol,
+                size: size,
+                origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding),
+                context: context,
+                ringColor: ringColor
+            )
         }
     }
 
@@ -886,6 +1077,132 @@ private extension UIImage {
                 context: context,
                 ringColor: ringColor
             )
+        }
+    }
+
+    static func drawLocalEventTicketBody(
+        fill: UIColor,
+        symbol: String,
+        size: CGFloat,
+        origin: CGPoint,
+        context: UIGraphicsImageRendererContext,
+        ringColor: UIColor? = nil
+    ) {
+        let bodyRect = CGRect(x: origin.x, y: origin.y, width: size, height: size)
+        let tailTipY = origin.y + size + pinTailHeight - 0.5
+        let tailBaseY = origin.y + size - 2.4
+        let tailHalfWidth = max(size * 0.12, 4)
+        let tail = UIBezierPath()
+        tail.move(to: CGPoint(x: bodyRect.midX - tailHalfWidth, y: tailBaseY))
+        tail.addLine(to: CGPoint(x: bodyRect.midX + tailHalfWidth, y: tailBaseY))
+        tail.addLine(to: CGPoint(x: bodyRect.midX, y: tailTipY))
+        tail.close()
+
+        let body = UIBezierPath(roundedRect: bodyRect, cornerRadius: size * 0.24)
+
+        context.cgContext.saveGState()
+        context.cgContext.setShadow(
+            offset: CGSize(width: 0, height: 1.2),
+            blur: 3.2,
+            color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor
+        )
+        FestivalDesign.uiCream.setFill()
+        tail.fill()
+        body.fill()
+        context.cgContext.restoreGState()
+
+        context.cgContext.saveGState()
+        context.cgContext.setBlendMode(.clear)
+        UIBezierPath(
+            ovalIn: CGRect(
+                x: bodyRect.midX - size * 0.11,
+                y: bodyRect.minY - size * 0.08,
+                width: size * 0.22,
+                height: size * 0.22
+            )
+        ).fill()
+        context.cgContext.restoreGState()
+
+        let accentRect = CGRect(
+            x: bodyRect.minX + size * 0.12,
+            y: bodyRect.maxY - size * 0.28,
+            width: bodyRect.width * 0.76,
+            height: size * 0.08
+        )
+        fill.withAlphaComponent(0.72).setFill()
+        UIBezierPath(roundedRect: accentRect, cornerRadius: size * 0.04).fill()
+
+        FestivalDesign.uiNavy.withAlphaComponent(0.20).setStroke()
+        let dash = UIBezierPath()
+        dash.move(to: CGPoint(x: bodyRect.minX + size * 0.20, y: bodyRect.minY + size * 0.34))
+        dash.addLine(to: CGPoint(x: bodyRect.maxX - size * 0.20, y: bodyRect.minY + size * 0.40))
+        dash.lineWidth = max(1.0, size * 0.035)
+        dash.lineCapStyle = .round
+        dash.setLineDash([size * 0.09, size * 0.075], count: 2, phase: 0)
+        dash.stroke()
+
+        FestivalDesign.uiNavy.withAlphaComponent(0.20).setStroke()
+        body.lineWidth = 0.9
+        body.stroke()
+        tail.lineWidth = 0.9
+        tail.stroke()
+
+        if let ringColor {
+            ringColor.setStroke()
+            let ring = UIBezierPath(roundedRect: bodyRect.insetBy(dx: -1.3, dy: -1.3), cornerRadius: size * 0.27)
+            ring.lineWidth = 2.2
+            ring.stroke()
+        }
+
+        FestivalDesign.uiNavy.setFill()
+        let eyeSize = size * 0.085
+        UIBezierPath(ovalIn: CGRect(
+            x: bodyRect.minX + size * 0.34,
+            y: bodyRect.minY + size * 0.50,
+            width: eyeSize,
+            height: eyeSize
+        )).fill()
+        UIBezierPath(ovalIn: CGRect(
+            x: bodyRect.maxX - size * 0.34 - eyeSize,
+            y: bodyRect.minY + size * 0.50,
+            width: eyeSize,
+            height: eyeSize
+        )).fill()
+
+        let smile = UIBezierPath()
+        smile.move(to: CGPoint(x: bodyRect.midX - size * 0.075, y: bodyRect.minY + size * 0.64))
+        smile.addQuadCurve(
+            to: CGPoint(x: bodyRect.midX + size * 0.075, y: bodyRect.minY + size * 0.64),
+            controlPoint: CGPoint(x: bodyRect.midX, y: bodyRect.minY + size * 0.70)
+        )
+        smile.lineWidth = max(1.1, size * 0.035)
+        smile.lineCapStyle = .round
+        smile.stroke()
+
+        let badgeSize = size * 0.29
+        let badgeRect = CGRect(
+            x: bodyRect.maxX - badgeSize * 0.92,
+            y: bodyRect.maxY - badgeSize * 0.96,
+            width: badgeSize,
+            height: badgeSize
+        )
+        context.cgContext.saveGState()
+        context.cgContext.setShadow(
+            offset: CGSize(width: 0, height: 0.8),
+            blur: 1.4,
+            color: FestivalDesign.uiNavy.withAlphaComponent(0.16).cgColor
+        )
+        fill.setFill()
+        UIBezierPath(ovalIn: badgeRect).fill()
+        context.cgContext.restoreGState()
+        UIColor.white.withAlphaComponent(0.94).setStroke()
+        let badgeOutline = UIBezierPath(ovalIn: badgeRect)
+        badgeOutline.lineWidth = 1
+        badgeOutline.stroke()
+
+        if let image = UIImage(systemName: symbol) {
+            let iconRect = badgeRect.insetBy(dx: badgeSize * 0.24, dy: badgeSize * 0.24)
+            image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
     }
 
