@@ -219,3 +219,9 @@ export interface MapItemsResponse {
   items: MapItem[];
   generatedAt: string;
 }
+
+export interface DiscoverPerformancesResponse {
+  festivals: Festival[];
+  events: FreeEvent[];
+  generatedAt: string;
+}

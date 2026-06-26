@@ -214,6 +214,27 @@ export async function queryEventsFromCache(
     .filter((item) => !options.freeOnly || item.isFree);
 }
 
+export async function queryPerformancesFromCache(
+  db: D1Database,
+  lat: number,
+  lng: number,
+  options: DiscoveryQueryOptions,
+): Promise<{ festivals: Festival[]; events: FreeEvent[] }> {
+  const [eventRows, festivalRows] = await Promise.all([
+    queryDiscoveryRows(db, "event", lat, lng, options),
+    queryDiscoveryRows(db, "festival", lat, lng, options),
+  ]);
+  const events = eventRows
+    .filter((row) => row.source === "kopis")
+    .map((row) => mapEventRow(row, lat, lng));
+  const festivals = dedupeFestivals(
+    festivalRows
+      .filter((row) => row.primary_category === "music_performance")
+      .map((row) => mapFestivalRow(row, lat, lng)),
+  );
+  return { festivals, events };
+}
+
 export async function queryDiscoveryClusters(
   db: D1Database,
   types: DiscoveryType[],

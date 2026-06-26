@@ -153,6 +153,10 @@ export class KopisEventProvider
       signal,
       headers: { Accept: "application/xml,text/xml,*/*" },
     });
+    if (response.status === 429) {
+      console.warn(`KOPIS rate limit hit at page ${page}, stopping pagination early`);
+      return [];
+    }
     if (!response.ok) throw new Error(`KOPIS API failed: ${response.status}`);
     return parseXmlItems(await response.text(), "db");
   }

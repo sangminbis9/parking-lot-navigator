@@ -1,16 +1,18 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
-import type { MapItem } from "@parking/shared-types";
+import type { MapItem, DiscoverPerformancesResponse } from "@parking/shared-types";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import {
   currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
   queryFestivalsFromCache,
+  queryPerformancesFromCache,
   reapStaleSyncRuns,
   syncDiscoveryCache,
   syncDiscoveryChunk,
+  type DiscoveryQueryOptions,
 } from "./discoveryCache.js";
 import {
   createAdminLocalEvent,
@@ -493,6 +495,28 @@ app.get("/api/festivals", async (c) =>
     });
   }),
 );
+
+app.get("/api/performances", async (c) => {
+  if (!c.env.DB) return c.json({ error: "DB not configured" }, 503);
+  const query = discoverQuerySchema.safeParse(queryObject(c.req.raw.url));
+  if (!query.success) return c.json({ error: "Invalid query" }, 400);
+  const { lat, lng, radiusMeters, upcomingWithinDays } = query.data;
+  const options: DiscoveryQueryOptions = {
+    radiusMeters: radiusMeters ?? 50_000,
+    upcomingWithinDays: upcomingWithinDays ?? 365,
+  };
+  const { festivals, events } = await queryPerformancesFromCache(
+    c.env.DB,
+    lat,
+    lng,
+    options,
+  );
+  return c.json({
+    festivals,
+    events,
+    generatedAt: new Date().toISOString(),
+  } satisfies DiscoverPerformancesResponse);
+});
 
 app.get("/api/local-events", async (c) =>
   edgeCached(c.req.url, c.executionCtx, 60, async () => {
