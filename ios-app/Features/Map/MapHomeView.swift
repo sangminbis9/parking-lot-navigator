@@ -68,6 +68,7 @@ struct MapHomeView: View {
                 center: mapCenter,
                 zoomLevel: mapZoomLevel,
                 pins: pins,
+                selectedPinID: hologramPin?.id,
                 onTap: {
                     isSearchFocused = false
                     handleMapBackgroundTap()
