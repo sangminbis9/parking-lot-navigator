@@ -545,6 +545,66 @@ struct DiscoverEventsResponse: Codable {
     let generatedAt: String
 }
 
+struct DiscoverPerformancesResponse: Decodable {
+    let festivals: [Festival]
+    let events: [FreeEvent]
+    let generatedAt: String
+}
+
+enum PerformanceItem: Identifiable {
+    case festival(Festival)
+    case event(FreeEvent)
+
+    var id: String {
+        switch self {
+        case .festival(let f): return "perf-festival-\(f.id)"
+        case .event(let e): return "perf-event-\(e.id)"
+        }
+    }
+
+    var presentation: DiscoverPresentation {
+        switch self {
+        case .festival(let f): return f.discoverPresentation
+        case .event(let e): return e.discoverPresentation
+        }
+    }
+
+    var startDate: String {
+        switch self {
+        case .festival(let f): return f.startDate
+        case .event(let e): return e.startDate
+        }
+    }
+
+    var endDate: String {
+        switch self {
+        case .festival(let f): return f.endDate
+        case .event(let e): return e.endDate ?? e.startDate
+        }
+    }
+
+    var lat: Double {
+        switch self {
+        case .festival(let f): return f.lat
+        case .event(let e): return e.lat
+        }
+    }
+
+    var lng: Double {
+        switch self {
+        case .festival(let f): return f.lng
+        case .event(let e): return e.lng
+        }
+    }
+
+    var discoverDestination: Destination {
+        switch self {
+        case .festival(let f): return f.discoverDestination
+        case .event(let e): return e.discoverDestination
+        }
+    }
+}
+
 enum MapExploreMode: String, CaseIterable, Identifiable {
     case parking
     case festivals

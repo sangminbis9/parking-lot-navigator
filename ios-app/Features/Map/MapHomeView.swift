@@ -262,11 +262,30 @@ struct MapHomeView: View {
 
     private var discoverSources: [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
+        var seenFestivalIds: Set<String> = []
+        var seenEventIds: Set<String> = []
+
         if viewModel.showsFestivalLayer {
-            sources.append(contentsOf: viewModel.festivals.map { .festival($0) })
+            for f in viewModel.festivals where seenFestivalIds.insert(f.id).inserted {
+                sources.append(.festival(f))
+            }
         }
         if viewModel.showsLocalEventLayer {
-            sources.append(contentsOf: viewModel.events.map { .event($0) })
+            for e in viewModel.events where seenEventIds.insert(e.id).inserted {
+                sources.append(.event(e))
+            }
+        }
+        if viewModel.showsPerformanceLayer {
+            for item in viewModel.performances {
+                switch item {
+                case .festival(let f) where seenFestivalIds.insert(f.id).inserted:
+                    sources.append(.festival(f))
+                case .event(let e) where seenEventIds.insert(e.id).inserted:
+                    sources.append(.event(e))
+                default:
+                    break
+                }
+            }
         }
         return sources
     }
@@ -468,6 +487,14 @@ struct MapHomeView: View {
                     isOn: viewModel.showsLocalEventLayer
                 ) {
                     Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
+                }
+                layerToggle(
+                    title: "공연",
+                    systemImage: "music.note",
+                    tint: FestivalPrimaryCategory.musicPerformance.tint,
+                    isOn: viewModel.showsPerformanceLayer
+                ) {
+                    Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport) }
                 }
                 if viewModel.showsFestivalLayer {
                     Button {
@@ -1099,7 +1126,7 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        guard viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer else { return }
+        guard viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
         discoverRefreshTask = Task {

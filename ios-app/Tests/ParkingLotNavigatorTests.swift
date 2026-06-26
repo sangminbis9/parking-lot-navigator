@@ -98,6 +98,32 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertFalse(filter.matches(before))
     }
 
+    func testPerformanceItemFestivalId() {
+        let festival = Festival.mock(status: .ongoing)
+        let item = PerformanceItem.festival(festival)
+        XCTAssertEqual(item.id, "perf-festival-\(festival.id)")
+    }
+
+    func testPerformanceItemEventId() {
+        let event = FreeEvent.mockPerformance()
+        let item = PerformanceItem.event(event)
+        XCTAssertEqual(item.id, "perf-event-\(event.id)")
+    }
+
+    func testPerformanceItemFestivalDates() {
+        let festival = Festival.mock(status: .upcoming, startDate: "2026-07-01", endDate: "2026-07-31")
+        let item = PerformanceItem.festival(festival)
+        XCTAssertEqual(item.startDate, "2026-07-01")
+        XCTAssertEqual(item.endDate, "2026-07-31")
+    }
+
+    func testPerformanceItemEventDates() {
+        let event = FreeEvent.mockPerformance(startDate: "2026-08-01", endDate: "2026-08-03")
+        let item = PerformanceItem.event(event)
+        XCTAssertEqual(item.startDate, "2026-08-01")
+        XCTAssertEqual(item.endDate, "2026-08-03")
+    }
+
 }
 
 private extension Festival {
@@ -126,6 +152,43 @@ private extension Festival {
             tags: [],
             primaryCategory: nil,
             categoryTags: nil
+        )
+    }
+}
+
+private extension FreeEvent {
+    static func mockPerformance(
+        startDate: String = "2026-07-01",
+        endDate: String = "2026-07-02"
+    ) -> FreeEvent {
+        FreeEvent(
+            id: UUID().uuidString,
+            title: "테스트 공연",
+            eventType: "performance",
+            category: nil,
+            sourceId: nil,
+            startDate: startDate,
+            endDate: endDate,
+            status: .approved,
+            storeName: "공연장",
+            venueName: "공연장",
+            address: "서울",
+            lat: 37.5,
+            lng: 126.9,
+            distanceMeters: 100,
+            source: "kopis",
+            sourceUrl: nil,
+            imageUrl: nil,
+            benefit: nil,
+            shortDescription: nil,
+            region: nil,
+            updatedAt: nil,
+            confidenceScore: nil,
+            needsReview: nil,
+            isSponsored: false,
+            sponsorTier: nil,
+            paidUntil: nil,
+            priorityScore: 0
         )
     }
 }
