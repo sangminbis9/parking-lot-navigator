@@ -6,6 +6,7 @@ protocol APIClientProtocol {
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
+    func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent])
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
     func discoveryProviderHealth() async throws -> [ProviderHealth]
@@ -71,6 +72,18 @@ final class APIClient: APIClientProtocol {
         ]
         let response: DiscoverEventsResponse = try await get(components.url!)
         return response.items
+    }
+
+    func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent]) {
+        var components = URLComponents(url: endpoint("api/performances"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lng", value: String(lng)),
+            URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
+            URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays))
+        ]
+        let response: DiscoverPerformancesResponse = try await get(components.url!)
+        return (festivals: response.festivals, events: response.events)
     }
 
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws {
@@ -218,6 +231,21 @@ final class MockAPIClient: APIClientProtocol {
                 priorityScore: 50
             )
         ]
+    }
+
+    func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent]) {
+        return (
+            festivals: [
+                Festival(id: "mock-perf-festival", title: "2026 서울재즈페스티벌", subtitle: "음악 공연",
+                         description: nil, startDate: "2026-05-24", endDate: "2026-05-26",
+                         status: .upcoming, venueName: "올림픽공원 88잔디마당",
+                         address: "서울특별시 송파구 올림픽로 424",
+                         lat: lat + 0.002, lng: lng + 0.002, distanceMeters: 280,
+                         source: "mock", sourceUrl: nil, imageUrl: nil, imageUrls: [], tags: [],
+                         primaryCategory: .musicPerformance, categoryTags: ["공연"])
+            ],
+            events: []
+        )
     }
 
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws {}

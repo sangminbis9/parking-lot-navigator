@@ -16,6 +16,8 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedDiscoverParkingContext = false
     @Published var showsFestivalLayer = true
     @Published var showsLocalEventLayer = true
+    @Published var showsPerformanceLayer = false
+    @Published var performances: [PerformanceItem] = []
     @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
@@ -150,6 +152,15 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverLayers(viewport: viewport)
     }
 
+    func setPerformanceLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+        showsPerformanceLayer = isVisible
+        if !isVisible {
+            performances = []
+            return
+        }
+        await loadDiscoverLayers(viewport: viewport)
+    }
+
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
         showsRealtimeParkingLayer = isVisible
         if !isVisible {
@@ -201,6 +212,15 @@ final class MapHomeViewModel: ObservableObject {
             switch await loadEventLayer(viewport: viewport) {
             case .success(let items):
                 events = items
+            case .failure:
+                failedLoads += 1
+            }
+        }
+        if showsPerformanceLayer {
+            attemptedLoads += 1
+            switch await loadPerformanceLayer(viewport: viewport) {
+            case .success(let items):
+                performances = items
             case .failure:
                 failedLoads += 1
             }
@@ -258,6 +278,22 @@ final class MapHomeViewModel: ObservableObject {
     private func loadEventLayer(viewport: MapViewport) async -> Result<[FreeEvent], Error> {
         do {
             return .success(try await discoverEvents(viewport: viewport))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func loadPerformanceLayer(viewport: MapViewport) async -> Result<[PerformanceItem], Error> {
+        do {
+            let result = try await apiClient.nearbyPerformances(
+                lat: viewport.center.latitude,
+                lng: viewport.center.longitude,
+                radiusMeters: viewportDiscoverRadiusMeters(for: viewport),
+                upcomingWithinDays: 365
+            )
+            let items = result.festivals.map { PerformanceItem.festival($0) }
+                + result.events.map { PerformanceItem.event($0) }
+            return .success(items)
         } catch {
             return .failure(error)
         }

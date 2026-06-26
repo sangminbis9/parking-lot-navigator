@@ -10,6 +10,7 @@ struct CalendarTabView: View {
     @EnvironmentObject private var filterModel: FestivalFilterModel
     @EnvironmentObject private var favoritesStore: FestivalFavoritesStore
     @StateObject private var reminderService = FestivalReminderService(appGroupID: AppConfiguration.current.appGroupID)
+    @StateObject private var performanceViewModel: PerformanceViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
 
     @State private var monthAnchor: Date = Date()
@@ -28,6 +29,7 @@ struct CalendarTabView: View {
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
         _viewModel = StateObject(wrappedValue: CalendarViewModel(apiClient: apiClient))
+        _performanceViewModel = StateObject(wrappedValue: PerformanceViewModel(apiClient: apiClient))
     }
 
     var body: some View {
@@ -48,12 +50,19 @@ struct CalendarTabView: View {
                 .padding(.vertical, 10)
             Divider()
                 .overlay(FestivalDesign.creamDeep.opacity(0.4))
-            agendaSection(items: agendaItems)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    agendaContent(items: agendaItems)
+                    performanceSection
+                }
+            }
         }
         .background(FestivalDesign.background)
         .task {
             locationProvider.request()
             await reload()
+            let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
+            await performanceViewModel.load(coordinate: coord)
             await reminderService.refreshScheduled()
         }
         .onChange(of: filterModel.filter) { _ in
@@ -190,36 +199,82 @@ struct CalendarTabView: View {
     // MARK: - Agenda
 
     private func agendaSection(items: [Festival]) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(agendaTitle(count: items.count))
-                    .font(.festival(size: 14, weight: .bold))
-                    .foregroundStyle(FestivalDesign.navy)
-                    .padding(.horizontal, 16)
+        agendaContent(items: items)
+    }
 
-                if case .failed(let message) = viewModel.state {
-                    Text(message)
-                        .font(.festival(size: 12))
-                        .foregroundStyle(FestivalDesign.coral)
-                        .padding(.horizontal, 16)
-                } else if items.isEmpty {
-                    emptyAgenda
-                } else {
-                    ForEach(items) { festival in
-                        AgendaRow(
-                            festival: festival,
-                            isSaved: favoritesStore.contains(id: festival.id),
-                            isReminderOn: reminderService.isScheduled(id: festival.id),
-                            onSelect: { handleSelectFestival(festival) },
-                            onToggleSave: { toggleSave(festival) },
-                            onToggleReminder: { toggleReminderForFestival(festival) }
-                        )
-                        .padding(.horizontal, 16)
-                    }
+    private func agendaContent(items: [Festival]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(agendaTitle(count: items.count))
+                .font(.festival(size: 14, weight: .bold))
+                .foregroundStyle(FestivalDesign.navy)
+                .padding(.horizontal, 16)
+
+            if case .failed(let message) = viewModel.state {
+                Text(message)
+                    .font(.festival(size: 12))
+                    .foregroundStyle(FestivalDesign.coral)
+                    .padding(.horizontal, 16)
+            } else if items.isEmpty {
+                emptyAgenda
+            } else {
+                ForEach(items) { festival in
+                    AgendaRow(
+                        festival: festival,
+                        isSaved: favoritesStore.contains(id: festival.id),
+                        isReminderOn: reminderService.isScheduled(id: festival.id),
+                        onSelect: { handleSelectFestival(festival) },
+                        onToggleSave: { toggleSave(festival) },
+                        onToggleReminder: { toggleReminderForFestival(festival) }
+                    )
+                    .padding(.horizontal, 16)
                 }
             }
-            .padding(.vertical, 14)
         }
+        .padding(.vertical, 14)
+    }
+
+    private var performanceSection: some View {
+        let dayFormatter = CalendarViewModel.dayFormatter
+        let items: [PerformanceItem] = {
+            guard let day = selectedDay else { return [] }
+            return performanceViewModel.performancesForDay(day, calendar: calendar, formatter: dayFormatter)
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Divider()
+                .overlay(FestivalDesign.creamDeep.opacity(0.4))
+                .padding(.horizontal, 16)
+
+            HStack(spacing: 6) {
+                Image(systemName: "music.note")
+                    .font(.festival(size: 12, weight: .bold))
+                    .foregroundStyle(FestivalPrimaryCategory.musicPerformance.tint)
+                Text("근처 공연 · \(items.count)개")
+                    .font(.festival(size: 14, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+                if performanceViewModel.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if items.isEmpty && !performanceViewModel.isLoading {
+                Text("선택한 날짜에 근처 공연이 없습니다")
+                    .font(.festival(size: 12))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .padding(.horizontal, 16)
+            } else {
+                ForEach(items) { item in
+                    PerformanceRow(item: item) {
+                        router.showResults(for: item.discoverDestination, presentation: item.presentation)
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .padding(.bottom, 14)
     }
 
     private var emptyAgenda: some View {
@@ -482,6 +537,54 @@ private struct AgendaRow: View {
 
     private var statusColor: Color {
         festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern
+    }
+}
+
+// MARK: - Performance Row
+
+private struct PerformanceRow: View {
+    let item: PerformanceItem
+    let onSelect: () -> Void
+
+    var body: some View {
+        let p = item.presentation
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(FestivalPrimaryCategory.musicPerformance.tint)
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(p.status.displayText)
+                        .font(.festival(size: 10, weight: .bold))
+                        .foregroundStyle(FestivalPrimaryCategory.musicPerformance.tint)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(FestivalPrimaryCategory.musicPerformance.tint.opacity(0.12))
+                        .clipShape(FestivalDesign.chipShape)
+                    Text(item.startDate == item.endDate ? item.startDate : "\(item.startDate) ~ \(item.endDate)")
+                        .font(.festival(size: 11, weight: .medium))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                Text(p.title)
+                    .font(.festival(size: 15, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .multilineTextAlignment(.leading)
+                if let venue = p.venueName, !venue.isEmpty {
+                    Text(venue)
+                        .font(.festival(size: 12))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                Text(p.address)
+                    .font(.festival(size: 11))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .festivalCard()
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 }
 
