@@ -16,7 +16,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedDiscoverParkingContext = false
     @Published var showsFestivalLayer = true
     @Published var showsLocalEventLayer = true
-    @Published var showsPerformanceLayer = false
+    @Published var showsPerformanceLayer = true
     @Published var performances: [PerformanceItem] = []
     @Published var showsRealtimeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
@@ -354,6 +354,8 @@ struct MapPinItem: Identifiable {
     let kind: Kind
 
     var showsTitleLabel = false
+    /// 실시간 주차장 핀처럼 혼잡도 색으로 그릴지 여부. false면 단일 parkingBlue.
+    var parkingCongestionColored = false
 }
 
 struct MapPinCluster: Identifiable {

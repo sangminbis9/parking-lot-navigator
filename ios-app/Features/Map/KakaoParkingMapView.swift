@@ -532,7 +532,11 @@ private extension MapPinItem {
             return "current-location"
         case .destination:
             return "destination"
-        case .parking:
+        case .parking(let lot):
+            if parkingCongestionColored {
+                let key = lot.stale ? "stale" : lot.congestionStatus.rawValue
+                return "parking-cong-\(key)-\(theme)"
+            }
             return "parking-\(theme)"
         case .festival(let festival):
             return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
@@ -553,7 +557,13 @@ private extension MapPinItem {
     func dynamicDiscoverStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
         let theme = FestivalTheme.current
         switch kind {
-        case .parking:
+        case .parking(let lot):
+            if parkingCongestionColored {
+                let key = lot.stale ? "stale" : lot.congestionStatus.rawValue
+                guard styleID == "parking-cong-\(key)-\(theme.rawValue)" else { return nil }
+                let fill = lot.stale ? UIColor.systemGray : FestivalDesign.uiCongestionColor(lot.congestionStatus)
+                return (styleID, MapPinRenderer.parkingImage(fill: fill, theme: theme))
+            }
             guard styleID == "parking-\(theme.rawValue)" else { return nil }
             return (styleID, MapPinRenderer.image(category: .parking, theme: theme, selected: false))
         case .festival(let festival):

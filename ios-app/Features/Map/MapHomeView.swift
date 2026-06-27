@@ -215,7 +215,7 @@ struct MapHomeView: View {
                     return cluster
                 }
                 return group.first.map { source in
-                    MapPinItem(id: "realtime-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot))
+                    MapPinItem(id: "realtime-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot), parkingCongestionColored: true)
                 }
             }
         }
@@ -225,7 +225,8 @@ struct MapHomeView: View {
                 MapPinItem(
                     id: "realtime-parking-\(source.parkingLot.id)",
                     coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count),
-                    kind: .parking(source.parkingLot)
+                    kind: .parking(source.parkingLot),
+                    parkingCongestionColored: true
                 )
             }
         }
