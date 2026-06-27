@@ -7,6 +7,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let center: CLLocationCoordinate2D
     let zoomLevel: Int
     let pins: [MapPinItem]
+    let selectedPinID: String?
     let onTap: () -> Void
     let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
@@ -28,6 +29,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         pinch.delegate = context.coordinator
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
+        context.coordinator.selectedPinID = selectedPinID
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
@@ -44,6 +46,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
     func updateUIView(_ uiView: KMViewContainer, context: Context) {
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
+        context.coordinator.selectedPinID = selectedPinID
         context.coordinator.onTap = onTap
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
@@ -70,6 +73,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             zoomLevel: 13
         )
         var latestPins: [MapPinItem] = []
+        var selectedPinID: String?
         var onTap: (() -> Void)?
         var onPinTap: ((MapPinItem, CGPoint?) -> Void)?
         var onCameraIdle: ((MapViewport) -> Void)?
@@ -212,7 +216,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 MapPinSnapshot(
                     pin: $0,
                     showsDiscoverLabels: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels
+                    showsAllDiscoverLabels: showsAllDiscoverLabels,
+                    isSelected: $0.id == selectedPinID
                 )
             }
             if renderedPinSnapshot != pinSnapshot {
@@ -283,18 +288,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
             )
             _ = manager.addLabelLayer(option: layerOption)
 
+            // 현재 위치/목적지 핀은 기존 디자인을 유지하며 1회만 등록한다.
+            // 카테고리(주차장/축제/이벤트)·클러스터 핀은 테마·선택 상태를 styleID에 담아
+            // renderPins에서 on-demand 등록한다 (테마 변경 시 자동 갱신).
             manager.addPoiStyle(makeStyle(id: "current-location", image: .currentLocationPin))
             manager.addPoiStyle(makeStyle(id: "destination", image: .destinationPin))
-            manager.addPoiStyle(makeStyle(id: "parking-available", image: .parkingPin(FestivalDesign.uiTeal)))
-            manager.addPoiStyle(makeStyle(id: "parking-moderate", image: .parkingPin(FestivalDesign.uiLantern)))
-            manager.addPoiStyle(makeStyle(id: "parking-busy", image: .parkingPin(FestivalDesign.uiCoral)))
-            manager.addPoiStyle(makeStyle(id: "parking-stale", image: .parkingPin(.systemGray)))
-            for style in DiscoverPinStyle.allCases {
-                manager.addPoiStyle(makeStyle(
-                    id: style.id,
-                    image: .discoverPin(fill: style.fill, symbol: style.symbol, prominent: style.isProminent)
-                ))
-            }
             stylesReady = true
         }
 
@@ -362,7 +360,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             for pin in latestPins {
                 let styleID = pin.styleID(
                     showsDiscoverLabel: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels
+                    showsAllDiscoverLabels: showsAllDiscoverLabels,
+                    isSelected: pin.id == selectedPinID
                 )
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
@@ -497,12 +496,13 @@ private struct MapPinSnapshot: Equatable {
     let styleID: String
     let poiID: String
 
-    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool) {
+    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) {
         id = pin.id
         coordinate = pin.coordinate
         styleID = pin.styleID(
             showsDiscoverLabel: showsDiscoverLabels,
-            showsAllDiscoverLabels: showsAllDiscoverLabels
+            showsAllDiscoverLabels: showsAllDiscoverLabels,
+            isSelected: isSelected
         )
         poiID = pin.poiID
     }
@@ -525,151 +525,61 @@ private extension MapPinItem {
         }
     }
 
-    func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false) -> String {
+    func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false, isSelected: Bool = false) -> String {
+        let theme = FestivalTheme.current.rawValue
         switch kind {
         case .currentLocation:
             return "current-location"
         case .destination:
             return "destination"
-        case .parking(let parkingLot):
-            if parkingLot.stale {
-                return "parking-stale"
-            } else {
-                switch parkingLot.congestionStatus {
-                case .available:
-                    return "parking-available"
-                case .moderate:
-                    return "parking-moderate"
-                case .busy, .full:
-                    return "parking-busy"
-                case .unknown:
-                    return "parking-stale"
-                }
-            }
+        case .parking:
+            return "parking-\(theme)"
         case .festival(let festival):
-            let style = DiscoverPinStyle.festivalStyle(for: festival)
-            guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
-            return style.labeledID(for: festival.title)
+            return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
         case .event(let event):
-            let style = DiscoverPinStyle.eventStyle(for: event)
-            guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return style.id }
-            return style.labeledID(for: event.title)
+            return discoverStyleID(category: MapPinCategory.forEvent(event), title: event.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
         case .cluster(let cluster):
-            return "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)"
+            return "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(theme)"
         }
     }
 
+    private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) -> String {
+        let base = "disc-\(category.rawValue)-\(theme)"
+        if isSelected { return "\(base)-sel" }
+        guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return base }
+        return "\(base)-label-\(title.stableStyleKey)"
+    }
+
     func dynamicDiscoverStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
+        let theme = FestivalTheme.current
         switch kind {
+        case .parking:
+            guard styleID == "parking-\(theme.rawValue)" else { return nil }
+            return (styleID, MapPinRenderer.image(category: .parking, theme: theme, selected: false))
         case .festival(let festival):
-            let style = DiscoverPinStyle.festivalStyle(for: festival)
-            guard styleID == style.labeledID(for: festival.title) else { return nil }
-            return (styleID, .discoverPin(fill: style.fill, symbol: style.symbol, label: festival.title.shortMapLabel))
+            return discoverImage(styleID: styleID, category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme)
         case .event(let event):
-            let style = DiscoverPinStyle.eventStyle(for: event)
-            guard styleID == style.labeledID(for: event.title) else { return nil }
-            return (styleID, .discoverPin(
-                fill: style.fill,
-                symbol: style.symbol,
-                label: event.title.shortMapLabel,
-                prominent: style.isProminent
-            ))
+            return discoverImage(styleID: styleID, category: MapPinCategory.forEvent(event), title: event.title, theme: theme)
         case .cluster(let cluster):
-            guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)" else { return nil }
-            return (styleID, .clusterPin(fill: cluster.tint, count: cluster.count, scale: UIImage.mapPinScale, isParking: cluster.isParking))
+            guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(theme.rawValue)" else { return nil }
+            return (styleID, MapPinRenderer.clusterImage(tint: cluster.tint, count: cluster.count, isParking: cluster.isParking, theme: theme))
         default:
             return nil
         }
     }
 
-}
-
-private extension CongestionStatus {
-    var clusterColor: UIColor {
-        switch self {
-        case .available:
-            return FestivalDesign.uiTeal
-        case .moderate:
-            return FestivalDesign.uiLantern
-        case .busy, .full:
-            return FestivalDesign.uiCoral
-        case .unknown:
-            return .systemGray
+    private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme) -> (id: String, image: UIImage)? {
+        let base = "disc-\(category.rawValue)-\(theme.rawValue)"
+        if styleID == "\(base)-sel" {
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true))
         }
-    }
-}
-
-private enum DiscoverPinStyle: Hashable, CaseIterable {
-    case festival(FestivalPrimaryCategory)
-    case festivalUnknown
-    case event(LocalEventPrimaryCategory)
-    case eventUnknown
-    case eventSponsored
-
-    static var allCases: [DiscoverPinStyle] {
-        var cases: [DiscoverPinStyle] = []
-        cases.append(contentsOf: FestivalPrimaryCategory.allCases.map { .festival($0) })
-        cases.append(.festivalUnknown)
-        cases.append(contentsOf: LocalEventPrimaryCategory.allCases.map { .event($0) })
-        cases.append(.eventUnknown)
-        cases.append(.eventSponsored)
-        return cases
-    }
-
-    var id: String {
-        switch self {
-        case .festival(let c): return "festival-\(c.rawValue)"
-        case .festivalUnknown: return "festival-unknown"
-        case .event(let c): return "event-\(c.rawValue)"
-        case .eventUnknown: return "event-unknown"
-        case .eventSponsored: return "event-sponsored"
+        if styleID == base {
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false))
         }
-    }
-
-    var fill: UIColor {
-        switch self {
-        case .festival(let c): return c.uiTint
-        case .festivalUnknown: return FestivalDesign.uiCoral
-        case .event(let c): return c.uiTint
-        case .eventUnknown: return FestivalDesign.uiTeal
-        case .eventSponsored: return UIColor(red: 0.97, green: 0.45, blue: 0.18, alpha: 1)
+        if styleID == "\(base)-label-\(title.stableStyleKey)" {
+            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel))
         }
-    }
-
-    var symbol: String {
-        switch self {
-        case .festival(let c): return c.systemImage
-        case .festivalUnknown: return "sparkles"
-        case .event(let c): return c.systemImage
-        case .eventUnknown: return "calendar"
-        case .eventSponsored: return "star.fill"
-        }
-    }
-
-    var isProminent: Bool {
-        if case .eventSponsored = self { return true }
-        return false
-    }
-
-    func labeledID(for title: String) -> String {
-        "\(id)-label-\(title.stableStyleKey)"
-    }
-
-    static func festivalStyle(for festival: Festival) -> DiscoverPinStyle {
-        if let category = festival.primaryCategory {
-            return .festival(category)
-        }
-        return .festivalUnknown
-    }
-
-    static func eventStyle(for event: FreeEvent) -> DiscoverPinStyle {
-        if event.isSponsored {
-            return .eventSponsored
-        }
-        if let category = event.primaryCategory {
-            return .event(category)
-        }
-        return .eventUnknown
+        return nil
     }
 
 }
@@ -725,141 +635,6 @@ private extension UIImage {
 
     static var destinationPin: UIImage {
         haloPin(core: FestivalDesign.uiCoral, symbol: "flag.fill", size: 38, scale: mapPinScale)
-    }
-
-    static func parkingPin(_ color: UIColor) -> UIImage {
-        haloPin(core: color, symbol: nil, letter: "P", size: 32, scale: mapPinScale)
-    }
-
-    static func discoverPin(fill: UIColor, symbol: String, label: String? = nil, prominent: Bool = false) -> UIImage {
-        discoverMarker(
-            fill: fill,
-            symbol: symbol,
-            label: label,
-            size: prominent ? 44 : 34,
-            scale: mapPinScale,
-            ringColor: prominent ? UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1) : nil
-        )
-    }
-
-    static func clusterPin(fill: UIColor, count: Int, scale: CGFloat, isParking: Bool) -> UIImage {
-        let size: CGFloat = 34
-        let badgeSize: CGFloat = 18
-        let canvasWidth = size + pinShadowPadding * 2 + badgeSize * 0.35
-        let canvasHeight = size + pinTailHeight + pinShadowPadding + badgeSize * 0.25
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
-        return renderer.image { context in
-            context.cgContext.scaleBy(x: scale, y: scale)
-            let origin = CGPoint(x: pinShadowPadding, y: pinShadowPadding + badgeSize * 0.12)
-            // 주차장 클러스터는 단일 주차장 핀과 동일한 "P" 글자 디자인 사용
-            drawHaloPinBody(
-                core: fill,
-                symbol: isParking ? nil : "party.popper.fill",
-                letter: isParking ? "P" : nil,
-                dotted: false,
-                size: size,
-                origin: origin,
-                context: context
-            )
-
-            let badgeText = count > 99 ? "99+" : "\(count)"
-            let badgeRect = CGRect(
-                x: origin.x + size - badgeSize * 0.62,
-                y: origin.y - badgeSize * 0.24,
-                width: badgeSize,
-                height: badgeSize
-            )
-            let badge = UIBezierPath(ovalIn: badgeRect)
-            context.cgContext.saveGState()
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1.5),
-                blur: 4,
-                color: FestivalDesign.uiNavy.withAlphaComponent(0.25).cgColor
-            )
-            FestivalDesign.uiCoral.setFill()
-            badge.fill()
-            context.cgContext.restoreGState()
-            UIColor.white.withAlphaComponent(0.95).setStroke()
-            badge.lineWidth = 1.4
-            badge.stroke()
-
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .center
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: count > 99 ? 7.2 : 9.2, weight: .heavy),
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: paragraph
-            ]
-            NSString(string: badgeText).draw(in: badgeRect.insetBy(dx: 1, dy: 3.3), withAttributes: attributes)
-        }
-    }
-
-    static func discoverMarker(
-        fill: UIColor,
-        symbol: String,
-        label: String?,
-        size: CGFloat,
-        scale: CGFloat,
-        ringColor: UIColor? = nil
-    ) -> UIImage {
-        guard let label, !label.isEmpty else {
-            return haloPin(core: fill, symbol: symbol, size: size, scale: scale, ringColor: ringColor)
-        }
-
-        let font = FestivalDesign.uiFont(size: 14, weight: .semibold)
-        let horizontalPadding: CGFloat = 9
-        let bubbleHeight: CGFloat = 24
-        let gap: CGFloat = 4
-        let labelWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width + horizontalPadding * 2)
-        let bubbleWidth = min(labelWidth, 128)
-        let pinCanvasWidth = size + pinShadowPadding * 2
-        let canvasWidth = max(pinCanvasWidth, bubbleWidth + pinShadowPadding * 2)
-        let canvasHeight = bubbleHeight + gap + size + pinTailHeight
-
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasWidth * scale, height: canvasHeight * scale))
-        return renderer.image { context in
-            context.cgContext.scaleBy(x: scale, y: scale)
-
-            let bubbleRect = CGRect(x: (canvasWidth - bubbleWidth) / 2, y: 2, width: bubbleWidth, height: bubbleHeight)
-            let bubble = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 11)
-            context.cgContext.saveGState()
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1.5),
-                blur: 4,
-                color: FestivalDesign.uiNavy.withAlphaComponent(0.22).cgColor
-            )
-            FestivalDesign.uiCream.setFill()
-            bubble.fill()
-            context.cgContext.restoreGState()
-            fill.withAlphaComponent(0.65).setStroke()
-            bubble.lineWidth = 1.2
-            bubble.stroke()
-
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .center
-            paragraph.lineBreakMode = .byTruncatingTail
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: FestivalDesign.uiNavy,
-                .paragraphStyle: paragraph
-            ]
-            NSString(string: label).draw(
-                in: bubbleRect.insetBy(dx: horizontalPadding, dy: 3),
-                withAttributes: attributes
-            )
-
-            let pinOriginX = (canvasWidth - size) / 2
-            drawHaloPinBody(
-                core: fill,
-                symbol: symbol,
-                letter: nil,
-                dotted: false,
-                size: size,
-                origin: CGPoint(x: pinOriginX, y: bubbleHeight + gap),
-                context: context,
-                ringColor: ringColor
-            )
-        }
     }
 
     static func haloPin(
