@@ -186,6 +186,16 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertTrue(a === b)
     }
 
+    func testParkingCongestionImageNonEmptyAndCached() {
+        let busy = MapPinRenderer.parkingImage(fill: FestivalDesign.uiCongestionColor(.busy), theme: .honey)
+        let available = MapPinRenderer.parkingImage(fill: FestivalDesign.uiCongestionColor(.available), theme: .honey)
+        XCTAssertGreaterThan(busy.size.width, 0)
+        XCTAssertGreaterThan(available.size.width, 0)
+        // 같은 색은 캐시에서 동일 인스턴스를 반환한다.
+        let busyAgain = MapPinRenderer.parkingImage(fill: FestivalDesign.uiCongestionColor(.busy), theme: .honey)
+        XCTAssertTrue(busy === busyAgain)
+    }
+
 }
 
 private extension Festival {

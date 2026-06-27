@@ -63,10 +63,6 @@ enum MapPinCategory: String, CaseIterable {
         }
     }
 
-    /// 흰 배경 위 심볼/글자색. 채움색을 진하게 눌러 대비를 확보한다.
-    func symbolColor(theme: FestivalTheme) -> UIColor {
-        fillColor(theme: theme).pinDeepened(0.62)
-    }
 }
 
 // MARK: - 카테고리 매퍼 (순수 함수, 테스트 대상)
@@ -192,6 +188,17 @@ enum MapPinRenderer {
         draw(category: category, theme: theme, selected: false, label: label, scale: scale)
     }
 
+    private static var parkingCache: [String: UIImage] = [:]
+
+    /// 실시간 주차장용: 혼잡도 색(fill)으로 채운 "P" 주차 핀. 색은 테마와 무관하므로 색+scale로만 캐시한다.
+    static func parkingImage(fill: UIColor, theme: FestivalTheme, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
+        let key = "\(fill.pinColorKey)|\(Int((scale * 100).rounded()))"
+        if let cached = parkingCache[key] { return cached }
+        let image = draw(category: .parking, theme: theme, selected: false, label: nil, scale: scale, fillOverride: fill)
+        parkingCache[key] = image
+        return image
+    }
+
     /// 클러스터 핀(개수 뱃지). 카테고리와 무관하게 tint로 그린다.
     static func clusterImage(tint: UIColor, count: Int, isParking: Bool, theme: FestivalTheme, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
         let diameter = baseDiameter
@@ -252,12 +259,14 @@ enum MapPinRenderer {
         theme: FestivalTheme,
         selected: Bool,
         label: String?,
-        scale: CGFloat
+        scale: CGFloat,
+        fillOverride: UIColor? = nil
     ) -> UIImage {
         let diameter = baseDiameter * (selected ? selectedScaleFactor : 1)
         let r = diameter / 2
         let tail = diameter * tailRatio
-        let fill = category.fillColor(theme: theme)
+        let fill = fillOverride ?? category.fillColor(theme: theme)
+        let glyphColor = fill.pinDeepened(0.62)
 
         // 라벨 버블 측정
         let labelFont = FestivalDesign.uiFont(size: 14, weight: .semibold)
@@ -305,7 +314,7 @@ enum MapPinRenderer {
             let inner = headRect.insetBy(dx: diameter * 0.15, dy: diameter * 0.15)
             UIColor.white.setFill()
             UIBezierPath(ovalIn: inner).fill()
-            drawGlyph(category: category, theme: theme, in: inner, diameter: diameter, context: ctx)
+            drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: diameter, context: ctx)
         }
     }
 
@@ -356,7 +365,7 @@ enum MapPinRenderer {
 
     private static func drawGlyph(
         category: MapPinCategory,
-        theme: FestivalTheme,
+        glyphColor: UIColor,
         in inner: CGRect,
         diameter: CGFloat,
         context: UIGraphicsImageRendererContext
@@ -372,7 +381,7 @@ enum MapPinRenderer {
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: FestivalDesign.uiFont(size: diameter * 0.42, weight: .heavy),
-                .foregroundColor: category.symbolColor(theme: theme),
+                .foregroundColor: glyphColor,
                 .paragraphStyle: paragraph
             ]
             let text = "P" as NSString
@@ -385,7 +394,7 @@ enum MapPinRenderer {
         if let image {
             let iconSize = diameter * 0.40
             let rect = CGRect(x: inner.midX - iconSize / 2, y: inner.midY - iconSize / 2, width: iconSize, height: iconSize)
-            image.withTintColor(category.symbolColor(theme: theme), renderingMode: .alwaysOriginal).draw(in: rect)
+            image.withTintColor(glyphColor, renderingMode: .alwaysOriginal).draw(in: rect)
         }
     }
 
@@ -456,6 +465,13 @@ enum MapPinRenderer {
 }
 
 private extension UIColor {
+    /// 캐시 키용 RGBA 문자열.
+    var pinColorKey: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return [r, g, b, a].map { String(Int(($0 * 255).rounded())) }.joined(separator: "-")
+    }
+
     /// 채움색을 진하게 눌러 흰 배경 위 대비를 확보한다. factor<1 → 더 어둡게.
     func pinDeepened(_ factor: CGFloat) -> UIColor {
         var hue: CGFloat = 0, sat: CGFloat = 0, bri: CGFloat = 0, alpha: CGFloat = 0
