@@ -124,6 +124,68 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertEqual(item.endDate, "2026-08-03")
     }
 
+    // MARK: - MapPinCategory 매퍼
+
+    func testMapPinCategoryUsesExplicitPrimaryCategory() {
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .musicPerformance, categoryTags: [], title: "", description: nil, rawTags: []), .music)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .foodDrink, categoryTags: [], title: "", description: nil, rawTags: []), .food)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .lightNight, categoryTags: [], title: "", description: nil, rawTags: []), .night)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .marketFlea, categoryTags: [], title: "", description: nil, rawTags: []), .market)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .familyKids, categoryTags: [], title: "", description: nil, rawTags: []), .family)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .traditionCulture, categoryTags: [], title: "", description: nil, rawTags: []), .tradition)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .sportsOutdoor, categoryTags: [], title: "", description: nil, rawTags: []), .sports)
+    }
+
+    func testMapPinCategoryMapsFilmMediaToExhibition() {
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .artExhibition, categoryTags: [], title: "", description: nil, rawTags: []), .exhibition)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .filmMedia, categoryTags: [], title: "", description: nil, rawTags: []), .exhibition)
+    }
+
+    func testMapPinCategoryFallsBackToDefaultWhenNoSignal() {
+        // 전용 카테고리 없는 primaryCategory + 단서 없음 → 기본 축제
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .natureFlower, categoryTags: [], title: "동네 축제", description: nil, rawTags: ["축제"]), .defaultFestival)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "축제", description: nil, rawTags: ["행사", "이벤트"]), .defaultFestival)
+    }
+
+    func testMapPinCategoryUsesTagKeywordsBeforeTitle() {
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: ["불꽃놀이"], title: "", description: nil, rawTags: []), .night)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "", description: nil, rawTags: ["플리마켓"]), .market)
+    }
+
+    func testMapPinCategoryUsesTitleKeywordFallback() {
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "여름 재즈 콘서트", description: nil, rawTags: []), .music)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "현대 미술 전시", description: nil, rawTags: []), .exhibition)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "어린이 가족 한마당", description: nil, rawTags: []), .family)
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "한강 마라톤 대회", description: nil, rawTags: []), .sports)
+    }
+
+    func testForEventAlwaysLocalEvent() {
+        XCTAssertEqual(MapPinCategory.forEvent(FreeEvent.mockPerformance()), .localEvent)
+    }
+
+    // MARK: - MapPinRenderer 스모크
+
+    func testMapPinRendererProducesNonEmptyImages() {
+        for category in MapPinCategory.allCases {
+            let image = MapPinRenderer.image(category: category, theme: .honey, selected: false)
+            XCTAssertGreaterThan(image.size.width, 0)
+            XCTAssertGreaterThan(image.size.height, 0)
+        }
+    }
+
+    func testSelectedPinIsTallerThanBase() {
+        let base = MapPinRenderer.image(category: .music, theme: .honey, selected: false)
+        let selected = MapPinRenderer.image(category: .music, theme: .honey, selected: true)
+        // 선택 핀은 1.2배 확대 + 상단 spark 영역이 더해져 더 크다.
+        XCTAssertGreaterThan(selected.size.height, base.size.height)
+    }
+
+    func testRendererCacheReturnsSameInstance() {
+        let a = MapPinRenderer.image(category: .parking, theme: .honey, selected: false)
+        let b = MapPinRenderer.image(category: .parking, theme: .honey, selected: false)
+        XCTAssertTrue(a === b)
+    }
+
 }
 
 private extension Festival {

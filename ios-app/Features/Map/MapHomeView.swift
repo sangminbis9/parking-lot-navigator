@@ -13,6 +13,7 @@ struct MapHomeView: View {
     @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
     @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
     @EnvironmentObject private var festivalFilterModel: FestivalFilterModel
+    @EnvironmentObject private var themeStore: FestivalThemeStore
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
@@ -40,9 +41,9 @@ struct MapHomeView: View {
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
     // KakaoMaps SDK가 UIImage 픽셀 크기를 pt로 취급해 렌더링
-    // → screenPoint = 핀 이미지 바닥. 원형 상단 + 여유 10pt
+    // → screenPoint = 핀 tip(이미지 바닥). 커넥터는 원형 상단 + 여유 10pt 위에 놓는다.
     private var hologramPinTopOffset: CGFloat {
-        (34 + 7 + 6) * 0.5 * UIScreen.main.scale + 10
+        MapPinRenderer.selectedTipToTop * MapPinRenderer.scale * UIScreen.main.scale + 10
     }
     private let hologramConnectorTotalHeight: CGFloat = 26  // 20pt bar + 6pt dot
 
@@ -68,6 +69,7 @@ struct MapHomeView: View {
                 center: mapCenter,
                 zoomLevel: mapZoomLevel,
                 pins: pins,
+                selectedPinID: hologramPin?.id,
                 onTap: {
                     isSearchFocused = false
                     handleMapBackgroundTap()
@@ -149,6 +151,10 @@ struct MapHomeView: View {
             } else {
                 stopHologramAnchorTracking()
             }
+        }
+        .onChange(of: themeStore.selectedTheme) { _ in
+            // 테마가 바뀌면 핀 styleID(테마 포함)가 달라져 KakaoParkingMapView가 자동 재렌더한다.
+            // 이 onChange는 body가 테마 변화를 구독하도록 의존성을 만드는 역할만 한다.
         }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
@@ -890,10 +896,6 @@ struct MapHomeView: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 hologramAnchor = anchor
                 hologramPin = pin
-            }
-            Task {
-                await viewModel.loadParkingPinsAround(pin.coordinate)
-                await viewModel.loadRealtimeParkingLayer(force: true)
             }
         case .parking(let parkingLot):
             hologramPin = nil
