@@ -344,8 +344,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             )
         }
 
-        private func makeStyle(id: String, image: UIImage) -> PoiStyle {
-            let iconStyle = PoiIconStyle(symbol: image, anchorPoint: CGPoint(x: 0.5, y: 1.0))
+        private func makeStyle(id: String, image: UIImage, anchor: CGPoint = CGPoint(x: 0.5, y: 1.0)) -> PoiStyle {
+            let iconStyle = PoiIconStyle(symbol: image, anchorPoint: anchor)
             return PoiStyle(styleID: id, styles: [
                 PerLevelPoiStyle(iconStyle: iconStyle, level: 0)
             ])
@@ -365,7 +365,12 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 )
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
-                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image))
+                    // 클러스터는 원형 버블 → 좌표에 중심을 맞춘다. 개별 핀은 물방울 tip(0.5,1.0).
+                    let anchor: CGPoint = {
+                        if case .cluster = pin.kind { return CGPoint(x: 0.5, y: 0.5) }
+                        return CGPoint(x: 0.5, y: 1.0)
+                    }()
+                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image, anchor: anchor))
                     registeredDynamicStyleIDs.insert(style.id)
                 }
                 let option = PoiOptions(styleID: styleID, poiID: pin.poiID)

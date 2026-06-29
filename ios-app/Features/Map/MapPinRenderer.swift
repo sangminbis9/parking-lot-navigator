@@ -200,55 +200,51 @@ enum MapPinRenderer {
     }
 
     /// 클러스터 핀(개수 뱃지). 카테고리와 무관하게 tint로 그린다.
+    /// 클러스터는 개별 핀(물방울)과 달리 단순 원형 버블로 그린다.
+    /// 개수 구간(2~9 / 10~49 / 50+)에 따라 크기와 색 진하기를 단계화한다 — 카카오·네이버·구글 표준.
+    /// `isParking`/`theme`는 색(tint)에 이미 반영되어 있어 형태에는 쓰지 않는다.
     static func clusterImage(tint: UIColor, count: Int, isParking: Bool, theme: FestivalTheme, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
-        let diameter = baseDiameter
-        let r = diameter / 2
-        let tail = diameter * tailRatio
-        let badgeSize = diameter * 0.5
-        let canvasW = diameter + shadowPadding * 2 + badgeSize * 0.35
-        let circleTop = shadowPadding + badgeSize * 0.28
-        let canvasH = circleTop + diameter + tail
-        let cx = (diameter + shadowPadding * 2) / 2
+        let tier = count < 10 ? 0 : (count < 50 ? 1 : 2)
+        let innerD: CGFloat = [30, 38, 46][tier]
+        let fill: UIColor = [tint.pinMixedWithWhite(0.30), tint, tint.pinDeepened(0.72)][tier]
+        let haloD = innerD + 12
+        let canvas = haloD + shadowPadding * 2
+        let center = canvas / 2
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasW * scale, height: canvasH * scale))
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvas * scale, height: canvas * scale))
         return renderer.image { ctx in
             ctx.cgContext.scaleBy(x: scale, y: scale)
-            let headRect = CGRect(x: cx - r, y: circleTop, width: diameter, height: diameter)
-            drawSilhouette(headRect: headRect, tail: tail, fill: tint, context: ctx)
 
-            let inner = headRect.insetBy(dx: diameter * 0.16, dy: diameter * 0.16)
-            UIColor.white.setFill()
-            UIBezierPath(ovalIn: inner).fill()
+            // 반투명 외곽 헤일로 — 클러스터를 영역 요약으로 보이게 한다.
+            fill.withAlphaComponent(0.22).setFill()
+            UIBezierPath(ovalIn: CGRect(x: center - haloD / 2, y: center - haloD / 2, width: haloD, height: haloD)).fill()
+
+            // 내부 컬러 원 + 그림자
+            let innerRect = CGRect(x: center - innerD / 2, y: center - innerD / 2, width: innerD, height: innerD)
+            ctx.cgContext.saveGState()
+            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: FestivalDesign.uiNavy.withAlphaComponent(0.28).cgColor)
+            fill.setFill()
+            UIBezierPath(ovalIn: innerRect).fill()
+            ctx.cgContext.restoreGState()
+
+            UIColor.white.setStroke()
+            let ring = UIBezierPath(ovalIn: innerRect)
+            ring.lineWidth = 1.5
+            ring.stroke()
 
             let badgeText = count > 99 ? "99+" : "\(count)"
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: FestivalDesign.uiFont(size: diameter * (count > 99 ? 0.30 : 0.38), weight: .heavy),
-                .foregroundColor: tint.pinDeepened(0.6),
+                .font: FestivalDesign.uiFont(size: innerD * (count > 99 ? 0.34 : 0.42), weight: .heavy),
+                .foregroundColor: UIColor.white,
                 .paragraphStyle: paragraph
             ]
             let textSize = (badgeText as NSString).size(withAttributes: attributes)
             (badgeText as NSString).draw(
-                in: CGRect(x: inner.midX - textSize.width / 2, y: inner.midY - textSize.height / 2, width: textSize.width, height: textSize.height),
+                in: CGRect(x: innerRect.midX - textSize.width / 2, y: innerRect.midY - textSize.height / 2, width: textSize.width, height: textSize.height),
                 withAttributes: attributes
             )
-
-            // 종류 구분용 작은 뱃지
-            let badgeRect = CGRect(x: headRect.maxX - badgeSize * 0.7, y: headRect.minY - badgeSize * 0.18, width: badgeSize, height: badgeSize)
-            ctx.cgContext.saveGState()
-            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 2, color: FestivalDesign.uiNavy.withAlphaComponent(0.2).cgColor)
-            (isParking ? UIColor(theme.palette.parkingBlue) : FestivalDesign.uiCoral).setFill()
-            UIBezierPath(ovalIn: badgeRect).fill()
-            ctx.cgContext.restoreGState()
-            UIColor.white.setStroke()
-            let badgeOutline = UIBezierPath(ovalIn: badgeRect)
-            badgeOutline.lineWidth = 1
-            badgeOutline.stroke()
-            if let glyph = UIImage(systemName: isParking ? "parkingsign.circle.fill" : "sparkles") {
-                glyph.withTintColor(.white, renderingMode: .alwaysOriginal)
-                    .draw(in: badgeRect.insetBy(dx: badgeSize * 0.22, dy: badgeSize * 0.22))
-            }
         }
     }
 
@@ -470,6 +466,13 @@ private extension UIColor {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         getRed(&r, green: &g, blue: &b, alpha: &a)
         return [r, g, b, a].map { String(Int(($0 * 255).rounded())) }.joined(separator: "-")
+    }
+
+    /// 흰색과 혼합해 더 옅게 만든다. t=0 원색, t=1 흰색.
+    func pinMixedWithWhite(_ t: CGFloat) -> UIColor {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return UIColor(red: r + (1 - r) * t, green: g + (1 - g) * t, blue: b + (1 - b) * t, alpha: a)
     }
 
     /// 채움색을 진하게 눌러 흰 배경 위 대비를 확보한다. factor<1 → 더 어둡게.
