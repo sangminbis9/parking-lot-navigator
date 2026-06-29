@@ -43,9 +43,9 @@ struct MapHomeView: View {
     // KakaoMaps SDK가 UIImage 픽셀 크기를 pt로 취급해 렌더링
     // → screenPoint = 핀 tip(이미지 바닥). 커넥터는 원형 상단 + 여유 10pt 위에 놓는다.
     private var hologramPinTopOffset: CGFloat {
-        MapPinRenderer.selectedTipToTop * MapPinRenderer.scale * UIScreen.main.scale + 10
+        MapPinRenderer.selectedTipToTop * MapPinRenderer.scale * UIScreen.main.scale + 4
     }
-    private let hologramConnectorTotalHeight: CGFloat = 26  // 20pt bar + 6pt dot
+    private let hologramConnectorTotalHeight: CGFloat = 16  // 10pt bar + 6pt dot
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -241,19 +241,35 @@ struct MapHomeView: View {
             .sorted { ($0.first?.id ?? "") < ($1.first?.id ?? "") }
     }
 
+    /// 줌아웃해도 클러스터에 흡수되지 않고 개별로 유지할 선택된 핀의 id (festival/event만).
+    private var selectedDiscoverPinID: String? {
+        guard let pin = hologramPin else { return nil }
+        switch pin.kind {
+        case .festival, .event: return pin.id
+        default: return nil
+        }
+    }
+
     private var discoverPins: [MapPinItem] {
         let sources = discoverSources
         guard !sources.isEmpty else { return [] }
 
         let groups = overlayGroups(sources)
         if mapZoomLevel < overlayReleaseZoomLevel {
-            return groups.compactMap { group in
-                if let cluster = clusterPin(for: group, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal, isParking: false) {
-                    return cluster
+            let selectedID = selectedDiscoverPinID
+            return groups.flatMap { group -> [MapPinItem] in
+                // 선택된 핀은 클러스터에서 빼고 항상 개별 핀으로 남긴다 (구글 표준 동작).
+                let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
+                var pins: [MapPinItem] = []
+                if let cluster = clusterPin(for: clusterable, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal, isParking: false) {
+                    pins.append(cluster)
+                } else if let only = clusterable.first {
+                    pins.append(mapPinItem(for: only, coordinate: only.coordinate))
                 }
-                return group.first.map { source in
-                    mapPinItem(for: source, coordinate: source.coordinate)
+                if let selectedID, let selected = group.first(where: { $0.id == selectedID }) {
+                    pins.append(mapPinItem(for: selected, coordinate: selected.coordinate))
                 }
+                return pins
             }
         }
 
@@ -848,6 +864,25 @@ struct MapHomeView: View {
         moveMap(to: coordinate, zoomLevel: zoomLevel)
     }
 
+    /// 핀이 화면 세로 2/3 지점(아래쪽)에 오도록 카메라 중심을 핀보다 북쪽으로 이동시킨다.
+    /// 위쪽 1/3 공간은 홀로그램 카드가 차지한다.
+    private func focusMapBelowCenter(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
+        let height = mapContainerSize.height
+        guard height > 0 else {
+            focusMap(to: coordinate, zoomLevel: zoomLevel)
+            return
+        }
+        // center는 y=H/2에 렌더링되고, 핀을 y=2/3·H에 두려면 center를 위(북쪽)로 H/6만큼 올린다.
+        let metersPerPixel = 156_543.033_92 * cos(coordinate.latitude * .pi / 180) / pow(2.0, Double(zoomLevel))
+        let offsetMeters = Double(height / 6.0) * metersPerPixel
+        let latOffset = offsetMeters / 111_320.0
+        let shifted = CLLocationCoordinate2D(
+            latitude: coordinate.latitude + latOffset,
+            longitude: coordinate.longitude
+        )
+        focusMap(to: shifted, zoomLevel: zoomLevel)
+    }
+
     private func clearMapFocus() {
         hasUserFocusedMapTarget = false
         shouldCenterOnNextLocation = false
@@ -893,7 +928,7 @@ struct MapHomeView: View {
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
             let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
-            focusMap(to: pin.coordinate, zoomLevel: targetZoom)
+            focusMapBelowCenter(to: pin.coordinate, zoomLevel: targetZoom)
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 hologramAnchor = anchor
                 hologramPin = pin
@@ -1082,7 +1117,7 @@ struct MapHomeView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 ))
-                .frame(width: 2, height: 20)
+                .frame(width: 2, height: 10)
             Circle()
                 .fill(tint)
                 .frame(width: 6, height: 6)

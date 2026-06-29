@@ -53,7 +53,8 @@ struct MapHologramOverlay: View {
                         Text(title)
                             .font(.festival(size: 14, weight: .semibold))
                             .foregroundColor(FestivalDesign.navy)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let subtitle, !subtitle.isEmpty {
                             Text(subtitle)
                                 .font(.festival(size: 11))
@@ -64,7 +65,8 @@ struct MapHologramOverlay: View {
                             Text(meta)
                                 .font(.festival(size: 10))
                                 .foregroundColor(FestivalDesign.secondaryText.opacity(0.85))
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         HStack(spacing: 3) {
                             Text("상세 보기")
