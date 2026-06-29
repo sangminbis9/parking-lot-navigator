@@ -363,6 +363,8 @@ struct MapPinCluster: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let count: Int
     let memberCoordinates: [CLLocationCoordinate2D]
+    /// 멤버 핀의 id ("festival-…"/"event-…"). 같은 장소 스택을 탭했을 때 목록 시트를 채우는 데 쓴다.
+    let memberIDs: [String]
     let tint: UIColor
     let isParking: Bool
 }

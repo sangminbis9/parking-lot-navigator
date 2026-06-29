@@ -32,6 +32,7 @@ struct MapHomeView: View {
     @State private var presentingFestivalFilter = false
     @State private var discoverListQuery = ""
     @State private var hologramPin: MapPinItem?
+    @State private var eventStackCluster: MapPinCluster?
     @State private var hologramAnchor: CGPoint = .zero
     @State private var hologramOverlayHeight: CGFloat = 130
     @State private var mapContainerSize: CGSize = .zero
@@ -40,6 +41,10 @@ struct MapHomeView: View {
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
+    /// 같은 지점에 이만큼 이상 몰리면 부채꼴 분산 대신 "장소 스택" 클러스터로 묶는다.
+    private let placeStackThreshold = 4
+    /// 클러스터 멤버가 이 반경(m) 안에 모여 있으면 줌인해도 안 풀리는 "같은 장소"로 보고 목록 시트를 띄운다.
+    private let placeStackRadiusMeters: Double = 45
     // KakaoMaps SDK가 UIImage 픽셀 크기를 pt로 취급해 렌더링
     // → screenPoint = 핀 tip(이미지 바닥). 커넥터는 원형 상단 + 여유 10pt 위에 놓는다.
     private var hologramPinTopOffset: CGFloat {
@@ -134,6 +139,16 @@ struct MapHomeView: View {
         }
         .sheet(isPresented: $presentingFestivalFilter) {
             FilterSheetView(filterModel: festivalFilterModel)
+        }
+        .sheet(item: $eventStackCluster) { cluster in
+            EventStackSheet(
+                items: eventStackItems(for: cluster),
+                onSelect: { kind in
+                    eventStackCluster = nil
+                    openDiscoverResults(kind)
+                }
+            )
+            .presentationDetents([.medium, .large])
         }
         .onChange(of: festivalFilterModel.filter) { _ in
             guard viewModel.showsFestivalLayer else { return }
@@ -273,13 +288,27 @@ struct MapHomeView: View {
             }
         }
 
-        return groups.flatMap { group in
-            group.enumerated().map { index, source in
-                mapPinItem(
-                    for: source,
-                    coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count)
-                )
+        // 줌인 상태: 같은 지점에 4개 이상 몰리면 부채꼴 분산 대신 "장소 스택" 클러스터로 묶는다.
+        // (줌인해도 좌표가 같아 안 풀리는 다수 이벤트 → 탭 시 목록 시트로 푼다.)
+        let selectedID = selectedDiscoverPinID
+        return groups.flatMap { group -> [MapPinItem] in
+            let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
+            var pins: [MapPinItem] = []
+            if clusterable.count >= placeStackThreshold,
+               let cluster = clusterPin(for: clusterable, idPrefix: "discover-stack", tint: FestivalDesign.uiTeal, isParking: false) {
+                pins.append(cluster)
+            } else {
+                for (index, source) in clusterable.enumerated() {
+                    pins.append(mapPinItem(
+                        for: source,
+                        coordinate: overlayCoordinate(source.coordinate, index: index, count: clusterable.count)
+                    ))
+                }
             }
+            if let selectedID, let selected = group.first(where: { $0.id == selectedID }) {
+                pins.append(mapPinItem(for: selected, coordinate: selected.coordinate))
+            }
+            return pins
         }
     }
 
@@ -366,6 +395,7 @@ struct MapHomeView: View {
             coordinate: center,
             count: group.count,
             memberCoordinates: coordinates,
+            memberIDs: group.map(\.id),
             tint: tint,
             isParking: isParking
         )
@@ -896,6 +926,19 @@ struct MapHomeView: View {
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
 
+    /// 장소 스택 클러스터의 멤버 id로 해당 축제/이벤트를 찾아 목록 시트용 아이템을 만든다.
+    private func eventStackItems(for cluster: MapPinCluster) -> [DiscoverListItem] {
+        let ref = locationProvider.coordinate
+        let byID = Dictionary(discoverSources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return cluster.memberIDs.compactMap { id -> DiscoverListItem? in
+            switch byID[id] {
+            case .festival(let festival): return .festival(festival, referenceCoordinate: ref)
+            case .event(let event): return .event(event, referenceCoordinate: ref)
+            case nil: return nil
+            }
+        }
+    }
+
     private func openDiscoverResults(_ kind: DiscoverListItem.Kind) {
         switch kind {
         case .festival(let festival):
@@ -923,8 +966,13 @@ struct MapHomeView: View {
         switch pin.kind {
         case .cluster(let cluster):
             hologramPin = nil
-            viewModel.selectedParkingLot = nil
-            focusMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
+            // 같은 장소에 몰린 discover 스택은 줌인해도 안 풀리므로 목록 시트로 푼다.
+            if !cluster.isParking, maxMemberDistance(cluster) <= placeStackRadiusMeters {
+                eventStackCluster = cluster
+            } else {
+                viewModel.selectedParkingLot = nil
+                focusMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
+            }
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
             let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
@@ -946,13 +994,16 @@ struct MapHomeView: View {
         }
     }
 
-    private func zoomLevelForCluster(_ cluster: MapPinCluster) -> Int {
-        let centerLocation = CLLocation(latitude: cluster.coordinate.latitude, longitude: cluster.coordinate.longitude)
-        let maxDistance = cluster.memberCoordinates
-            .map { coordinate in
-                centerLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
-            }
+    /// 클러스터 중심에서 가장 먼 멤버까지의 거리(m). 0이면 모든 멤버가 같은 좌표.
+    private func maxMemberDistance(_ cluster: MapPinCluster) -> Double {
+        let center = CLLocation(latitude: cluster.coordinate.latitude, longitude: cluster.coordinate.longitude)
+        return cluster.memberCoordinates
+            .map { center.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) }
             .max() ?? 0
+    }
+
+    private func zoomLevelForCluster(_ cluster: MapPinCluster) -> Int {
+        let maxDistance = maxMemberDistance(cluster)
 
         let fitZoom: Int
         switch maxDistance {
@@ -1752,6 +1803,76 @@ struct DiscoverThumbnail: View {
             .font(.festival(.title3, weight: .semibold))
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// 같은 장소에 몰린 다수 이벤트를 탭했을 때 뜨는 목록 시트.
+private struct EventStackSheet: View {
+    let items: [DiscoverListItem]
+    let onSelect: (DiscoverListItem.Kind) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.festival(.subheadline, weight: .bold))
+                    .foregroundStyle(FestivalDesign.teal)
+                Text("이 위치의 이벤트")
+                    .font(.festival(.headline))
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("\(items.count)")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.teal)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(FestivalDesign.tealSoft)
+                    .clipShape(FestivalDesign.controlShape)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(items) { item in
+                        Button { onSelect(item.kind) } label: {
+                            row(item)
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 80)
+                    }
+                }
+            }
+        }
+        .background(FestivalDesign.surface)
+    }
+
+    private func row(_ item: DiscoverListItem) -> some View {
+        HStack(spacing: 12) {
+            DiscoverThumbnail(imageUrl: item.imageUrl, tint: item.tint, symbol: item.symbol, size: 52)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.festival(.subheadline, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(item.dateText)
+                    .font(.festival(.caption))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(1)
+                Text(item.statusText)
+                    .font(.festival(.caption2, weight: .bold))
+                    .foregroundStyle(item.tint)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.festival(.caption, weight: .bold))
+                .foregroundStyle(FestivalDesign.secondaryText.opacity(0.6))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .contentShape(Rectangle())
     }
 }
 
