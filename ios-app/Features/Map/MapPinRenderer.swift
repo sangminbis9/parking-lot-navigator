@@ -45,7 +45,7 @@ enum MapPinCategory: String, CaseIterable {
     /// 주차장은 글자("P")를 그린다.
     var usesLetter: Bool { self == .parking }
 
-    /// 핀 실루엣(물방울) 채움색. 일부 카테고리는 테마색을 따른다.
+    /// 카테고리 악센트 색(배지 외곽선·글리프). 일부 카테고리는 테마색을 따른다.
     func fillColor(theme: FestivalTheme) -> UIColor {
         let palette = theme.palette
         switch self {
@@ -143,16 +143,18 @@ extension MapPinCategory {
 enum MapPinRenderer {
     // KakaoMaps SDK는 UIImage 픽셀 크기를 pt로 취급하므로, 논리 크기에 0.5를 곱해 비트맵을 만든다.
     static let scale: CGFloat = 0.5
-    static let baseDiameter: CGFloat = 42
-    static let tailRatio: CGFloat = 0.40
+    static let baseDiameter: CGFloat = 42        // 둥근 사각 배지 한 변
     static let shadowPadding: CGFloat = 5
     static let selectedScaleFactor: CGFloat = 1.2
+    static let cornerRatio: CGFloat = 0.30       // 배지 모서리 둥글기(앱 카드 언어)
+    static let floatGapRatio: CGFloat = 0.06     // 배지와 지면 그림자 사이 간격
+    static let groundShadowRatio: CGFloat = 0.16 // 지면 그림자 타원 높이
 
-    /// 선택된(1.2배) 핀의 "tip → 스파크 포함 상단" 거리(논리 pt). 홀로그램 커넥터 앵커 계산에 쓴다.
+    /// 선택된(1.2배) 핀의 "지면 그림자(tip) → 스파크 포함 상단" 거리(논리 pt). 홀로그램 커넥터 앵커 계산에 쓴다.
     /// 홀로그램은 선택 핀에만 표시되므로 커넥터가 확대된 핀 전체를 비켜가도록 이 값을 쓴다.
     static var selectedTipToTop: CGFloat {
         let d = baseDiameter * selectedScaleFactor
-        return d * 0.42 + d + d * tailRatio
+        return d * 0.42 + d + d * floatGapRatio + d * groundShadowRatio
     }
 
     private struct Key: Hashable {
@@ -258,11 +260,12 @@ enum MapPinRenderer {
         scale: CGFloat,
         fillOverride: UIColor? = nil
     ) -> UIImage {
-        let diameter = baseDiameter * (selected ? selectedScaleFactor : 1)
-        let r = diameter / 2
-        let tail = diameter * tailRatio
-        let fill = fillOverride ?? category.fillColor(theme: theme)
-        let glyphColor = fill.pinDeepened(0.62)
+        let handDrawn = theme.isHandDrawn
+        let badge = baseDiameter * (selected ? selectedScaleFactor : 1)
+        let corner = badge * cornerRatio
+        let accent = fillOverride ?? category.fillColor(theme: theme)
+        let glyphColor = accent.pinDeepened(0.62)
+        let surface = UIColor(theme.palette.surface)
 
         // 라벨 버블 측정
         let labelFont = FestivalDesign.uiFont(size: 14, weight: .semibold)
@@ -274,12 +277,18 @@ enum MapPinRenderer {
             bubbleWidth = min(ceil(textWidth + 18), 128)
         }
         let labelZone = bubbleWidth > 0 ? bubbleHeight + labelGap : 0
-        let sparkleZone = selected ? diameter * 0.42 : 0
+        let sparkleZone = selected ? badge * 0.42 : 0
 
-        let pinCanvasW = diameter + shadowPadding * 2
+        let floatGap = badge * floatGapRatio
+        let groundW = badge * 0.66
+        let groundH = badge * groundShadowRatio
+
+        // 손그림 테마는 오프셋 스티커 그림자 때문에 우/하단 여유가 더 필요하다.
+        let stickerInset: CGFloat = handDrawn ? 4 : 0
+        let pinCanvasW = badge + shadowPadding * 2 + stickerInset
         let canvasW = max(pinCanvasW, bubbleWidth + shadowPadding * 2)
-        let circleTop = shadowPadding + sparkleZone + labelZone
-        let canvasH = circleTop + diameter + tail
+        let badgeTop = shadowPadding + sparkleZone + labelZone
+        let canvasH = badgeTop + badge + floatGap + groundH
         let cx = canvasW / 2
 
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasW * scale, height: canvasH * scale))
@@ -287,76 +296,70 @@ enum MapPinRenderer {
             ctx.cgContext.scaleBy(x: scale, y: scale)
 
             if bubbleWidth > 0, let label {
-                drawLabelBubble(label, font: labelFont, fill: fill, centerX: cx, top: shadowPadding + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
+                drawLabelBubble(label, font: labelFont, fill: accent, centerX: cx, top: shadowPadding + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
             }
 
-            let headRect = CGRect(x: cx - r, y: circleTop, width: diameter, height: diameter)
+            let badgeRect = CGRect(x: cx - badge / 2, y: badgeTop, width: badge, height: badge)
+
+            // 지면 그림자 타원 — teardrop 꼬리 대신 위치를 가리키고 "지면에 선" 느낌을 준다.
+            let groundRect = CGRect(x: cx - groundW / 2, y: canvasH - groundH, width: groundW, height: groundH)
+            FestivalDesign.uiNavy.withAlphaComponent(0.16).setFill()
+            UIBezierPath(ovalIn: groundRect).fill()
 
             if selected {
-                drawSparkles(aboveTopOf: headRect, context: ctx)
+                drawSparkles(aboveTopOf: badgeRect, context: ctx)
             }
 
-            drawSilhouette(headRect: headRect, tail: tail, fill: fill, context: ctx)
+            drawStickerBadge(
+                rect: badgeRect, corner: corner, accent: accent, surface: surface,
+                handDrawn: handDrawn, selected: selected, context: ctx
+            )
 
-            // 선택 강조 링
-            if selected {
-                FestivalDesign.uiCoral.setStroke()
-                let ring = UIBezierPath(ovalIn: headRect.insetBy(dx: -1.6, dy: -1.6))
-                ring.lineWidth = 2.4
-                ring.stroke()
-            }
-
-            // 흰 원 + 심볼/마스코트/글자
-            let inner = headRect.insetBy(dx: diameter * 0.15, dy: diameter * 0.15)
-            UIColor.white.setFill()
-            UIBezierPath(ovalIn: inner).fill()
-            drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: diameter, context: ctx)
+            // 카테고리 글리프 (현행 유지)
+            let inner = badgeRect.insetBy(dx: badge * 0.20, dy: badge * 0.20)
+            drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: badge, context: ctx)
         }
     }
 
-    private static func drawSilhouette(
-        headRect: CGRect,
-        tail: CGFloat,
-        fill: UIColor,
+    /// 앱 카드 언어의 둥근 사각 "스티커 배지" 본체.
+    /// 기본 테마: surface 배경 + 카테고리색 외곽선 + soft 그림자.
+    /// 크레파스 테마: 차콜 외곽선 + 블러 없는 오프셋 스티커 그림자(카드와 동일).
+    private static func drawStickerBadge(
+        rect: CGRect,
+        corner: CGFloat,
+        accent: UIColor,
+        surface: UIColor,
+        handDrawn: Bool,
+        selected: Bool,
         context: UIGraphicsImageRendererContext
     ) {
-        let diameter = headRect.width
-        let cx = headRect.midX
-        let tipY = headRect.maxY + tail
-        let tailHalf = max(diameter * 0.16, 4)
-        let tailBaseY = headRect.maxY - diameter * 0.06
+        let cg = context.cgContext
+        let body = UIBezierPath(roundedRect: rect, cornerRadius: corner)
 
-        let tailPath = UIBezierPath()
-        tailPath.move(to: CGPoint(x: cx - tailHalf, y: tailBaseY))
-        tailPath.addLine(to: CGPoint(x: cx + tailHalf, y: tailBaseY))
-        tailPath.addLine(to: CGPoint(x: cx, y: tipY))
-        tailPath.close()
-
-        let head = UIBezierPath(ovalIn: headRect)
-
-        context.cgContext.saveGState()
-        context.cgContext.setShadow(
-            offset: CGSize(width: 0, height: 1.2),
-            blur: 3,
-            color: FestivalDesign.uiNavy.withAlphaComponent(0.20).cgColor
-        )
-        fill.setFill()
-        tailPath.fill()
-        head.fill()
-        context.cgContext.restoreGState()
-
-        // 얇은 테두리: 진한 채움색. 외곽선이 잘리지 않게 silhouette 안쪽으로 stroke.
-        let border = fill.pinDeepened(0.78)
-        border.setStroke()
-        head.lineWidth = 1.2
-        head.stroke()
-        let tailEdge = UIBezierPath()
-        tailEdge.move(to: CGPoint(x: cx - tailHalf, y: tailBaseY))
-        tailEdge.addLine(to: CGPoint(x: cx, y: tipY))
-        tailEdge.addLine(to: CGPoint(x: cx + tailHalf, y: tailBaseY))
-        tailEdge.lineWidth = 1.2
-        tailEdge.lineJoinStyle = .round
-        tailEdge.stroke()
+        if handDrawn {
+            let outline = UIColor(FestivalDesign.outline)
+            let shadow = UIBezierPath(roundedRect: rect.offsetBy(dx: 2.5, dy: 3.5), cornerRadius: corner)
+            outline.withAlphaComponent(0.85).setFill()
+            shadow.fill()
+            surface.setFill()
+            body.fill()
+            (selected ? FestivalDesign.uiCoral : outline).setStroke()
+            body.lineWidth = selected ? 2.8 : 2.4
+            body.stroke()
+        } else {
+            cg.saveGState()
+            cg.setShadow(
+                offset: CGSize(width: 0, height: 2.5),
+                blur: 5,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor
+            )
+            surface.setFill()
+            body.fill()
+            cg.restoreGState()
+            (selected ? FestivalDesign.uiCoral : accent).setStroke()
+            body.lineWidth = selected ? 2.8 : 2.2
+            body.stroke()
+        }
     }
 
     private static func drawGlyph(
