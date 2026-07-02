@@ -1178,16 +1178,11 @@ private struct DiscoverTabThumbnail: View {
                 endPoint: .bottomTrailing
             )
             if let imageUrl, let url = URL(string: imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        Image("FestivalMascotIcon")
-                            .resizable()
-                            .scaledToFit()
-                            .padding(14)
-                    }
+                RemoteImage(url: url, downsamplePoints: 82) {
+                    Image("FestivalMascotIcon")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(14)
                 }
             } else {
                 Image("FestivalMascotIcon")

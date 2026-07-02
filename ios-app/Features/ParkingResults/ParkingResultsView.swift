@@ -228,6 +228,9 @@ private struct DiscoverHeroImage: View {
     let imageUrls: [String]
     let tint: Color
 
+    @State private var page = 0
+    @State private var showsViewer = false
+
     private var urls: [URL] {
         let sources = imageUrls.isEmpty
             ? [imageUrl].compactMap { $0 }
@@ -236,11 +239,24 @@ private struct DiscoverHeroImage: View {
     }
 
     var body: some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !urls.isEmpty else { return }
+                showsViewer = true
+            }
+            .fullScreenCover(isPresented: $showsViewer) {
+                FullScreenImageViewer(urls: urls, startIndex: page)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if urls.count > 1 {
-            TabView {
-                ForEach(urls, id: \.absoluteString) { url in
+            TabView(selection: $page) {
+                ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
                     heroSlide(url: url)
-                        .tag(url)
+                        .tag(index)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
@@ -263,14 +279,9 @@ private struct DiscoverHeroImage: View {
                 endPoint: .bottomTrailing
             )
             if let url = urls.first {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        Image("FestivalMascotGuide")
-                            .resizable().scaledToFit().padding(28)
-                    }
+                RemoteImage(url: url, downsamplePoints: 500) {
+                    Image("FestivalMascotGuide")
+                        .resizable().scaledToFit().padding(28)
                 }
             } else {
                 Image("FestivalMascotGuide")
@@ -288,20 +299,15 @@ private struct DiscoverHeroImage: View {
     }
 
     private func heroSlide(url: URL) -> some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().scaledToFill()
-            default:
-                ZStack {
-                    LinearGradient(
-                        colors: [tint.opacity(0.18), FestivalDesign.cream.opacity(0.62)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    Image("FestivalMascotGuide")
-                        .resizable().scaledToFit().padding(28)
-                }
+        RemoteImage(url: url, downsamplePoints: 500) {
+            ZStack {
+                LinearGradient(
+                    colors: [tint.opacity(0.18), FestivalDesign.cream.opacity(0.62)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Image("FestivalMascotGuide")
+                    .resizable().scaledToFit().padding(28)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
