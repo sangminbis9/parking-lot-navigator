@@ -1769,19 +1769,8 @@ struct DiscoverThumbnail: View {
     var body: some View {
         Group {
             if let imageUrl, let url = URL(string: imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        placeholder
-                    case .empty:
-                        ProgressView()
-                    @unknown default:
-                        placeholder
-                    }
+                RemoteImage(url: url, downsamplePoints: size) {
+                    placeholder
                 }
             } else {
                 placeholder
