@@ -111,8 +111,11 @@ private struct OfficeFloorView: View {
                 let size = proxy.size
                 let t = timeline.date.timeIntervalSinceReferenceDate
 
+                let workingIds = Set(agents.filter { $0.status.movesInOffice }.map(\.id))
+
                 ZStack {
-                    PixelOfficeBackdrop()
+                    PixelOfficeBackdrop(activeAgentIds: workingIds,
+                                        pcPhase: Int(t * 2) % 3)
 
                     // Tap-outside-to-dismiss layer (below agents so agents still receive their own taps)
                     Color.clear
@@ -147,8 +150,8 @@ private struct OfficeFloorView: View {
 
                     // PublishedWall is the topmost z-layer — agents walk underneath the board
                     PublishedWall(items: snapshot.published)
-                        .frame(width: size.width * 0.48, height: size.height * 0.13)
-                        .position(x: size.width * 0.50, y: size.height * 0.93)
+                        .frame(width: size.width * 0.48, height: size.height * 0.15)
+                        .position(x: size.width * 0.50, y: size.height * 0.925)
                         .onTapGesture { showBoardLog = true }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
@@ -393,36 +396,55 @@ private struct AgentFrame {
 }
 
 private enum OfficeChoreography {
-    // Homes target the floor-tile right in front of each agent's desk.
-    // Grid is 21 cols × 22 rows; values below are (col+0.5)/21 and (row+0.5)/22.
-    // y = (chair_row + 0.5) / 22 for each agent's chair position
+    // All positions live on tile centers: tile(col, row) = ((col+0.5)/21, (row+0.5)/22).
+    // Every route below runs along furniture-free rows/cols verified against OfficeLayout:
+    // clear rows 2, 8, 14 (cols 3–16) and clear cols 5.5, 9.5, 11.5, 15.5.
+    private static func tile(_ col: Double, _ row: Double) -> CGPoint {
+        CGPoint(x: (col + 0.5) / CGFloat(OfficeLayout.cols),
+                y: (row + 0.5) / CGFloat(OfficeLayout.rows))
+    }
+
+    // Homes sit on each agent's chair tile.
     private static let homes: [String: CGPoint] = [
-        "vera":     CGPoint(x: 0.119, y: 0.295),   // col 2.5,  chair row 6  → 6.5/22
-        "orion":    CGPoint(x: 0.500, y: 0.250),   // col 10.5, chair row 5  → 5.5/22
-        "pixel":    CGPoint(x: 0.881, y: 0.295),   // col 18.5, chair row 6  → 6.5/22
-        "festa":    CGPoint(x: 0.119, y: 0.614),   // col 2.5,  chair row 13 → 13.5/22
-        "scout":    CGPoint(x: 0.881, y: 0.614),   // col 18.5, chair row 13 → 13.5/22
-        "echo":     CGPoint(x: 0.881, y: 0.795),   // col 18.5, chair row 17 → 17.5/22
-        "sentinel": CGPoint(x: 0.190, y: 0.205)    // unchanged patrol anchor
+        "vera":     tile(2, 6),
+        "orion":    tile(10, 5),
+        "pixel":    tile(18, 6),
+        "festa":    tile(2, 13),
+        "scout":    tile(18, 13),
+        "echo":     tile(18, 17),
+        "sentinel": tile(5, 8)     // patrol loop start
     ]
 
-    private static let orionDesk = CGPoint(x: 0.500, y: 0.250)   // same as orion home
-    private static let boardDrop = CGPoint(x: 0.500, y: 0.860)   // just above PublishedWall (y=0.93)
+    // Collectors leave the desk sideways, take the col-5.5/15.5 corridor up to row 8,
+    // and stop beside Orion's chair (never on top of him).
+    private static let reportRoutes: [String: [CGPoint]] = [
+        "festa": [tile(2, 13), tile(5, 13), tile(5, 8), tile(9, 8), tile(9, 6)],
+        "scout": [tile(18, 13), tile(15, 13), tile(15, 8), tile(11, 8), tile(11, 6)]
+    ]
+    // Straight down the clear col 9.5 / 11.5 to just above the notice board.
+    private static let boardRoutes: [String: [CGPoint]] = [
+        "festa": [tile(9, 6), tile(9, 18)],
+        "scout": [tile(11, 6), tile(11, 18)]
+    ]
+    // Back home along the clear row 14 corridor.
+    private static let homeRoutes: [String: [CGPoint]] = [
+        "festa": [tile(9, 18), tile(9, 14), tile(5, 14), tile(5, 13), tile(2, 13)],
+        "scout": [tile(11, 18), tile(11, 14), tile(15, 14), tile(15, 13), tile(18, 13)]
+    ]
 
-    // Sentinel patrols the room perimeter
+    private static let veraRoute = [tile(2, 6), tile(5, 6), tile(5, 7)]
+    private static let pixelRoute = [tile(18, 6), tile(15, 6), tile(15, 14), tile(12, 14), tile(12, 16)]
+    private static let echoRoute = [tile(18, 17), tile(13, 17)]
+
+    // Sentinel patrols a rectangle around Orion's island through clear rows 2/8/14.
     private static let patrolPath: [CGPoint] = [
-        CGPoint(x: 0.10, y: 0.20),
-        CGPoint(x: 0.50, y: 0.16),
-        CGPoint(x: 0.90, y: 0.20),
-        CGPoint(x: 0.90, y: 0.50),
-        CGPoint(x: 0.50, y: 0.55),
-        CGPoint(x: 0.10, y: 0.50)
+        tile(5, 8), tile(5, 2), tile(15, 2), tile(15, 8), tile(15, 14), tile(5, 14)
     ]
 
     static func frame(for agent: AgentOfficeAgent, at t: TimeInterval, snapshot: AgentOfficeSnapshot, hasLiveActivity: Bool) -> AgentFrame {
         let home = homes[agent.id] ?? CGPoint(x: 0.5, y: 0.5)
         guard agent.status.movesInOffice || hasLiveActivity else {
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
 
@@ -436,7 +458,8 @@ private enum OfficeChoreography {
                                   carry: .event,
                                   itemCount: snapshot.events.count)
         case "orion":
-            let dir: PixelSprite.Direction = (Int(t) % 8 < 4) ? .down : .left
+            // Mostly working at the PC, glancing over his shoulder now and then.
+            let dir: PixelSprite.Direction = (Int(t) % 8 < 5) ? .up : .down
             return AgentFrame(position: home, direction: dir, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         case "vera":
@@ -448,103 +471,97 @@ private enum OfficeChoreography {
         case "sentinel":
             return patrolFrame(t: t)
         default:
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
     }
 
-    // 24-second cycle: home(5s) → walk to Orion(4s) → report(4s) → walk to board drop-off(4s) → post(2s) → walk home(5s)
+    // Position + facing along a waypoint polyline at eased progress.
+    private static func walkFrame(route: [CGPoint], progress: Double, t: TimeInterval,
+                                  stage: AgentFrame.Stage, carry: AgentFrame.CarryKind?,
+                                  phaseRate: Double = 6) -> AgentFrame {
+        let p = ease(progress)
+        let pos = point(on: route, progress: p)
+        let prev = point(on: route, progress: max(0, p - 0.03))
+        return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
+                          walking: true, walkPhase: Int(t * phaseRate) % 3,
+                          stage: stage, carry: carry)
+    }
+
+    // 24-second cycle: desk(5s) → walk to Orion(4s) → report(4s) → walk to board(4s) → post(2s) → walk home(5s)
     private static func collectorFrame(id: String, t: TimeInterval, offset: Double,
                                        carry: AgentFrame.CarryKind, itemCount: Int) -> AgentFrame {
         let cycle: Double = 24
         let tau = (t + offset).truncatingRemainder(dividingBy: cycle)
         let home = homes[id]!
-        let walking3 = Int(t * 6) % 3
+        let report = reportRoutes[id]!
+        let toBoard = boardRoutes[id]!
+        let toHome = homeRoutes[id]!
 
         if itemCount == 0 {
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
 
         switch tau {
         case 0..<5:
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         case 5..<9:
-            let p = ease((tau - 5) / 4)
-            let pos = routedLerp(home, orionDesk, p, corridorY: 0.43)
-            let prev = routedLerp(home, orionDesk, max(0, p - 0.03), corridorY: 0.43)
-            let dir = direction(from: prev, to: pos)
-            return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
-                              stage: .walkingOut, carry: carry)
+            return walkFrame(route: report, progress: (tau - 5) / 4, t: t,
+                             stage: .walkingOut, carry: carry)
         case 9..<13:
-            let dir: PixelSprite.Direction = orionDesk.x > home.x ? .right : .left
-            return AgentFrame(position: orionDesk, direction: dir, walking: false, walkPhase: 1,
+            // Standing beside Orion's chair, facing him.
+            let dir: PixelSprite.Direction = id == "festa" ? .right : .left
+            return AgentFrame(position: report.last!, direction: dir, walking: false, walkPhase: 1,
                               stage: .reporting, carry: carry)
         case 13..<17:
-            let p = ease((tau - 13) / 4)
-            let pos = routedLerp(orionDesk, boardDrop, p, corridorY: 0.68)
-            let prev = routedLerp(orionDesk, boardDrop, max(0, p - 0.03), corridorY: 0.68)
-            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
-                              stage: .walkingToWall, carry: carry)
+            return walkFrame(route: toBoard, progress: (tau - 13) / 4, t: t,
+                             stage: .walkingToWall, carry: carry)
         case 17..<19:
-            return AgentFrame(position: boardDrop, direction: .up, walking: false, walkPhase: 1,
+            // Board stands below the drop point.
+            return AgentFrame(position: toBoard.last!, direction: .down, walking: false, walkPhase: 1,
                               stage: .posting, carry: carry)
         default:
-            let p = ease((tau - 19) / 5)
-            let pos = routedLerp(boardDrop, home, p, corridorY: 0.68)
-            let prev = routedLerp(boardDrop, home, max(0, p - 0.03), corridorY: 0.68)
-            let dir = direction(from: prev, to: pos)
-            return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
-                              stage: .returning, carry: nil)
+            return walkFrame(route: toHome, progress: (tau - 19) / 5, t: t,
+                             stage: .returning, carry: nil)
         }
     }
 
     private static func validatorFrame(t: TimeInterval) -> AgentFrame {
-        // Vera oscillates between her desk and Orion's desk to validate.
-        let home = homes["vera"]!
-        let target = CGPoint(x: 0.30, y: 0.341)
+        // Vera paces along the clear row-6 strip beside her desk.
         let cycle: Double = 8
         let tau = t.truncatingRemainder(dividingBy: cycle) / cycle
         let p = (sin(tau * .pi * 2) + 1) / 2
-        let pos = routedLerp(home, target, p, corridorY: 0.295)
-        let walking3 = Int(t * 4) % 3
+        let pos = point(on: veraRoute, progress: p)
+        let prev = point(on: veraRoute, progress: max(0, p - 0.03))
         let walking = p > 0.05 && p < 0.95
-        let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.295)
-        let dir = direction(from: prev, to: pos)
-        return AgentFrame(position: pos, direction: dir, walking: walking, walkPhase: walking3,
+        return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
+                          walking: walking, walkPhase: Int(t * 4) % 3,
                           stage: .validating, carry: nil)
     }
 
     private static func imageFrame(t: TimeInterval, hasMissingImages: Bool) -> AgentFrame {
         let home = homes["pixel"]!
         guard hasMissingImages else {
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
-        let target = CGPoint(x: 0.56, y: 0.76)
         let cycle: Double = 18
         let tau = t.truncatingRemainder(dividingBy: cycle)
-        let walking3 = Int(t * 6) % 3
         switch tau {
         case 0..<7:
-            return AgentFrame(position: home, direction: .down, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .validating, carry: nil)
         case 7..<10:
-            let p = ease((tau - 7) / 3)
-            let pos = routedLerp(home, target, p, corridorY: 0.68)
-            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.68)
-            return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
-                              walking: true, walkPhase: walking3, stage: .walkingToWall, carry: nil)
+            return walkFrame(route: pixelRoute, progress: (tau - 7) / 3, t: t,
+                             stage: .walkingToWall, carry: nil)
         case 10..<13:
-            return AgentFrame(position: target, direction: .up, walking: false, walkPhase: 1,
+            return AgentFrame(position: pixelRoute.last!, direction: .down, walking: false, walkPhase: 1,
                               stage: .posting, carry: nil)
         default:
-            let p = ease((tau - 13) / 5)
-            let pos = routedLerp(target, home, p, corridorY: 0.68)
-            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.68)
-            return AgentFrame(position: pos, direction: direction(from: prev, to: pos),
-                              walking: true, walkPhase: walking3, stage: .returning, carry: nil)
+            return walkFrame(route: Array(pixelRoute.reversed()), progress: (tau - 13) / 5, t: t,
+                             stage: .returning, carry: nil)
         }
     }
 
@@ -552,32 +569,23 @@ private enum OfficeChoreography {
         let home = homes["echo"]!
         let cycle: Double = 16
         let tau = t.truncatingRemainder(dividingBy: cycle)
-        let walking3 = Int(t * 6) % 3
         guard hasItems else {
-            return AgentFrame(position: home, direction: .left, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         }
         switch tau {
         case 0..<10:
-            return AgentFrame(position: home, direction: .left, walking: false, walkPhase: 1,
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
         case 10..<12:
-            let p = ease((tau - 10) / 2)
-            let target = CGPoint(x: 0.58, y: 0.76)
-            let pos = routedLerp(home, target, p, corridorY: 0.84)
-            let prev = routedLerp(home, target, max(0, p - 0.03), corridorY: 0.84)
-            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
-                              stage: .walkingToWall, carry: nil)
+            return walkFrame(route: echoRoute, progress: (tau - 10) / 2, t: t,
+                             stage: .walkingToWall, carry: nil)
         case 12..<14:
-            return AgentFrame(position: CGPoint(x: 0.58, y: 0.76), direction: .up, walking: false, walkPhase: 1,
+            return AgentFrame(position: echoRoute.last!, direction: .down, walking: false, walkPhase: 1,
                               stage: .posting, carry: nil)
         default:
-            let p = ease((tau - 14) / 2)
-            let target = CGPoint(x: 0.58, y: 0.76)
-            let pos = routedLerp(target, home, p, corridorY: 0.84)
-            let prev = routedLerp(target, home, max(0, p - 0.03), corridorY: 0.84)
-            return AgentFrame(position: pos, direction: direction(from: prev, to: pos), walking: true, walkPhase: walking3,
-                              stage: .returning, carry: nil)
+            return walkFrame(route: Array(echoRoute.reversed()), progress: (tau - 14) / 2, t: t,
+                             stage: .returning, carry: nil)
         }
     }
 
@@ -739,17 +747,6 @@ private enum OfficeChoreography {
     private static func ease(_ x: Double) -> Double {
         let c = max(0, min(1, x))
         return c < 0.5 ? 2 * c * c : 1 - pow(-2 * c + 2, 2) / 2
-    }
-
-    private static func routedLerp(_ start: CGPoint, _ end: CGPoint, _ progress: Double, corridorY: CGFloat) -> CGPoint {
-        let corridorStart = CGPoint(x: start.x, y: corridorY)
-        let corridorEnd = CGPoint(x: end.x, y: corridorY)
-        let rawPoints = [start, corridorStart, corridorEnd, end]
-        let points = rawPoints.reduce(into: [CGPoint]()) { result, point in
-            guard result.last.map({ distance($0, point) > 0.001 }) ?? true else { return }
-            result.append(point)
-        }
-        return point(on: points, progress: progress)
     }
 
     private static func point(on points: [CGPoint], progress: Double) -> CGPoint {
@@ -1063,27 +1060,44 @@ private enum OfficeLayout {
     static let topDesks: [Furn] = [
         // vera ~ col 1–3, row 4–5
         Furn("DESK_FRONT",         col: 1,  row: 4, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 4, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 6, w: 1, h: 2),
-        // orion ~ col 9–11, row 3–4 (2 rows higher as boss anchor)
+        // orion ~ col 9–11, row 3–4 (2 rows higher as boss anchor), flanked by plants
+        Furn("PLANT_2",            col: 8,  row: 3, w: 1, h: 2),
         Furn("DESK_FRONT",         col: 9,  row: 3, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 10, row: 3, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 10, row: 5, w: 1, h: 2),
+        Furn("PLANT_2",            col: 12, row: 3, w: 1, h: 2),
         // pixel ~ col 17–19, row 4–5
         Furn("DESK_FRONT",         col: 17, row: 4, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 4, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 6, w: 1, h: 2),
     ]
 
     // Mid-room: festa (left) and scout (right) — each shifted 1 row up (req 6 +1 down, req 7 +2 up = net 1 up)
     static let midDesks: [Furn] = [
         Furn("DESK_FRONT",         col: 1,  row: 11, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 2,  row: 11, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 2,  row: 13, w: 1, h: 2),
         Furn("DESK_FRONT",         col: 17, row: 11, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 11, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 13, w: 1, h: 2),
     ]
+
+    // Desk PCs, drawn separately so the screen lights up while its agent works.
+    struct DeskPC {
+        let agentId: String
+        let col: Int
+        let row: Int
+    }
+
+    static let deskPCs: [DeskPC] = [
+        DeskPC(agentId: "vera",  col: 2,  row: 4),
+        DeskPC(agentId: "orion", col: 10, row: 3),
+        DeskPC(agentId: "pixel", col: 18, row: 4),
+        DeskPC(agentId: "festa", col: 2,  row: 11),
+        DeskPC(agentId: "scout", col: 18, row: 11),
+        DeskPC(agentId: "echo",  col: 18, row: 15),
+    ]
+
+    // Rug under the meeting nook (tinted checker floor tiles)
+    static let rugCols = 2..<6
+    static let rugRows = 16..<19
 
     // Corridor (row 9–10): only flanking accent plants — centre kept clear for agent paths
     static let corridor: [Furn] = [
@@ -1105,14 +1119,13 @@ private enum OfficeLayout {
     static let amenities: [Furn] = [
         // echo desk (right cluster, matches echo home col 18.5 row 17.5)
         Furn("DESK_FRONT",         col: 17, row: 15, w: 3, h: 2),
-        Furn("PC_FRONT_OFF",       col: 18, row: 15, w: 1, h: 2),
         Furn("WOODEN_CHAIR_BACK",  col: 18, row: 17, w: 1, h: 2),
         // corner plants (outside the sofa/echo zone, not overlapping any desk)
         Furn("LARGE_PLANT", col: 0,  row: 14, w: 2, h: 3),  // left corner
         Furn("LARGE_PLANT", col: 19, row: 18, w: 2, h: 3),  // right corner beside echo
-        // misc
-        Furn("BIN", col: 6, row: 20, w: 1, h: 1),
-        Furn("POT", col: 11, row: 20, w: 1, h: 1),
+        // misc — kept clear of the notice board zone (cols ~5.5–15.5)
+        Furn("BIN", col: 4,  row: 20, w: 1, h: 1),
+        Furn("POT", col: 16, row: 20, w: 1, h: 1),
     ]
 
     static var allFurniture: [Furn] {
@@ -1121,6 +1134,9 @@ private enum OfficeLayout {
 }
 
 private struct PixelOfficeBackdrop: View {
+    var activeAgentIds: Set<String> = []
+    var pcPhase: Int = 0
+
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
@@ -1142,6 +1158,16 @@ private struct PixelOfficeBackdrop: View {
                               tile: tile, flipH: furn.flipH)
                         .offset(x: CGFloat(furn.col) * tile,
                                 y: CGFloat(furn.row) * tile)
+                }
+
+                // Desk PCs — screens animate while their agent is working
+                ForEach(OfficeLayout.deskPCs, id: \.agentId) { pc in
+                    let on = activeAgentIds.contains(pc.agentId)
+                    PixelTile(name: on ? "PA-PC_FRONT_ON_\(pcPhase + 1)" : "PA-PC_FRONT_OFF",
+                              widthTiles: 1, heightTiles: 2,
+                              tile: tile, flipH: false)
+                        .offset(x: CGFloat(pc.col) * tile,
+                                y: CGFloat(pc.row) * tile)
                 }
 
                 FloorShadowBaseboard(tile: tile)
@@ -1185,19 +1211,35 @@ private struct PixelTile: View {
 }
 
 // Floor: wall band on rows 0..wallBandRows-1 (cream wallpaper),
-// wood-plank floor below using PA-floor_1 tiled per cell.
+// warm-tinted floor below using PA-floor_1 tiled per cell, plus a rug in the nook.
 private struct FloorTileGrid: View {
     let tile: CGFloat
+
+    private static let floorTint = Color(red: 1.0, green: 0.91, blue: 0.78)
+    private static let rugTint = Color(red: 0.95, green: 0.62, blue: 0.55)
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             // Floor base fills entire frame — no gaps show between tiles
             Color(red: 0.87, green: 0.73, blue: 0.53)
-            // Floor tiles (PA-floor_1) tiled per cell
+            // Floor tiles (PA-floor_1) tiled per cell, warmed so the room isn't flat gray
             ForEach(OfficeLayout.wallBandRows..<OfficeLayout.rows, id: \.self) { r in
                 ForEach(0..<OfficeLayout.cols, id: \.self) { c in
                     Image("PA-floor_1")
                         .resizable()
                         .interpolation(.none)
+                        .colorMultiply(Self.floorTint)
+                        .frame(width: tile, height: tile)
+                        .offset(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
+                }
+            }
+            // Meeting-nook rug: coral checker tiles under the sofa set
+            ForEach(OfficeLayout.rugRows, id: \.self) { r in
+                ForEach(OfficeLayout.rugCols, id: \.self) { c in
+                    Image("PA-floor_7")
+                        .resizable()
+                        .interpolation(.none)
+                        .colorMultiply(Self.rugTint)
                         .frame(width: tile, height: tile)
                         .offset(x: CGFloat(c) * tile, y: CGFloat(r) * tile)
                 }
@@ -1265,49 +1307,156 @@ private struct BoardLogSheet: View {
 
 // MARK: - Published wall
 
+// Standing pixel cork board: wooden frame + legs, title plaque, pinned sticky notes.
 private struct PublishedWall: View {
     let items: [DiscoveryItem]
 
-    var body: some View {
-        ZStack {
-            // Opaque pixel cork board. It intentionally sits on an empty
-            // center wall strip so furniture and agents never hide behind it.
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(red: 0.78, green: 0.55, blue: 0.30))
-                .overlay(PixelBoardDots().opacity(0.42))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(red: 0.28, green: 0.17, blue: 0.10), lineWidth: 3)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(red: 0.96, green: 0.75, blue: 0.38), lineWidth: 1)
-                        .padding(4)
-                )
+    private static let frameDark = Color(red: 0.36, green: 0.22, blue: 0.11)
+    private static let frameLight = Color(red: 0.65, green: 0.44, blue: 0.24)
+    private static let cork = Color(red: 0.83, green: 0.62, blue: 0.38)
+    private static let noteColors: [Color] = [
+        Color(red: 1.00, green: 0.92, blue: 0.60),  // sticky yellow
+        Color(red: 0.73, green: 0.89, blue: 0.97),  // sky
+        Color(red: 1.00, green: 0.81, blue: 0.83),  // pink
+        Color(red: 0.80, green: 0.94, blue: 0.74),  // mint
+        Color(red: 0.93, green: 0.84, blue: 0.98),  // lilac
+    ]
+    private static let noteTilts: [Double] = [-2.5, 1.8, -1.2, 2.4, -1.8]
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("게시판")
-                        .font(.festival(size: 9, weight: .heavy))
-                        .foregroundStyle(FestivalDesign.navy)
-                    Spacer()
-                    Text("\(items.count)건")
-                        .font(.festival(size: 8))
-                        .foregroundStyle(FestivalDesign.navy.opacity(0.75))
-                }
-                if items.isEmpty {
-                    Text("아직 게시된 항목이 없어요.")
-                        .font(.festival(size: 9))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                } else {
-                    HStack(spacing: 4) {
-                        ForEach(items.prefix(6)) { item in
-                            PublishedCard(item: item)
-                        }
+    var body: some View {
+        VStack(spacing: 0) {
+            board
+            legs
+        }
+    }
+
+    private var board: some View {
+        ZStack {
+            Rectangle()
+                .fill(Self.cork)
+                .overlay(PixelBoardDots().opacity(0.32))
+            Rectangle()
+                .strokeBorder(Self.frameLight, lineWidth: 5)
+            Rectangle()
+                .strokeBorder(Self.frameDark, lineWidth: 2)
+            Rectangle()
+                .strokeBorder(Self.frameDark.opacity(0.55), lineWidth: 1)
+                .padding(5)
+
+            if items.isEmpty {
+                Text("오늘의 소식을 준비 중이에요")
+                    .font(.festival(size: 8))
+                    .foregroundStyle(Self.frameDark.opacity(0.85))
+            } else {
+                HStack(alignment: .center, spacing: 5) {
+                    ForEach(Array(items.prefix(5).enumerated()), id: \.element.id) { index, item in
+                        StickyNote(
+                            item: item,
+                            color: Self.noteColors[index % Self.noteColors.count],
+                            tilt: Self.noteTilts[index % Self.noteTilts.count]
+                        )
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
             }
-            .padding(6)
+        }
+        .overlay(alignment: .topTrailing) {
+            if !items.isEmpty {
+                Text("\(items.count)건")
+                    .font(.festival(size: 7, weight: .bold))
+                    .foregroundStyle(Color(red: 0.99, green: 0.95, blue: 0.86))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Self.frameDark)
+                    .padding(6)
+            }
+        }
+        .overlay(alignment: .top) { plaque }
+    }
+
+    // Navy name plate that overlaps the top frame edge.
+    private var plaque: some View {
+        HStack(spacing: 4) {
+            Rectangle().fill(FestivalDesign.coral).frame(width: 4, height: 4)
+            Text("게시판")
+                .font(.festival(size: 9, weight: .heavy))
+                .tracking(1)
+                .foregroundStyle(Color(red: 0.99, green: 0.95, blue: 0.86))
+            Rectangle().fill(FestivalDesign.coral).frame(width: 4, height: 4)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(FestivalDesign.navy)
+        .overlay(Rectangle().stroke(Self.frameDark, lineWidth: 1.5))
+        .offset(y: -6)
+    }
+
+    private var legs: some View {
+        HStack {
+            legPost
+            Spacer()
+            legPost
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 7)
+    }
+
+    private var legPost: some View {
+        Rectangle()
+            .fill(Self.frameDark)
+            .overlay(Rectangle().fill(Self.frameLight).frame(width: 2), alignment: .leading)
+            .frame(width: 7)
+    }
+}
+
+// One pinned sticky note on the cork board.
+private struct StickyNote: View {
+    let item: DiscoveryItem
+    let color: Color
+    let tilt: Double
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(symbol)
+                .font(.festival(size: 10))
+            Text(item.title)
+                .font(.festival(size: 7, weight: .semibold))
+                .foregroundStyle(FestivalDesign.navy)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 2)
+        .padding(.top, 4)
+        .padding(.bottom, 3)
+        .frame(maxWidth: .infinity, minHeight: 32)
+        .background(
+            ZStack {
+                // Hard pixel drop shadow
+                Rectangle()
+                    .fill(Color.black.opacity(0.22))
+                    .offset(x: 1.5, y: 2)
+                Rectangle()
+                    .fill(color)
+            }
+        )
+        .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.3), lineWidth: 1))
+        .overlay(alignment: .top) {
+            Circle()
+                .fill(FestivalDesign.coral)
+                .overlay(Circle().stroke(Color(red: 0.55, green: 0.12, blue: 0.12), lineWidth: 1))
+                .frame(width: 5, height: 5)
+                .offset(y: -2)
+        }
+        .rotationEffect(.degrees(tilt))
+    }
+
+    private var symbol: String {
+        switch item.kind {
+        case .festival: return "🎪"
+        case .event: return "🎟"
         }
     }
 }
@@ -1329,51 +1478,6 @@ private struct PixelBoardDots: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-private struct PublishedCard: View {
-    let item: DiscoveryItem
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(symbol)
-                .font(.festival(size: 11))
-            Text(item.title)
-                .font(.festival(size: 7, weight: .semibold))
-                .foregroundStyle(FestivalDesign.navy)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(3)
-        .frame(maxWidth: .infinity, minHeight: 36)
-        .background(FestivalDesign.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: 2)
-                .stroke(accent.opacity(0.6), lineWidth: 1)
-        )
-        .overlay(
-            Circle()
-                .fill(FestivalDesign.coral)
-                .frame(width: 4, height: 4)
-                .offset(y: -16),
-            alignment: .top
-        )
-    }
-
-    private var symbol: String {
-        switch item.kind {
-        case .festival: return "🎪"
-        case .event: return "🎟"
-        }
-    }
-
-    private var accent: Color {
-        switch item.kind {
-        case .festival: return FestivalDesign.lantern
-        case .event: return FestivalDesign.parkingBlue
-        }
     }
 }
 
