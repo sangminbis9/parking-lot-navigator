@@ -265,9 +265,9 @@ final class AgentOfficeViewModel: ObservableObject {
                 id: "echo",
                 name: "Echo",
                 role: "게시 / 홍보",
-                spriteAsset: "AgentChar5",
-                status: .idle,
-                line: "게시판 정리 중.",
+                spriteAsset: "AgentChar6",
+                status: snapshot.published.isEmpty ? .idle : .monitoring,
+                line: snapshot.published.isEmpty ? "게시판 정리 중." : "게시판에 \(snapshot.published.count)건 붙였어요.",
                 reply: "푸시 일정 잡아둘게요."
             )
         ]
