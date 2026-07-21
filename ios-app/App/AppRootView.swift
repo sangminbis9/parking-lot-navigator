@@ -3,6 +3,7 @@ import UIKit
 
 enum AppRoute: Hashable {
     case parkingResults(Destination, DiscoverPresentation?)
+    case nearbyParkingMap(Destination, [ParkingRecommendation])
     case parkingDetail(Destination, ParkingLot)
     case navigation(Destination, ParkingLot)
 }
@@ -136,6 +137,8 @@ struct AppRootView: View {
         switch route {
         case .parkingResults(let destination, let presentation):
             ParkingResultsView(destination: destination, apiClient: apiClient, presentation: presentation)
+        case .nearbyParkingMap(let destination, let recommendations):
+            NearbyParkingMapView(destination: destination, recommendations: recommendations)
         case .parkingDetail(let destination, let parkingLot):
             ParkingDetailView(destination: destination, parkingLot: parkingLot)
         case .navigation(let destination, let parkingLot):
@@ -253,6 +256,10 @@ final class Router: ObservableObject {
 
     func showResults(for destination: Destination, presentation: DiscoverPresentation? = nil) {
         path.append(.parkingResults(destination, presentation))
+    }
+
+    func showNearbyParkingMap(destination: Destination, recommendations: [ParkingRecommendation]) {
+        path.append(.nearbyParkingMap(destination, recommendations))
     }
 
     func showDetail(destination: Destination, parkingLot: ParkingLot) {
