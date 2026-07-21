@@ -62,6 +62,9 @@ struct ParkingResultsView: View {
                     ParkingGuideHeader(destination: destination)
                 }
 
+                Divider()
+                    .overlay(FestivalDesign.creamDeep.opacity(0.4))
+
                 parkingRecommendationSection
             }
             .padding(16)
@@ -89,7 +92,13 @@ struct ParkingResultsView: View {
                 }
             }
 
-            routePreviewCard
+            Button {
+                router.showNearbyParkingMap(destination: destination, recommendations: viewModel.recommendations)
+            } label: {
+                routePreviewCard
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isLoading)
 
             if viewModel.isLoading {
                 LoadingStateView(text: "방문할 축제 근처 주차장을 찾는 중입니다")
@@ -436,7 +445,7 @@ struct ParkingLotRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(parkingLot.name)
+                    Text("🅿️ \(parkingLot.name)")
                         .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)
