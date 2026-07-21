@@ -202,6 +202,7 @@ final class MapHomeViewModel: ObservableObject {
             attemptedLoads += 1
             switch await loadFestivalLayer(viewport: viewport, filter: filter) {
             case .success(let items):
+                if Task.isCancelled { return }
                 festivals = items
             case .failure:
                 failedLoads += 1
@@ -211,6 +212,7 @@ final class MapHomeViewModel: ObservableObject {
             attemptedLoads += 1
             switch await loadEventLayer(viewport: viewport) {
             case .success(let items):
+                if Task.isCancelled { return }
                 events = items
             case .failure:
                 failedLoads += 1
@@ -220,11 +222,13 @@ final class MapHomeViewModel: ObservableObject {
             attemptedLoads += 1
             switch await loadPerformanceLayer(viewport: viewport) {
             case .success(let items):
+                if Task.isCancelled { return }
                 performances = items
             case .failure:
                 failedLoads += 1
             }
         }
+        if Task.isCancelled { return }
         if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
             errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
         }
@@ -250,10 +254,14 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     private func discoverFestivals(viewport: MapViewport, filter: FestivalFilter) async throws -> [Festival] {
+        var radiusMeters = viewportDiscoverRadiusMeters(for: viewport)
+        if filter.radiusKm != nil {
+            radiusMeters = min(radiusMeters, filter.radiusMeters)
+        }
         let raw = try await apiClient.nearbyFestivals(
             lat: viewport.center.latitude,
             lng: viewport.center.longitude,
-            radiusMeters: viewportDiscoverRadiusMeters(for: viewport),
+            radiusMeters: radiusMeters,
             upcomingWithinDays: filter.dateRange.upcomingWithinDays
         )
         return raw.filter { filter.matches($0) }
