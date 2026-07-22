@@ -247,37 +247,31 @@ struct ParkingRecommendationEngine {
     }
 
     private func isDestinationParking(_ parkingLot: ParkingLot, for destination: Destination) -> Bool {
-        guard parkingLot.distanceFromDestinationMeters <= 120 else { return false }
-        if parkingLot.distanceFromDestinationMeters <= 100 { return true }
-        let destinationTokens = tokens(from: destination.name + " " + destination.address)
-        let parkingTokens = tokens(from: parkingLot.name + " " + parkingLot.address)
-        return !destinationTokens.isDisjoint(with: parkingTokens)
-    }
-
-    private func tokens(from text: String) -> Set<String> {
-        let separators = CharacterSet.whitespacesAndNewlines
-            .union(.punctuationCharacters)
-            .union(.symbols)
-        return Set(text
-            .lowercased()
-            .components(separatedBy: separators)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.count >= 2 && !$0.contains("주차") })
+        DestinationParkingMatch.isMatch(parkingLot, destination: destination)
     }
 
     private func estimatedHourlyFee(from text: String) -> Int? {
-        let numbers = text
-            .split { !$0.isNumber && $0 != "," }
-            .compactMap { Int(String($0).replacingOccurrences(of: ",", with: "")) }
-        guard let fee = numbers.last else { return nil }
-
-        if text.contains("10") {
-            return fee * 6
-        }
-        if text.contains("30") {
-            return fee * 2
+        guard let fee = feeAmount(from: text) else { return nil }
+        if let minutes = feeIntervalMinutes(from: text), minutes > 0 {
+            return Int((Double(fee) * 60.0 / Double(minutes)).rounded())
         }
         return fee
+    }
+
+    private func feeAmount(from text: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"(\d{1,3}(?:,\d{3})*)\s*원"#) else { return nil }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: nsRange),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return Int(text[range].replacingOccurrences(of: ",", with: ""))
+    }
+
+    private func feeIntervalMinutes(from text: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"(\d{1,3})\s*분"#) else { return nil }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: nsRange),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return Int(text[range])
     }
 
     private func timeRanges(in text: String) -> [TimeRange] {
