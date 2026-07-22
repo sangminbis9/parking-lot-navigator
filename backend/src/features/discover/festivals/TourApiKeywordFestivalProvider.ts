@@ -15,7 +15,10 @@ import {
   enrichTourApiItems,
   TourApiDetailClient,
 } from "./tourApiDetailClient.js";
-import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
+import {
+  tourEnrichMaxItems,
+  tourFestivalMaxPages,
+} from "./tourApiFestivalConfig.js";
 
 interface TourKeywordItem {
   contentid?: string;
@@ -119,12 +122,10 @@ export class TourApiKeywordFestivalProvider
     if (this.inFlightItems) return this.inFlightItems;
     this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
-        if (items.length > 0) {
-          this.cachedItems = {
-            expiresAt: now + TOUR_KEYWORD_CACHE_TTL_MS,
-            items,
-          };
-        }
+        this.cachedItems = {
+          expiresAt: now + TOUR_KEYWORD_CACHE_TTL_MS,
+          items,
+        };
         return items;
       })
       .finally(() => {
@@ -149,6 +150,7 @@ export class TourApiKeywordFestivalProvider
       normalized,
       this.detailClient,
       signal,
+      tourEnrichMaxItems(),
     );
     console.info(
       `tourapi-keyword-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,

@@ -16,7 +16,10 @@ import {
   enrichTourApiItems,
   TourApiDetailClient,
 } from "./tourApiDetailClient.js";
-import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
+import {
+  tourEnrichMaxItems,
+  tourFestivalMaxPages,
+} from "./tourApiFestivalConfig.js";
 
 interface TourApiFestivalItem {
   contentid?: string;
@@ -121,12 +124,10 @@ export class TourApiFestivalProvider
 
     this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
-        if (items.length > 0) {
-          this.cachedItems = {
-            expiresAt: now + TOUR_FESTIVAL_CACHE_TTL_MS,
-            items,
-          };
-        }
+        this.cachedItems = {
+          expiresAt: now + TOUR_FESTIVAL_CACHE_TTL_MS,
+          items,
+        };
         return items;
       })
       .finally(() => {
@@ -166,6 +167,7 @@ export class TourApiFestivalProvider
       futureOnly,
       this.detailClient,
       signal,
+      tourEnrichMaxItems(),
     );
     console.info(
       `tourapi-festival fetched=${raw.length} normalized=${normalized.length} future=${futureOnly.length} enriched=${enriched.length}`,

@@ -99,6 +99,7 @@ export class TourApiDetailClient {
 export async function enrichTourApiItems<
   T extends {
     contentId: string;
+    startDate: string;
     description?: string | null;
     sourceUrl?: string | null;
     imageUrl: string | null;
@@ -107,9 +108,15 @@ export async function enrichTourApiItems<
   items: T[],
   client: TourApiDetailClient,
   signal?: AbortSignal,
+  maxItems?: number,
 ): Promise<T[]> {
+  const toEnrich =
+    maxItems !== undefined && items.length > maxItems
+      ? selectSoonest(items, maxItems)
+      : null;
   return mapWithConcurrency(items, DETAIL_ENRICH_CONCURRENCY, async (item) => {
     if (item.description && item.sourceUrl && item.imageUrl) return item;
+    if (toEnrich && !toEnrich.has(item)) return item;
     const detail = await client.detail(item.contentId, signal);
     return {
       ...item,
@@ -118,6 +125,17 @@ export async function enrichTourApiItems<
       imageUrl: item.imageUrl ?? detail.imageUrl,
     };
   });
+}
+
+function selectSoonest<T extends { startDate: string }>(
+  items: T[],
+  maxItems: number,
+): Set<T> {
+  return new Set(
+    [...items]
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+      .slice(0, maxItems),
+  );
 }
 
 async function mapWithConcurrency<T, R>(
