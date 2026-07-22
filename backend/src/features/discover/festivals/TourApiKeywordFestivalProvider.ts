@@ -12,10 +12,14 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import {
+  DETAIL_ENRICH_CONCURRENCY,
   enrichTourApiItems,
+  mapWithConcurrency,
+  resolveEventDates,
   TourApiDetailClient,
 } from "./tourApiDetailClient.js";
 import {
+  tourAreaDateResolveMaxItems,
   tourEnrichMaxItems,
   tourFestivalMaxPages,
 } from "./tourApiFestivalConfig.js";
@@ -25,8 +29,6 @@ interface TourKeywordItem {
   title?: string;
   addr1?: string;
   addr2?: string;
-  eventstartdate?: string;
-  eventenddate?: string;
   firstimage?: string;
   firstimage2?: string;
   mapx?: string;
@@ -54,6 +56,8 @@ interface CachedKeywordFestival {
   sourceUrl: string | null;
   tags: string[];
 }
+
+type ShapedKeywordFestival = Omit<CachedKeywordFestival, "startDate" | "endDate">;
 
 const TOUR_KEYWORD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const TOUR_KEYWORD_PAGE_SIZE = 100;
@@ -137,14 +141,39 @@ export class TourApiKeywordFestivalProvider
   private async fetchAllItems(
     signal?: AbortSignal,
   ): Promise<CachedKeywordFestival[]> {
-    const pages = await Promise.all(
-      TOUR_KEYWORD_CAT3.map((cat3) => this.fetchCat3(cat3, signal)),
+    // See TourApiAreaFestivalProvider: throttle fetch fan-out to stay under
+    // Cloudflare Workers' concurrent in-flight fetch() limit.
+    const pages = await mapWithConcurrency(
+      TOUR_KEYWORD_CAT3,
+      DETAIL_ENRICH_CONCURRENCY,
+      (cat3) => this.fetchCat3(cat3, signal),
     );
     const raw = pages.flat();
     const today = new Date().toISOString().slice(0, 10);
-    const normalized = raw
-      .map(normalizeKeywordFestival)
-      .filter((item): item is CachedKeywordFestival => Boolean(item))
+    // searchKeyword2 never returns eventstartdate/eventenddate on its list
+    // items (unlike searchFestival2), so dates have to come from a
+    // per-item detailIntro2 lookup before we can filter to upcoming ones.
+    const shaped = shuffle(
+      raw
+        .map(shapeKeywordFestival)
+        .filter((item): item is ShapedKeywordFestival => Boolean(item)),
+    );
+    const withDates = await resolveEventDates(
+      shaped,
+      this.detailClient,
+      signal,
+      tourAreaDateResolveMaxItems(),
+    );
+    const normalized: CachedKeywordFestival[] = withDates
+      .filter(
+        (item): item is typeof item & { eventStartDate: string; eventEndDate: string } =>
+          Boolean(item.eventStartDate) && Boolean(item.eventEndDate),
+      )
+      .map((item) => ({
+        ...item,
+        startDate: parseDate(item.eventStartDate),
+        endDate: parseDate(item.eventEndDate),
+      }))
       .filter((item) => item.endDate >= today);
     const enriched = await enrichTourApiItems(
       normalized,
@@ -153,7 +182,7 @@ export class TourApiKeywordFestivalProvider
       tourEnrichMaxItems(),
     );
     console.info(
-      `tourapi-keyword-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,
+      `tourapi-keyword-festival fetched=${raw.length} shaped=${shaped.length} dated=${normalized.length} enriched=${enriched.length}`,
     );
     return dedupeKeywordFestivals(enriched);
   }
@@ -214,23 +243,19 @@ export class TourApiKeywordFestivalProvider
   }
 }
 
-function normalizeKeywordFestival(
+function shapeKeywordFestival(
   item: TourKeywordItem,
-): CachedKeywordFestival | null {
+): ShapedKeywordFestival | null {
   const lat = Number(item.mapy);
   const lng = Number(item.mapx);
   if (
     !item.contentid ||
     !item.title ||
-    !item.eventstartdate ||
-    !item.eventenddate ||
     !Number.isFinite(lat) ||
     !Number.isFinite(lng)
   ) {
     return null;
   }
-  const startDate = parseDate(item.eventstartdate);
-  const endDate = parseDate(item.eventenddate);
   const imageUrls = [item.firstimage, item.firstimage2]
     .filter((url): url is string => Boolean(url?.trim()))
     .filter((url, i, arr) => arr.indexOf(url) === i);
@@ -240,8 +265,6 @@ function normalizeKeywordFestival(
     title: item.title,
     subtitle: null,
     description: null,
-    startDate,
-    endDate,
     venueName: null,
     address: [item.addr1, item.addr2].filter(Boolean).join(" "),
     lat,
@@ -286,6 +309,18 @@ function parseTourResponse(body: unknown): {
     items: Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [],
     totalCount: Number.isFinite(totalCount) ? totalCount : null,
   };
+}
+
+// resolveEventDates only affords a handful of candidates per sync cycle
+// (see tourAreaDateResolveMaxItems), so shuffling avoids always spending
+// that budget on the same cat3-ordered prefix every cache refresh.
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 function dedupeKeywordFestivals(
