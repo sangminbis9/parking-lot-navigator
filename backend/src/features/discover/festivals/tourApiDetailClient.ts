@@ -14,22 +14,101 @@ interface TourApiDetailImageItem {
   imgname?: string;
 }
 
+interface TourApiDetailIntroItem {
+  eventstartdate?: string;
+  eventenddate?: string;
+}
+
 export interface TourApiDetail {
   description: string | null;
   sourceUrl: string | null;
   imageUrl: string | null;
 }
 
+export interface TourApiEventDates {
+  startDate: string | null;
+  endDate: string | null;
+}
+
 const DETAIL_PAGE_SIZE = 20;
-const DETAIL_ENRICH_CONCURRENCY = 5;
+// Cloudflare Workers caps concurrent in-flight fetch()es per invocation;
+// exceeding it cancels the oldest stalled response ("stalled HTTP response
+// was canceled to prevent deadlock"), which breaks any fetch reading that
+// response's body. Fan-out across many URLs (area codes, cat3 codes, detail
+// lookups) must all be throttled through mapWithConcurrency at this cap.
+export const DETAIL_ENRICH_CONCURRENCY = 5;
+let introErrorLogCount = 0;
+let introSubrequestLimitCount = 0;
+let introOtherErrorCount = 0;
+let introEmptyDatesCount = 0;
+let introOkCount = 0;
 
 export class TourApiDetailClient {
   private readonly cache = new Map<string, Promise<TourApiDetail>>();
+  private readonly introCache = new Map<string, Promise<TourApiEventDates>>();
 
   constructor(
     private readonly serviceKey: string,
     private readonly baseUrl: string,
   ) {}
+
+  eventDates(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<TourApiEventDates> {
+    const key = contentId.trim();
+    if (!key) {
+      return Promise.resolve({ startDate: null, endDate: null });
+    }
+    const cached = this.introCache.get(key);
+    if (cached) return cached;
+    const promise = this.fetchIntro(key, signal)
+      .then((dates) => {
+        if (dates.startDate && dates.endDate) {
+          introOkCount += 1;
+        } else {
+          introEmptyDatesCount += 1;
+        }
+        return dates;
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("Too many subrequests")) {
+          introSubrequestLimitCount += 1;
+        } else {
+          introOtherErrorCount += 1;
+        }
+        if (introErrorLogCount < 3) {
+          introErrorLogCount += 1;
+          console.warn(`detailIntro2 contentId=${key} failed: ${message}`);
+        }
+        return { startDate: null, endDate: null };
+      });
+    this.introCache.set(key, promise);
+    return promise;
+  }
+
+  private async fetchIntro(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<TourApiEventDates> {
+    // areaBasedList2/searchKeyword2 list responses never include
+    // eventstartdate/eventenddate; only detailIntro2 (contentTypeId=15,
+    // 축제/공연/행사) carries them, so date resolution needs its own call.
+    const url = new URL("/B551011/KorService2/detailIntro2", this.baseUrl);
+    setBaseParams(url, this.serviceKey);
+    url.searchParams.set("contentId", contentId);
+    url.searchParams.set("contentTypeId", "15");
+    url.searchParams.set("numOfRows", "1");
+    url.searchParams.set("pageNo", "1");
+
+    const body = await fetchTourJson(url, signal);
+    const item = extractFirstItem<TourApiDetailIntroItem>(body);
+    return {
+      startDate: clean(item?.eventstartdate),
+      endDate: clean(item?.eventenddate),
+    };
+  }
 
   detail(contentId: string, signal?: AbortSignal): Promise<TourApiDetail> {
     const key = contentId.trim();
@@ -96,6 +175,27 @@ export class TourApiDetailClient {
   }
 }
 
+export async function resolveEventDates<T extends { contentId: string }>(
+  items: T[],
+  client: TourApiDetailClient,
+  signal: AbortSignal | undefined,
+  maxItems: number,
+): Promise<Array<T & { eventStartDate: string | null; eventEndDate: string | null }>> {
+  const candidates = items.slice(0, maxItems);
+  introSubrequestLimitCount = 0;
+  introOtherErrorCount = 0;
+  introEmptyDatesCount = 0;
+  introOkCount = 0;
+  const result = await mapWithConcurrency(candidates, DETAIL_ENRICH_CONCURRENCY, async (item) => {
+    const dates = await client.eventDates(item.contentId, signal);
+    return { ...item, eventStartDate: dates.startDate, eventEndDate: dates.endDate };
+  });
+  console.info(
+    `resolveEventDates candidates=${candidates.length} ok=${introOkCount} emptyDates=${introEmptyDatesCount} subrequestLimit=${introSubrequestLimitCount} otherError=${introOtherErrorCount}`,
+  );
+  return result;
+}
+
 export async function enrichTourApiItems<
   T extends {
     contentId: string;
@@ -138,7 +238,7 @@ function selectSoonest<T extends { startDate: string }>(
   );
 }
 
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
   mapper: (item: T) => Promise<R>,

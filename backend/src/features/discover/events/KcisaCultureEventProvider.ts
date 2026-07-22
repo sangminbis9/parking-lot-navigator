@@ -17,9 +17,11 @@ import {
   eventFromCached,
   extractJsonItems,
   extractTotalCount,
+  extractXmlTotalCount,
   fetchWithTimeout,
   getString,
   logProviderResult,
+  mapWithConcurrency,
   normalizeEventForMap,
   parseDateRange,
   parseXmlItems,
@@ -99,10 +101,10 @@ export class KcisaCultureEventProvider
         `${this.input.source} truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${first.totalCount}; raise KCISA_MAX_PAGES to ingest more`,
       );
     }
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2, signal),
-      ),
+    const rest = await mapWithConcurrency(
+      Array.from({ length: totalPages - 1 }, (_, index) => index + 2),
+      5,
+      (page) => this.fetchPage(page, signal),
     );
     const rows = [...first.rows, ...rest.flatMap((page) => page.rows)];
     const today = new Date().toISOString().slice(0, 10);
@@ -114,8 +116,8 @@ export class KcisaCultureEventProvider
         .filter((input): input is ResolverInput => Boolean(input));
       await this.input.resolver.warmup(warmupInputs);
     }
-    const items = await Promise.all(
-      futureRows.map((row) => this.mapRow(row, true)),
+    const items = await mapWithConcurrency(futureRows, 5, (row) =>
+      this.mapRow(row, true),
     );
     if (this.input.resolver?.flush) {
       await this.input.resolver.flush();
@@ -208,7 +210,7 @@ export class KcisaCultureEventProvider
         totalCount: extractTotalCount(body),
       };
     }
-    return { rows: parseXmlItems(text), totalCount: null };
+    return { rows: parseXmlItems(text), totalCount: extractXmlTotalCount(text) };
   }
 
   private async mapRow(

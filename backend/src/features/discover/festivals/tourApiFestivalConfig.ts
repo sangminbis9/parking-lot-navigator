@@ -2,6 +2,7 @@ const DEFAULT_TOUR_FESTIVAL_MAX_PAGES = 20;
 const DEFAULT_NATIONAL_CULTURE_MAX_PAGES = 20;
 const DEFAULT_TOUR_ENRICH_MAX_ITEMS = 300;
 const DEFAULT_TOUR_AREA_FESTIVAL_MAX_PAGES = 3;
+const DEFAULT_TOUR_AREA_DATE_RESOLVE_MAX_ITEMS = 20;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
@@ -40,5 +41,17 @@ export function tourAreaFestivalMaxPages(): number {
   return parsePositiveInt(
     process.env.TOUR_AREA_FESTIVAL_MAX_PAGES,
     DEFAULT_TOUR_AREA_FESTIVAL_MAX_PAGES,
+  );
+}
+
+// areaBasedList2/searchKeyword2 don't return eventstartdate/eventenddate,
+// so dates require one detailIntro2 call per candidate on top of the
+// 17-area-code listing cost. Measured in production: 17 listing calls +
+// 33 detailIntro2 calls already hit Cloudflare's 50-subrequest-per-invocation
+// ceiling, so this cap must stay well under (50 - area code count).
+export function tourAreaDateResolveMaxItems(): number {
+  return parsePositiveInt(
+    process.env.TOUR_AREA_DATE_RESOLVE_MAX_ITEMS,
+    DEFAULT_TOUR_AREA_DATE_RESOLVE_MAX_ITEMS,
   );
 }

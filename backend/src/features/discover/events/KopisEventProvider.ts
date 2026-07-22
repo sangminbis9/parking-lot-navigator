@@ -20,6 +20,7 @@ import {
   formatCompactDate,
   getString,
   logProviderResult,
+  mapWithConcurrency,
   normalizeEventForMap,
   parseXmlItems,
   regionFallbackCoordinate,
@@ -109,8 +110,8 @@ export class KopisEventProvider
       const detail = id ? detailById.get(id) : null;
       return detail ? { ...row, ...detail } : row;
     });
-    const items = await Promise.all(
-      enrichedRows.map((row) => this.mapRow(row, true)),
+    const items = await mapWithConcurrency(enrichedRows, 5, (row) =>
+      this.mapRow(row, true),
     );
     if (this.resolver?.flush) {
       await this.resolver.flush();
@@ -224,24 +225,4 @@ export class KopisEventProvider
       resolveCoordinates ? this.resolver : undefined,
     );
   }
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(1, concurrency), items.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(items[index]);
-      }
-    }),
-  );
-  return results;
 }

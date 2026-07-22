@@ -13,9 +13,12 @@ import {
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import {
   enrichTourApiItems,
+  mapWithConcurrency,
+  resolveEventDates,
   TourApiDetailClient,
 } from "./tourApiDetailClient.js";
 import {
+  tourAreaDateResolveMaxItems,
   tourAreaFestivalMaxPages,
   tourEnrichMaxItems,
 } from "./tourApiFestivalConfig.js";
@@ -25,8 +28,6 @@ interface TourAreaItem {
   title?: string;
   addr1?: string;
   addr2?: string;
-  eventstartdate?: string;
-  eventenddate?: string;
   firstimage?: string;
   firstimage2?: string;
   mapx?: string;
@@ -55,9 +56,12 @@ interface CachedAreaFestival {
   tags: string[];
 }
 
+type ShapedAreaFestival = Omit<CachedAreaFestival, "startDate" | "endDate">;
+
 const TOUR_AREA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const TOUR_AREA_FAILURE_COOLDOWN_MS = 60 * 1000;
 const TOUR_AREA_PAGE_SIZE = 100;
+const AREA_FETCH_CONCURRENCY = 2;
 const TOUR_AREA_CODES = [
   "1",
   "2",
@@ -166,14 +170,42 @@ export class TourApiAreaFestivalProvider
   private async fetchAllItems(
     signal?: AbortSignal,
   ): Promise<CachedAreaFestival[]> {
-    const pages = await Promise.all(
-      TOUR_AREA_CODES.map((areaCode) => this.fetchArea(areaCode, signal)),
+    // Firing all 17 area-code fetches via Promise.all exceeds Cloudflare
+    // Workers' concurrent in-flight fetch() limit, which cancels the oldest
+    // stalled response and breaks its .json() read. Throttle the fan-out.
+    // TourAPI itself also rate-limits (HTTP 429) when too many requests land
+    // within the same second, so this stays well below DETAIL_ENRICH_CONCURRENCY.
+    const pages = await mapWithConcurrency(
+      TOUR_AREA_CODES,
+      AREA_FETCH_CONCURRENCY,
+      (areaCode) => this.fetchArea(areaCode, signal),
     );
     const raw = pages.flat();
     const today = new Date().toISOString().slice(0, 10);
-    const normalized = raw
-      .map(normalizeAreaFestival)
-      .filter((item): item is CachedAreaFestival => Boolean(item))
+    // areaBasedList2 never returns eventstartdate/eventenddate on its list
+    // items (unlike searchFestival2), so dates have to come from a
+    // per-item detailIntro2 lookup before we can filter to upcoming ones.
+    const shaped = shuffle(
+      raw
+        .map(shapeAreaFestival)
+        .filter((item): item is ShapedAreaFestival => Boolean(item)),
+    );
+    const withDates = await resolveEventDates(
+      shaped,
+      this.detailClient,
+      signal,
+      tourAreaDateResolveMaxItems(),
+    );
+    const normalized: CachedAreaFestival[] = withDates
+      .filter(
+        (item): item is typeof item & { eventStartDate: string; eventEndDate: string } =>
+          Boolean(item.eventStartDate) && Boolean(item.eventEndDate),
+      )
+      .map((item) => ({
+        ...item,
+        startDate: parseDate(item.eventStartDate),
+        endDate: parseDate(item.eventEndDate),
+      }))
       .filter((item) => item.endDate >= today);
     const enriched = await enrichTourApiItems(
       normalized,
@@ -182,7 +214,7 @@ export class TourApiAreaFestivalProvider
       tourEnrichMaxItems(),
     );
     console.info(
-      `tourapi-area-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,
+      `tourapi-area-festival fetched=${raw.length} shaped=${shaped.length} dated=${normalized.length} enriched=${enriched.length}`,
     );
     return dedupeAreaFestivals(enriched);
   }
@@ -203,12 +235,12 @@ export class TourApiAreaFestivalProvider
         `tourapi-area-festival areaCode=${areaCode} truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise TOUR_FESTIVAL_MAX_PAGES to ingest more`,
       );
     }
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(areaCode, index + 2, signal),
-      ),
-    );
-    return [first.items, ...rest.map((page) => page.items)].flat();
+    const rest: TourAreaItem[][] = [];
+    for (let page = 2; page <= totalPages; page += 1) {
+      const result = await this.fetchPage(areaCode, page, signal);
+      rest.push(result.items);
+    }
+    return [first.items, ...rest].flat();
   }
 
   private async fetchPage(
@@ -243,14 +275,12 @@ export class TourApiAreaFestivalProvider
   }
 }
 
-function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
+function shapeAreaFestival(item: TourAreaItem): ShapedAreaFestival | null {
   const lat = Number(item.mapy);
   const lng = Number(item.mapx);
   if (
     !item.contentid ||
     !item.title ||
-    !item.eventstartdate ||
-    !item.eventenddate ||
     !Number.isFinite(lat) ||
     !Number.isFinite(lng)
   ) {
@@ -265,8 +295,6 @@ function normalizeAreaFestival(item: TourAreaItem): CachedAreaFestival | null {
     title: item.title,
     subtitle: null,
     description: null,
-    startDate: parseDate(item.eventstartdate),
-    endDate: parseDate(item.eventenddate),
     venueName: null,
     address: [item.addr1, item.addr2].filter(Boolean).join(" "),
     lat,
@@ -311,6 +339,18 @@ function parseTourResponse(body: unknown): {
     items: Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [],
     totalCount: Number.isFinite(totalCount) ? totalCount : null,
   };
+}
+
+// resolveEventDates only affords a handful of candidates per sync cycle
+// (see tourAreaDateResolveMaxItems), so shuffling avoids always spending
+// that budget on the same area-code-1 prefix every cache refresh.
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 function dedupeAreaFestivals(

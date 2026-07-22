@@ -390,6 +390,11 @@ export function extractTotalCount(body: unknown): number | null {
   );
 }
 
+export function extractXmlTotalCount(xml: string): number | null {
+  const match = xml.match(/<totalCount>([^<]*)<\/totalCount>/i);
+  return match ? toNumber(match[1]) : null;
+}
+
 export function parseXmlItems(
   xml: string,
   itemTag = "item",
@@ -542,6 +547,26 @@ export function dedupeCachedEvents(items: CachedEvent[]): CachedEvent[] {
     }
   }
   return [...selected.values()];
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index]);
+      }
+    }),
+  );
+  return results;
 }
 
 export function logProviderResult(
