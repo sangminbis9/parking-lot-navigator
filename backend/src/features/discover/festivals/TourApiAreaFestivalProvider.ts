@@ -15,7 +15,10 @@ import {
   enrichTourApiItems,
   TourApiDetailClient,
 } from "./tourApiDetailClient.js";
-import { tourFestivalMaxPages } from "./tourApiFestivalConfig.js";
+import {
+  tourAreaFestivalMaxPages,
+  tourEnrichMaxItems,
+} from "./tourApiFestivalConfig.js";
 
 interface TourAreaItem {
   contentid?: string;
@@ -53,6 +56,7 @@ interface CachedAreaFestival {
 }
 
 const TOUR_AREA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const TOUR_AREA_FAILURE_COOLDOWN_MS = 60 * 1000;
 const TOUR_AREA_PAGE_SIZE = 100;
 const TOUR_AREA_CODES = [
   "1",
@@ -83,12 +87,13 @@ export class TourApiAreaFestivalProvider
     items: CachedAreaFestival[];
   } | null = null;
   private inFlightItems: Promise<CachedAreaFestival[]> | null = null;
+  private lastFailureAt: number | null = null;
   private readonly detailClient: TourApiDetailClient;
 
   constructor(
     private readonly serviceKey: string,
     private readonly baseUrl: string,
-    private readonly maxPages: number = tourFestivalMaxPages(),
+    private readonly maxPages: number = tourAreaFestivalMaxPages(),
   ) {
     super("tourapi-area-festival");
     this.detailClient = new TourApiDetailClient(serviceKey, baseUrl);
@@ -135,12 +140,22 @@ export class TourApiAreaFestivalProvider
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
+    if (
+      this.lastFailureAt &&
+      now - this.lastFailureAt < TOUR_AREA_FAILURE_COOLDOWN_MS
+    ) {
+      throw new Error(
+        "tourapi-area-festival: skipping retry, recent attempt failed",
+      );
+    }
     this.inFlightItems = this.fetchAllItems(signal)
       .then((items) => {
-        if (items.length > 0) {
-          this.cachedItems = { expiresAt: now + TOUR_AREA_CACHE_TTL_MS, items };
-        }
+        this.cachedItems = { expiresAt: now + TOUR_AREA_CACHE_TTL_MS, items };
         return items;
+      })
+      .catch((error) => {
+        this.lastFailureAt = Date.now();
+        throw error;
       })
       .finally(() => {
         this.inFlightItems = null;
@@ -164,6 +179,7 @@ export class TourApiAreaFestivalProvider
       normalized,
       this.detailClient,
       signal,
+      tourEnrichMaxItems(),
     );
     console.info(
       `tourapi-area-festival fetched=${raw.length} normalized=${normalized.length} enriched=${enriched.length}`,

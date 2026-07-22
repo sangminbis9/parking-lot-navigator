@@ -13,6 +13,10 @@ import { TourApiKeywordFestivalProvider } from "./TourApiKeywordFestivalProvider
 
 const cache = new MemoryCache<Festival[]>();
 
+// 전국문화축제표준데이터(tn_pubr_public_cltur_fstvl_api)는 TourAPI(KorService2)와 달리
+// 's' 없는 호스트를 쓴다. config.PUBLIC_DATA_BASE_URL(apis.data.go.kr)을 공유하면 항상 500이 난다.
+const NATIONAL_CULTURE_FESTIVAL_BASE_URL = "https://api.data.go.kr";
+
 export class FestivalService {
   constructor(private readonly providers: FestivalProvider[]) {}
 
@@ -69,7 +73,7 @@ export function createFestivalService(): FestivalService {
     providers.push(
       new NationalCultureFestivalProvider(
         config.PUBLIC_DATA_SERVICE_KEY,
-        config.PUBLIC_DATA_BASE_URL,
+        NATIONAL_CULTURE_FESTIVAL_BASE_URL,
       ),
     );
     providers.push(
