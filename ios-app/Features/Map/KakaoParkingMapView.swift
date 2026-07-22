@@ -540,9 +540,10 @@ private extension MapPinItem {
         case .parking(let lot):
             if parkingCongestionColored {
                 let key = lot.stale ? "stale" : lot.congestionStatus.rawValue
-                return "parking-cong-\(key)-\(theme)"
+                let base = "parking-cong-\(key)-\(theme)"
+                return isSelected ? "\(base)-sel" : base
             }
-            return "parking-\(theme)"
+            return isSelected ? "parking-\(theme)-sel" : "parking-\(theme)"
         case .festival(let festival):
             return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
         case .event(let event):
@@ -565,12 +566,14 @@ private extension MapPinItem {
         case .parking(let lot):
             if parkingCongestionColored {
                 let key = lot.stale ? "stale" : lot.congestionStatus.rawValue
-                guard styleID == "parking-cong-\(key)-\(theme.rawValue)" else { return nil }
+                let base = "parking-cong-\(key)-\(theme.rawValue)"
+                guard styleID == base || styleID == "\(base)-sel" else { return nil }
                 let fill = lot.stale ? UIColor.systemGray : FestivalDesign.uiCongestionColor(lot.congestionStatus)
-                return (styleID, MapPinRenderer.parkingImage(fill: fill, theme: theme))
+                return (styleID, MapPinRenderer.parkingImage(fill: fill, theme: theme, selected: styleID == "\(base)-sel"))
             }
-            guard styleID == "parking-\(theme.rawValue)" else { return nil }
-            return (styleID, MapPinRenderer.image(category: .parking, theme: theme, selected: false))
+            let base = "parking-\(theme.rawValue)"
+            guard styleID == base || styleID == "\(base)-sel" else { return nil }
+            return (styleID, MapPinRenderer.image(category: .parking, theme: theme, selected: styleID == "\(base)-sel"))
         case .festival(let festival):
             return discoverImage(styleID: styleID, category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme)
         case .event(let event):

@@ -193,10 +193,10 @@ enum MapPinRenderer {
     private static var parkingCache: [String: UIImage] = [:]
 
     /// 실시간 주차장용: 혼잡도 색(fill)으로 채운 "P" 주차 핀. 색은 테마와 무관하므로 색+scale로만 캐시한다.
-    static func parkingImage(fill: UIColor, theme: FestivalTheme, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
-        let key = "\(fill.pinColorKey)|\(Int((scale * 100).rounded()))"
+    static func parkingImage(fill: UIColor, theme: FestivalTheme, selected: Bool = false, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
+        let key = "\(fill.pinColorKey)|\(selected)|\(Int((scale * 100).rounded()))"
         if let cached = parkingCache[key] { return cached }
-        let image = draw(category: .parking, theme: theme, selected: false, label: nil, scale: scale, fillOverride: fill)
+        let image = draw(category: .parking, theme: theme, selected: selected, label: nil, scale: scale, fillOverride: fill)
         parkingCache[key] = image
         return image
     }
