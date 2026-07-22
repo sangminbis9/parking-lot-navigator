@@ -1,3 +1,5 @@
+import { timingSafeStringEqual } from "../security.js";
+
 export type MerchantProvider = "naver" | "kakao";
 
 export type SessionPayload = {
@@ -58,7 +60,7 @@ export async function verifySessionToken(
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const expected = base64UrlEncode(await hmacSha256(secret, body));
-  if (sig !== expected) return null;
+  if (!timingSafeStringEqual(sig, expected)) return null;
   try {
     const payload = JSON.parse(
       decoder.decode(base64UrlDecode(body)),
