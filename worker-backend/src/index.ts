@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
 import type { MapItem, DiscoverPerformancesResponse } from "@parking/shared-types";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
+import { timingSafeStringEqual } from "./security.js";
 import {
   currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
@@ -446,10 +447,6 @@ app.get("/discover/festivals", async (c) => {
     })),
     generatedAt: new Date().toISOString(),
   });
-});
-
-app.get("/discover/events", async (c) => {
-  return c.json({ items: [], generatedAt: new Date().toISOString() });
 });
 
 // 짧은 TTL 엣지 캐시. 클라이언트로 반환하는 응답 본문/상태는 그대로 두고(동작 불변),
@@ -1178,7 +1175,7 @@ function authorizeAdminSync(request: Request, env: Env): Response | null {
   const token = request.headers
     .get("Authorization")
     ?.replace(/^Bearer\s+/i, "");
-  if (token !== env.SYNC_ADMIN_TOKEN) {
+  if (!token || !timingSafeStringEqual(token, env.SYNC_ADMIN_TOKEN)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
