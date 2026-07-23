@@ -13,7 +13,6 @@ final class DiscoveryNotificationService: ObservableObject {
     private let center = UNUserNotificationCenter.current()
 
     private let defaultCoordinate: (lat: Double, lng: Double) = (lat: 37.5663, lng: 126.9779) // 서울시청
-    private let notifiedIDLimit = 500
 
     init(apiClient: APIClientProtocol, appGroupID: String) {
         self.apiClient = apiClient
@@ -71,7 +70,8 @@ final class DiscoveryNotificationService: ObservableObject {
         }
     }
 
-    /// 신규 축제를 1건씩 개별 알림으로 보낸다.
+    /// 신규 축제를 1건씩 개별 알림으로 보낸다. 최초 실행(known이 비어있음)에는 기존 매칭 항목을
+    /// 알림 없이 시드만 하여, 이미 지도에 있던 축제 전체가 "신규"로 오인되지 않게 한다.
     private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
         let coord = coordinate(forRegions: prefs.regions)
         let radius = prefs.radiusKm * 1_000
@@ -81,13 +81,13 @@ final class DiscoveryNotificationService: ObservableObject {
         }
         let key = "discovery.notifiedIDs.festival"
         let known = notifiedIDs(key: key)
-        let newItems = matched.filter { !known.contains($0.id) }
-        guard !newItems.isEmpty else { return }
+        let isFirstRun = known.isEmpty
+        let newItems = isFirstRun ? [] : matched.filter { !known.contains($0.id) }
 
         for festival in newItems {
             await scheduleIndividualFestivalNotification(festival)
         }
-        addNotifiedIDs(newItems.map(\.id), key: key)
+        syncNotifiedIDs(matched: matched.map(\.id), newlyNotified: newItems.map(\.id), key: key)
     }
 
     private func scheduleIndividualFestivalNotification(_ festival: Festival) async {
@@ -121,13 +121,15 @@ final class DiscoveryNotificationService: ObservableObject {
         }
         let key = "discovery.notifiedIDs.localEvent"
         let known = notifiedIDs(key: key)
-        let newItems = matched.filter { !known.contains($0.id) }
-        guard !newItems.isEmpty else { return }
+        let isFirstRun = known.isEmpty
+        let newItems = isFirstRun ? [] : matched.filter { !known.contains($0.id) }
 
-        let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{C774}\u{BCA4}\u{D2B8}" // 근처 새 이벤트
-        let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{B85C}\u{CEEC} \u{C774}\u{BCA4}\u{D2B8} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 로컬 이벤트 N건이 있어요.
-        await scheduleSummary(idPrefix: "discovery-localEvent", title: title, body: body)
-        addNotifiedIDs(newItems.map(\.id), key: key)
+        if !newItems.isEmpty {
+            let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{C774}\u{BCA4}\u{D2B8}" // 근처 새 이벤트
+            let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{B85C}\u{CEEC} \u{C774}\u{BCA4}\u{D2B8} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 로컬 이벤트 N건이 있어요.
+            await scheduleSummary(idPrefix: "discovery-localEvent", title: title, body: body)
+        }
+        syncNotifiedIDs(matched: matched.map(\.id), newlyNotified: newItems.map(\.id), key: key)
     }
 
     private func scheduleSummary(idPrefix: String, title: String, body: String) async {
@@ -169,14 +171,13 @@ final class DiscoveryNotificationService: ObservableObject {
         return Set(stored)
     }
 
-    private func addNotifiedIDs(_ ids: [String], key: String) {
+    /// "이미 알림 보냄" 집합을 이번 주기의 매칭 결과로 갱신한다. 더 이상 매칭되지 않는(종료된) 항목은
+    /// 자연히 빠지고, 여전히 지도에 남아있는 항목은 개수 제한 없이 계속 "이미 알림 보냄"으로 유지되어
+    /// 재알림되지 않는다.
+    private func syncNotifiedIDs(matched: [String], newlyNotified: [String], key: String) {
         guard let defaults = defaults() else { return }
-        var current = defaults.stringArray(forKey: key) ?? []
-        current.append(contentsOf: ids.filter { !current.contains($0) })
-        if current.count > notifiedIDLimit {
-            current = Array(current.suffix(notifiedIDLimit))
-        }
-        defaults.set(current, forKey: key)
+        let updated = Set(matched).union(newlyNotified)
+        defaults.set(Array(updated), forKey: key)
     }
 
 }
