@@ -203,10 +203,14 @@ export class TourApiKeywordFestivalProvider
         `tourapi-keyword-festival cat3=${cat3} truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise TOUR_FESTIVAL_MAX_PAGES to ingest more`,
       );
     }
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(cat3, index + 2, signal),
-      ),
+    const pageNumbers = Array.from(
+      { length: totalPages - 1 },
+      (_, index) => index + 2,
+    );
+    const rest = await mapWithConcurrency(
+      pageNumbers,
+      DETAIL_ENRICH_CONCURRENCY,
+      (pageNo) => this.fetchPage(cat3, pageNo, signal),
     );
     return [first.items, ...rest.map((page) => page.items)].flat();
   }
