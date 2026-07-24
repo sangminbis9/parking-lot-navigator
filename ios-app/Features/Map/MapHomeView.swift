@@ -330,7 +330,7 @@ struct MapHomeView: View {
         if viewModel.showsPerformanceLayer {
             for item in viewModel.performances {
                 switch item {
-                case .festival(let f) where seenFestivalIds.insert(f.id).inserted:
+                case .festival(let f) where festivalFilterModel.filter.matches(f) && seenFestivalIds.insert(f.id).inserted:
                     sources.append(.festival(f))
                 case .event(let e) where seenEventIds.insert(e.id).inserted:
                     sources.append(.event(e))
