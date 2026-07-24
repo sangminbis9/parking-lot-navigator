@@ -168,29 +168,63 @@ export async function queryFestivalsFromCache(
 }
 
 // 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
-// 키는 정규화된 제목 + 반올림 좌표(약 100m)이며, 같은 그룹에서는 설명·부제·이미지가
-// 더 풍부한 항목을 남긴다(설명이 있는 쪽 우선).
-function dedupeFestivals(festivals: Festival[]): Festival[] {
-  const byKey = new Map<string, Festival>();
+// 1차로 정규화된 제목 + 시작일이 같은 것끼리 묶고, 그 안에서 좌표가 실제로 가까운
+// 항목끼리만(provider마다 지오코딩이 수백m씩 어긋나는 경우가 있어 격자 반올림 대신
+// 실거리로 판단) 하나의 중복 그룹으로 보고, 설명·부제·이미지가 더 풍부한 항목을 남긴다.
+const FESTIVAL_DEDUPE_MAX_DISTANCE_METERS = 1500;
+
+// clusterFilter가 주어지면, 카테고리 등으로 후보를 미리 좁힌 다음 dedup하는 대신
+// 그룹(중복 묶음) 단위로 조건을 확인한다. 그래야 같은 실제 축제가 provider별로 다른
+// category 태그를 갖고 있어도 항상 같은 승자를 고르며(=/api/festivals와 /api/performances가
+// 같은 id를 돌려줌), 조건에 맞는 멤버가 하나라도 있으면 그룹 전체에서 가장 풍부한 항목을 남긴다.
+function dedupeFestivals(
+  festivals: Festival[],
+  clusterFilter?: (cluster: Festival[]) => boolean,
+): Festival[] {
+  const groups = new Map<string, Festival[]>();
   const order: string[] = [];
   for (const festival of festivals) {
     const key = festivalDedupeKey(festival);
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, festival);
+    if (!groups.has(key)) {
+      groups.set(key, []);
       order.push(key);
-    } else if (
-      festivalRichnessScore(festival) > festivalRichnessScore(existing)
-    ) {
-      byKey.set(key, festival);
+    }
+    groups.get(key)!.push(festival);
+  }
+
+  const result: Festival[] = [];
+  for (const key of order) {
+    const clusters: Festival[][] = [];
+    for (const festival of groups.get(key)!) {
+      const cluster = clusters.find(
+        (c) =>
+          distanceMeters(c[0].lat, c[0].lng, festival.lat, festival.lng) <=
+          FESTIVAL_DEDUPE_MAX_DISTANCE_METERS,
+      );
+      if (cluster) {
+        cluster.push(festival);
+      } else {
+        clusters.push([festival]);
+      }
+    }
+    for (const cluster of clusters) {
+      if (clusterFilter && !clusterFilter(cluster)) continue;
+      result.push(
+        cluster.reduce((best, f) =>
+          festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
+        ),
+      );
     }
   }
-  return order.map((key) => byKey.get(key)!);
+  return result;
 }
 
 function festivalDedupeKey(festival: Festival): string {
-  const title = festival.title.toLowerCase().replace(/\s+/g, "");
-  return `${title}|${festival.lat.toFixed(3)}|${festival.lng.toFixed(3)}`;
+  const title = festival.title
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/^\d{4}년?/, ""); // provider마다 선행 연도 표기 유무가 달라 무시
+  return `${title}|${festival.startDate}`;
 }
 
 function festivalRichnessScore(festival: Festival): number {
@@ -228,9 +262,8 @@ export async function queryPerformancesFromCache(
     .filter((row) => row.source === "kopis")
     .map((row) => mapEventRow(row, lat, lng));
   const festivals = dedupeFestivals(
-    festivalRows
-      .filter((row) => row.primary_category === "music_performance")
-      .map((row) => mapFestivalRow(row, lat, lng)),
+    festivalRows.map((row) => mapFestivalRow(row, lat, lng)),
+    (cluster) => cluster.some((f) => f.primaryCategory === "music_performance"),
   );
   return { festivals, events };
 }
