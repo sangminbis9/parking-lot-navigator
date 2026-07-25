@@ -73,11 +73,11 @@ final class DiscoveryNotificationService: ObservableObject {
     /// 신규 축제를 1건씩 개별 알림으로 보낸다. 최초 실행(known이 비어있음)에는 기존 매칭 항목을
     /// 알림 없이 시드만 하여, 이미 지도에 있던 축제 전체가 "신규"로 오인되지 않게 한다.
     private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
-        let coord = coordinate(forRegions: prefs.regions)
-        let radius = prefs.radiusKm * 1_000
-        guard let festivals = try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius, upcomingWithinDays: 365) else { return }
+        let festivals = await fetchFestivals(regions: prefs.regions, radiusKm: prefs.radiusKm)
         let matched = festivals.filter { festival in
-            prefs.categories.isEmpty || festival.primaryCategory.map { prefs.categories.contains($0) } ?? false
+            let categoryMatch = prefs.categories.isEmpty || festival.primaryCategory.map { prefs.categories.contains($0) } ?? false
+            let regionMatch = prefs.regions.isEmpty || matchesRegions(address: festival.address, regions: prefs.regions)
+            return categoryMatch && regionMatch
         }
         let key = "discovery.notifiedIDs.festival"
         let known = notifiedIDs(key: key)
@@ -113,11 +113,11 @@ final class DiscoveryNotificationService: ObservableObject {
 
     /// 신규 로컬 이벤트가 있으면 요약 알림을 보낸다.
     private func discoverLocalEvents(_ prefs: LocalEventNotificationPrefs) async {
-        let coord = coordinate(forRegions: prefs.regions)
-        let radius = prefs.radiusKm * 1_000
-        guard let events = try? await apiClient.nearbyEvents(lat: coord.lat, lng: coord.lng, radiusMeters: radius) else { return }
+        let events = await fetchLocalEvents(regions: prefs.regions, radiusKm: prefs.radiusKm)
         let matched = events.filter { event in
-            prefs.categories.isEmpty || event.primaryCategory.map { prefs.categories.contains($0) } ?? false
+            let categoryMatch = prefs.categories.isEmpty || event.primaryCategory.map { prefs.categories.contains($0) } ?? false
+            let regionMatch = prefs.regions.isEmpty || matchesRegions(address: event.address, regions: prefs.regions)
+            return categoryMatch && regionMatch
         }
         let key = "discovery.notifiedIDs.localEvent"
         let known = notifiedIDs(key: key)
@@ -145,19 +145,60 @@ final class DiscoveryNotificationService: ObservableObject {
         try? await center.add(request)
     }
 
-    // MARK: - 조회 중심 좌표
+    // MARK: - 지역 기반 조회
 
-    private func coordinate(forRegions regions: [String]) -> (lat: Double, lng: Double) {
-        let centroids = regions.compactMap { NotificationPreferencesStore.regionCentroids[$0] }
-        if !centroids.isEmpty {
-            let lat = centroids.map(\.lat).reduce(0, +) / Double(centroids.count)
-            let lng = centroids.map(\.lng).reduce(0, +) / Double(centroids.count)
-            return (lat, lng)
+    /// 관심 지역이 있으면 지역별 중심 좌표로 각각 조회해 합친다. 좌표 하나로 평균 내면 서로 먼 지역을
+    /// 고를 때 검색 중심이 둘 중 어디에도 속하지 않는 엉뚱한 지점으로 뭉개지기 때문이다.
+    private func fetchFestivals(regions: [String], radiusKm: Int) async -> [Festival] {
+        let radius = radiusKm * 1_000
+        guard !regions.isEmpty else {
+            let coord = fallbackCoordinate()
+            return (try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius, upcomingWithinDays: 365)) ?? []
         }
+        var seen = Set<String>()
+        var result: [Festival] = []
+        for region in regions {
+            guard let centroid = NotificationPreferencesStore.regionCentroids[region] else { continue }
+            guard let festivals = try? await apiClient.nearbyFestivals(lat: centroid.lat, lng: centroid.lng, radiusMeters: radius, upcomingWithinDays: 365) else { continue }
+            for festival in festivals where !seen.contains(festival.id) {
+                seen.insert(festival.id)
+                result.append(festival)
+            }
+        }
+        return result
+    }
+
+    private func fetchLocalEvents(regions: [String], radiusKm: Int) async -> [FreeEvent] {
+        let radius = radiusKm * 1_000
+        guard !regions.isEmpty else {
+            let coord = fallbackCoordinate()
+            return (try? await apiClient.nearbyEvents(lat: coord.lat, lng: coord.lng, radiusMeters: radius)) ?? []
+        }
+        var seen = Set<String>()
+        var result: [FreeEvent] = []
+        for region in regions {
+            guard let centroid = NotificationPreferencesStore.regionCentroids[region] else { continue }
+            guard let events = try? await apiClient.nearbyEvents(lat: centroid.lat, lng: centroid.lng, radiusMeters: radius) else { continue }
+            for event in events where !seen.contains(event.id) {
+                seen.insert(event.id)
+                result.append(event)
+            }
+        }
+        return result
+    }
+
+    /// 지역 미선택 시 조회 중심: 마지막 알려진 위치, 없으면 기본 좌표.
+    private func fallbackCoordinate() -> (lat: Double, lng: Double) {
         if let last = LastKnownLocationStore.load(appGroupID: appGroupID) {
             return last
         }
         return defaultCoordinate
+    }
+
+    /// 서버는 좌표 반경으로만 필터링하므로, 반환된 항목의 주소에 선택한 지역명이 실제로 포함되는지
+    /// 다시 검증한다. (반경 조회만으로는 지역 경계를 넘는 항목까지 섞여 들어올 수 있다.)
+    private func matchesRegions(address: String, regions: [String]) -> Bool {
+        regions.contains { address.contains($0) }
     }
 
     // MARK: - app-group 상태 (이미 알린 ID / 일일 카운트)
