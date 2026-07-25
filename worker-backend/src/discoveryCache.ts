@@ -168,9 +168,11 @@ export async function queryFestivalsFromCache(
 }
 
 // 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
-// 1차로 정규화된 제목 + 시작일이 같은 것끼리 묶고, 그 안에서 좌표가 실제로 가까운
-// 항목끼리만(provider마다 지오코딩이 수백m씩 어긋나는 경우가 있어 격자 반올림 대신
-// 실거리로 판단) 하나의 중복 그룹으로 보고, 설명·부제·이미지가 더 풍부한 항목을 남긴다.
+// 1차로 정규화된 제목이 같은 것끼리 묶고, 그 안에서 좌표가 실제로 가깝고(provider마다
+// 지오코딩이 수백m씩 어긋나는 경우가 있어 격자 반올림 대신 실거리로 판단) 날짜 범위가
+// 겹치는 항목끼리만 하나의 중복 그룹으로 보고, 설명·부제·이미지가 더 풍부한 항목을 남긴다.
+// 날짜까지 요구하는 이유: 같은 제목·같은 장소(투어 공연 등)라도 회차가 다르면 서로 다른
+// 항목이므로, 좌표만으로 묶으면 서로 다른 공연 회차가 하나로 합쳐지는 오탐이 생긴다.
 const FESTIVAL_DEDUPE_MAX_DISTANCE_METERS = 1500;
 
 // clusterFilter가 주어지면, 카테고리 등으로 후보를 미리 좁힌 다음 dedup하는 대신
@@ -199,7 +201,8 @@ function dedupeFestivals(
       const cluster = clusters.find(
         (c) =>
           distanceMeters(c[0].lat, c[0].lng, festival.lat, festival.lng) <=
-          FESTIVAL_DEDUPE_MAX_DISTANCE_METERS,
+          FESTIVAL_DEDUPE_MAX_DISTANCE_METERS &&
+          dateRangesOverlap(c[0], festival),
       );
       if (cluster) {
         cluster.push(festival);
@@ -220,11 +223,19 @@ function dedupeFestivals(
 }
 
 function festivalDedupeKey(festival: Festival): string {
-  const title = festival.title
+  return festival.title
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/^\d{4}년?/, ""); // provider마다 선행 연도 표기 유무가 달라 무시
-  return `${title}|${festival.startDate}`;
+}
+
+// provider마다 같은 축제의 시작/종료일을 며칠씩 다르게 보고하는 경우가 있어(예: 사전 행사 포함
+// 여부) 완전 일치 대신 기간이 실제로 겹치는지로 판단한다.
+function dateRangesOverlap(a: Festival, b: Festival): boolean {
+  if (!a.startDate || !a.endDate || !b.startDate || !b.endDate) {
+    return a.startDate === b.startDate;
+  }
+  return a.startDate <= b.endDate && b.startDate <= a.endDate;
 }
 
 function festivalRichnessScore(festival: Festival): number {
