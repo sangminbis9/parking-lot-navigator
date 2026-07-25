@@ -1,8 +1,8 @@
 # 이벤트다 배포 준비 점검 보고서
 
-- 작성일: 2026-05-25 (최초) · 2026-05-31 readiness-review 재검사 갱신
+- 작성일: 2026-05-25 (최초) · 2026-05-31 · 2026-07-25 readiness-review 재검사 갱신
 - 작성자: 운영 분석 (Claude)
-- 대상 브랜치/커밋: `master` @ b76c8a7
+- 대상 브랜치/커밋: `master` @ 5a73b9f
 - 대상 범위: iOS 앱 (`ios-app/`), Worker 백엔드 (`worker-backend/`), 머천트/결제 흐름, 운영 문서, 데이터 파이프라인
 - 보고서 목적: App Store 출시 직전에 발견되는 P0 차단 요소와, 출시 이후 30~90일 안에 보강해야 할 운영·상업·기술 항목을 분야별로 정리하여 의사결정 자료로 사용
 
@@ -20,7 +20,14 @@
 4. 🟡 코드 완료 — Worker Cron 실패 알림(`notifyOpsFailure`, 6개 cron catch에 webhook 알림) 구현. 남은 일: 배포 + `OPS_ALERT_WEBHOOK_URL` secret 설정
 5. 🔴 App Store 스크린샷 5장 — 제출 차단(사용자/디자인). Privacy 질문지 답변은 `docs/release/app-store-privacy-answers.md`(122줄) 초안 존재 → ASC 입력만 남음
 
-P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천트 KYC·환불 SOP, 사용자 retention 장치(푸시·위젯·온보딩) 순으로 보강하는 것을 권장합니다.
+2026-07-25 재검사: 위 5개 P0는 그대로 미해결(코드 근거로 재확인)이지만, 그 사이 60여 개 커밋으로 기능이 크게 늘었습니다(축제 필터 개편, 공연 캘린더, 즐겨찾기, 커스터마이즈 알림, 지도 핀 리디자인, 마스코트 아이콘, 크레파스 테마 등 — iOS 빌드번호 161→189). 이 중 배포 준비와 직접 관련된 변화:
+
+- ✅ 신규 해결 — 축제 cross-provider 중복 병합 로직 정교화(title+거리+날짜range, `discoveryCache.ts`)로 지도/캘린더에 같은 축제가 다르게 보이던 문제 해결
+- ✅ 신규 해결 — 머천트 결제 폼에 이용약관/개인정보처리방침/환불정책 필수 동의 체크박스 추가·서버 검증
+- 🟢 부분 진전 — 로컬(BGTask 기반) 발견 알림 기능이 카테고리·지역·반경까지 커스터마이즈 가능한 수준으로 구현됨(서버 APNs 실시간 푸시는 아님, 여전히 백로그)
+- 🔴 변화 없음 — iOS 크래시 트래킹, 스토어 스크린샷, Toss 라이브 키, 사업자등록은 코드/문서 근거로 재확인한 결과 그대로 미해결
+
+P0 해결 후에는 운영 모니터링(Cron 실패 알림 배포, D1 백업), 머천트 KYC·환불 SOP, CORS/rate limit 좁히기 순으로 보강하는 것을 권장합니다.
 
 ---
 
@@ -42,6 +49,7 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 
 ## 변경 로그
 
+- 2026-07-25 (@5a73b9f): 해결 2건(축제 cross-provider dedup을 title+haversine 거리+날짜range 겹침 기준으로 정교화, 머천트 결제 폼 필수 약관동의 체크박스), 상태 갱신 2건(로컬 발견 알림 시스템이 카테고리/지역/반경 커스터마이즈까지 구현됨을 반영 — 서버 APNs는 여전히 백로그, 즐겨찾기 기능 존재는 확인했으나 iCloud 동기화는 없음 재확인), 재확인 후 변화 없음(iOS 크래시 트래킹·CORS 미제한·rate limit 없음·Kakao Mobility SDK 미연동·온보딩 없음·다크모드 미대응·접근성 라벨 4/67 파일·D1 자동백업 없음·backend pre-existing tsc 에러 2건 그대로·Toss 테스트 키·사업자등록 대기). iOS 빌드번호 161→189, backend 테스트 43→44개 통과, worker typecheck 통과 재확인.
 - 2026-05-31 (@b76c8a7): 해결 3건(PrivacyInfo.xcprivacy 존재, 위치권한 문구 갱신, legal 페이지 콘텐츠 구현), 부분해결 3건(개인정보처리방침·약관·환불 라우트 코드 완료=배포/ASC 입력만 남음, 데이터 출처 표기 일부), 상태변경 1건(iOS 빌드번호 134→160), 신규 1건(PrivacyInfo가 CrashData 수집을 선언했으나 크래시 SDK 미연동 — 정합성 필요). worker typecheck 통과 확인.
 - 2026-05-31 (P0 조치): Cron 실패 알림 코드 구현(`worker-backend/src/index.ts` `notifyOpsFailure` + 6개 cron catch, Discord/Slack webhook). PrivacyInfo 1st-party 정합성 정리(CrashData/Performance 선언 제거). iOS 빌드번호 160→161. Privacy 질문지 초안이 이미 존재함을 확인(stale 수정). worker typecheck 통과. ⚠️ Worker 배포는 비대화형 환경 인증 토큰 부재로 미실행 — 사용자 실행 필요.
 
@@ -86,7 +94,7 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 | 사업자등록 / 통신판매업신고 | 미진행                 | 🔴 P0 (수익화 시) | 유료 머천트 광고 게재는 통신판매업 해당 가능성. 법무 검토 후 신고               |
 | 세금계산서 / 부가세 처리    | 없음                   | 🟡 P1             | 10,000원 × 3개월 상품 → 부가세 포함 표기, 매출 집계 보고 흐름 정의              |
 | 머천트 환불 흐름            | 없음                   | 🟡 P1             | Toss `cancel` API + `local_events.status='refunded'` 추가, 관리자 화면에서 처리 |
-| 머천트 약관 동의 체크박스   | 미확인                 | 🟡 P1             | 결제 직전 약관/환불정책/3자 정보제공 동의 명시적 체크 (전상법)                  |
+| 머천트 약관 동의 체크박스   | 구현됨                 | 🟢 OK             | 해결됨(2026-07-25) — 이벤트 등록 결제 폼에 필수 체크박스, 이용약관·개인정보처리방침·환불정책 링크 포함, 미체크 시 서버에서 거부(`worker-backend/src/merchant/pages.ts:333-339`, `routes.ts:322`) |
 | 머천트 KYC                  | 없음                   | 🟠 P2             | 사기/대리등록 방지 위해 사업자번호 검증 (국세청 사업자상태 조회 API)            |
 | 앱 내 결제 유도 텍스트      | Settings → Safari 링크 | 🟢 OK             | Apple 3.1.3(b) B2B carve-out 유지. "앱 내에서 구매" 표현 금지 — 카피 검수 필요  |
 | 가격 정책 A/B               | 10,000원 / 3개월 고정  | 🟠 P2             | 카테고리·지역별 가격 차등 가능하도록 `event_prices` 테이블 도입 검토            |
@@ -100,8 +108,8 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 | 온보딩 첫 화면                    | 미확인(스플래시만)                                 | 🟡 P1    | "이벤트다가 뭘 보여주는 앱인지" 3-step 가벼운 온보딩 → 위치권한 요청 타이밍 분리                     |
 | 빈 상태(empty state) 카피         | 마스코트는 있음                                    | 🟡 P1    | "근처 이벤트가 없을 때 / 위치 권한 거부 시 / 네트워크 오류" 케이스별 일러스트+CTA                    |
 | 오프라인 / 약전계 동작            | 미확인                                             | 🟡 P1    | 마지막 응답 캐시 후 "오프라인 보기" 배너 표시. 현재 캐시는 서버단(6h)뿐                              |
-| 푸시 알림                         | 미설정                                             | 🟠 P2    | "근처 신규 축제" 알림(opt-in)이 retention 핵심. APNs + Worker scheduled push                         |
-| 즐겨찾기/북마크 동기화            | iCloud 미사용 추정                                 | 🟠 P2    | CloudKit 또는 서버 동기화로 기기변경 대응                                                            |
+| 푸시 알림                         | 로컬 구현됨(2026-07-25 확인) — `DiscoveryNotificationService`가 `BGAppRefreshTask`로 카테고리·지역·반경 조건에 맞는 신규 축제/로컬 이벤트를 로컬 알림으로 발송 | 🟢 v1    | 서버 APNs 실시간 푸시는 `docs/NEXT_STEPS.md` "알림 v1.1 후보" 백로그로 남아있음(앱 종료/백그라운드 킬 상태에서는 미동작) |
+| 즐겨찾기/북마크 동기화            | 구현됨(2026-07-25 확인) — `FestivalFavoritesStore`/`LocalEventFavoritesStore`, iCloud/CloudKit 미사용 확인(추정 아님) | 🟠 P2    | CloudKit 또는 서버 동기화로 기기변경 대응                                                            |
 | 위젯 / Live Activity              | Medium `UpcomingFestivalsWidget` 출시 (2026-05-26) | 🟢 v1    | 다가오는 축제 3개 카드. Small/Large/Lock Screen/StandBy 위젯은 v1.1 후보                             |
 | 다국어                            | 한국어 only                                        | 🟢 보류  | KR 한정이면 OK. 영어 추가 시 외국인 관광객 시장 확장 가능                                            |
 | 다크모드                          | 미확인                                             | 🟡 P1    | 마스코트/팔레트가 따뜻한 톤 — 다크에서 가독성 회귀 테스트 필요                                       |
@@ -120,7 +128,7 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 | 이벤트 사진 저작권         | 외부 URL 참조                   | 🟠 P2    | hotlink 끊김 대비 R2 캐싱 + 출처 표기. 공식 출처 외 이미지 사용 시 라이선스 검토                               |
 | 축제 종료/이전 데이터 정리 | `endDate < today` 필터          | 🟢 OK    | 정상                                                                                                           |
 | 로컬 이벤트 신뢰도         | 자동승인 점수 0.75              | 🟡 P1    | 사용자 신고 채널(`POST /api/local-events/report`)이 있긴 함 → 신고 누적 시 자동 강등 룰 추가                   |
-| 데이터 중복/충돌           | provider 간 dedupe 미확인       | 🟠 P2    | TourAPI 키워드/Area 두 source가 동일 contentId 다른 prefix로 중복 노출 가능성 — cross-provider dedupe key 정의 |
+| 데이터 중복/충돌           | 해결됨(2026-07-25) — `discoveryCache.ts`의 `dedupeFestivals`가 title+haversine 거리(≤1500m)+날짜range 겹침 기준으로 cross-provider 병합 (커밋 `499e401`, `33bd1d1`) | 🟢 OK    | 유지. 향후 로컬 이벤트에도 유사 cross-provider dedupe 필요성 발생 시 같은 패턴 적용 검토 |
 
 ---
 
@@ -158,10 +166,10 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 | 항목                          | 현재 상태                                                                  | 우선순위 | 권장 조치                                                                          |
 | ----------------------------- | -------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
 | iOS 단위 테스트               | `Tests/ParkingLotNavigatorTests.swift` 1개 추정                            | 🟡 P1    | ViewModel·APIClient·DeepLinkRouter 최소 테스트 추가. UI 자동화는 EarlGrey/Sauce 등 |
-| backend test coverage         | 43개 통과                                                                  | 🟢 OK    | 유지                                                                               |
-| pre-existing tsc 에러         | `tests/seoulProviderPagination.test.ts`, `tests/workerLocalEvents.test.ts` | 🟡 P1    | 알려진 부채 정리 — 무시 누적 시 회귀 감지력 떨어짐                                 |
-| CI 게이트                     | Codemagic 빌드 + GitHub Actions 추정                                       | 🟡 P1    | PR 시 `pnpm typecheck && test && preflight` + Worker dry-run 강제                  |
-| Codemagic 빌드 번호 자동 증가 | 수동 (`CURRENT_PROJECT_VERSION` 161)                                       | 🟠 P2    | `CI_BUILD_NUMBER` 또는 codemagic.yaml `agvtool` 자동                               |
+| backend test coverage         | 44개 통과 (2026-07-25 재확인, 이전 43개)                                   | 🟢 OK    | 유지                                                                               |
+| pre-existing tsc 에러         | `tests/seoulProviderPagination.test.ts`, `tests/workerLocalEvents.test.ts` | 🟡 P1    | 알려진 부채 정리 — 무시 누적 시 회귀 감지력 떨어짐. 2026-07-25 재확인해도 동일 2건 그대로 |
+| CI 게이트                     | `.github/workflows/deploy-worker.yml` 확인됨(2026-07-25) — master push 시 `tsc --noEmit`만 통과하면 즉시 `wrangler deploy`로 프로덕션 배포. `pnpm --filter @parking/backend test`/`preflight` 게이트 없음, PR 기반 게이팅도 없음 | 🟡 P1    | PR 시 `pnpm typecheck && test && preflight` + Worker dry-run을 배포 워크플로에 추가 강제 |
+| Codemagic 빌드 번호 자동 증가 | 수동 (`CURRENT_PROJECT_VERSION` 189, 2026-07-25 기준)                      | 🟠 P2    | `CI_BUILD_NUMBER` 또는 codemagic.yaml `agvtool` 자동                               |
 | Worker 환경 분리              | prod 단일                                                                  | 🟠 P2    | staging Worker + staging D1 분리. 머천트 결제·LLM head agent 회귀 테스트용         |
 | 의존성 보안 점검              | 없음                                                                       | 🟠 P2    | Dependabot/Renovate, `pnpm audit` CI 게이트                                        |
 | Feature Flag                  | 없음                                                                       | 🟠 P2    | "이벤트 100% 모드", "AgentOffice 노출" 등 토글. 단순 KV 1개로도 충분               |
@@ -186,7 +194,7 @@ P0 해결 후에는 운영 모니터링(Cron 실패 알림, D1 백업), 머천�
 
 ## 10. 즉시 차단 P0 5개 정리
 
-> 참고: 위 5개 외에도 6장의 **Cron 실패 알림 부재**와 **iOS 에러 트래킹 부재**가 실질적 🔴 차단 항목이다. 2026-05-31 재검사 기준 실제 미해결 P0는 크래시 트래킹·Cron 알림·스크린샷/Privacy 질문지이며, PrivacyInfo는 해결, 법무 페이지는 코드 완료(배포·ASC 입력 잔여)다.
+> 참고: 위 5개 외에도 6장의 **Cron 실패 알림 부재**와 **iOS 에러 트래킹 부재**가 실질적 🔴 차단 항목이다. 2026-05-31 재검사 기준 실제 미해결 P0는 크래시 트래킹·Cron 알림·스크린샷/Privacy 질문지이며, PrivacyInfo는 해결, 법무 페이지는 코드 완료(배포·ASC 입력 잔여)다. 2026-07-25 재검사(@5a73b9f)에서도 이 5개 항목의 미해결 상태는 코드/설정 근거로 재확인됨 — 구조 변화 없음.
 
 | #   | 항목                                         | 차단 사유                   | 1차 산출물                                                |
 | --- | -------------------------------------------- | --------------------------- | --------------------------------------------------------- |
@@ -219,7 +227,7 @@ T+0 ~ T+30 (라이브 운영)
 
 - 사용자 피드백 채널 노출 (Settings → 문의하기)
 - D1 일일 백업 cron, Logpush 구성
-- 머천트 환불 SOP 및 약관 동의 체크박스
+- 머천트 환불 SOP (약관 동의 체크박스는 2026-07-25 해결됨)
 - 분석(Analytics) SDK 도입 후 KPI 정의
 
 T+30 ~ T+90 (확장)
