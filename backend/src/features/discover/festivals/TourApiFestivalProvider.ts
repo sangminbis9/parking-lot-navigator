@@ -46,7 +46,7 @@ interface CachedTourFestival {
   description: string | null;
   startDate: string;
   endDate: string;
-  venueName: null;
+  venueName: string | null;
   address: string;
   lat: number;
   lng: number;
@@ -54,6 +54,13 @@ interface CachedTourFestival {
   imageUrls: string[];
   sourceUrl: string | null;
   tags: string[];
+  admissionFee: string | null;
+  discountInfo: string | null;
+  bookingInfo: string | null;
+  contactPhone: string | null;
+  ageLimit: string | null;
+  programInfo: string | null;
+  organizerName: string | null;
 }
 
 const TOUR_FESTIVAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -272,5 +279,12 @@ function normalizeTourFestival(
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),
+    admissionFee: null,
+    discountInfo: null,
+    bookingInfo: null,
+    contactPhone: null,
+    ageLimit: null,
+    programInfo: null,
+    organizerName: null,
   };
 }

@@ -517,7 +517,14 @@ private struct DiscoverTabItem: Identifiable {
                 price: nil,
                 region: nil,
                 updatedAt: nil,
-                tags: smartTags
+                tags: smartTags,
+                admissionFee: festival.admissionFee,
+                discountInfo: festival.discountInfo,
+                bookingInfo: festival.bookingInfo,
+                contactPhone: festival.contactPhone,
+                ageLimit: festival.ageLimit,
+                programInfo: festival.programInfo,
+                organizerName: festival.organizerName
             ),
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: festival.address),
@@ -572,7 +579,14 @@ private struct DiscoverTabItem: Identifiable {
                 price: event.benefit,
                 region: event.region,
                 updatedAt: event.updatedAt,
-                tags: smartTags
+                tags: smartTags,
+                admissionFee: nil,
+                discountInfo: nil,
+                bookingInfo: nil,
+                contactPhone: nil,
+                ageLimit: nil,
+                programInfo: nil,
+                organizerName: nil
             ),
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: event.address),

@@ -72,7 +72,14 @@ extension SavedFestival {
             price: nil,
             region: nil,
             updatedAt: nil,
-            tags: []
+            tags: [],
+            admissionFee: nil,
+            discountInfo: nil,
+            bookingInfo: nil,
+            contactPhone: nil,
+            ageLimit: nil,
+            programInfo: nil,
+            organizerName: nil
         )
     }
 }

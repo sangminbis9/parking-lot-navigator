@@ -72,6 +72,8 @@ interface CachedNationalFestival {
   sourceUrl: string | null;
   imageUrl: null;
   tags: string[];
+  contactPhone: string | null;
+  organizerName: string | null;
 }
 
 interface NormalizeResult {
@@ -304,6 +306,8 @@ async function normalizeNationalCultureFestival(
         clean(row.auspcInsttNm),
         clean(row.suprtInstt),
       ].filter((value): value is string => Boolean(value)),
+      contactPhone: clean(row.phoneNumber),
+      organizerName: clean(row.auspcInsttNm) ?? clean(row.mnnstNm),
     },
     dropReason: null,
   };

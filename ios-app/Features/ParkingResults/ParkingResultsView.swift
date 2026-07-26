@@ -349,6 +349,49 @@ private struct DiscoverDescriptionCard: View {
             }
             detailRow(label: "주소", value: presentation.address)
 
+            if let admissionFee = clean(presentation.admissionFee) {
+                detailRow(label: "이용요금", value: admissionFee)
+            }
+            if let discountInfo = clean(presentation.discountInfo) {
+                detailRow(label: "할인 정보", value: discountInfo)
+            }
+            if let bookingInfo = clean(presentation.bookingInfo) {
+                detailRow(label: "예매처", value: bookingInfo)
+            }
+            if let ageLimit = clean(presentation.ageLimit) {
+                detailRow(label: "관람 가능 연령", value: ageLimit)
+            }
+            if let programInfo = clean(presentation.programInfo) {
+                detailRow(label: "프로그램 상세", value: programInfo)
+            }
+            if let organizerName = clean(presentation.organizerName) {
+                detailRow(label: "주최·주관", value: organizerName)
+            }
+            if let contactPhone = clean(presentation.contactPhone) {
+                if let telUrl = URL(string: "tel:\(contactPhone.filter { $0.isNumber || $0 == "+" })") {
+                    Button {
+                        openURL(telUrl)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("문의 전화번호")
+                                    .font(.festival(.caption, weight: .semibold))
+                                    .foregroundStyle(FestivalDesign.secondaryText)
+                                Text(contactPhone)
+                                    .font(.festival(.subheadline, weight: .semibold))
+                                    .foregroundStyle(FestivalDesign.navy)
+                            }
+                            Spacer()
+                            Image(systemName: "phone.fill")
+                                .foregroundStyle(FestivalDesign.navy)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    detailRow(label: "문의 전화번호", value: contactPhone)
+                }
+            }
+
             if let price = clean(presentation.price) {
                 detailRow(label: "\u{AC00}\u{ACA9}", value: price)
             }

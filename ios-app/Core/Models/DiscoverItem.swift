@@ -41,11 +41,19 @@ struct Festival: Codable, Hashable, Identifiable {
     let tags: [String]
     let primaryCategory: FestivalPrimaryCategory?
     let categoryTags: [String]?
+    let admissionFee: String?
+    let discountInfo: String?
+    let bookingInfo: String?
+    let contactPhone: String?
+    let ageLimit: String?
+    let programInfo: String?
+    let organizerName: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, subtitle, description, startDate, endDate, status, venueName, address
         case lat, lng, distanceMeters, source, sourceUrl, imageUrl, imageUrls, tags
         case primaryCategory, categoryTags
+        case admissionFee, discountInfo, bookingInfo, contactPhone, ageLimit, programInfo, organizerName
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +81,13 @@ struct Festival: Codable, Hashable, Identifiable {
             primaryCategory = nil
         }
         categoryTags = try c.decodeIfPresent([String].self, forKey: .categoryTags)
+        admissionFee = try c.decodeIfPresent(String.self, forKey: .admissionFee)
+        discountInfo = try c.decodeIfPresent(String.self, forKey: .discountInfo)
+        bookingInfo = try c.decodeIfPresent(String.self, forKey: .bookingInfo)
+        contactPhone = try c.decodeIfPresent(String.self, forKey: .contactPhone)
+        ageLimit = try c.decodeIfPresent(String.self, forKey: .ageLimit)
+        programInfo = try c.decodeIfPresent(String.self, forKey: .programInfo)
+        organizerName = try c.decodeIfPresent(String.self, forKey: .organizerName)
     }
 
     init(
@@ -94,7 +109,14 @@ struct Festival: Codable, Hashable, Identifiable {
         imageUrls: [String] = [],
         tags: [String],
         primaryCategory: FestivalPrimaryCategory? = nil,
-        categoryTags: [String]? = nil
+        categoryTags: [String]? = nil,
+        admissionFee: String? = nil,
+        discountInfo: String? = nil,
+        bookingInfo: String? = nil,
+        contactPhone: String? = nil,
+        ageLimit: String? = nil,
+        programInfo: String? = nil,
+        organizerName: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -115,6 +137,13 @@ struct Festival: Codable, Hashable, Identifiable {
         self.tags = tags
         self.primaryCategory = primaryCategory
         self.categoryTags = categoryTags
+        self.admissionFee = admissionFee
+        self.discountInfo = discountInfo
+        self.bookingInfo = bookingInfo
+        self.contactPhone = contactPhone
+        self.ageLimit = ageLimit
+        self.programInfo = programInfo
+        self.organizerName = organizerName
     }
 }
 
@@ -294,6 +323,13 @@ struct DiscoverPresentation: Hashable {
     let region: String?
     let updatedAt: String?
     let tags: [String]
+    let admissionFee: String?
+    let discountInfo: String?
+    let bookingInfo: String?
+    let contactPhone: String?
+    let ageLimit: String?
+    let programInfo: String?
+    let organizerName: String?
 }
 
 extension Festival {
@@ -337,7 +373,14 @@ extension Festival {
             price: nil,
             region: nil,
             updatedAt: nil,
-            tags: discoverTags
+            tags: discoverTags,
+            admissionFee: admissionFee,
+            discountInfo: discountInfo,
+            bookingInfo: bookingInfo,
+            contactPhone: contactPhone,
+            ageLimit: ageLimit,
+            programInfo: programInfo,
+            organizerName: organizerName
         )
     }
 }
@@ -396,7 +439,14 @@ extension FreeEvent {
             price: benefit,
             region: region,
             updatedAt: updatedAt,
-            tags: discoverTags
+            tags: discoverTags,
+            admissionFee: nil,
+            discountInfo: nil,
+            bookingInfo: nil,
+            contactPhone: nil,
+            ageLimit: nil,
+            programInfo: nil,
+            organizerName: nil
         )
     }
 }

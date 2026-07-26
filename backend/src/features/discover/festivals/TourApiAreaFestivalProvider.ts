@@ -46,7 +46,7 @@ interface CachedAreaFestival {
   description: string | null;
   startDate: string;
   endDate: string;
-  venueName: null;
+  venueName: string | null;
   address: string;
   lat: number;
   lng: number;
@@ -54,6 +54,13 @@ interface CachedAreaFestival {
   imageUrls: string[];
   sourceUrl: string | null;
   tags: string[];
+  admissionFee: string | null;
+  discountInfo: string | null;
+  bookingInfo: string | null;
+  contactPhone: string | null;
+  ageLimit: string | null;
+  programInfo: string | null;
+  organizerName: string | null;
 }
 
 type ShapedAreaFestival = Omit<CachedAreaFestival, "startDate" | "endDate">;
@@ -305,6 +312,13 @@ function shapeAreaFestival(item: TourAreaItem): ShapedAreaFestival | null {
     tags: [item.cat1, item.cat2, item.cat3].filter((value): value is string =>
       Boolean(value),
     ),
+    admissionFee: null,
+    discountInfo: null,
+    bookingInfo: null,
+    contactPhone: null,
+    ageLimit: null,
+    programInfo: null,
+    organizerName: null,
   };
 }
 

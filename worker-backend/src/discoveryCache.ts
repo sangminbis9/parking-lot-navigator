@@ -689,6 +689,13 @@ function mapFestivalRow(
     primaryCategory:
       (row.primary_category as Festival["primaryCategory"]) ?? null,
     categoryTags: parseJsonArray<string>(row.category_tags_json),
+    admissionFee: textFromRaw(raw?.admissionFee),
+    discountInfo: textFromRaw(raw?.discountInfo),
+    bookingInfo: textFromRaw(raw?.bookingInfo),
+    contactPhone: textFromRaw(raw?.contactPhone),
+    ageLimit: textFromRaw(raw?.ageLimit),
+    programInfo: textFromRaw(raw?.programInfo),
+    organizerName: textFromRaw(raw?.organizerName),
   };
 }
 
@@ -716,6 +723,14 @@ function descriptionFromRaw(raw: Record<string, unknown> | null): string | null 
 function stringFromRaw(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const text = value.replace(/\s+/g, " ").trim();
+  return text.length > 0 ? text : null;
+}
+
+// Unlike stringFromRaw, keeps internal newlines intact since fields like
+// programInfo are pre-formatted multi-line text at write time.
+function textFromRaw(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
   return text.length > 0 ? text : null;
 }
 
