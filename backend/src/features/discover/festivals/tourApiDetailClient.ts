@@ -17,12 +17,32 @@ interface TourApiDetailImageItem {
 interface TourApiDetailIntroItem {
   eventstartdate?: string;
   eventenddate?: string;
+  eventplace?: string;
+  playtime?: string;
+  usetimefestival?: string;
+  discountinfofestival?: string;
+  bookingplace?: string;
+  agelimit?: string;
+  program?: string;
+  subevent?: string;
+  sponsor1?: string;
+  sponsor1tel?: string;
+  sponsor2?: string;
+  sponsor2tel?: string;
 }
 
 export interface TourApiDetail {
   description: string | null;
   sourceUrl: string | null;
   imageUrl: string | null;
+  venueName: string | null;
+  admissionFee: string | null;
+  discountInfo: string | null;
+  bookingInfo: string | null;
+  contactPhone: string | null;
+  ageLimit: string | null;
+  programInfo: string | null;
+  organizerName: string | null;
 }
 
 export interface TourApiEventDates {
@@ -46,6 +66,10 @@ let introOkCount = 0;
 export class TourApiDetailClient {
   private readonly cache = new Map<string, Promise<TourApiDetail>>();
   private readonly introCache = new Map<string, Promise<TourApiEventDates>>();
+  private readonly introItemCache = new Map<
+    string,
+    Promise<TourApiDetailIntroItem | null>
+  >();
 
   constructor(
     private readonly serviceKey: string,
@@ -62,8 +86,12 @@ export class TourApiDetailClient {
     }
     const cached = this.introCache.get(key);
     if (cached) return cached;
-    const promise = this.fetchIntro(key, signal)
-      .then((dates) => {
+    const promise = this.fetchIntroItemCached(key, signal)
+      .then((item) => {
+        const dates = {
+          startDate: clean(item?.eventstartdate),
+          endDate: clean(item?.eventenddate),
+        };
         if (dates.startDate && dates.endDate) {
           introOkCount += 1;
         } else {
@@ -88,13 +116,26 @@ export class TourApiDetailClient {
     return promise;
   }
 
-  private async fetchIntro(
+  // areaBasedList2/searchKeyword2/searchFestival2 list responses never
+  // include festival-specific fields (dates, venue, fee, booking, etc.);
+  // only detailIntro2 (contentTypeId=15, 축제/공연/행사) carries them. Shared
+  // via introItemCache so eventDates() and detail() never double-fetch the
+  // same contentId's detailIntro2 within a provider run.
+  private fetchIntroItemCached(
     contentId: string,
     signal?: AbortSignal,
-  ): Promise<TourApiEventDates> {
-    // areaBasedList2/searchKeyword2 list responses never include
-    // eventstartdate/eventenddate; only detailIntro2 (contentTypeId=15,
-    // 축제/공연/행사) carries them, so date resolution needs its own call.
+  ): Promise<TourApiDetailIntroItem | null> {
+    const cached = this.introItemCache.get(contentId);
+    if (cached) return cached;
+    const promise = this.fetchIntroItem(contentId, signal);
+    this.introItemCache.set(contentId, promise);
+    return promise;
+  }
+
+  private async fetchIntroItem(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<TourApiDetailIntroItem | null> {
     const url = new URL("/B551011/KorService2/detailIntro2", this.baseUrl);
     setBaseParams(url, this.serviceKey);
     url.searchParams.set("contentId", contentId);
@@ -103,29 +144,17 @@ export class TourApiDetailClient {
     url.searchParams.set("pageNo", "1");
 
     const body = await fetchTourJson(url, signal);
-    const item = extractFirstItem<TourApiDetailIntroItem>(body);
-    return {
-      startDate: clean(item?.eventstartdate),
-      endDate: clean(item?.eventenddate),
-    };
+    return extractFirstItem<TourApiDetailIntroItem>(body);
   }
 
   detail(contentId: string, signal?: AbortSignal): Promise<TourApiDetail> {
     const key = contentId.trim();
     if (!key) {
-      return Promise.resolve({
-        description: null,
-        sourceUrl: null,
-        imageUrl: null,
-      });
+      return Promise.resolve(emptyDetail());
     }
     const cached = this.cache.get(key);
     if (cached) return cached;
-    const promise = this.fetchDetail(key, signal).catch(() => ({
-      description: null,
-      sourceUrl: null,
-      imageUrl: null,
-    }));
+    const promise = this.fetchDetail(key, signal).catch(() => emptyDetail());
     this.cache.set(key, promise);
     return promise;
   }
@@ -134,14 +163,26 @@ export class TourApiDetailClient {
     contentId: string,
     signal?: AbortSignal,
   ): Promise<TourApiDetail> {
-    const [common, images] = await Promise.all([
+    const [common, images, intro] = await Promise.all([
       this.fetchCommon(contentId, signal),
       this.fetchImages(contentId, signal),
+      this.fetchIntroItemCached(contentId, signal).catch(() => null),
     ]);
     return {
       description: cleanHtml(common?.overview),
       sourceUrl: extractFirstUrl(common?.homepage),
       imageUrl: bestImage(images),
+      venueName: clean(intro?.eventplace),
+      admissionFee: cleanHtml(intro?.usetimefestival),
+      discountInfo: cleanHtml(intro?.discountinfofestival),
+      bookingInfo: cleanHtml(intro?.bookingplace),
+      contactPhone:
+        clean(common?.tel) ??
+        clean(intro?.sponsor1tel) ??
+        clean(intro?.sponsor2tel),
+      ageLimit: clean(intro?.agelimit),
+      programInfo: combineProgramInfo(intro),
+      organizerName: combineOrganizerName(intro),
     };
   }
 
@@ -203,6 +244,14 @@ export async function enrichTourApiItems<
     description?: string | null;
     sourceUrl?: string | null;
     imageUrl: string | null;
+    venueName?: string | null;
+    admissionFee?: string | null;
+    discountInfo?: string | null;
+    bookingInfo?: string | null;
+    contactPhone?: string | null;
+    ageLimit?: string | null;
+    programInfo?: string | null;
+    organizerName?: string | null;
   },
 >(
   items: T[],
@@ -215,7 +264,8 @@ export async function enrichTourApiItems<
       ? selectSoonest(items, maxItems)
       : null;
   return mapWithConcurrency(items, DETAIL_ENRICH_CONCURRENCY, async (item) => {
-    if (item.description && item.sourceUrl && item.imageUrl) return item;
+    if (item.description && item.sourceUrl && item.imageUrl && item.venueName)
+      return item;
     if (toEnrich && !toEnrich.has(item)) return item;
     const detail = await client.detail(item.contentId, signal);
     return {
@@ -223,8 +273,52 @@ export async function enrichTourApiItems<
       description: item.description ?? detail.description,
       sourceUrl: item.sourceUrl ?? detail.sourceUrl,
       imageUrl: item.imageUrl ?? detail.imageUrl,
+      venueName: item.venueName ?? detail.venueName,
+      admissionFee: item.admissionFee ?? detail.admissionFee,
+      discountInfo: item.discountInfo ?? detail.discountInfo,
+      bookingInfo: item.bookingInfo ?? detail.bookingInfo,
+      contactPhone: item.contactPhone ?? detail.contactPhone,
+      ageLimit: item.ageLimit ?? detail.ageLimit,
+      programInfo: item.programInfo ?? detail.programInfo,
+      organizerName: item.organizerName ?? detail.organizerName,
     };
   });
+}
+
+function emptyDetail(): TourApiDetail {
+  return {
+    description: null,
+    sourceUrl: null,
+    imageUrl: null,
+    venueName: null,
+    admissionFee: null,
+    discountInfo: null,
+    bookingInfo: null,
+    contactPhone: null,
+    ageLimit: null,
+    programInfo: null,
+    organizerName: null,
+  };
+}
+
+function combineProgramInfo(
+  intro: TourApiDetailIntroItem | null,
+): string | null {
+  const parts = [
+    clean(intro?.playtime) ? `공연시간: ${clean(intro?.playtime)}` : null,
+    cleanHtml(intro?.program) ? `프로그램: ${cleanHtml(intro?.program)}` : null,
+    cleanHtml(intro?.subevent) ? `부대행사: ${cleanHtml(intro?.subevent)}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function combineOrganizerName(
+  intro: TourApiDetailIntroItem | null,
+): string | null {
+  const sponsor1 = clean(intro?.sponsor1);
+  const sponsor2 = clean(intro?.sponsor2);
+  if (sponsor1 && sponsor2) return `주최: ${sponsor1} / 주관: ${sponsor2}`;
+  return sponsor1 ?? sponsor2 ?? null;
 }
 
 function selectSoonest<T extends { startDate: string }>(

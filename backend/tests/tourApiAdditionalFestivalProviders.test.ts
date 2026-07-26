@@ -133,6 +133,23 @@ describe("additional TourAPI festival providers", () => {
           }),
         );
       }
+      if (url.pathname.endsWith("/detailIntro2")) {
+        return Promise.resolve(
+          tourResponse({
+            eventplace: "서울광장",
+            usetimefestival: "무료",
+            discountinfofestival: "조기 예매 10% 할인",
+            bookingplace: "인터파크",
+            agelimit: "전연령",
+            playtime: "19:00~21:00",
+            program: "<p>개막식</p>",
+            subevent: "플리마켓",
+            sponsor1: "서울시",
+            sponsor1tel: "02-1234-5678",
+            sponsor2: "서울문화재단",
+          }),
+        );
+      }
       return Promise.resolve(tourResponse({}));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -155,6 +172,14 @@ describe("additional TourAPI festival providers", () => {
       description: "Official festival overview",
       sourceUrl: "https://example.com/detail",
       imageUrl: "https://example.com/detail.jpg",
+      venueName: "서울광장",
+      admissionFee: "무료",
+      discountInfo: "조기 예매 10% 할인",
+      bookingInfo: "인터파크",
+      ageLimit: "전연령",
+      contactPhone: "02-1234-5678",
+      programInfo: "공연시간: 19:00~21:00\n프로그램: 개막식\n부대행사: 플리마켓",
+      organizerName: "주최: 서울시 / 주관: 서울문화재단",
     });
     expect(
       fetchMock.mock.calls.some(
@@ -164,6 +189,11 @@ describe("additional TourAPI festival providers", () => {
     expect(
       fetchMock.mock.calls.some(
         ([input]) => new URL(String(input)).pathname === "/B551011/KorService2/detailImage2",
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => new URL(String(input)).pathname === "/B551011/KorService2/detailIntro2",
       ),
     ).toBe(true);
   });

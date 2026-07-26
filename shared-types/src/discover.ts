@@ -75,6 +75,13 @@ export interface Festival {
   tags: string[];
   primaryCategory?: FestivalPrimaryCategory | null;
   categoryTags?: string[];
+  admissionFee?: string | null;
+  discountInfo?: string | null;
+  bookingInfo?: string | null;
+  contactPhone?: string | null;
+  ageLimit?: string | null;
+  programInfo?: string | null;
+  organizerName?: string | null;
 }
 
 export interface FreeEvent {
