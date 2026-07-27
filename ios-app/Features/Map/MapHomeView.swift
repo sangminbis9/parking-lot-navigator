@@ -191,6 +191,8 @@ struct MapHomeView: View {
         items.append(contentsOf: parkingPins)
         if viewModel.showsRealtimeParkingLayer || viewModel.selectedDiscoverParkingContext {
             items.append(contentsOf: realtimeParkingPins)
+        } else if viewModel.showsFreeParkingLayer {
+            items.append(contentsOf: freeParkingPins)
         }
         items.append(contentsOf: discoverPins)
         return items
@@ -239,6 +241,32 @@ struct MapHomeView: View {
             group.enumerated().map { index, source in
                 MapPinItem(
                     id: "realtime-parking-\(source.parkingLot.id)",
+                    coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count),
+                    kind: .parking(source.parkingLot),
+                    parkingCongestionColored: true
+                )
+            }
+        }
+    }
+
+    private var freeParkingPins: [MapPinItem] {
+        let sources = viewModel.visibleFreeParkingLots.map { RealtimeParkingPinSource(parkingLot: $0) }
+        let groups = overlayGroups(sources)
+        if mapZoomLevel < overlayReleaseZoomLevel {
+            return groups.compactMap { group in
+                if let cluster = clusterPin(for: group, idPrefix: "free-parking-cluster", tint: FestivalDesign.uiParkingBlue, isParking: true) {
+                    return cluster
+                }
+                return group.first.map { source in
+                    MapPinItem(id: "free-parking-\(source.parkingLot.id)", coordinate: source.coordinate, kind: .parking(source.parkingLot), parkingCongestionColored: true)
+                }
+            }
+        }
+
+        return groups.flatMap { group in
+            group.enumerated().map { index, source in
+                MapPinItem(
+                    id: "free-parking-\(source.parkingLot.id)",
                     coordinate: overlayCoordinate(source.coordinate, index: index, count: group.count),
                     kind: .parking(source.parkingLot),
                     parkingCongestionColored: true
@@ -510,76 +538,95 @@ struct MapHomeView: View {
     }
 
     private var discoverLayerToggles: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                layerToggle(
-                    title: "\u{C8FC}\u{CC28}",
-                    systemImage: "parkingsign.circle.fill",
-                    tint: FestivalDesign.parkingBlue,
-                    isOn: viewModel.showsRealtimeParkingLayer
-                ) {
-                    Task {
-                        await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
-                        if viewModel.showsRealtimeParkingLayer {
-                            await viewModel.loadRealtimeParkingLayer()
+        VStack(alignment: .leading, spacing: 7) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    layerToggle(
+                        title: "\u{CD95}\u{C81C}",
+                        systemImage: "sparkles",
+                        tint: FestivalDesign.coral,
+                        isOn: viewModel.showsFestivalLayer
+                    ) {
+                        Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
+                    }
+                    layerToggle(
+                        title: "\u{C774}\u{BCA4}\u{D2B8}",
+                        systemImage: "tag.fill",
+                        tint: FestivalDesign.teal,
+                        isOn: viewModel.showsLocalEventLayer
+                    ) {
+                        Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
+                    }
+                    layerToggle(
+                        title: "공연",
+                        systemImage: "music.note",
+                        tint: FestivalPrimaryCategory.musicPerformance.tint,
+                        isOn: viewModel.showsPerformanceLayer
+                    ) {
+                        Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport) }
+                    }
+                    if viewModel.showsFestivalLayer {
+                        Button {
+                            presentingFestivalFilter = true
+                        } label: {
+                            Image(systemName: festivalFilterModel.filter.isEmpty
+                                  ? "slider.horizontal.3"
+                                  : "slider.horizontal.3")
+                                .font(.festival(.caption, weight: .bold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(festivalFilterModel.filter.isEmpty
+                                            ? FestivalDesign.surface.opacity(0.92)
+                                            : FestivalDesign.coral.opacity(0.15))
+                                .foregroundStyle(festivalFilterModel.filter.isEmpty
+                                                 ? FestivalDesign.secondaryText
+                                                 : FestivalDesign.coral)
+                                .clipShape(FestivalDesign.controlShape)
+                                .overlay(
+                                    FestivalDesign.controlShape
+                                        .stroke(festivalFilterModel.filter.isEmpty
+                                                ? FestivalDesign.creamDeep.opacity(0.45)
+                                                : FestivalDesign.coral.opacity(0.5), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("축제 필터")
+                    }
+                    if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.horizontal, 4)
+                    }
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    layerToggle(
+                        title: "\u{C8FC}\u{CC28}",
+                        systemImage: "parkingsign.circle.fill",
+                        tint: FestivalDesign.parkingBlue,
+                        isOn: viewModel.showsRealtimeParkingLayer
+                    ) {
+                        Task {
+                            await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
+                            if viewModel.showsRealtimeParkingLayer {
+                                await viewModel.loadRealtimeParkingLayer()
+                            }
                         }
                     }
-                }
-                layerToggle(
-                    title: "\u{CD95}\u{C81C}",
-                    systemImage: "sparkles",
-                    tint: FestivalDesign.coral,
-                    isOn: viewModel.showsFestivalLayer
-                ) {
-                    Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
-                }
-                layerToggle(
-                    title: "\u{C774}\u{BCA4}\u{D2B8}",
-                    systemImage: "tag.fill",
-                    tint: FestivalDesign.teal,
-                    isOn: viewModel.showsLocalEventLayer
-                ) {
-                    Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
-                }
-                layerToggle(
-                    title: "공연",
-                    systemImage: "music.note",
-                    tint: FestivalPrimaryCategory.musicPerformance.tint,
-                    isOn: viewModel.showsPerformanceLayer
-                ) {
-                    Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport) }
-                }
-                if viewModel.showsFestivalLayer {
-                    Button {
-                        presentingFestivalFilter = true
-                    } label: {
-                        Image(systemName: festivalFilterModel.filter.isEmpty
-                              ? "slider.horizontal.3"
-                              : "slider.horizontal.3")
-                            .font(.festival(.caption, weight: .bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(festivalFilterModel.filter.isEmpty
-                                        ? FestivalDesign.surface.opacity(0.92)
-                                        : FestivalDesign.coral.opacity(0.15))
-                            .foregroundStyle(festivalFilterModel.filter.isEmpty
-                                             ? FestivalDesign.secondaryText
-                                             : FestivalDesign.coral)
-                            .clipShape(FestivalDesign.controlShape)
-                            .overlay(
-                                FestivalDesign.controlShape
-                                    .stroke(festivalFilterModel.filter.isEmpty
-                                            ? FestivalDesign.creamDeep.opacity(0.45)
-                                            : FestivalDesign.coral.opacity(0.5), lineWidth: 1)
-                            )
+                    layerToggle(
+                        title: "무료 주차장",
+                        systemImage: "gift.fill",
+                        tint: FestivalDesign.lantern,
+                        isOn: viewModel.showsFreeParkingLayer
+                    ) {
+                        Task {
+                            await viewModel.setFreeParkingLayerVisible(!viewModel.showsFreeParkingLayer, center: mapCenter)
+                            if viewModel.showsFreeParkingLayer {
+                                await viewModel.loadRealtimeParkingLayer()
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("축제 필터")
-                }
-                if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(.horizontal, 4)
                 }
             }
         }
