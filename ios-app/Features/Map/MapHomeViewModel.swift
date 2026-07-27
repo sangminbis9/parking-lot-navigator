@@ -19,6 +19,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published var showsPerformanceLayer = true
     @Published var performances: [PerformanceItem] = []
     @Published var showsRealtimeParkingLayer = false
+    @Published var showsFreeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
     @Published var isSearching = false
     @Published var isLoadingParking = false
@@ -48,6 +49,10 @@ final class MapHomeViewModel: ObservableObject {
     var visibleRealtimeParkingLots: [ParkingLot] {
         let activeParkingIDs = Set(parkingLots.map(\.id))
         return realtimeParkingLots.filter { !activeParkingIDs.contains($0.id) }
+    }
+
+    var visibleFreeParkingLots: [ParkingLot] {
+        visibleRealtimeParkingLots.filter { $0.feeSummary == "무료" }
     }
 
     func search() async {
@@ -164,7 +169,7 @@ final class MapHomeViewModel: ObservableObject {
     func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
         showsRealtimeParkingLayer = isVisible
         if !isVisible {
-            if !selectedDiscoverParkingContext {
+            if !selectedDiscoverParkingContext && !showsFreeParkingLayer {
                 selectedParkingLot = nil
                 realtimeParkingLots = []
             }
@@ -172,8 +177,18 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
+    func setFreeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+        showsFreeParkingLayer = isVisible
+        if !isVisible {
+            if !selectedDiscoverParkingContext && !showsRealtimeParkingLayer {
+                realtimeParkingLots = []
+            }
+            return
+        }
+    }
+
     func loadRealtimeParkingLayer(force: Bool = false) async {
-        guard showsRealtimeParkingLayer || force else { return }
+        guard showsRealtimeParkingLayer || showsFreeParkingLayer || force else { return }
         isLoadingRealtimeParking = true
         errorMessage = nil
         do {
