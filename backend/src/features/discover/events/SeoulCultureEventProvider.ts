@@ -12,7 +12,7 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { seoulCultureMaxPages } from "./eventProviderConfig.js";
-import { EVENT_FEED_CACHE_TTL_MS } from "./eventProviderUtils.js";
+import { categoryFromText, EVENT_FEED_CACHE_TTL_MS } from "./eventProviderUtils.js";
 
 const SEOUL_CULTURE_PAGE_SIZE = 1000;
 const SEOUL_CULTURE_SUCCESS_CODES = new Set([
@@ -214,7 +214,7 @@ function normalizeSeoulEvent(
     lng,
     distanceMeters: distanceMeters(query.lat, query.lng, lat, lng),
     source: "seoul_open_data",
-    category: "culture",
+    category: categoryFromText(row.CODENAME),
     sourceId: hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`),
     sourceUrl: row.ORG_LINK ?? null,
     imageUrl: row.MAIN_IMG ?? null,
