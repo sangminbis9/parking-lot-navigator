@@ -524,7 +524,8 @@ private struct DiscoverTabItem: Identifiable {
                 contactPhone: festival.contactPhone,
                 ageLimit: festival.ageLimit,
                 programInfo: festival.programInfo,
-                organizerName: festival.organizerName
+                organizerName: festival.organizerName,
+                isFestivalSource: true
             ),
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: festival.address),
@@ -586,7 +587,8 @@ private struct DiscoverTabItem: Identifiable {
                 contactPhone: nil,
                 ageLimit: nil,
                 programInfo: nil,
-                organizerName: nil
+                organizerName: nil,
+                isFestivalSource: false
             ),
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: event.address),

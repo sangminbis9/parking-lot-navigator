@@ -330,6 +330,7 @@ struct DiscoverPresentation: Hashable {
     let ageLimit: String?
     let programInfo: String?
     let organizerName: String?
+    let isFestivalSource: Bool
 }
 
 extension Festival {
@@ -380,7 +381,8 @@ extension Festival {
             contactPhone: contactPhone,
             ageLimit: ageLimit,
             programInfo: programInfo,
-            organizerName: organizerName
+            organizerName: organizerName,
+            isFestivalSource: true
         )
     }
 }
@@ -446,7 +448,8 @@ extension FreeEvent {
             contactPhone: nil,
             ageLimit: nil,
             programInfo: nil,
-            organizerName: nil
+            organizerName: nil,
+            isFestivalSource: false
         )
     }
 }

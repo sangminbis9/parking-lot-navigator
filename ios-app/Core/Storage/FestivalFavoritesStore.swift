@@ -79,7 +79,8 @@ extension SavedFestival {
             contactPhone: nil,
             ageLimit: nil,
             programInfo: nil,
-            organizerName: nil
+            organizerName: nil,
+            isFestivalSource: true
         )
     }
 }
