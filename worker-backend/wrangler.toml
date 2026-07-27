@@ -48,7 +48,7 @@ TAGGING_RUN_MAX_ROWS = "200"
 TAGGING_CONCURRENCY = "2"
 
 [triggers]
-crons = ["* * * * *", "*/9 * * * *", "15 * * * *", "30 */3 * * *", "*/20 * * * *"]
+crons = ["*/3 * * * *", "*/9 * * * *", "15 * * * *", "30 */3 * * *", "*/20 * * * *"]
 
 [[d1_databases]]
 binding = "DB"

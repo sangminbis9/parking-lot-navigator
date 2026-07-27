@@ -931,7 +931,7 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     if (!env.DB) return;
-    if (controller.cron === "* * * * *") {
+    if (controller.cron === "*/3 * * * *") {
       ctx.waitUntil(syncRealtimeParkingScheduled(env));
       return;
     }
