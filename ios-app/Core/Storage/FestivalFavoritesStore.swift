@@ -41,6 +41,30 @@ struct SavedFestival: Codable, Hashable, Identifiable {
 }
 
 extension SavedFestival {
+    /// 캘린더 어젠다용 폴백 Festival. 현재 위치·필터 기준 근처 축제 목록에 없는 즐겨찾기도
+    /// 어젠다에 표시하기 위해, 캐시된 최소 필드만으로 구성한다(상세 필드는 정보 없음으로 표시됨).
+    var asFestival: Festival {
+        let today = String(Date().formatted(.iso8601.year().month().day()).prefix(10))
+        let status: DiscoverStatus = (startDate <= today && endDate >= today) ? .ongoing : .upcoming
+        return Festival(
+            id: id,
+            title: title,
+            subtitle: venueName,
+            startDate: startDate,
+            endDate: endDate,
+            status: status,
+            venueName: venueName,
+            address: address,
+            lat: lat,
+            lng: lng,
+            distanceMeters: 0,
+            source: source,
+            sourceUrl: nil,
+            imageUrl: nil,
+            tags: []
+        )
+    }
+
     /// 저장 목록에서 상세 화면으로 이동할 때 사용할 최소 Destination/Presentation.
     var destination: Destination {
         Destination(

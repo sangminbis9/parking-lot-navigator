@@ -297,8 +297,10 @@ struct CalendarTabView: View {
     // MARK: - Derived
 
     private var favoriteFestivalsByDay: [String: [Festival]] {
-        let savedIDs = Set(favoritesStore.saved.map(\.id))
-        let favorites = viewModel.allFestivals.filter { savedIDs.contains($0.id) }
+        // 현재 위치/필터 기준으로 불러온 근처 축제 목록(viewModel.allFestivals)에는
+        // 없는 즐겨찾기도 있을 수 있어(반경·조회 기간 밖 등), 캐시된 SavedFestival로 폴백한다.
+        let loadedByID = Dictionary(viewModel.allFestivals.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let favorites = favoritesStore.saved.map { loadedByID[$0.id] ?? $0.asFestival }
         var result: [String: [Festival]] = [:]
         for festival in favorites {
             guard let start = CalendarViewModel.dayFormatter.date(from: festival.startDate) else { continue }
