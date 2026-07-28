@@ -10,6 +10,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published var selectedDestination: Destination?
     @Published var parkingLots: [ParkingLot] = []
     @Published var realtimeParkingLots: [ParkingLot] = []
+    @Published var staticFreeParkingLots: [ParkingLot] = []
     @Published var festivals: [Festival] = []
     @Published var events: [FreeEvent] = []
     @Published var selectedParkingLot: ParkingLot?
@@ -52,7 +53,11 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     var visibleFreeParkingLots: [ParkingLot] {
-        visibleRealtimeParkingLots.filter { $0.feeSummary == "무료" }
+        let activeParkingIDs = Set(parkingLots.map(\.id))
+        let realtimeFree = realtimeParkingLots.filter { $0.feeSummary == "무료" }
+        var seenIDs = Set(realtimeFree.map(\.id))
+        let staticFree = staticFreeParkingLots.filter { seenIDs.insert($0.id).inserted }
+        return (realtimeFree + staticFree).filter { !activeParkingIDs.contains($0.id) }
     }
 
     func search() async {
@@ -183,6 +188,7 @@ final class MapHomeViewModel: ObservableObject {
             if !selectedDiscoverParkingContext && !showsRealtimeParkingLayer {
                 realtimeParkingLots = []
             }
+            staticFreeParkingLots = []
             return
         }
     }
@@ -201,6 +207,20 @@ final class MapHomeViewModel: ObservableObject {
             errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
         }
         isLoadingRealtimeParking = false
+    }
+
+    func loadStaticFreeParkingLots(viewport: MapViewport, force: Bool = false) async {
+        guard showsFreeParkingLayer || force else { return }
+        do {
+            let items = try await apiClient.nearbyParking(
+                lat: viewport.center.latitude,
+                lng: viewport.center.longitude,
+                radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
+            )
+            staticFreeParkingLots = items.filter { $0.feeSummary == "무료" }
+        } catch {
+            errorMessage = "\u{BB34}\u{B8CC} \u{C8FC}\u{CC28}\u{C7A5} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+        }
     }
 
     func loadInitialDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default) async {

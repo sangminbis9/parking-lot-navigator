@@ -602,7 +602,7 @@ struct MapHomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) {
                     layerToggle(
-                        title: "\u{C8FC}\u{CC28}",
+                        title: "실시간 주차",
                         systemImage: "parkingsign.circle.fill",
                         tint: FestivalDesign.parkingBlue,
                         isOn: viewModel.showsRealtimeParkingLayer
@@ -624,6 +624,7 @@ struct MapHomeView: View {
                             await viewModel.setFreeParkingLayerVisible(!viewModel.showsFreeParkingLayer, center: mapCenter)
                             if viewModel.showsFreeParkingLayer {
                                 await viewModel.loadRealtimeParkingLayer()
+                                await viewModel.loadStaticFreeParkingLots(viewport: mapViewport, force: true)
                             }
                         }
                     }
@@ -1262,13 +1263,20 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        guard viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer else { return }
+        let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
+        let freeParkingActive = viewModel.showsFreeParkingLayer
+        guard discoverLayersActive || freeParkingActive else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
         discoverRefreshTask = Task {
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
-            await viewModel.loadDiscoverLayers(viewport: viewport, filter: festivalFilterModel.filter)
+            if discoverLayersActive {
+                await viewModel.loadDiscoverLayers(viewport: viewport, filter: festivalFilterModel.filter)
+            }
+            if freeParkingActive {
+                await viewModel.loadStaticFreeParkingLots(viewport: viewport)
+            }
             await MainActor.run {
                 lastDiscoverRefreshViewport = viewport
             }
