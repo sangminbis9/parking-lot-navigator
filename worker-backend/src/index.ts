@@ -971,6 +971,11 @@ export default {
           currentLocalEventChunkIndex(scheduledAt, LOCAL_EVENT_CHUNK_COUNT),
         ),
       );
+      // 전용 cron 슬롯을 새로 쓰지 않고, 이 시간당 트리거에 UTC 4시 가드를 얹어
+      // 하루 1회 도시별 축제 스크래핑을 실행한다 (계정의 5개 cron trigger 한도 때문).
+      if (scheduledAt.getUTCHours() === 4) {
+        ctx.waitUntil(syncCityFestivalsScheduled(env));
+      }
       return;
     }
     if (controller.cron === "30 */3 * * *") {
@@ -979,10 +984,6 @@ export default {
     }
     if (controller.cron === "*/20 * * * *") {
       ctx.waitUntil(runTaggingScheduled(env));
-      return;
-    }
-    if (controller.cron === "0 4 * * *") {
-      ctx.waitUntil(syncCityFestivalsScheduled(env));
       return;
     }
   },
