@@ -1,6 +1,6 @@
 import type { Festival, ProviderHealth } from "@parking/shared-types";
 import { describe, expect, it } from "vitest";
-import { FestivalService } from "../src/features/discover/festivals/festivalService.js";
+import { FestivalService, createFestivalService } from "../src/features/discover/festivals/festivalService.js";
 import type {
   DiscoverQuery,
   FestivalProvider,
@@ -43,6 +43,49 @@ describe("FestivalService source priority", () => {
 
     expect(items).toHaveLength(1);
     expect(items[0].source).toBe("area-based-tour");
+  });
+
+  it("keeps keyword-tour over city-scraped when duplicate festivals arrive from both", async () => {
+    const service = new FestivalService([
+      providerForSource("city-scraped"),
+      providerForSource("keyword-tour"),
+    ]);
+
+    const items = await service.nearby({
+      lat: 37.1,
+      lng: 127.1,
+      radiusMeters: 12347,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].source).toBe("keyword-tour");
+  });
+
+  it("keeps area-based-tour over city-scraped when duplicate festivals arrive from both", async () => {
+    const service = new FestivalService([
+      providerForSource("city-scraped"),
+      providerForSource("area-based-tour"),
+    ]);
+
+    const items = await service.nearby({
+      lat: 37.1,
+      lng: 127.1,
+      radiusMeters: 12348,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].source).toBe("area-based-tour");
+  });
+});
+
+describe("createFestivalService extraProviders", () => {
+  it("includes extra providers passed in, regardless of which provider-mode branch runs", async () => {
+    const extra = providerForSource("city-scraped");
+    const service = createFestivalService([extra]);
+    const names = service.health().map((entry) => entry.name);
+    expect(names).toContain("city-scraped");
   });
 });
 
