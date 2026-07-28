@@ -55,12 +55,14 @@ export class FestivalService {
   }
 }
 
-export function createFestivalService(): FestivalService {
+export function createFestivalService(
+  extraProviders: FestivalProvider[] = [],
+): FestivalService {
   if (config.NODE_ENV === "test") {
-    return new FestivalService([new MockFestivalProvider()]);
+    return new FestivalService([new MockFestivalProvider(), ...extraProviders]);
   }
   if (!config.FESTIVAL_PROVIDER_ENABLED) {
-    return new FestivalService([]);
+    return new FestivalService([...extraProviders]);
   }
   const providers: FestivalProvider[] = [];
   if (config.PUBLIC_DATA_SERVICE_KEY) {
@@ -92,6 +94,7 @@ export function createFestivalService(): FestivalService {
   if (providers.length === 0 && config.PARKING_PROVIDER_MODE === "mock") {
     providers.push(new MockFestivalProvider());
   }
+  providers.push(...extraProviders);
   return new FestivalService(providers);
 }
 
@@ -121,6 +124,7 @@ function sourcePriority(source: string): number {
   if (source === "area-based-tour") return 2;
   if (source === "public-data-culture-festival") return 1;
   if (source === "keyword-tour") return 0;
+  if (source === "city-scraped") return -1;
   return 0;
 }
 

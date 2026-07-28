@@ -25,6 +25,8 @@ import {
   updateAdminLocalEvent,
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
+import { runCityFestivalDiscovery } from "./cityFestivalDiscovery.js";
+import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { runTagging } from "./llmTagging.js";
@@ -36,8 +38,9 @@ import {
   syncRealtimeParkingCache,
 } from "./realtimeParkingCache.js";
 import { queryStaticParkingCache } from "./staticParkingCache.js";
+import { createD1GeocodeStore } from "./geocodeStore.js";
 
-type Env = {
+export type Env = {
   DB?: D1Database;
   SYNC_ADMIN_TOKEN?: string;
   NODE_ENV: string;
@@ -54,6 +57,7 @@ type Env = {
   EVENT_PROVIDER_ENABLED: string;
   LOCAL_EVENT_PROVIDER_ENABLED: string;
   LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE: string;
+  CITY_FESTIVAL_AUTO_PUBLISH_MIN_SCORE?: string;
   LOCAL_EVENT_SEARCH_MAX_QUERIES: string;
   LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY: string;
   KAKAO_CATEGORY_RADIUS_METERS: string;
@@ -853,6 +857,20 @@ app.post("/admin/sync-local-events", async (c) => {
   }
 });
 
+app.post("/admin/sync-city-festivals", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  try {
+    const result = await runCityFestivalDiscovery(c.env.DB, c.env);
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/run-head-review", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -963,6 +981,10 @@ export default {
       ctx.waitUntil(runTaggingScheduled(env));
       return;
     }
+    if (controller.cron === "0 4 * * *") {
+      ctx.waitUntil(syncCityFestivalsScheduled(env));
+      return;
+    }
   },
 };
 
@@ -1071,7 +1093,9 @@ async function loadDiscoveryRuntime(env: Env): Promise<{
     if (env.DB) setGeocodeStore(createD1GeocodeStore(env.DB));
     else setGeocodeStore(null);
     return {
-      festivalService: createFestivalService(),
+      festivalService: createFestivalService(
+        env.DB ? [new CityScrapedFestivalProvider(env.DB)] : [],
+      ),
       eventService: createEventService(),
     };
   })();
@@ -1129,6 +1153,18 @@ async function syncLocalEventsScheduled(
   } catch (error) {
     console.error("local event discovery sync failed", error);
     await notifyOpsFailure(env, "local event discovery sync", error);
+  }
+}
+
+async function syncCityFestivalsScheduled(env: Env): Promise<void> {
+  try {
+    const result = await runCityFestivalDiscovery(env.DB!, env);
+    if (result.failedSites.length > 0) {
+      console.warn(`city festival discovery failedSites=${result.failedSites.join(",")}`);
+    }
+  } catch (error) {
+    console.error("city festival discovery sync failed", error);
+    await notifyOpsFailure(env, "city festival discovery sync", error);
   }
 }
 
@@ -1224,87 +1260,11 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     searchDestination,
     parkingProvider: createCompositeParkingProvider({ d1: env.DB }),
     realtimeParkingProvider: createRealtimeParkingProvider(),
-    festivalService: createFestivalService(),
+    festivalService: createFestivalService(
+      env.DB ? [new CityScrapedFestivalProvider(env.DB)] : [],
+    ),
     eventService: createEventService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository),
-  };
-}
-
-interface GeocodeCacheRow {
-  query: string;
-  found: number;
-  lat: number | null;
-  lng: number | null;
-  address: string | null;
-  venue: string | null;
-}
-
-interface D1GeocodeEntry {
-  found: boolean;
-  lat: number | null;
-  lng: number | null;
-  address: string | null;
-  venue: string | null;
-}
-
-function createD1GeocodeStore(db: D1Database): {
-  getMany(queries: string[]): Promise<Map<string, D1GeocodeEntry>>;
-  setMany(
-    entries: Array<{ query: string; entry: D1GeocodeEntry }>,
-  ): Promise<void>;
-} {
-  return {
-    async getMany(queries) {
-      const result = new Map<string, D1GeocodeEntry>();
-      if (queries.length === 0) return result;
-      const placeholders = queries.map(() => "?").join(",");
-      const rows = await db
-        .prepare(
-          `SELECT query, found, lat, lng, address, venue
-             FROM geocode_cache
-            WHERE query IN (${placeholders})`,
-        )
-        .bind(...queries)
-        .all<GeocodeCacheRow>();
-      for (const row of rows.results ?? []) {
-        result.set(row.query, {
-          found: Boolean(row.found),
-          lat: row.lat,
-          lng: row.lng,
-          address: row.address,
-          venue: row.venue,
-        });
-      }
-      return result;
-    },
-    async setMany(entries) {
-      if (entries.length === 0) return;
-      const cachedAt = new Date().toISOString();
-      const statements = entries.map(({ query, entry }) =>
-        db
-          .prepare(
-            `INSERT INTO geocode_cache (query, found, lat, lng, address, venue, cached_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(query) DO UPDATE SET
-               found = excluded.found,
-               lat = excluded.lat,
-               lng = excluded.lng,
-               address = excluded.address,
-               venue = excluded.venue,
-               cached_at = excluded.cached_at`,
-          )
-          .bind(
-            query,
-            entry.found ? 1 : 0,
-            entry.lat,
-            entry.lng,
-            entry.address,
-            entry.venue,
-            cachedAt,
-          ),
-      );
-      await db.batch(statements);
-    },
   };
 }
 
