@@ -4,6 +4,7 @@ import { rankParkingLots } from "../../backend/src/ranking/rankParking.js";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 
 const STATIC_PARKING_RESULT_LIMIT = 1000;
+const STATIC_PARKING_PREFETCH_LIMIT = 20000;
 
 interface StaticParkingRow {
   id: string;
@@ -43,9 +44,20 @@ export async function queryStaticParkingCache(
        FROM parking_lots
        WHERE lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
+       ORDER BY ((lat - ?) * (lat - ?) + (lng - ?) * (lng - ?)) ASC
        LIMIT ?`
     )
-    .bind(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, STATIC_PARKING_RESULT_LIMIT + 500)
+    .bind(
+      lat - latDelta,
+      lat + latDelta,
+      lng - lngDelta,
+      lng + lngDelta,
+      lat,
+      lat,
+      lng,
+      lng,
+      STATIC_PARKING_PREFETCH_LIMIT
+    )
     .all<StaticParkingRow>();
 
   const items = (rows.results ?? [])
