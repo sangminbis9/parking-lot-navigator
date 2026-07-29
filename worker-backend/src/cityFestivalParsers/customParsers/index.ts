@@ -2,6 +2,7 @@ import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
 import { parseTongyeongUtour } from "./tongyeongUtour.js";
 import { parseJeongseonArirang } from "./jeongseonArirang.js";
 import { parseChungnamTour } from "./chungnamTour.js";
+import { parseChungbukTour } from "./chungbukTour.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -10,5 +11,6 @@ export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFe
 export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "tongyeong-utour": parseTongyeongUtour,
   "jeongseon-arirang": parseJeongseonArirang,
-  "chungnam-tour": parseChungnamTour
+  "chungnam-tour": parseChungnamTour,
+  "chungbuk-tour": parseChungbukTour
 };
