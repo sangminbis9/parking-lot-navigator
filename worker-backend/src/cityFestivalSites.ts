@@ -106,5 +106,32 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: entry.lng,
     robotsCheckedAt: "2026-07-29",
     customParser: "chungnam-tour"
+  })),
+  // wave 3: 충청북도 11개 시/군. tour.chungbuk.go.kr의 "연간축제일정"
+  // 게시판 표 하나에 11개 시/군이 모두 함께 노출되고(searchCtgry 파라미터는
+  // 응답에 영향을 주지 않아 붙이지 않음 — 2026-07-29 실측), 표의
+  // 기초자치단체명 컬럼으로 시/군을 가른다. 마크업이 동일하므로
+  // chungbuk-tour custom parser 하나를 공유한다.
+  // robots.txt는 404(제한 선언 없음)로 확인했다. 2026-07-29 실측.
+  ...[
+    { siteId: "chungbuk-tour-cheongju", cityName: "청주시", lat: 36.6424, lng: 127.489 },
+    { siteId: "chungbuk-tour-chungju", cityName: "충주시", lat: 36.991, lng: 127.9259 },
+    { siteId: "chungbuk-tour-jecheon", cityName: "제천시", lat: 37.1326, lng: 128.191 },
+    { siteId: "chungbuk-tour-boeun", cityName: "보은군", lat: 36.4894, lng: 127.7295 },
+    { siteId: "chungbuk-tour-okcheon", cityName: "옥천군", lat: 36.3062, lng: 127.5713 },
+    { siteId: "chungbuk-tour-yeongdong", cityName: "영동군", lat: 36.175, lng: 127.7764 },
+    { siteId: "chungbuk-tour-jeungpyeong", cityName: "증평군", lat: 36.7852, lng: 127.5811 },
+    { siteId: "chungbuk-tour-jincheon", cityName: "진천군", lat: 36.8551, lng: 127.4355 },
+    { siteId: "chungbuk-tour-goesan", cityName: "괴산군", lat: 36.8154, lng: 127.7872 },
+    { siteId: "chungbuk-tour-eumseong", cityName: "음성군", lat: 36.9401, lng: 127.6902 },
+    { siteId: "chungbuk-tour-danyang", cityName: "단양군", lat: 36.9845, lng: 128.3656 }
+  ].map<CitySiteConfig>((entry) => ({
+    siteId: entry.siteId,
+    cityName: entry.cityName,
+    listUrl: "https://tour.chungbuk.go.kr/www/selectBbsNttList.do?bbsNo=10&key=80",
+    fallbackLat: entry.lat,
+    fallbackLng: entry.lng,
+    robotsCheckedAt: "2026-07-29",
+    customParser: "chungbuk-tour"
   }))
 ];
