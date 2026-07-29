@@ -44,10 +44,11 @@ export async function runCityFestivalDiscovery(
   let published = 0;
   const failedSites: string[] = [];
   const statements: D1PreparedStatement[] = [];
+  const htmlCache = new Map<string, { html: string } | { error: Error }>();
 
   for (const site of sites) {
     try {
-      const candidates = await discoverSite(site);
+      const candidates = await discoverSite(site, htmlCache);
       processed += candidates.length;
       await resolver.warmup(
         candidates
@@ -85,16 +86,36 @@ export async function runCityFestivalDiscovery(
   return { processed, published, failedSites };
 }
 
-async function discoverSite(site: CitySiteConfig): Promise<RawCityFestivalCandidate[]> {
-  const response = await fetchWithTimeout(
-    new URL(site.listUrl),
-    { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
-    CITY_FESTIVAL_FETCH_TIMEOUT_MS
-  );
-  if (!response.ok) {
-    throw new Error(`city festival site fetch failed: ${response.status}`);
+// 여러 site config가 같은 listUrl을 공유하는 경우(예: 충북 11개 시/군이 표
+// 하나를 함께 씀) fetch를 중복하지 않도록 이번 discovery 실행 동안만 유효한
+// listUrl 기준 캐시를 쓴다. Cloudflare Workers는 한 번의 invocation에서 보낼
+// 수 있는 subrequest 개수에 한도가 있어, 같은 URL을 site 개수만큼 반복
+// fetch하면 뒤에 처리되는 사이트들이 그 한도에 걸려 실패한다.
+async function discoverSite(
+  site: CitySiteConfig,
+  htmlCache: Map<string, { html: string } | { error: Error }>
+): Promise<RawCityFestivalCandidate[]> {
+  let entry = htmlCache.get(site.listUrl);
+  if (!entry) {
+    try {
+      const response = await fetchWithTimeout(
+        new URL(site.listUrl),
+        { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
+        CITY_FESTIVAL_FETCH_TIMEOUT_MS
+      );
+      if (!response.ok) {
+        throw new Error(`city festival site fetch failed: ${response.status}`);
+      }
+      entry = { html: await response.text() };
+    } catch (error) {
+      entry = { error: error instanceof Error ? error : new Error(String(error)) };
+    }
+    htmlCache.set(site.listUrl, entry);
   }
-  const html = await response.text();
+  if ("error" in entry) {
+    throw entry.error;
+  }
+  const html = entry.html;
 
   if (site.customParser) {
     const parser = CUSTOM_PARSERS[site.customParser];

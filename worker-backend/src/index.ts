@@ -257,6 +257,10 @@ const localEventDiscoverySyncSchema = z.object({
   chunkCount: z.coerce.number().int().min(1).max(64).optional(),
 });
 
+const cityFestivalDiscoverySyncSchema = z.object({
+  chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
+});
+
 const LOCAL_EVENT_CHUNK_COUNT = 12;
 
 const syncNationalParkingSchema = z.object({
@@ -870,8 +874,16 @@ app.post("/admin/sync-city-festivals", async (c) => {
   if (!c.env.DB) {
     return c.json({ error: "d1_not_configured" }, 503);
   }
+  // 등록된 사이트 전체를 한 번에 처리하면 Cloudflare Workers의 invocation당
+  // subrequest 한도를 넘어설 수 있어(사이트 fetch + Kakao geocoding 합산),
+  // scheduled() 핸들러(syncCityFestivalsScheduled)와 동일하게 기본은 "오늘의
+  // 청크"만 처리한다. chunkIndex를 명시하면 그 청크를 강제로 처리한다.
+  const query = cityFestivalDiscoverySyncSchema.parse(queryObject(c.req.raw.url));
+  const chunkIndex =
+    query.chunkIndex ?? currentCityFestivalChunkIndex(new Date(), CITY_FESTIVAL_SITES.length);
+  const sites = sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE);
   try {
-    const result = await runCityFestivalDiscovery(c.env.DB, c.env);
+    const result = await runCityFestivalDiscovery(c.env.DB, c.env, sites);
     return c.json(result);
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
