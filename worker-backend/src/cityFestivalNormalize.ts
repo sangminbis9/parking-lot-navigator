@@ -1,4 +1,4 @@
-import { getGeocodeStore } from "../../backend/src/features/discover/events/eventProviderUtils.js";
+import type { EventCoordinateResolver } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "./cityFestivalParsers/types.js";
 
 export interface NormalizedCityFestival {
@@ -53,31 +53,34 @@ export function parseCityDateRange(
 }
 
 async function resolveCoordinates(
-  addressRaw: string | null,
-  fallbackLat: number,
-  fallbackLng: number
+  input: { title: string; venueRaw: string | null; addressRaw: string | null },
+  config: CitySiteConfig,
+  resolver: EventCoordinateResolver | null
 ): Promise<{ lat: number; lng: number }> {
-  const query = addressRaw?.trim();
-  if (!query) return { lat: fallbackLat, lng: fallbackLng };
-
-  const store = getGeocodeStore();
-  if (!store) return { lat: fallbackLat, lng: fallbackLng };
+  const address = input.addressRaw?.trim();
+  const venue = input.venueRaw?.trim();
+  if ((!address && !venue) || !resolver) {
+    return { lat: config.fallbackLat, lng: config.fallbackLng };
+  }
 
   try {
-    const entries = await store.getMany([query]);
-    const entry = entries.get(query);
-    if (entry?.found && entry.lat !== null && entry.lng !== null) {
-      return { lat: entry.lat, lng: entry.lng };
-    }
+    const resolved = await resolver.resolve({
+      title: input.title,
+      venue: venue ?? null,
+      address: address ?? null,
+      region: config.cityName
+    });
+    if (resolved) return { lat: resolved.lat, lng: resolved.lng };
   } catch {
-    // best-effort: geocode 캐시 조회 실패는 fallback 좌표로 무시한다
+    // best-effort: geocoding 실패는 fallback 좌표로 무시한다
   }
-  return { lat: fallbackLat, lng: fallbackLng };
+  return { lat: config.fallbackLat, lng: config.fallbackLng };
 }
 
 export async function normalizeCandidate(
   candidate: RawCityFestivalCandidate,
-  config: CitySiteConfig
+  config: CitySiteConfig,
+  resolver: EventCoordinateResolver | null = null
 ): Promise<NormalizedCityFestival | null> {
   const title = candidate.title?.trim();
   if (!title) return null;
@@ -86,9 +89,9 @@ export async function normalizeCandidate(
   if (!dateRange) return null;
 
   const { lat, lng } = await resolveCoordinates(
-    candidate.addressRaw,
-    config.fallbackLat,
-    config.fallbackLng
+    { title, venueRaw: candidate.venueRaw, addressRaw: candidate.addressRaw },
+    config,
+    resolver
   );
 
   const detailUrl = candidate.detailUrl?.trim() || null;

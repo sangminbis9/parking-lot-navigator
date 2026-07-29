@@ -61,4 +61,44 @@ describe("parseDeclarative", () => {
     expect(result[0].detailUrl).toBeNull();
     expect(result[0].imageUrl).toBeNull();
   });
+
+  it("extracts venueRaw and addressRaw when venueSelector/addressSelector are configured", () => {
+    const configWithAddress: CitySiteConfig = {
+      ...tableConfig,
+      selectors: {
+        ...tableConfig.selectors!,
+        venueSelector: "td.venue",
+        addressSelector: "td.address"
+      }
+    };
+    const html = `
+      <table><tbody>
+        <tr class="row">
+          <td class="title"><a href="/detail/1">가을 단풍 축제</a></td>
+          <td class="date">2026.10.01 ~ 2026.10.03</td>
+          <td class="venue">시민공원</td>
+          <td class="address">테스트시 테스트로 1</td>
+        </tr>
+      </tbody></table>
+    `;
+
+    const result = parseDeclarative(html, configWithAddress);
+
+    expect(result[0].venueRaw).toBe("시민공원");
+    expect(result[0].addressRaw).toBe("테스트시 테스트로 1");
+  });
+
+  it("leaves venueRaw/addressRaw null when venueSelector/addressSelector are not configured", () => {
+    const html = `
+      <table><tbody>
+        <tr class="row">
+          <td class="title"><a href="/detail/1">가을 단풍 축제</a></td>
+          <td class="date">2026.10.01 ~ 2026.10.03</td>
+        </tr>
+      </tbody></table>
+    `;
+    const result = parseDeclarative(html, tableConfig);
+    expect(result[0].venueRaw).toBeNull();
+    expect(result[0].addressRaw).toBeNull();
+  });
 });
