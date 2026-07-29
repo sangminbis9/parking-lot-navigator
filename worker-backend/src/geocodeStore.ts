@@ -15,6 +15,9 @@ export interface D1GeocodeEntry {
   venue: string | null;
 }
 
+// D1's bound-parameter limit is 100 per query; stay comfortably under it.
+const GET_MANY_BATCH_SIZE = 90;
+
 export function createD1GeocodeStore(db: D1Database): {
   getMany(queries: string[]): Promise<Map<string, D1GeocodeEntry>>;
   setMany(entries: Array<{ query: string; entry: D1GeocodeEntry }>): Promise<void>;
@@ -23,23 +26,26 @@ export function createD1GeocodeStore(db: D1Database): {
     async getMany(queries) {
       const result = new Map<string, D1GeocodeEntry>();
       if (queries.length === 0) return result;
-      const placeholders = queries.map(() => "?").join(",");
-      const rows = await db
-        .prepare(
-          `SELECT query, found, lat, lng, address, venue
-             FROM geocode_cache
-            WHERE query IN (${placeholders})`
-        )
-        .bind(...queries)
-        .all<GeocodeCacheRow>();
-      for (const row of rows.results ?? []) {
-        result.set(row.query, {
-          found: Boolean(row.found),
-          lat: row.lat,
-          lng: row.lng,
-          address: row.address,
-          venue: row.venue
-        });
+      for (let start = 0; start < queries.length; start += GET_MANY_BATCH_SIZE) {
+        const batch = queries.slice(start, start + GET_MANY_BATCH_SIZE);
+        const placeholders = batch.map(() => "?").join(",");
+        const rows = await db
+          .prepare(
+            `SELECT query, found, lat, lng, address, venue
+               FROM geocode_cache
+              WHERE query IN (${placeholders})`
+          )
+          .bind(...batch)
+          .all<GeocodeCacheRow>();
+        for (const row of rows.results ?? []) {
+          result.set(row.query, {
+            found: Boolean(row.found),
+            lat: row.lat,
+            lng: row.lng,
+            address: row.address,
+            venue: row.venue
+          });
+        }
       }
       return result;
     },

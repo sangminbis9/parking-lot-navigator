@@ -26,6 +26,12 @@ import {
 } from "./localEvents.js";
 import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import { runCityFestivalDiscovery } from "./cityFestivalDiscovery.js";
+import { CITY_FESTIVAL_SITES } from "./cityFestivalSites.js";
+import {
+  currentCityFestivalChunkIndex,
+  sitesForChunk,
+  CITY_FESTIVAL_CHUNK_SIZE
+} from "./cityFestivalSchedule.js";
 import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
@@ -58,6 +64,7 @@ export type Env = {
   LOCAL_EVENT_PROVIDER_ENABLED: string;
   LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE: string;
   CITY_FESTIVAL_AUTO_PUBLISH_MIN_SCORE?: string;
+  CITY_FESTIVAL_GEOCODE_MISS_BUDGET?: string;
   LOCAL_EVENT_SEARCH_MAX_QUERIES: string;
   LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY: string;
   KAKAO_CATEGORY_RADIUS_METERS: string;
@@ -974,7 +981,7 @@ export default {
       // 전용 cron 슬롯을 새로 쓰지 않고, 이 시간당 트리거에 UTC 4시 가드를 얹어
       // 하루 1회 도시별 축제 스크래핑을 실행한다 (계정의 5개 cron trigger 한도 때문).
       if (scheduledAt.getUTCHours() === 4) {
-        ctx.waitUntil(syncCityFestivalsScheduled(env));
+        ctx.waitUntil(syncCityFestivalsScheduled(env, scheduledAt));
       }
       return;
     }
@@ -1157,9 +1164,11 @@ async function syncLocalEventsScheduled(
   }
 }
 
-async function syncCityFestivalsScheduled(env: Env): Promise<void> {
+async function syncCityFestivalsScheduled(env: Env, scheduledAt: Date): Promise<void> {
   try {
-    const result = await runCityFestivalDiscovery(env.DB!, env);
+    const chunkIndex = currentCityFestivalChunkIndex(scheduledAt, CITY_FESTIVAL_SITES.length);
+    const sites = sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE);
+    const result = await runCityFestivalDiscovery(env.DB!, env, sites);
     if (result.failedSites.length > 0) {
       console.warn(`city festival discovery failedSites=${result.failedSites.join(",")}`);
     }

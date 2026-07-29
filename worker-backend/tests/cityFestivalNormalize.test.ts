@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { setGeocodeStore } from "../../backend/src/features/discover/events/eventProviderUtils.js";
-import type { GeocodeStore, GeocodeStoreEntry } from "../../backend/src/features/discover/events/eventProviderUtils.js";
+import { describe, expect, it } from "vitest";
+import type { EventCoordinateResolver } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { normalizeCandidate, parseCityDateRange } from "../src/cityFestivalNormalize.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "../src/cityFestivalParsers/types.js";
 
@@ -12,10 +11,6 @@ const config: CitySiteConfig = {
   fallbackLng: 127.0,
   robotsCheckedAt: "2026-07-28"
 };
-
-afterEach(() => {
-  setGeocodeStore(null);
-});
 
 describe("parseCityDateRange", () => {
   it("extracts a start/end pair from a single combined range string", () => {
@@ -61,7 +56,7 @@ describe("normalizeCandidate", () => {
     expect(result).toBeNull();
   });
 
-  it("falls back to config coordinates when there is no address", async () => {
+  it("falls back to config coordinates when there is no address or venue", async () => {
     const result = await normalizeCandidate(baseCandidate, config);
     expect(result).toEqual({
       siteId: "test-city",
@@ -78,39 +73,48 @@ describe("normalizeCandidate", () => {
     });
   });
 
-  it("uses the geocode cache when an address is present and a cached entry is found", async () => {
-    const fakeStore: GeocodeStore = {
-      async getMany(queries: string[]) {
-        const map = new Map<string, GeocodeStoreEntry>();
-        for (const query of queries) {
-          map.set(query, { found: true, lat: 36.1, lng: 128.4, address: query, venue: null });
-        }
-        return map;
-      },
-      async setMany() {}
-    };
-    setGeocodeStore(fakeStore);
-
+  it("falls back to config coordinates when there is an address but no resolver is given", async () => {
     const result = await normalizeCandidate(
       { ...baseCandidate, addressRaw: "테스트시 테스트로 1" },
       config
+    );
+    expect(result?.lat).toBe(37.5);
+    expect(result?.lng).toBe(127.0);
+  });
+
+  it("uses the resolver's coordinates when an address is present and the resolver finds a match", async () => {
+    const fakeResolver: EventCoordinateResolver = {
+      async resolve(input) {
+        expect(input).toEqual({
+          title: "가을 단풍 축제",
+          venue: null,
+          address: "테스트시 테스트로 1",
+          region: "테스트시"
+        });
+        return { lat: 36.1, lng: 128.4, address: input.address ?? null, venue: null };
+      }
+    };
+
+    const result = await normalizeCandidate(
+      { ...baseCandidate, addressRaw: "테스트시 테스트로 1" },
+      config,
+      fakeResolver
     );
     expect(result?.lat).toBe(36.1);
     expect(result?.lng).toBe(128.4);
   });
 
-  it("falls back to config coordinates when the address has no cached geocode entry", async () => {
-    const fakeStore: GeocodeStore = {
-      async getMany() {
-        return new Map();
-      },
-      async setMany() {}
+  it("falls back to config coordinates when the resolver cannot find a match", async () => {
+    const fakeResolver: EventCoordinateResolver = {
+      async resolve() {
+        return null;
+      }
     };
-    setGeocodeStore(fakeStore);
 
     const result = await normalizeCandidate(
       { ...baseCandidate, addressRaw: "미등록 주소" },
-      config
+      config,
+      fakeResolver
     );
     expect(result?.lat).toBe(37.5);
     expect(result?.lng).toBe(127.0);

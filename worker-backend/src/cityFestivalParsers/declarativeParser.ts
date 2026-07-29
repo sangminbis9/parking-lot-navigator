@@ -6,8 +6,15 @@ export function parseDeclarative(
   config: CitySiteConfig
 ): RawCityFestivalCandidate[] {
   if (!config.selectors) return [];
-  const { itemSelector, titleSelector, dateSelector, linkSelector, imageSelector } =
-    config.selectors;
+  const {
+    itemSelector,
+    titleSelector,
+    dateSelector,
+    linkSelector,
+    imageSelector,
+    venueSelector,
+    addressSelector
+  } = config.selectors;
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
 
@@ -21,13 +28,19 @@ export function parseDeclarative(
       ? (item.find(imageSelector).first().attr("src") ?? null)
       : null;
     const imageUrl = resolveUrl(imageSrc, config.listUrl);
+    const venueRaw = venueSelector
+      ? item.find(venueSelector).first().text().trim() || null
+      : null;
+    const addressRaw = addressSelector
+      ? item.find(addressSelector).first().text().trim() || null
+      : null;
 
     results.push({
       title,
       startDateRaw: dateText,
       endDateRaw: dateText,
-      venueRaw: null,
-      addressRaw: null,
+      venueRaw,
+      addressRaw,
       detailUrl,
       imageUrl
     });

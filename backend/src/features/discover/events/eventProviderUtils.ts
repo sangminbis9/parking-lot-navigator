@@ -1,5 +1,4 @@
 import type { EventCategory, FreeEvent } from "@parking/shared-types";
-import type { AppConfig } from "../../../config/env.js";
 import { logger } from "../../../logging/logger.js";
 import { distanceMeters } from "../../../services/geo.js";
 import {
@@ -107,6 +106,12 @@ type ResolvedCoordinate = {
   venue: string | null;
 } | null;
 
+export interface KakaoResolverConfig {
+  KAKAO_REST_API_KEY?: string;
+  PARKING_PROVIDER_MODE: "mock" | "real" | "hybrid";
+  KAKAO_LOCAL_BASE_URL: string;
+}
+
 export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
   private cache = new Map<string, Promise<ResolvedCoordinate>>();
   private pendingWrites = new Map<string, GeocodeStoreEntry>();
@@ -114,7 +119,7 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
   private missCount = 0;
 
   constructor(
-    private readonly config: AppConfig,
+    private readonly config: KakaoResolverConfig,
     options: { missBudget?: number } = {},
   ) {
     this.missBudget = options.missBudget ?? Number.POSITIVE_INFINITY;

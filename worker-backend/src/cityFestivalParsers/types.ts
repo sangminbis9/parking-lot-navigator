@@ -21,6 +21,8 @@ export interface CitySiteConfig {
     dateSelector: string;
     linkSelector: string;
     imageSelector?: string;
+    venueSelector?: string;
+    addressSelector?: string;
   };
   customParser?: string;
 }
