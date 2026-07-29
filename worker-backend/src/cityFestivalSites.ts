@@ -193,30 +193,11 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     robotsCheckedAt: "2026-07-29",
     customParser: entry.customParser
   })),
-  // 김천(gc.go.kr)은 목록이 date=YYYY-MM-DD 쿼리 파라미터로 월 단위
-  // 페이지네이션되고, CitySiteConfig는 정적 문자열이라 "오늘"을 계산해
-  // 넣을 방법이 없다. date 파라미터를 아예 생략하면 서버가 요청 시점의
-  // "이번 달"로 기본 동작하므로(2026-07-29 실측: date 없이 요청하면
-  // "진행중인 행사가 없습니다" — 당시 7월에 행사가 없었을 뿐, date=2026-10-01로
-  // 요청하면 같은 셀렉터로 정상 노출됨을 확인), 다른 게시판형 파일럿
-  // 사이트처럼 "그 시점에 걸린 것만" 최선형으로 수집하는 쪽을 택했다.
-  // 페이지가 PC/모바일용으로 같은 dl을 두 번 렌더링하지만, 제목+시작일이
-  // 같으면 같은 city_festival id로 upsert되므로 중복 행은 생기지 않는다.
-  {
-    siteId: "gimcheon-culture",
-    cityName: "김천시",
-    listUrl: "https://www.gc.go.kr/culture/cultureList.do?mId=0205000000",
-    fallbackLat: 36.1398,
-    fallbackLng: 128.1135,
-    robotsCheckedAt: "2026-07-29",
-    selectors: {
-      itemSelector: "div.list dl",
-      titleSelector: "dd p.title",
-      dateSelector: "dd > ul > li:first-child",
-      linkSelector: "dt a",
-      imageSelector: "dt img"
-    }
-  },
+  // 김천(gc.go.kr)은 샌드박스 curl에서는 200으로 정상 응답하지만, 실제 배포
+  // 후 Workers egress IP에서는 동일 URL이 404로 차단된다(2026-07-29
+  // wrangler tail로 확인: "city festival site fetch failed: 404"). 이전에
+  // tour.gb.go.kr/문경/청송에서 확인한 것과 같은 Workers egress IP 대역
+  // 차단 패턴으로 보고, 우회 시도 없이 이번 wave에서 제외한다.
   // 영덕(ydstay.kr)은 tour.yd.go.kr가 없어지고 이 사이트로 이전된 걸
   // 이번에 확인했다(구 URL은 리다이렉트만 함). 축제 카테고리(category=F)
   // 목록이 셀렉터만으로 충분해 custom parser 없이 등록한다.
