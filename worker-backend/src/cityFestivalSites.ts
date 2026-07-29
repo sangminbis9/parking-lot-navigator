@@ -215,5 +215,24 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       linkSelector: "a",
       imageSelector: "img"
     }
+  },
+  // wave 6(전라남도, 시/군 개별 사이트): 22개 시/군을 3개 그룹으로 나눠
+  // 조사했다(2026-07-30). 21곳은 게시판 구조 부재(고정 메뉴형 정적
+  // 소개 페이지만 존재), robots.txt Disallow, WAF/타임아웃 차단, 날짜에
+  // 연도·일자가 없는 텍스트, SSL 인증서 체인 결함 등으로 제외했다. 완도군
+  // (wando.go.kr, tempEventList JS 변수)은 구조상 등록 가능해 보였지만,
+  // 통합 작업 중 재확인한 결과 데이터가 2025-08~2025-10 구간에서 멈춰
+  // 있어(오늘 기준 전부 과거 날짜) 정적으로 방치된 페이지로 판단, 등록하지
+  // 않는다. 순천시(suncheon.go.kr)만 등록한다 — eventV3/list.do가 JSON을
+  // 반환하고 2026년 데이터가 정상적으로 갱신되고 있음을 확인했다.
+  {
+    siteId: "suncheon-tour",
+    cityName: "순천시",
+    listUrl:
+      "https://www.suncheon.go.kr/kr/main/city/eventV3/list.do?mode=data&boardId=bbs_0000000000011687&nowPage=1",
+    fallbackLat: 34.950637,
+    fallbackLng: 127.4872135,
+    robotsCheckedAt: "2026-07-30",
+    customParser: "suncheon-tour"
   }
 ];
