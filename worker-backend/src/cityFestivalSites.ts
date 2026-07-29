@@ -234,5 +234,58 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: 127.4872135,
     robotsCheckedAt: "2026-07-30",
     customParser: "suncheon-tour"
-  }
+  },
+  // wave 7(경상남도, 공유 포털): 17개 시/군(통영시는 파일럿에서 이미 등록)을
+  // 3개 그룹으로 나눠 조사했다(2026-07-30). 시/군 자체 사이트는 대부분 축제별
+  // 고정 CMS 페이지만 있거나(하동/산청/함양/거창/합천/진주/사천/김해),
+  // robots.txt가 전면 Disallow이거나(산청 newtour, 도 관광포털
+  // tour.gyeongnam.go.kr, 거제/창원 문화재단), DNS 실패(창원
+  // culture.changwon.go.kr)이거나, 달력 그리드 구조라 반복 게시판으로 표현할
+  // 수 없어서(거제 tour.geoje.go.kr) 등록하지 못했다. 대신 경상남도 공식
+  // "경남축제다모아" 포털(festa.gyeongnam.go.kr)이 sigunguCode 파라미터로
+  // 16개 시/군을 정확히 갈라 서버사이드 HTML로 제공해(robots.txt는 /ksis만
+  // 차단, 2026-07-30 curl 확인) 여기서 등록한다. 마크업이 동일하므로 custom
+  // parser 없이 declarative selector를 공유한다. itemSelector는
+  // ".srh_list li.festa__end"가 아니라 ".srh_list li"를 쓴다 — 실측 결과
+  // festa__end 클래스는 목록의 첫 항목에만 붙고 이후 항목엔 클래스가 없어서
+  // 클래스 기반 셀렉터를 쓰면 첫 항목만 잡힌다. 페이지당 12건 고정이라 12건을
+  // 넘는 시/군은 nowPage=2 항목을 추가로 등록해 커버리지를 넓혔다(고성군은
+  // 40건 중 24건까지만 커버 — 전량을 원하면 nowPage 3/4 항목을 추가할 수
+  // 있다). 합천군(sigunguCode=48890)은 자체 사이트·포털 모두 오늘
+  // (2026-07-30) 기준 미래 날짜 데이터가 0건이라 제외했다(자체 게시판은
+  // "매년 4월 첫째주" 류 연도 없는 날짜이거나 2025년 이후 갱신되지 않음).
+  ...[
+    { siteId: "gyeongnam-changwon", cityName: "창원시", code: "48120", pages: [1, 2], lat: 35.2278577, lng: 128.6818148 },
+    { siteId: "gyeongnam-jinju", cityName: "진주시", code: "48170", pages: [1], lat: 35.1802165, lng: 128.1077384 },
+    { siteId: "gyeongnam-sacheon", cityName: "사천시", code: "48240", pages: [1, 2], lat: 35.0036334, lng: 128.0645331 },
+    { siteId: "gyeongnam-gimhae", cityName: "김해시", code: "48250", pages: [1, 2], lat: 35.2285673, lng: 128.8893172 },
+    { siteId: "gyeongnam-miryang", cityName: "밀양시", code: "48270", pages: [1, 2], lat: 35.5036457, lng: 128.7460822 },
+    { siteId: "gyeongnam-geoje", cityName: "거제시", code: "48310", pages: [1], lat: 34.880481, lng: 128.6212633 },
+    { siteId: "gyeongnam-yangsan", cityName: "양산시", code: "48330", pages: [1, 2], lat: 35.335, lng: 129.0355 },
+    { siteId: "gyeongnam-uiryeong", cityName: "의령군", code: "48720", pages: [1, 2], lat: 35.3221, lng: 128.2615 },
+    { siteId: "gyeongnam-haman", cityName: "함안군", code: "48730", pages: [1], lat: 35.2725, lng: 128.4065 },
+    { siteId: "gyeongnam-changnyeong", cityName: "창녕군", code: "48740", pages: [1], lat: 35.5446, lng: 128.4922 },
+    { siteId: "gyeongnam-goseong", cityName: "고성군", code: "48820", pages: [1, 2], lat: 34.973, lng: 128.3222 },
+    { siteId: "gyeongnam-namhae", cityName: "남해군", code: "48840", pages: [1], lat: 34.8375, lng: 127.8923 },
+    { siteId: "gyeongnam-hadong", cityName: "하동군", code: "48850", pages: [1], lat: 35.0673125, lng: 127.7513132 },
+    { siteId: "gyeongnam-sancheong", cityName: "산청군", code: "48860", pages: [1], lat: 35.4155607, lng: 127.8734727 },
+    { siteId: "gyeongnam-hamyang", cityName: "함양군", code: "48870", pages: [1], lat: 35.5205424, lng: 127.7251841 },
+    { siteId: "gyeongnam-geochang", cityName: "거창군", code: "48880", pages: [1], lat: 35.6860981, lng: 127.9096955 }
+  ].flatMap<CitySiteConfig>((entry) =>
+    entry.pages.map((page) => ({
+      siteId: page === 1 ? entry.siteId : `${entry.siteId}-p${page}`,
+      cityName: entry.cityName,
+      listUrl: `https://festa.gyeongnam.go.kr/index.do?menuCode=001_019001000000&sigunguCode=${entry.code}&nowPage=${page}`,
+      fallbackLat: entry.lat,
+      fallbackLng: entry.lng,
+      robotsCheckedAt: "2026-07-30",
+      selectors: {
+        itemSelector: ".srh_list li",
+        titleSelector: ".srh_list_info strong.ellipsis",
+        dateSelector: ".srh_list_info p",
+        linkSelector: "a",
+        imageSelector: ".imgbnr img"
+      }
+    }))
+  )
 ];
