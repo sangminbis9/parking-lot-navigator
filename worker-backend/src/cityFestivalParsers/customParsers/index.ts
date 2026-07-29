@@ -8,6 +8,7 @@ import { parseGyeongjuTour } from "./gyeongjuTour.js";
 import { parsePohangTour } from "./pohangTour.js";
 import { parseSangjuTour } from "./sangjuTour.js";
 import { parseSuncheonTour } from "./suncheonTour.js";
+import { parseJbTour } from "./jbTour.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -22,5 +23,6 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "gyeongju-tour": parseGyeongjuTour,
   "pohang-tour": parsePohangTour,
   "sangju-tour": parseSangjuTour,
-  "suncheon-tour": parseSuncheonTour
+  "suncheon-tour": parseSuncheonTour,
+  "jb-tour": parseJbTour
 };
