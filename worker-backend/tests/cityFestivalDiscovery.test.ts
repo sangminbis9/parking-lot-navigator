@@ -94,6 +94,19 @@ describe("runCityFestivalDiscovery", () => {
     expect(result.published).toBe(0);
   });
 
+  it("fetches a shared listUrl only once when multiple sites use the same URL", async () => {
+    const siteB: CitySiteConfig = { ...tableSite, siteId: "site-b", cityName: "테스트시" };
+    const fetchMock = vi.fn(async () => new Response(VALID_HTML, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { db } = fakeDb();
+
+    const result = await runCityFestivalDiscovery(db, fakeEnv(), [tableSite, siteB]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.failedSites).toEqual([]);
+    expect(result.processed).toBe(2);
+  });
+
   it("does not call the Kakao geocoding API when candidates have no address or venue", async () => {
     const fetchMock = vi.fn(async () => new Response(VALID_HTML, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
