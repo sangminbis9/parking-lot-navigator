@@ -53,10 +53,14 @@ export function parseCityDateRange(
 }
 
 async function resolveCoordinates(
-  input: { title: string; venueRaw: string | null; addressRaw: string | null },
+  input: { title: string; venueRaw: string | null; addressRaw: string | null; lat?: number | null; lng?: number | null },
   config: CitySiteConfig,
   resolver: EventCoordinateResolver | null
 ): Promise<{ lat: number; lng: number }> {
+  if (typeof input.lat === "number" && typeof input.lng === "number") {
+    return { lat: input.lat, lng: input.lng };
+  }
+
   const address = input.addressRaw?.trim();
   const venue = input.venueRaw?.trim();
   if ((!address && !venue) || !resolver) {
@@ -89,7 +93,7 @@ export async function normalizeCandidate(
   if (!dateRange) return null;
 
   const { lat, lng } = await resolveCoordinates(
-    { title, venueRaw: candidate.venueRaw, addressRaw: candidate.addressRaw },
+    { title, venueRaw: candidate.venueRaw, addressRaw: candidate.addressRaw, lat: candidate.lat, lng: candidate.lng },
     config,
     resolver
   );

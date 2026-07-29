@@ -52,7 +52,7 @@ export async function runCityFestivalDiscovery(
       processed += candidates.length;
       await resolver.warmup(
         candidates
-          .filter((c) => c.addressRaw || c.venueRaw)
+          .filter((c) => (c.addressRaw || c.venueRaw) && !(typeof c.lat === "number" && typeof c.lng === "number"))
           .map((c) => ({
             title: c.title ?? "",
             venue: c.venueRaw,
@@ -100,7 +100,17 @@ async function discoverSite(
     try {
       const response = await fetchWithTimeout(
         new URL(site.listUrl),
-        { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
+        {
+          method: site.fetchMethod ?? "GET",
+          headers: {
+            "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0",
+            ...(site.fetchMethod === "POST"
+              ? { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }
+              : {}),
+            ...(site.fetchReferer ? { Referer: site.fetchReferer } : {})
+          },
+          ...(site.fetchBody ? { body: site.fetchBody } : {})
+        },
         CITY_FESTIVAL_FETCH_TIMEOUT_MS
       );
       if (!response.ok) {
