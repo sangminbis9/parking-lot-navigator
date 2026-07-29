@@ -287,5 +287,47 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
         imageSelector: ".imgbnr img"
       }
     }))
-  )
+  ),
+
+  // wave 8(전라북도, 공유 포털): 14개 시/군 중 순창군은 파일럿에서 이미
+  // sunchang-sftf로 등록돼 있어 제외하고 13개를 등록한다(2026-07-30, 3개
+  // 그룹 조사). 개별 시/군 사이트는 대부분 전면 robots Disallow(남원
+  // namwon.go.kr), 축제별 고정 CMS 페이지만 있거나(김제/완주), 달력 그리드
+  // 구조라 반복 게시판으로 표현할 수 없거나(남원 namwontour.kr), 목록에
+  // 날짜가 없어서(진안) 등록하지 못했다. 대신 전북투어(tour.jb.go.kr)
+  // 축제 목록(index.do?menuCd=DOM_000000110001000000&contentsSid=22&
+  // category_top_id=c, robots.txt는 /iam, /board/list.do, /board/view.do,
+  // 특정 menuCd, /searchMain.do, /dwr/만 차단 — 2026-07-30 curl 확인)이
+  // 14개 시/군 전체를 한 페이지(첫 페이지 약 40건)에 섞어서 보여준다.
+  // sigun_cd_arr·pageindex GET 파라미터를 바꿔도 응답이 동일해(2026-07-30
+  // curl로 재현) 서버사이드 필터/페이지네이션이 없으므로, 13개 시/군이 같은
+  // listUrl을 공유하고 jbTour.ts 커스텀 파서 안에서 .list_best_badge 뱃지
+  // 텍스트(customParserArea)로 나눈다. 날짜가 "2026.09.04~09.12"처럼
+  // 종료일에 연도·월이 생략돼 있어 declarative selector로 표현할 수 없다.
+  // 첫 페이지 약 40건 밖의 축제는 이 구조로는 가져오지 못한다(전량 수집 아님).
+  ...[
+    { siteId: "jeonbuk-jeonju", cityName: "전주시", area: "전주", lat: 35.8241462, lng: 127.1481096 },
+    { siteId: "jeonbuk-gunsan", cityName: "군산시", area: "군산", lat: 35.9676041, lng: 126.7368816 },
+    { siteId: "jeonbuk-iksan", cityName: "익산시", area: "익산", lat: 35.9485758, lng: 126.9576788 },
+    { siteId: "jeonbuk-jeongeup", cityName: "정읍시", area: "정읍", lat: 35.5699210, lng: 126.8560106 },
+    { siteId: "jeonbuk-namwon", cityName: "남원시", area: "남원", lat: 35.4164, lng: 127.3908 },
+    { siteId: "jeonbuk-gimje", cityName: "김제시", area: "김제", lat: 35.8038, lng: 126.8809 },
+    { siteId: "jeonbuk-wanju", cityName: "완주군", area: "완주", lat: 35.9046, lng: 127.1623 },
+    { siteId: "jeonbuk-jinan", cityName: "진안군", area: "진안", lat: 35.7917, lng: 127.4248 },
+    { siteId: "jeonbuk-muju", cityName: "무주군", area: "무주", lat: 36.0068, lng: 127.6608 },
+    { siteId: "jeonbuk-jangsu", cityName: "장수군", area: "장수", lat: 35.6473, lng: 127.5212 },
+    { siteId: "jeonbuk-imsil", cityName: "임실군", area: "임실", lat: 35.6178, lng: 127.2892 },
+    { siteId: "jeonbuk-gochang", cityName: "고창군", area: "고창", lat: 35.4356, lng: 126.7020 },
+    { siteId: "jeonbuk-buan", cityName: "부안군", area: "부안", lat: 35.7318, lng: 126.7334 }
+  ].map<CitySiteConfig>((entry) => ({
+    siteId: entry.siteId,
+    cityName: entry.cityName,
+    listUrl:
+      "https://tour.jb.go.kr/index.do?menuCd=DOM_000000110001000000&contentsSid=22&category_top_id=c&pageindex=1&order_by=4",
+    fallbackLat: entry.lat,
+    fallbackLng: entry.lng,
+    robotsCheckedAt: "2026-07-30",
+    customParser: "jb-tour",
+    customParserArea: entry.area
+  }))
 ];
