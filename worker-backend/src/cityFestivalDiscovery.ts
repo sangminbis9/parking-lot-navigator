@@ -91,12 +91,41 @@ export async function runCityFestivalDiscovery(
 // listUrl 기준 캐시를 쓴다. Cloudflare Workers는 한 번의 invocation에서 보낼
 // 수 있는 subrequest 개수에 한도가 있어, 같은 URL을 site 개수만큼 반복
 // fetch하면 뒤에 처리되는 사이트들이 그 한도에 걸려 실패한다.
+// 일부 사이트(예: tour.jb.go.kr)는 Cloudflare Workers의 fetch 서브리퀘스트
+// 경로에서만 간헐적으로 AbortError나 416처럼 서로 다른 종류의 일시적 오류를
+// 낸다(2026-07-30 wrangler tail로 확인: 같은 사이트가 실행마다 다른 에러로
+// 실패하지만 직접 curl로는 매번 정상 응답). origin 자체가 막는 신호는 없어
+// 재시도 1회로 흡수한다.
+const CITY_FESTIVAL_FETCH_RETRY_DELAY_MS = 500;
+
 async function discoverSite(
   site: CitySiteConfig,
   htmlCache: Map<string, { html: string } | { error: Error }>
 ): Promise<RawCityFestivalCandidate[]> {
   let entry = htmlCache.get(site.listUrl);
   if (!entry) {
+    entry = await fetchSiteHtml(site);
+    htmlCache.set(site.listUrl, entry);
+  }
+  if ("error" in entry) {
+    throw entry.error;
+  }
+  const html = entry.html;
+
+  if (site.customParser) {
+    const parser = CUSTOM_PARSERS[site.customParser];
+    if (!parser) {
+      throw new Error(`no custom parser registered for customParser=${site.customParser}`);
+    }
+    return parser(html, site);
+  }
+  return parseDeclarative(html, site);
+}
+
+async function fetchSiteHtml(site: CitySiteConfig): Promise<{ html: string } | { error: Error }> {
+  const attempts = 2;
+  let lastError: Error = new Error("unreachable");
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const response = await fetchWithTimeout(
         new URL(site.listUrl),
@@ -116,25 +145,13 @@ async function discoverSite(
       if (!response.ok) {
         throw new Error(`city festival site fetch failed: ${response.status}`);
       }
-      entry = { html: await response.text() };
+      return { html: await response.text() };
     } catch (error) {
-      entry = { error: error instanceof Error ? error : new Error(String(error)) };
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < attempts) await delay(CITY_FESTIVAL_FETCH_RETRY_DELAY_MS);
     }
-    htmlCache.set(site.listUrl, entry);
   }
-  if ("error" in entry) {
-    throw entry.error;
-  }
-  const html = entry.html;
-
-  if (site.customParser) {
-    const parser = CUSTOM_PARSERS[site.customParser];
-    if (!parser) {
-      throw new Error(`no custom parser registered for customParser=${site.customParser}`);
-    }
-    return parser(html, site);
-  }
-  return parseDeclarative(html, site);
+  return { error: lastError };
 }
 
 function buildUpsertStatement(
