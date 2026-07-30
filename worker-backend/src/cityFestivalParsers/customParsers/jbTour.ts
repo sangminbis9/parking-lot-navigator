@@ -1,14 +1,15 @@
 import * as cheerio from "cheerio";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
 
-// 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록(index.do?menuCd=...&category_top_id=c)은
-// 14개 시/군 전체가 한 페이지에 섞여 나온다. sigun_cd_arr/pageindex GET
-// 파라미터를 바꿔도 응답이 동일해(2026-07-30 curl 확인, 전주/군산/익산/정읍
-// 그룹과 무주/장수/임실/고창/부안 그룹 모두 재현) 서버사이드 필터/페이지네이션이
-// 없다 — 첫 페이지 약 36~40건만 항상 접근 가능하고, 시/군 구분은
-// .list_best_badge의 뱃지 텍스트로만 가능하다. 그래서 13개 시/군(순창은
-// 파일럿에서 이미 등록)이 같은 listUrl을 공유하고, 파서 안에서 뱃지 텍스트와
-// config.customParserArea를 비교해 나눈다.
+// 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록은 /travel/info/list.do에
+// sigun_cd_arr(시/군 코드) 쿼리 파라미터를 붙이면 실제로 서버사이드에서
+// 걸러진다(2026-07-30 curl 재검증: jsessionid를 정규화하고 코드별로 비교하니
+// "총 N건" 카운트와 항목 자체가 코드마다 다름 — 무주 11건/장수 7건/전주 26건 등).
+// 이전에는 /index.do?...&sigun_cd_arr=...로 테스트해 파라미터가 무효라고
+// 결론 내렸으나, 그 URL은 항상 /travel/info/list.do로 302 리다이렉트되면서
+// sigun_cd_arr이 리다이렉트 대상 URL에서 빠져 매번 동일한(필터 안 된) 첫 페이지로
+// 착지하는 게 원인이었다. 그래서 시/군마다 sigun_cd_arr가 다른 listUrl을
+// 개별로 쓰고(chungnam-tour와 같은 패턴), 뱃지 텍스트로 재필터링할 필요가 없다.
 // 날짜는 "기간: 2026.09.04~09.12"처럼 종료일에 연도·월이 생략돼 있어(시작일만
 // 전체 YYYY.MM.DD), pohangTour.ts와 같은 방식으로 앞 조각의 연도를 이어받고
 // 종료월이 시작월보다 작으면(연말→연초) 종료 연도에 1을 더한다.
@@ -16,15 +17,13 @@ const BASE_URL = "https://tour.jb.go.kr";
 
 export function parseJbTour(
   html: string,
-  config: CitySiteConfig
+  _config: CitySiteConfig
 ): RawCityFestivalCandidate[] {
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
 
   $(".serchList .photoWrap").each((_index, element) => {
     const item = $(element);
-    const area = item.find(".list_best_badge span").first().text().trim();
-    if (area !== config.customParserArea) return;
 
     const title = item.find("h3 strong").first().text().trim() || null;
 
