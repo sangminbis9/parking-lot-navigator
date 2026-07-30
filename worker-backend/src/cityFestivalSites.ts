@@ -337,6 +337,26 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
   // 남양주시청(nyj.go.kr)도 같은 이유(robots.txt 전면 차단)로 제외했으나
   // 아직 대안 사이트를 찾지 못했다. 성남/고양/화성/안산/부천/안양은 목록
   // URL 또는 실제 게시판 구조를 아직 확정하지 못해 이번 wave에서 보류한다.
+  //
+  // wave 9-2(경기도 2차): 성남/고양/화성/안산/부천/안양 6곳을 조사해 이 중
+  // 구조를 확정한 성남/화성 2곳만 등록한다(2026-07-31 실측).
+  // - 성남시(seongnam.go.kr) "이달의 행사" 게시판은 축제(srchEvntDtlTypeCd=2)
+  //   필터를 걸면 실제 발행 축제만 걸러진다. seongnam-event 커스텀 파서 참고.
+  // - 화성시(tour.hscity.go.kr) "축제·행사 일정"은 연 1회 개편되는 정적 표라
+  //   hwaseong-tour 커스텀 파서로 연도를 보정해 파싱한다. 기존 hcf.or.kr은
+  //   TLS 레벨 차단으로 계속 제외.
+  // - 고양시(goyang.go.kr)는 robots.txt가 일부만 차단해 크롤링 자체는
+  //   가능하지만(/visitgoyang/www/tourRsrcList.do), 목록 아이템의 날짜/장소
+  //   구조를 아직 확인하지 못해 보류.
+  // - 안산시(ansan.go.kr)는 robots.txt 전면 허용이지만 문화관광 사이트의
+  //   "축제" 메뉴가 목록형 게시판이 아니라 김홍도축제 단일 소개 정적
+  //   페이지라 반복 가능한 아이템 구조가 없어 보류.
+  // - 부천시(bucheon.go.kr) "동네축제" 게시판은 날짜가 "10월", "매년
+  //   9,10월경", "홀수년도 개최"처럼 일/연도 없이 텍스트로만 있어 정확한
+  //   시작일·종료일을 만들 수 없다. "주요축제" 탭도 목록형이 아닌 정적
+  //   소개 콘텐츠라 보류.
+  // - 안양시(anyang.go.kr) "축제/행사 목록"도 개최시기가 "2월(1일간)"처럼
+  //   월 단위뿐이라 부천과 같은 이유로 보류.
   {
     siteId: "suwon-culture",
     cityName: "수원시",
@@ -381,5 +401,23 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: 126.7156,
     robotsCheckedAt: "2026-07-31",
     customParser: "gimpo-gcf"
+  },
+  {
+    siteId: "seongnam-event",
+    cityName: "성남시",
+    listUrl: "https://www.seongnam.go.kr/tour/tu-pm020101?cntPerPage=100&curPage=1&srchEvntDtlTypeCd=2",
+    fallbackLat: 37.4201,
+    fallbackLng: 127.1267,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "seongnam-event"
+  },
+  {
+    siteId: "hwaseong-tour",
+    cityName: "화성시",
+    listUrl: "https://tour.hscity.go.kr/NEW/6festival/festival5.jsp",
+    fallbackLat: 37.1996,
+    fallbackLng: 126.8310,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "hwaseong-tour"
   }
 ];
