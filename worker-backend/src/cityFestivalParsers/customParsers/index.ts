@@ -13,6 +13,8 @@ import { parseSuwonTour } from "./suwonTour.js";
 import { parsePajuTour } from "./pajuTour.js";
 import { parseYonginEvent } from "./yonginEvent.js";
 import { parseGimpoGcf } from "./gimpoGcf.js";
+import { parseSeongnamEvent } from "./seongnamEvent.js";
+import { parseHwaseongTour } from "./hwaseongTour.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -32,5 +34,7 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "suwon-tour": parseSuwonTour,
   "paju-tour": parsePajuTour,
   "yongin-event": parseYonginEvent,
-  "gimpo-gcf": parseGimpoGcf
+  "gimpo-gcf": parseGimpoGcf,
+  "seongnam-event": parseSeongnamEvent,
+  "hwaseong-tour": parseHwaseongTour
 };
