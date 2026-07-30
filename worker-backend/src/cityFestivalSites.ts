@@ -327,5 +327,59 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: entry.lng,
     robotsCheckedAt: "2026-07-30",
     customParser: "jb-tour"
-  }))
+  })),
+
+  // wave 9(경기도 1차): 31개 시/군 중 평택은 파일럿에서 이미 pyeongtaek-pccf로
+  // 등록돼 있어 제외. 이번 wave에서는 구조를 확정한 4곳만 등록하고 나머지는
+  // 다음 wave로 넘긴다. 김포시청(gimpo.go.kr)은 robots.txt가
+  // User-agent: * / Disallow: /로 일반 크롤러를 전면 차단해(2026-07-30 확인)
+  // 우회하지 않고 제외했고, 대신 김포문화재단(gcf.or.kr)을 등록했다.
+  // 남양주시청(nyj.go.kr)도 같은 이유(robots.txt 전면 차단)로 제외했으나
+  // 아직 대안 사이트를 찾지 못했다. 성남/고양/화성/안산/부천/안양은 목록
+  // URL 또는 실제 게시판 구조를 아직 확정하지 못해 이번 wave에서 보류한다.
+  {
+    siteId: "suwon-culture",
+    cityName: "수원시",
+    listUrl: "https://www.suwon.go.kr/culture/smartSearchListJson.do?q_groupCd=19&q_ingYn=0&q_currPage=1&q_rowPerPage=50",
+    fallbackLat: 37.2636,
+    fallbackLng: 127.0286,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "suwon-tour"
+  },
+  {
+    siteId: "paju-tour",
+    cityName: "파주시",
+    listUrl: "https://tour.paju.go.kr/user/link/cultural/BD_selectCulturalList.do?q_cultClassCd=1001&q_rowPerPage=200",
+    fallbackLat: 37.7599,
+    fallbackLng: 126.7802,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "paju-tour"
+  },
+  {
+    siteId: "yongin-event",
+    cityName: "용인시",
+    listUrl: "https://www.yongin.go.kr/user/web/eventyt/BD_selectClturEventPfmcytList.do?q_clCode=2",
+    fallbackLat: 37.2411,
+    fallbackLng: 127.1776,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "yongin-event"
+  },
+  {
+    siteId: "gimpo-gcf-ing",
+    cityName: "김포시",
+    listUrl: "https://www.gcf.or.kr/main/exh/list.do?mthd=FEST&state_se=ing",
+    fallbackLat: 37.6154,
+    fallbackLng: 126.7156,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "gimpo-gcf"
+  },
+  {
+    siteId: "gimpo-gcf-exp",
+    cityName: "김포시",
+    listUrl: "https://www.gcf.or.kr/main/exh/list.do?mthd=FEST&state_se=exp",
+    fallbackLat: 37.6154,
+    fallbackLng: 126.7156,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "gimpo-gcf"
+  }
 ];
