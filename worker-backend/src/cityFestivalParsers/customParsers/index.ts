@@ -16,6 +16,7 @@ import { parseGimpoGcf } from "./gimpoGcf.js";
 import { parseSeongnamEvent } from "./seongnamEvent.js";
 import { parseHwaseongTour } from "./hwaseongTour.js";
 import { parseUijeongbuEvent } from "./uijeongbuEvent.js";
+import { parseSokchoCulture } from "./sokchoCulture.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -38,5 +39,6 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "gimpo-gcf": parseGimpoGcf,
   "seongnam-event": parseSeongnamEvent,
   "hwaseong-tour": parseHwaseongTour,
-  "uijeongbu-event": parseUijeongbuEvent
+  "uijeongbu-event": parseUijeongbuEvent,
+  "sokcho-culture": parseSokchoCulture
 };

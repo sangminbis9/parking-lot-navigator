@@ -481,5 +481,94 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       imageSelector: "img",
       venueSelector: ".p-media__heading-date_sbox span.p-maedia_text:nth-of-type(4)"
     }
+  },
+
+  // wave 10(강원특별자치도): 춘천/원주/강릉/동해/태백/속초/삼척/홍천/횡성/영월/
+  // 평창/철원/화천/양구/인제/고성/양양 17곳을 조사했다(정선군은 파일럿에서
+  // jeongseon-arirang으로 이미 등록됨, 이번 wave 범위 제외). 이 중 구조를
+  // 확정한 속초/철원 2곳만 등록한다(2026-07-31 실측).
+  // - 속초시(sokchocf.or.kr) "공연·행사·공모" 페이지는 GET으로는 분야
+  //   필터가 걸리지 않고(폼이 method="post") POST로 mode=banner&
+  //   searchCondition=TYPE&searchKeyword=E 를 보내야 "축제" 분야만 담긴
+  //   캐러셀이 반환된다. 상세 링크가 onclick="fncEventDetail(seq, cDate)"
+  //   방식이라 sokcho-culture 커스텀 파서로 seq/cDate를 추출해 상세 URL을
+  //   만든다. https(443)는 접속이 거부되고 http(80)만 응답해 http listUrl로
+  //   등록했다(운영 배포 환경인 Cloudflare Workers에서도 동일하게 동작하는지
+  //   재확인 필요 — 로컬 curl 기준 검증).
+  // - 철원군은 군 공식 관광포털(cwg.go.kr)에는 리스트 구조가 없고, 철원
+  //   문화재단(gcwcf.or.kr) "공연/전시/행사" 게시판이 #event_list(마크업
+  //   중복 id 중 class 없는 두 번째 ul)에 진짜 반복 항목(제목/기간/장소/
+  //   이미지)을 담고 있어 declarative selector로 등록한다.
+  // - 춘천은 홈페이지에 작은 "이벤트" 위젯은 있으나 축제로 필터링되지
+  //   않고 단일 날짜 의미가 불명확하며, "더보기"가 같은 URL로 순환돼 더
+  //   풍부한 목록 페이지를 찾지 못해 제외.
+  // - 원주는 후보 목록에 날짜 필드가 없어 제외.
+  // - 강릉은 날짜 표기가 모호(연/월만 있거나 "상시" 등)해 제외.
+  // - 동해는 dhfesta.or.kr 루트가 개별 축제 마이크로사이트 2~3개로만
+  //   연결될 뿐 통합 목록 페이지가 없어 제외.
+  // - 태백은 tour.taebaek.go.kr "태백 대표축제" 페이지가 정적 3개 카드로만
+  //   구성되고 날짜가 이미지 alt 텍스트에 다른 정보와 뒤섞여 있어 파싱
+  //   불가. 재단 사이트(tbcf.or.kr)에도 별도 축제 목록 nav를 찾지 못해
+  //   제외.
+  // - 삼척은 삼척관광문화재단(stcf.or.kr)이 4개 축제로 하드코딩된 정적
+  //   서브메뉴만 제공하고, 삼척시청 관광포털(samcheok.go.kr/tour.web)
+  //   홈페이지 원본 HTML에는 축제/행사 섹션 링크 자체가 없어(JS 메뉴
+  //   추정) 제외.
+  // - 홍천은 tour.hongcheon.go.kr의 "축제/행사" 메뉴가 외부 도메인
+  //   hccf.or.kr(홍천문화재단)로만 연결되는데, hccf.or.kr robots.txt가
+  //   `User-agent: *` `Disallow: /`로 전면 차단(Allow는 Googlebot/Yeti/
+  //   Daumoa의 Home*만)돼 있어 제외.
+  // - 횡성은 횡성문화원(hs-culture.or.kr) 게시판이 "총 3개"뿐인 정적
+  //   소개글이고 날짜도 게시일(2021.02.22)만 있어 실제 축제 일정이
+  //   아니라 제외.
+  // - 영월은 게시판이 실제 다건 축제 목록이 아닌 범용 CMS 게시판이라
+  //   제외.
+  // - 평창은 tour.pc.go.kr 목록이 front.place.list.js가 채우는 빈
+  //   #placeDataList div로, curl로 받은 원본 HTML에는 항목이 전혀
+  //   없어(JS/AJAX 렌더링) 제외.
+  // - 화천은 tour.ihc.go.kr robots.txt가 `User-agent: *` `Disallow: /`에
+  //   `Allow: /tour`만 예외로 둔 구조라 /tour 하위만 접근 가능한데,
+  //   실제 "축제나라"(/tour/theme/festival) 페이지가 산천어축제/
+  //   토마토축제 2건 정적 카드뿐이고 날짜 필드가 없으며 상세 링크도
+  //   `javascript:;` JS 모달이라 제외. 참고로 www.ihc.go.kr(군청 대표
+  //   도메인)은 curl 요청 시 헤더 조합을 바꿔도 항상 400 Bad Request를
+  //   반환해 확인 불가.
+  // - 양구는 robots.txt가 대상 경로를 전면 차단해 제외(이전 조사 결과
+  //   유지).
+  // - 인제는 injetour.co.kr(인제로컬투어) "festivals" 목록/상세 페이지에
+  //   실제 축제 항목은 있으나 날짜가 "매년 10월중"처럼 연도 없는 텍스트라
+  //   parseCityDateRange가 요구하는 YYYY-MM-DD 패턴을 추출할 수 없어
+  //   제외(tour.inje.go.kr는 Next.js 빈 셸이라 원천 제외).
+  // - 고성은 날짜 필드 없는 정적 카드 구조라 제외.
+  // - 양양은 tour.yangyang.go.kr가 서핑/송이축제/연어축제/문화제/마을축제/
+  //   해맞이 등 주제별 개별 정적 페이지로만 구성돼 있고, 반복 가능한
+  //   날짜 목록 게시판을 찾지 못해 제외(마을축제 링크 funfestival.do는
+  //   직접 접근 시 에러 페이지 반환).
+  {
+    siteId: "sokcho-culture",
+    cityName: "속초시",
+    listUrl: "http://sokchocf.or.kr/sokchocf/event/information",
+    fallbackLat: 38.2070,
+    fallbackLng: 128.5918,
+    robotsCheckedAt: "2026-07-31",
+    fetchMethod: "POST",
+    fetchBody: "calendarSeq=0&mode=banner&searchKeyword=E&searchCondition=TYPE&prevF=&nextF=&cDate=2026-07-31",
+    customParser: "sokcho-culture"
+  },
+  {
+    siteId: "cheorwon-culture",
+    cityName: "철원군",
+    listUrl: "https://gcwcf.or.kr/w2_1",
+    fallbackLat: 38.1467,
+    fallbackLng: 127.3132,
+    robotsCheckedAt: "2026-07-31",
+    selectors: {
+      itemSelector: "ul#event_list:not(.ing_wrap) > li",
+      titleSelector: "a.txt_subject",
+      dateSelector: "li.date p",
+      linkSelector: "a.txt_subject",
+      imageSelector: "img",
+      venueSelector: "li.place p"
+    }
   }
 ];
