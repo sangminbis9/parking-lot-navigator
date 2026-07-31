@@ -419,5 +419,67 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: 126.8310,
     robotsCheckedAt: "2026-07-31",
     customParser: "hwaseong-tour"
+  },
+
+  // wave 9-3(경기도 3차): 의정부/광명/동두천/과천/구리/오산/시흥/군포/의왕/하남/
+  // 이천/안성/광주/양주/포천 15곳을 조사해 이 중 구조를 확정한 의정부/하남 2곳만
+  // 등록한다(2026-07-31 실측).
+  // - 의정부시(ui4u.go.kr) "알림마당 행사목록"은 GET 쿼리스트링으로는 검색
+  //   필터가 걸리지 않고(폼이 method="post") POST로 searchType=CATE&
+  //   searchTxt=축제를 보내야 분야가 "축제"인 항목만 걸러진다. 상세 링크가
+  //   onclick="fn_go_view(idx)" 방식이라 uijeongbu-event 커스텀 파서로
+  //   idx를 추출해 view.do URL을 만든다.
+  // - 하남시(hanam.go.kr) "문화행사소식" 게시판은 ul.p-media-list li.p-media
+  //   구조로 시작일~종료일이 "YYYY-MM-DD ~ YYYY-MM-DD" 한 텍스트에 같이 있어
+  //   declarative selector만으로 충분하다(기존 parseCityDateRange가 한 문자열
+  //   안의 날짜 2개를 자동으로 시작/종료로 분리).
+  // - 광명시(gm.go.kr) "gmFestival" 게시판은 이름과 달리 월별 캘린더 위젯이고
+  //   항목 대부분이 주민자치회의·협의체 월례회의 등 행정 일정이라 실제
+  //   축제만 걸러낼 카테고리 필터가 없어 제외.
+  // - 동두천/의왕/포천은 robots.txt가 대상 경로를 전면 차단해 제외.
+  // - 과천은 현재 데이터가 있는 경로가 robots 차단이고, 허용된 대안은 2021년
+  //   에 멈춘 아카이브 페이지뿐이라 제외.
+  // - 구리는 여러 후보 게시판을 확인했지만 진짜 다건 축제 리스트 구조를
+  //   찾지 못해 제외.
+  // - 오산은 문화재단 도메인이 robots.txt로 전면 차단돼 있고 대안 경로에는
+  //   리스트 구조가 없어 제외.
+  // - 군포는 필터링된 게시판에 구조화된 시작일/종료일 필드가 없어 제외.
+  // - 이천은 모든 축제가 개별 정적 페이지로 하드코딩돼 있어 반복 가능한
+  //   목록 구조가 없어 제외.
+  // - 안성은 후보 게시판이 빈 콘텐츠를 반환하고, JS 렌더링 대안은 구조를
+  //   확인하지 못해 제외.
+  // - 광주(경기)는 축제 3개가 각각 개별 정적 마이크로사이트로만 존재해
+  //   제외.
+  // - 양주는 축제 3개만 정적 카드로 하드코딩돼 있어 제외했고, 별도 외부
+  //   도메인은 아직 조사하지 못해 보류.
+  // - 시흥은 robots.txt가 http/https 모두 8회 이상, 최대 25초까지 반복
+  //   타임아웃되어 접근 허용 여부를 확인할 수 없다(본문 페이지는 정상
+  //   200 응답). 확인 전까지 등록을 보류한다.
+  {
+    siteId: "uijeongbu-event",
+    cityName: "의정부시",
+    listUrl: "https://www.ui4u.go.kr/portal/eventNoti/list.do?mId=0301170100",
+    fallbackLat: 37.7393,
+    fallbackLng: 127.0348,
+    robotsCheckedAt: "2026-07-31",
+    fetchMethod: "POST",
+    fetchBody: "page=1&searchType=CATE&searchTxt=%EC%B6%95%EC%A0%9C",
+    customParser: "uijeongbu-event"
+  },
+  {
+    siteId: "hanam-culture",
+    cityName: "하남시",
+    listUrl: "https://www.hanam.go.kr/www/selectClturEventWebList.do?key=12376",
+    fallbackLat: 37.5393,
+    fallbackLng: 127.2148,
+    robotsCheckedAt: "2026-07-31",
+    selectors: {
+      itemSelector: "ul.p-media-list li.p-media",
+      titleSelector: ".p-media__heading-text",
+      dateSelector: ".p-media__heading-date_sbox span.p-maedia_text:nth-of-type(2)",
+      linkSelector: "a.p-media__link",
+      imageSelector: "img",
+      venueSelector: ".p-media__heading-date_sbox span.p-maedia_text:nth-of-type(4)"
+    }
   }
 ];
