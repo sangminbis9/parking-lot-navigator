@@ -74,6 +74,7 @@ describe("runCityFestivalDiscovery", () => {
     const otherSite: CitySiteConfig = { ...tableSite, siteId: "site-b", listUrl: "https://example.org/festivals" };
     vi.spyOn(globalThis, "fetch")
       .mockRejectedValueOnce(new Error("network down"))
+      .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValueOnce(new Response(VALID_HTML, { status: 200 }));
     const { db, batch } = fakeDb();
 

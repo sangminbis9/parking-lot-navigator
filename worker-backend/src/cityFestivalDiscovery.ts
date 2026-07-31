@@ -14,7 +14,7 @@ import { scoreCandidate } from "./cityFestivalScore.js";
 import type { Env } from "./index.js";
 
 const CITY_FESTIVAL_INTER_SITE_DELAY_MS = 300;
-const CITY_FESTIVAL_FETCH_TIMEOUT_MS = 10000;
+const CITY_FESTIVAL_FETCH_TIMEOUT_MS = 20000;
 const DEFAULT_AUTO_PUBLISH_MIN_SCORE = 0.7;
 const DEFAULT_GEOCODE_MISS_BUDGET = 30;
 
@@ -94,8 +94,21 @@ export async function runCityFestivalDiscovery(
 // 일부 사이트(예: tour.jb.go.kr)는 Cloudflare Workers의 fetch 서브리퀘스트
 // 경로에서만 간헐적으로 AbortError나 416처럼 서로 다른 종류의 일시적 오류를
 // 낸다(2026-07-30 wrangler tail로 확인: 같은 사이트가 실행마다 다른 에러로
-// 실패하지만 직접 curl로는 매번 정상 응답). origin 자체가 막는 신호는 없어
-// 재시도 1회로 흡수한다.
+// 실패하지만 직접 curl로는 매번 정상 응답).
+// 2026-07-31 재확인: jeonbuk-jeonju는 응답이 커서(560KB) 10초 타임아웃을
+// 간헐적으로 넘겼을 뿐이었다 — 20초로 늘리자 이후 재현되지 않았다.
+// 반면 나머지 전북 12개(군산~부안)는 같은 invocation 안의 다른 사이트(수원/
+// 파주/용인)는 정상인데 이 12개만 매번 전부 성공하거나 전부 실패하는
+// all-or-nothing 패턴을 보인다. 로컬에서 Worker와 동일한 300ms 간격 burst로
+// 12개를 연속 호출하면 항상 12/12 즉시 200이라 origin이 요청 빈도로 막는
+// 것도 아니다 — Cloudflare Workers egress IP 대역 중 일부가 이 origin에서
+// (김천처럼) 차단/드롭되고, invocation마다 어느 IP로 나가는지가 갈리는
+// 것으로 추정된다. 재시도 횟수를 늘려도 같은 invocation은 같은 경로를 타서
+// 도움이 안 되고(실측: attempts=3에서도 all-or-nothing 유지, 전체 실패 시
+// 소요 시간만 12분대로 급증) 오히려 실패 시 wall time만 늘린다. 그래서
+// attempts는 2로 유지하고, 이 12개 사이트는 그대로 등록 상태를 유지한다
+// (크론이 매일 도니 egress IP가 걸리지 않는 날엔 데이터가 들어오지만
+// 매일 수집을 보장하지는 못한다 — 2026-07-31 사용자 확인).
 const CITY_FESTIVAL_FETCH_RETRY_DELAY_MS = 500;
 
 async function discoverSite(
