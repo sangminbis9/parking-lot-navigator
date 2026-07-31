@@ -570,5 +570,68 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       imageSelector: "img",
       venueSelector: "li.place p"
     }
+  },
+
+  // wave 11(제주특별자치도): 제주는 기초자치단체가 아니라 행정시 2곳(제주시,
+  // 서귀포시)뿐이다. 제주도청 통합 포털(jeju.go.kr), 제주관광공사
+  // (visitjeju.net), 각 행정시 자체 사이트, 제주문화예술재단(jfac.kr)/
+  // 제주인놀다(jejunolda.com)까지 조사했다(2026-07-31 실측). 이 중 구조를
+  // 확정한 제주시 1곳만 등록한다.
+  // - 제주시(jejusi.go.kr) "문화행사(목록)"(/field/culture/festival/list.do)
+  //   페이지는 ul.event_list > li 반복 구조로 제목/기간("YYYY-MM-DD ~
+  //   YYYY-MM-DD" 한 필드)/장소/상세링크/이미지가 모두 갖춰져 있어
+  //   declarative selector로 충분하다. 실제 fetch한 raw HTML을 cheerio로
+  //   파싱해 10건 전부(제23회 방선문축제, 제15회 우도소라축제, 제22회
+  //   삼양검은모래 축제 등)가 정확히 추출되는 것을 직접 확인했다.
+  //   robots.txt는 `User-agent: * / Disallow: / / Allow: /`로 같은 그룹
+  //   안에 폭(width)이 동일한 Disallow와 Allow가 공존하는 모순된 형태인데,
+  //   RFC 9309 §2.2.2("길이가 같으면 덜 제한적인 규칙을 따른다")에 따르면
+  //   Allow가 우선해 크롤링 허용으로 판단한다. 이는 서귀포시(아래)처럼
+  //   `*` 그룹 자체에 Allow 예외가 전혀 없는 명백한 차단과는 구조가 달라
+  //   구분해서 처리했다.
+  // - 서귀포시는 자체 포털 seogwipo.go.kr(및 서브도메인 없는 bare
+  //   도메인)의 robots.txt가 `User-Agent: * / Disallow: / / Disallow:
+  //   /notice / Disallow: /workplans`이고, `Allow: /`는 Googlebot/Yeti/
+  //   Daumoa 전용 별도 그룹에만 있어 대상 UA는 전체 도메인이 차단된다.
+  //   실제 "통합축제 포털"(seogwipo.go.kr/festival/index.htm)과 "축제·
+  //   문화행사"(seogwipo.go.kr/tourismculture/culture/schedule1.htm)가
+  //   전부 이 차단된 도메인 안에 있어 등록 불가. 서브도메인
+  //   culture.seogwipo.go.kr(서귀포시문화예술포털, robots.txt 없음/404라
+  //   자체는 크롤링 가능)도 확인했지만 메인 콘텐츠가 서귀포예술의전당·
+  //   기당미술관·소암기념관 등의 공연/전시 프로그램 캘린더이고 정작
+  //   "축제·문화행사" 링크는 다시 차단된 seogwipo.go.kr로 나가므로
+  //   "축제" 신호가 없는 공연장 자체 프로그램 게시판으로 판단해 제외.
+  //   tourseogwipo/sgptour/visitseogwipo/seogwipotour 등 대체 도메인은
+  //   존재하지 않는다(DNS 미응답).
+  // - jeju.go.kr(제주도청 통합 포털)은 robots.txt가 `Disallow: /`에
+  //   `/jori/`, `/jejueo/`, `/jedu/` 등 축제와 무관한 몇 개 경로만
+  //   Allow 예외로 둬, 문화예술진흥원 등 문화행사 관련 경로
+  //   (/jejuculture 등)는 차단 대상이라 제외.
+  // - visitjeju.net(제주관광공사)은 robots.txt는 열려 있으나 축제 목록
+  //   페이지(/kr/festival/list)가 Nuxt SSR인데 실제 항목 데이터는 서버
+  //   렌더 HTML에는 없고 __NUXT_DATA__ 스크립트 안의 devalue 참조 인코딩
+  //   JSON payload로만 존재해(raw HTML grep으로 리스트 마크업 0건 확인)
+  //   cheerio 기반 declarative/간단 정규식 파서로 처리 불가능하다. 게다가
+  //   행정시별 필터(제주시/서귀포시 구분) 파라미터도 확인되지 않아 도
+  //   전역 포털이라 "시" 단위 등록과도 맞지 않아 제외.
+  // - jfac.kr(제주문화예술재단)·jejunolda.com(제주인놀다, 같은 재단
+  //   운영)은 robots.txt가 열려 있지만 두 사이트 모두 제주시/서귀포시를
+  //   구분하지 않는 도 전역 문화달력이라 "시" 단위 사이트 등록 기준에
+  //   맞지 않아 제외.
+  {
+    siteId: "jejusi-culture",
+    cityName: "제주시",
+    listUrl: "https://www.jejusi.go.kr/field/culture/festival/list.do",
+    fallbackLat: 33.4996,
+    fallbackLng: 126.5312,
+    robotsCheckedAt: "2026-07-31",
+    selectors: {
+      itemSelector: "ul.event_list > li",
+      titleSelector: ".event_page_tit",
+      dateSelector: "ul.li_sty03 li:nth-of-type(2) div",
+      linkSelector: "a",
+      imageSelector: "img",
+      venueSelector: "ul.li_sty03 li:nth-of-type(1) div"
+    }
   }
 ];
