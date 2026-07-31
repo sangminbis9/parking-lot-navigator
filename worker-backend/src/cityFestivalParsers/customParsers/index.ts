@@ -17,6 +17,7 @@ import { parseSeongnamEvent } from "./seongnamEvent.js";
 import { parseHwaseongTour } from "./hwaseongTour.js";
 import { parseUijeongbuEvent } from "./uijeongbuEvent.js";
 import { parseSokchoCulture } from "./sokchoCulture.js";
+import { parseBsjungguAnnualSchedule } from "./bsjungguAnnualSchedule.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -40,5 +41,6 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "seongnam-event": parseSeongnamEvent,
   "hwaseong-tour": parseHwaseongTour,
   "uijeongbu-event": parseUijeongbuEvent,
-  "sokcho-culture": parseSokchoCulture
+  "sokcho-culture": parseSokchoCulture,
+  "bsjunggu-annual-schedule": parseBsjungguAnnualSchedule
 };
