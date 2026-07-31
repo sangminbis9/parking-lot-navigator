@@ -868,5 +868,69 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: 128.5328266,
     robotsCheckedAt: "2026-07-31",
     customParser: "dalseo-dscf"
-  }
+  },
+
+  // wave 15(인천광역시): 서울(wave 12)처럼 통합 포털 하나로 전 구·군을 커버할
+  // 수 있는지부터 확인했다(2026-07-31 실측). 인천관광공사가 운영하는
+  // itour.incheon.go.kr의 "축제" 목록(ssst/ssst/list.do?pageNm=fstv)이 그
+  // 후보인데, sel_gugun 쿼리 파라미터(구·군마다 다른 포털 자체 코드, 법정동
+  // 코드 아님)로 실제 서버사이드 지역 필터링이 되는 것을 cheerio로 직접
+  // 확인했다 — 미추홀구(177)/연수구(185)/남동구(200)/부평구(237)/계양구(245)/
+  // 강화군(710)/옹진군(720)/제물포구(125)/영종구(155)/검단구(290)/서해구(275)
+  // 11개 코드 각각 요청 결과의 cotId 집합이 서로 완전히 겹치지 않음을 확인
+  // 완료. 목록 페이지 자체(div.date)에 "YYYY.MM.DD ~YYYY.MM.DD" 형식의 실제
+  // 날짜가 있어 parseCityDateRange()가 그대로 시작/종료일로 나눈다. 서울과
+  // 달리 fstv_year 쿼리 파라미터를 생략해도 서버가 현재 연도를 기본값으로
+  // 채워주는 것을 확인했으므로(2026-07-31 실측: 파라미터 유무와 무관하게
+  // 동일 결과), listUrl에 연도를 하드코딩하지 않았다 — 서울 wave의 sdate
+  // 하드코딩과 달리 다음 해가 되어도 갱신 없이 그대로 최신 연도를 조회한다.
+  // robots.txt는 `User-agent:*` 그룹에 Disallow 없이 Sitemap 3개만 있어
+  // 전면 허용으로 판단했다.
+  //
+  // 중요: 조사 중 인천시 행정구역이 2026-07-01부로 개편된 사실을 확인했다
+  // (2군 8구 → 2군 9구). 이 작업 지시서에 적힌 "8개 구·2개 군(중구, 동구,
+  // 미추홀구, 연수구, 남동구, 부평구, 계양구, 서구, 강화군, 옹진군)"은 개편
+  // 이전 구성이다. '인천시 제물포구·영종구 및 검단구 설치 등에 관한 법률'
+  // (2024년 제정)에 따라 중구+동구가 폐지되고 제물포구·영종구로, 서구에서
+  // 검단구가 분리 신설되고 남은 서구는 서해구로 개칭됐다(경향신문
+  // 2026-06-08, 한국경제 2026-06-29 보도, 인천시 공식 카드뉴스
+  // incheon.go.kr/IC010601/2187729 확인). itour.incheon.go.kr의 sel_gugun
+  // 드롭다운도 이미 새 명칭(제물포구/영종구/검단구/서해구)만 제공하고
+  // 중구/동구/서구는 옵션에 없다 — 포털이 개편을 반영해 갱신됐다는 뜻이므로
+  // 이 wave는 옛 10개가 아니라 현재 실제 기초자치단체인 9개 구·2개 군
+  // (미추홀구/연수구/남동구/부평구/계양구/제물포구/영종구/검단구/서해구/
+  // 강화군/옹진군) 전부를 등록한다.
+  //
+  // 상세 링크가 <a href="javascript:;" name="btn_detail" cotId="...">라
+  // href 속성이 없어(cheerio 파싱 시 cotId 속성은 cotid로 소문자 정규화된다)
+  // declarative parser의 href 기반 링크 추출로는 상세 URL을 만들 수 없다 —
+  // customParsers/incheonItourFestival.ts를 만들어 cotId로 상세 URL
+  // (detail.do?cotId=...)을 직접 조립한다. 목록에 장소/주소 필드가 없어
+  // venue/address는 항상 null이고, 좌표는 구·군 fallback(OSM Nominatim 조회)을
+  // 그대로 쓴다. 옹진군(720)과 서해구(275)는 2026-07-31 조사 시점 기준 등록된
+  // 항목이 0건이었다(구조 오류가 아니라 그 시점 포털에 실제로 해당 지역
+  // 축제가 없는 것으로 확인, cotId 집합 자체가 비어 있고 다른 코드와 겹치지도
+  // 않음) — 향후 포털에 항목이 올라오면 크론이 자동 수집하도록 그대로
+  // 등록해 둔다.
+  ...[
+    { siteId: "incheon-itour-michuhol", cityName: "미추홀구", code: "177", lat: 37.4636, lng: 126.6502 },
+    { siteId: "incheon-itour-yeonsu", cityName: "연수구", code: "185", lat: 37.4098, lng: 126.6787 },
+    { siteId: "incheon-itour-namdong", cityName: "남동구", code: "200", lat: 37.446902, lng: 126.7315126 },
+    { siteId: "incheon-itour-bupyeong", cityName: "부평구", code: "237", lat: 37.5070221, lng: 126.7220068 },
+    { siteId: "incheon-itour-gyeyang", cityName: "계양구", code: "245", lat: 37.5373539, lng: 126.7379078 },
+    { siteId: "incheon-itour-jemulpo", cityName: "제물포구", code: "125", lat: 37.4652463, lng: 126.6064148 },
+    { siteId: "incheon-itour-yeongjong", cityName: "영종구", code: "155", lat: 37.4564531, lng: 126.4433445 },
+    { siteId: "incheon-itour-geomdan", cityName: "검단구", code: "290", lat: 37.5972286, lng: 126.6601317 },
+    { siteId: "incheon-itour-seohae", cityName: "서해구", code: "275", lat: 37.545, lng: 126.676 },
+    { siteId: "incheon-itour-ganghwa", cityName: "강화군", code: "710", lat: 37.746, lng: 126.488 },
+    { siteId: "incheon-itour-ongjin", cityName: "옹진군", code: "720", lat: 37.533, lng: 126.429 }
+  ].map<CitySiteConfig>((entry) => ({
+    siteId: entry.siteId,
+    cityName: entry.cityName,
+    listUrl: `https://itour.incheon.go.kr/ssst/ssst/list.do?pageNm=fstv&sel_gugun=${entry.code}`,
+    fallbackLat: entry.lat,
+    fallbackLng: entry.lng,
+    robotsCheckedAt: "2026-07-31",
+    customParser: "incheon-itour-festival"
+  }))
 ];
