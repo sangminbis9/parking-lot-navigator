@@ -932,5 +932,98 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     fallbackLng: entry.lng,
     robotsCheckedAt: "2026-07-31",
     customParser: "incheon-itour-festival"
-  }))
+  })),
+
+  // wave 16(광주광역시): 서울(wave 12)/인천(wave 15)처럼 통합 포털 하나로 5개
+  // 구(동구/서구/남구/북구/광산구)를 전부 커버할 수 있는지부터 확인했다
+  // (2026-07-31 실측). 광주관광포털 tour.gwangju.go.kr의 "축제와 이벤트"
+  // 목록(home/sub.cs?m=346)이 그 후보인데, 목록 항목 자체에는 실제 날짜가
+  // 있어 조건 (b)는 통과하지만, 구·군을 걸러내는 서버사이드 쿼리 파라미터가
+  // 전혀 없다 — sel_gugun류 파라미터를 아무리 찾아도 없고(cheerio로 직접
+  // 확인), 페이지 안의 "동구/서구/남구/북구/광산구" 문자열은 전부 하단
+  // 푸터의 정적 외부 링크일 뿐이었다(예: <a href="https://www.donggu.kr/
+  // tour">동구</a>, .../seogu.gwangju.kr/culture, .../namgu.gwangju.kr/
+  // index.es?sid=a7, bukgu.gwangju.kr/culture, .../gwangsan.go.kr/culture —
+  // 전부 각 구 자체 사이트로 나가는 링크고 쿼리 파라미터 필터가 아니다).
+  // 즉 조건 (a. 서버사이드 구 필터)가 실패해 통합 포털은 쓸 수 없고, 지시된
+  // 대로 개별 구 사이트로 fallback해서 조사했다.
+  //
+  // 참고: 조사 중 광주광역시가 전라남도와 통합되어 "전남광주통합특별시"라는
+  // 새 광역단체가 출범한 사실을 확인했다(2026-07-31 시점, tour.gwangju.go.kr
+  // 홈페이지 배너·gjgwangsan.kccf.or.kr 푸터 "전남광주통합특별시 광산구"·
+  // www.gjsgcc.or.kr 본문 "전남광주통합특별시 서구청" 등 복수 페이지에서
+  // 교차 확인). 다만 인천 wave 15의 행정구역 개편과 달리 이번 통합은 광역
+  // 단위(도-광역시 통합)이고, 동구/서구/남구/북구/광산구 5개 구는 여전히
+  // 별도 홈페이지를 운영하는 기초자치단체로 실재하고 있어 이 wave의 조사
+  // 대상(5개 구) 자체는 바뀌지 않는다.
+  //
+  // 개별 구 조사 결과 4개 구는 제외했다:
+  // - 서구: 구청 사이트(www.seogu.gwangju.kr)에 실제 날짜가 있는 유일한
+  //   목록("행사 일정 안내", board.es?mid=a70301000000&bid=0075, 2026-07-31
+  //   실측 "2026-"/"2025-" 형식 날짜 다수 확인)이 정확히 robots.txt의
+  //   `User-agent: *` 그룹 `Disallow: /board*`에 걸려 제외된다. 문화관광
+  //   메인(/culture)이나 연중문화행사(/culture, "연중문화행사" 페이지)에는
+  //   ISO 날짜가 아예 없다. 산하 서구문화원(gjsgcc.or.kr, "문화예술축제"
+  //   게시판)도 확인했으나 SEQ 번호가 붙은 게시판 목록이고 날짜 컬럼이
+  //   "2026-01-28"처럼 전부 동일한 등록일(글쓴 날짜)일 뿐, 축제 자체의
+  //   시작/종료일이 아니라 제외(사진 갤러리류와 동일한 "게시일만 있고
+  //   행사 기간 없음" 패턴). 웹 검색으로 나온 playgwangju.co.kr(플레이광주,
+  //   민간/커뮤니티 사이트로 공식 구청·문화재단 출처가 아님)의 축제 게시판도
+  //   확인했으나 서버가 약한 DH 키를 쓰는 TLS 설정이라(`SSL routines::dh
+  //   key too small`) 표준 curl TLS 협상 자체가 실패해 접근이 안 되고,
+  //   공식 출처도 아니라 우회하지 않고 제외했다.
+  // - 남구: 구청 사이트(www.namgu.gwangju.kr)는 robots.txt `User-agent: *`
+  //   그룹이 `Disallow: /`(단 `Allow: /index.es?sid=a1` 하나만 예외)라
+  //   문화관광 페이지(index.es?sid=a7, 실제로는 "굿모닝!양림" 오디오 소개
+  //   페이지) 자체가 전면 차단 대상이라 제외. 산하 광주남구문화원
+  //   (gjnamgu.or.kr 계열, 홈 화면 확인)도 확인했으나 홈의 게시물 목록들이
+  //   "등록된 게시물이 없습니다" 플레이스홀더와 "2026-02-10"처럼 전부 같은
+  //   등록일만 찍힌 사진 갤러리류라 실제 축제 기간 데이터가 없어 제외.
+  // - 북구: 구청 사이트(bukgu.gwangju.kr)는 robots.txt `User-agent: *`
+  //   그룹이 `Disallow:/`로 전체 차단이라 제외. 산하 광주광역시북구문화원
+  //   (gjbukgu.or.kr, robots는 `/jingle/`만 차단해 접근은 가능)의 "행사사업"
+  //   페이지(/ko/21)도 확인했으나 "가족과 함께하는 화전부치기와 민속놀이 —
+  //   사업시기: 4월", "문화역사 유적지 탐방 — 사업시기: 11월"처럼 매년
+  //   반복되는 사업을 월 단위로만 소개하는 정적 소개 페이지라 연도가 없는
+  //   반복 목록형 게시판이 아니라 제외.
+  // - 광산구: 구청 사이트(www.gwangsan.go.kr)의 축제 게시판(clturTourList.do)
+  //   은 robots는 막혀 있지 않지만 JS/AJAX로 목록을 그려 넣는 위젯이라
+  //   정적 HTML을 그대로 fetch하면 `<ul class="d_list_gallery dataList">`가
+  //   빈 채로 온다(2026-07-31 실측, 항목 0개). 산하 광산문화원
+  //   (gjgwangsan.kccf.or.kr)의 "축제/행사" 소개 페이지도 확인했으나 텍스트
+  //   목록이 아니라 인포그래픽 PNG 이미지 한 장뿐이고, 홈 메뉴의 "월별행사"
+  //   링크는 `<!--li><a href="">월별행사</a></li-->`처럼 HTML 주석으로
+  //   막혀 있는 죽은 메뉴 항목이라 제외.
+  //
+  // 유일하게 등록한 동구는 구청 사이트(donggu.kr)의 robots.txt가
+  // `User-agent: *` 그룹에 `Disallow: /`(단 `Allow: /index.es?sid=a1`
+  // 하나만 예외)라 문화관광(/tour) 경로가 차단 대상이라 제외한 대신, 산하
+  // 동구문화관광재단(gdctf.or.kr)의 "행사" 게시판(front/M0000255/accdata/
+  // list.do)을 등록했다. robots.txt는 `User-agent: *` 그룹이 기본
+  // `Disallow: /`이지만 `Allow: /front/`가 있어 대상 경로가 비차단으로
+  // 확인됐다(2026-07-31 실측). 이 게시판은 재단이 국립아시아문화전당(ACC)의
+  // 행사 정보를 그대로 옮겨와 보여주는 목록(URL 자체가 "accdata")으로,
+  // ul.galleryList > li 반복 구조 안에 "<time>2026-08-17 ~
+  // 2026-08-17</time>" 형식의 실제 날짜가 있어 declarative selector만으로
+  // parseCityDateRange()가 시작/종료일을 그대로 나눈다. 상세 링크는
+  // acc.go.kr 자체 상세 페이지로 바로 연결되는 절대경로라 별도 URL 조립이
+  // 필요 없다. 장소 span이 비어 있는 항목도 있으나(예: "ACC 친환경 캠페인")
+  // venueSelector는 선택 필드라 null로 처리돼 문제 없다. 좌표는 OSM
+  // Nominatim으로 조회한 동구청 좌표를 사용.
+  {
+    siteId: "gwangju-donggu-gdctf",
+    cityName: "동구",
+    listUrl: "https://gdctf.or.kr/front/M0000255/accdata/list.do",
+    fallbackLat: 35.1461883,
+    fallbackLng: 126.9230060,
+    robotsCheckedAt: "2026-07-31",
+    selectors: {
+      itemSelector: ".galleryList > li",
+      titleSelector: ".txt strong",
+      dateSelector: ".txt time",
+      linkSelector: "a",
+      imageSelector: ".img img",
+      venueSelector: ".txt > span"
+    }
+  }
 ];
