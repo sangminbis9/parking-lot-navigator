@@ -633,5 +633,78 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       imageSelector: "img",
       venueSelector: "ul.li_sty03 li:nth-of-type(1) div"
     }
-  }
+  },
+
+  // wave 12(서울특별시): 서울은 기초자치단체가 25개 자치구뿐이다. 자치구별
+  // 개별 사이트(구청/문화재단)를 하나씩 조사하기 전에, 서울시 통합
+  // 문화포털(culture.seoul.go.kr) "문화행사 > 축제" 목록이 자치구별 지역
+  // 필터를 실제로 지원하는지부터 확인했다(2026-07-31 실측). 목록 페이지의
+  // "지역별" 상세검색 체크박스(name="dist")가 25개 자치구를 법정동 코드
+  // (예: 종로구=11110, 강남구=11680)로 정확히 매핑하고 있고, 실제 렌더링을
+  // 담당하는 AJAX 엔드포인트(eventList.do)에 searchField=FESTIVAL과
+  // searchDist=<법정동코드>를 GET 쿼리스트링으로 붙이면 서버사이드에서 그
+  // 자치구 소재 행사만 걸러서 반환한다 — 종로구(11110) 요청은 세종문화회관/
+  // 아르코예술극장 등, 강남구(11680) 요청은 코엑스처럼 실제로 다른 장소가
+  // 나오는 것을 cheerio로 직접 파싱해 확인했다. 자치구마다 별도 사이트를
+  // 찾을 필요 없이 이 포털 하나로 25개 전부가 정확히 커버되므로, 설계
+  // 문서의 "통합 포털로 충분하면 그걸로 마친다" 기준에 따라 2단계
+  // (자치구 개별 사이트 조사)는 진행하지 않았다.
+  // robots.txt는 `User-agent : * / Disallow: / / Allow : /culture/culture/`
+  // 구조이고 목록 페이지(list.do)와 AJAX 엔드포인트(eventList.do) 모두
+  // `/culture/culture/` 하위 경로라 허용 대상이다. 마크업이 25개 자치구
+  // 전부 동일해서 custom parser 없이 declarative selector 하나를 공유한다
+  // (ul#dataList > li 구조, 25개 dist 코드 각각 cheerio 파싱 결과를 직접
+  // 검증 완료).
+  // listUrl에 넣은 sdate=2026-07-31은 조사 시점(오늘) 기준 하한이며, 다음
+  // 재배포 전까지 고정값으로 남는다. 이 사이트는 sdate 없이 기본 정렬이면
+  // 이미 종료된 2025년 행사가 먼저 나오는 걸 확인했기 때문에(기본 정렬이
+  // 시작일 오름차순이라 과거 행사부터 잡힘) sdate 하한이 꼭 필요했다. 다만
+  // sdate가 고정돼도 위험하지 않다 — cityFestivalCache.ts의
+  // queryCityFestivalsFromCache가 읽기 시점에 upcomingWithinDays로 다시
+  // 거르므로, DB에 지난 축제가 쌓여도 앱에는 노출되지 않는다. 유일한 남는
+  // 리스크는 향후 sdate보다 이른 시작일로 새로 등록되는 축제를 놓칠 수
+  // 있다는 것뿐이다(다음 wave 재검증 시 sdate를 그날 날짜로 갱신하면
+  // 해소된다).
+  ...[
+    { siteId: "seoul-culture-jongno", cityName: "종로구", code: "11110", lat: 37.5730853, lng: 126.9792509 },
+    { siteId: "seoul-culture-jung", cityName: "중구", code: "11140", lat: 37.563758, lng: 126.9975659 },
+    { siteId: "seoul-culture-yongsan", cityName: "용산구", code: "11170", lat: 37.5325763, lng: 126.9904206 },
+    { siteId: "seoul-culture-seongdong", cityName: "성동구", code: "11200", lat: 37.5612078, lng: 127.0371526 },
+    { siteId: "seoul-culture-gwangjin", cityName: "광진구", code: "11215", lat: 37.5363239, lng: 127.0877952 },
+    { siteId: "seoul-culture-dongdaemun", cityName: "동대문구", code: "11230", lat: 37.5735046, lng: 127.0398572 },
+    { siteId: "seoul-culture-jungnang", cityName: "중랑구", code: "11260", lat: 37.60618, lng: 127.09359 },
+    { siteId: "seoul-culture-seongbuk", cityName: "성북구", code: "11290", lat: 37.5894403, lng: 127.0167332 },
+    { siteId: "seoul-culture-gangbuk", cityName: "강북구", code: "11305", lat: 37.6396318, lng: 127.0273341 },
+    { siteId: "seoul-culture-dobong", cityName: "도봉구", code: "11320", lat: 37.6687201, lng: 127.0473035 },
+    { siteId: "seoul-culture-nowon", cityName: "노원구", code: "11350", lat: 37.654325, lng: 127.0563749 },
+    { siteId: "seoul-culture-eunpyeong", cityName: "은평구", code: "11380", lat: 37.6027849, lng: 126.9291822 },
+    { siteId: "seoul-culture-seodaemun", cityName: "서대문구", code: "11410", lat: 37.579077, lng: 126.9346051 },
+    { siteId: "seoul-culture-mapo", cityName: "마포구", code: "11440", lat: 37.5635586, lng: 126.9033645 },
+    { siteId: "seoul-culture-yangcheon", cityName: "양천구", code: "11470", lat: 37.512295, lng: 126.865945 },
+    { siteId: "seoul-culture-gangseo", cityName: "강서구", code: "11500", lat: 37.5509788, lng: 126.8495652 },
+    { siteId: "seoul-culture-guro", cityName: "구로구", code: "11530", lat: 37.4934375, lng: 126.8949325 },
+    { siteId: "seoul-culture-geumcheon", cityName: "금천구", code: "11545", lat: 37.4558132, lng: 126.8939002 },
+    { siteId: "seoul-culture-yeongdeungpo", cityName: "영등포구", code: "11560", lat: 37.5253085, lng: 126.8965943 },
+    { siteId: "seoul-culture-dongjak", cityName: "동작구", code: "11590", lat: 37.5042165, lng: 126.94022 },
+    { siteId: "seoul-culture-gwanak", cityName: "관악구", code: "11620", lat: 37.481223, lng: 126.9527151 },
+    { siteId: "seoul-culture-seocho", cityName: "서초구", code: "11650", lat: 37.4840614, lng: 127.0324034 },
+    { siteId: "seoul-culture-gangnam", cityName: "강남구", code: "11680", lat: 37.5171756, lng: 127.0412865 },
+    { siteId: "seoul-culture-songpa", cityName: "송파구", code: "11710", lat: 37.5145656, lng: 127.1060321 },
+    { siteId: "seoul-culture-gangdong", cityName: "강동구", code: "11740", lat: 37.5306942, lng: 127.1206234 }
+  ].map<CitySiteConfig>((entry) => ({
+    siteId: entry.siteId,
+    cityName: entry.cityName,
+    listUrl: `https://culture.seoul.go.kr/culture/culture/cultureEvent/eventList.do?viewType=CONTBODY&menuNo=200010&searchField=FESTIVAL&searchDist=${entry.code}&sdate=2026-07-31&pageIndex=1`,
+    fallbackLat: entry.lat,
+    fallbackLng: entry.lng,
+    robotsCheckedAt: "2026-07-31",
+    selectors: {
+      itemSelector: "ul#dataList > li",
+      titleSelector: "p.tit",
+      dateSelector: "div.date",
+      linkSelector: "a",
+      imageSelector: "img",
+      venueSelector: "p.place"
+    }
+  }))
 ];
