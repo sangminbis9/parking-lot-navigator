@@ -18,6 +18,7 @@ import { parseHwaseongTour } from "./hwaseongTour.js";
 import { parseUijeongbuEvent } from "./uijeongbuEvent.js";
 import { parseSokchoCulture } from "./sokchoCulture.js";
 import { parseBsjungguAnnualSchedule } from "./bsjungguAnnualSchedule.js";
+import { parseDalseoDscf } from "./dalseoDscf.js";
 
 export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
 
@@ -42,5 +43,6 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "hwaseong-tour": parseHwaseongTour,
   "uijeongbu-event": parseUijeongbuEvent,
   "sokcho-culture": parseSokchoCulture,
-  "bsjunggu-annual-schedule": parseBsjungguAnnualSchedule
+  "bsjunggu-annual-schedule": parseBsjungguAnnualSchedule,
+  "dalseo-dscf": parseDalseoDscf
 };
