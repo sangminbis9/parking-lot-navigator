@@ -1025,7 +1025,7 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       imageSelector: ".img img",
       venueSelector: ".txt > span"
     }
-  }
+  },
 
   // wave 17(대전광역시): 5개 구(동구/중구/서구/유성구/대덕구)를 조사했다
   // (2026-07-31 실측). 먼저 통합 포털 후보 daejeontour.co.kr
@@ -1131,4 +1131,84 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
   // 사이트/문화재단은 정적 소개 페이지, 단일 축제 전용 마이크로사이트,
   // 사진 갤러리, 또는 등록일만 있는 행정 게시판뿐이라 진짜 반복형
   // 축제 게시판을 하나도 찾지 못했다.
+
+  // wave 18(울산광역시): 서울(wave 12)/인천(wave 15)처럼 통합 포털 하나로
+  // 5개 구·군(중구/남구/동구/북구/울주군)을 전부 커버할 수 있는지부터
+  // 확인했다(2026-08-01 실측). 먼저 시청 산하 관광포털
+  // www.ulsan.go.kr/tour의 "축제행사" 목록
+  // (/tour/kor/unit/fstvl/list.ulsan?searchDvsn1=1&mId=001001010000000000)을
+  // 확인했지만, 이 목록은 (1) 구·군 필터 자체가 없고 검색조건이 제목/월별
+  // 뿐이며, (2) 각 항목이 "12월"처럼 연도 없는 월 카테고리 라벨만 갖고
+  // 실제 시작~종료일이 전혀 없고, (3) 상세 페이지도 정적 링크가 아니라
+  // `<a href="javascript:fn_view('14');return false;">`처럼 폼 제출
+  // JS로만 열려 declarative parser의 href 추출이 불가능해 조건 (a)(b)
+  // 둘 다 실패, 등록하지 않았다.
+  //
+  // 대신 울산문화재단(재단법인, uctf.or.kr)이 운영하는 통합 문화행사
+  // 포털 ulsanculture.kr을 발견해 확인했다. "문화행사" 목록
+  // (/webuser/exhibit/all_list.html)에 `sch_an_gu_code` 쿼리 파라미터로
+  // 실제 서버사이드 구·군 필터가 걸려 있는 것을 확인했다 — 목록 페이지의
+  // "구·군 선택" select 옵션이 1=남구/2=중구/3=동구/4=북구/5=울주군으로
+  // 매핑돼 있고, `sch_so_show_kind=4`("행사·축제" 카테고리)와 조합해
+  // 5개 코드 각각 요청한 결과 총 게시물 수가 59/30/11/16/20건으로 전부
+  // 다르고 제목 집합도 서로 겹치지 않음을 curl+cheerio로 직접 확인했다
+  // (2026-08-01 실측, 조건 a 통과). 목록 페이지 자체의 각 항목 카드에
+  // "<dt>기간</dt><dd>2026-07-29 ~ 2026-08-29</dd>"처럼 실제 시작~종료일이
+  // 그대로 있어 상세 페이지를 추가로 열 필요가 없다(조건 b 통과,
+  // parseCityDateRange가 같은 dateText 문자열에서 시작/종료일 두 개를
+  // 그대로 추출한다).
+  //
+  // robots.txt는 `User-agent: ClaudeBot` 등 특정 크롤러 UA에는
+  // `Disallow: /`가 걸려 있지만, 우리 프로덕션 UA
+  // (Mozilla/5.0 ParkingLotNavigator/1.0)는 그 named-bot 규칙과 일치하지
+  // 않아 적용되지 않는다. 우리에게 적용되는 `User-agent: *` 그룹은
+  // `/webadmin/`, `/log/`, `/module/`, `/layout/`과
+  // `/*sch_date=`, `/*sch_s_date=`, `/*sch_e_date=`, `/*sch_text=`
+  // 쿼리 패턴만 차단한다("무한 루프 유발 날짜/검색 크롤링 차단" 주석 있음).
+  // 이 wave가 쓰는 listUrl(`sch_an_gu_code`, `sch_so_show_kind`만 사용)은
+  // 차단 패턴에 해당하지 않아 전부 허용 대상이다. 참고로
+  // all_list.html에 sch_date/sch_s_date 등을 붙인 날짜 검색 URL은
+  // 이 robots 규칙에 걸려 애초에 후보에서 배제했다(사용할 필요도 없었다
+  // — 필터 없이 기본 목록만으로 이미 실제 날짜가 포함돼 있었다).
+  //
+  // 마크업은 `.gal-box .flex` 아래 카드 `<div>`가 반복되는 구조이고, 각
+  // 카드 안에 `<a href="/webuser/exhibit/가든-나이트-마켓-3232?...">`
+  // 하나가 이미지/제목/dl 세 개(기간→장소→문의 순, 문의는 선택)를 전부
+  // 감싼다. 기간 dd는 항상 첫 번째 dl, 장소 dd는 항상 두 번째 dl이라
+  // `dl:nth-of-type(1) dd` / `dl:nth-of-type(2) dd`로 안정적으로 구분된다
+  // (5개 구·군 응답 각각 8개 카드 전부에서 순서 확인 완료, 예외 없음).
+  // 목록에는 이미 종료된 2025년 행사도 섞여 있으나(기본 정렬이 최신
+  // 등록순), cityFestivalCache.ts가 읽기 시점에 upcomingWithinDays로
+  // 다시 거르므로 앱에는 노출되지 않는다.
+  //
+  // "행사·축제"(sch_so_show_kind=4) 카테고리를 선택한 이유: 이 포털은
+  // 공연(1)/전시(2)/교육체험(3)/행사·축제(4)/기타(5)로 나뉘는데, 공연·
+  // 전시는 이미 이 코드베이스가 KOPIS 소스와 music_performance 카테고리로
+  // 별도 파이프라인에서 다루는 도메인과 겹칠 위험이 커 제외하고,
+  // "행사·축제" 카테고리만 등록했다. 이 카테고리에는 장터/마켓류
+  // (예: "가든 나이트 마켓")도 섞여 있지만 전부 실제 기간이 있는
+  // 반복형 행사라 이전 wave들이 받아들인 "축제성 지역 행사" 기준에
+  // 부합한다고 판단했다.
+  ...[
+    { siteId: "ulsan-culture-nam", cityName: "남구", code: "1", lat: 35.5437079, lng: 129.3294956 },
+    { siteId: "ulsan-culture-jung", cityName: "중구", code: "2", lat: 35.5692163, lng: 129.3316424 },
+    { siteId: "ulsan-culture-dong", cityName: "동구", code: "3", lat: 35.5049028, lng: 129.4166501 },
+    { siteId: "ulsan-culture-buk", cityName: "북구", code: "4", lat: 35.5827403, lng: 129.3612174 },
+    { siteId: "ulsan-culture-ulju", cityName: "울주군", code: "5", lat: 35.5219040, lng: 129.2424398 }
+  ].map<CitySiteConfig>((entry) => ({
+    siteId: entry.siteId,
+    cityName: entry.cityName,
+    listUrl: `https://ulsanculture.kr/webuser/exhibit/all_list.html?sch_an_gu_code=${entry.code}&sch_so_show_kind=4`,
+    fallbackLat: entry.lat,
+    fallbackLng: entry.lng,
+    robotsCheckedAt: "2026-08-01",
+    selectors: {
+      itemSelector: ".gal-box .flex > div",
+      titleSelector: ".text-box .subject",
+      dateSelector: "dl:nth-of-type(1) dd",
+      linkSelector: "a",
+      imageSelector: ".img-box img",
+      venueSelector: "dl:nth-of-type(2) dd"
+    }
+  }))
 ];
