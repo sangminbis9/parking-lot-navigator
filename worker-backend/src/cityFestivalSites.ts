@@ -1552,3 +1552,82 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
 // "JS 렌더링이라 declarative parser 불가"(연천), "날짜 필드가 아예 없는
 // 카드 목록 + 단일 행사 마이크로사이트 모음"(양평) 등 이전 wave들에서
 // 이미 확립된 배제 기준에 정확히 걸려 전부 제외했다.
+
+// wave 23(전라남도, 통합 포털 재조사): wave 6는 "시/군 개별 사이트"만
+// 조사했고 도 통합 포털 가능성은 검토하지 않았다(위 wave 6 코멘트 참고).
+// 경남 wave 7의 festa.gyeongnam.go.kr 성공 사례를 참고해 전남 통합
+// 관광/축제 포털이 있는지 재조사했다(2026-08-01). 참고로 www.jeonnam.go.kr
+// 홈페이지 title이 "전남광주통합특별시(구)전라남도청"이라 전남·광주가
+// 통합된 행정구역으로 개편된 상태다(2026-08-01 curl 확인) — 이 조사에서
+// 발견한 도메인 구성도 이 개편을 반영한다.
+//
+// - tour.jeonnam.go.kr, festival.jeonnam.go.kr: Cloudflare DoH
+//   (cloudflare-dns.com/dns-query)와 Google DoH(dns.google/resolve) 두
+//   개의 독립적인 공개 DNS 리졸버로 A 레코드를 재확인한 결과 둘 다
+//   127.0.0.1을 반환한다(로컬 리졸버 캐시/오탐이 아님을 확인,
+//   2026-08-01). 접속 시도는 "Connection refused"로 즉시 실패한다 —
+//   확인 불가가 아니라 통합 이후 폐기된 죽은 서브도메인으로 결론짓는다.
+//
+// - namdokorea.com("남도여행길잡이"): www.jeonnam.go.kr 메인 페이지가
+//   이 도메인을 공식 관광 포털로 실제 href 12개로 링크하고 있다
+//   (2026-08-01 확인). 경남 festa.gyeongnam.go.kr과 같은 형태의 시군별
+//   필터 URL도 실존한다 — `/tour/info/area/areaList.do?menuCd=<코드>&
+//   area=AREA_<지역>&category1=festival`. 곡성(AREA_GOKSEONG)과
+//   여수(AREA_YEOSU)를 curl로 diff한 결과 서로 다른 축제 목록이
+//   서버사이드로 내려온다(곡성 5건: 곡성세계장미축제/섬진강국제실험예술제
+//   (SIEAF)/곡성 아이스페스티벌/석곡코스모스음악회/곡성심청 어린이대축제,
+//   여수 3건: 향일암 일출제/거문도백도 은빛바다체험행사/여수영취산진달래
+//   체험행사) — 조건 (a)는 실측으로 충족을 확인했다. 하지만 두 가지
+//   독립적인 이유로 등록하지 못한다.
+//
+//   1) TLS 인증서 체인 결함(치명적, 단독으로 등록 불가 사유). www와
+//      apex 도메인 모두 openssl s_client로 확인한 결과 서버가 리프
+//      인증서(CN=www.namdokorea.com, 발급자 Sectigo)만 보내고 중간
+//      인증서를 보내지 않는다 — `verify error:num=20:unable to get
+//      local issuer certificate` / `Verify return code: 21 (unable to
+//      verify the first certificate)`(2026-08-01, 3회 재시도 모두 동일해
+//      일시적 CDN 엣지 이슈가 아님을 확인). curl은 `-k` 없이는
+//      http_code=000으로 연결 자체가 실패하고, HTTP(80)도 HTTPS로만
+//      강제 리다이렉트돼 우회 경로가 없다. wave 6가 이미 확립한 "SSL
+//      인증서 체인 결함" 배제 기준과 동일한 사유이고, Cloudflare
+//      Worker의 fetch()도 curl과 같은 표준 체인 검증을 수행하며(AIA
+//      체이싱 없음) 프로덕션에서도 동일하게 실패할 것으로 판단한다.
+//   2) (TLS를 `-k`로 무시해도) 조건 (b) 미충족. 시군별 필터 페이지의
+//      목록 카드는 제목과 주소(`span.addr`)만 있고 날짜 텍스트가 전혀
+//      없다(곡성 페이지 79KB 전체에서 `YYYY-MM-DD`류 패턴 0건,
+//      2026-08-01 확인) — 날짜는 `onclick="selectInfo(...)"` AJAX 상세
+//      패널에만 있는 것으로 보이는데 customParser는 동기 함수라 상세
+//      페이지를 추가로 fetch할 수 없다(알려진 한계). 시군 미분리 전체
+//      일정 페이지(`festivaltotalIndex.do?menuCd=T007005002`,
+//      "축제전체일정")도 확인했으나 조건 (a)조차 충족 못한다 — 시군
+//      쿼리 파라미터 없이 22개 시군 전체를 월별 단일 테이블로 합쳐
+//      내려주고, 날짜도 "3월중", "3.12.~3.20."처럼 연도가 없는 반복
+//      텍스트다(예: 함평나비대축제 항목 옆에 "제24회 2022 함평나비대축제"
+//      라는 예시 문구가 남아 있어 정적으로 방치된 페이지로도 보인다).
+//
+// - tour.jeonnam-gwangju.go.kr("VISIT 전남광주", 통합 이후 신규 공식
+//   관광 포털로 추정): robots.txt는 실제 프로덕션 UA(`Mozilla/5.0
+//   ParkingLotNavigator/1.0`)로는 `User-agent: * / Allow:/`(전면
+//   허용)를 반환하지만, 기본 curl UA(`curl/8.5.0`)로는 WAF가 "400 Bad
+//   Request / Request Blocked" 페이지를 반환한다(2026-08-01 확인 —
+//   대구 dscf.or.kr 사례와 동일한 함정이라 두 UA를 모두 테스트해서
+//   걸러냈다). TLS는 정상(`ssl_verify_result=0`). 다만 실제 페이지는
+//   내부 메뉴/게시판이 전혀 없는 단일 정적 랜딩 페이지(18KB, GNB 없음)로,
+//   "축제·행사" 태그가 붙은 항목들도 네이버 블로그나 개별 시/군 사이트
+//   (예: festival.jangheung.go.kr)로 나가는 외부 링크 카드일 뿐 자체
+//   목록 구조가 없다 — declarative parser로 표현할 게시판 자체가 없어
+//   제외.
+//
+// - intro.jeonnamtour.kr("JG TOUR", 옛 JN TOUR 앱 소개 페이지, imweb
+//   빌더): 1MB 페이지 전체에서 "축제" 문자열 0건, 날짜 패턴 0건 — 앱
+//   다운로드 유도용 랜딩 페이지일 뿐 축제 목록이 아니라 제외.
+//
+// 결론: wave 7(경남)과 달리 전남은 "시군 필터가 진짜로 동작하는" 통합
+// 포털(namdokorea.com)을 찾긴 했지만, TLS 인증서 체인 결함(단독으로도
+// 치명적) + 목록에 날짜 필드 부재(조건 b 미충족)라는 두 가지 독립적인
+// 이유로 등록할 수 없었다. 신규 통합 포털(tour.jeonnam-gwangju.go.kr)은
+// 아직 게시판 콘텐츠가 없는 랜딩 페이지 단계다. 시간 예산상 22개 시/군
+// 개별 문화재단/문화원 대안 재탐색(선택 사항, wave 6에서 21곳이 제외된
+// 구체적 사유가 뭉뚱그려져 있어 재확인이 유효할 수 있음)은 이번 wave에서
+// 진행하지 않았다 — wave 6의 결론(순천시만 등록)이 그대로 유지된다.
+// 등록 항목 0건.
