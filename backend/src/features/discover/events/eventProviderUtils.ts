@@ -7,6 +7,7 @@ import {
   parseDate,
 } from "../common/dateUtils.js";
 import type { DiscoverQuery } from "../common/discoverProvider.js";
+import { hasUnconditionalFreeMention } from "../../localEvents/localEventStructuring.js";
 
 export const EVENT_FEED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export const EVENT_FETCH_TIMEOUT_MS = 8_000;
@@ -687,13 +688,16 @@ function normalizeDate(value: unknown): string | null {
   return parseDate(text);
 }
 
-function isFreeText(value: string | null): boolean {
+export function isFreeText(value: string | null): boolean {
   const text = value?.toLowerCase() ?? "";
-  return (
-    text.includes("free") ||
-    text.includes("\uBB34\uB8CC") ||
-    text.includes("0\uC6D0")
-  );
+  // "0\uC6D0" \uB4A4\uC5D0 \uB2E4\uB978 \uC22B\uC790\uAC00 \uBD99\uC5B4\uC788\uC9C0 \uC54A\uC544\uC57C \uC9C4\uC9DC 0\uC6D0\uC774\uB2E4. \uADF8\uB0E5 \uBD80\uBD84 \uBB38\uC790\uC5F4\uB85C
+  // \uAC80\uC0AC\uD558\uBA74 "5,000\uC6D0"\u00B7"10,000\uC6D0"\uCC98\uB7FC 0\uC73C\uB85C \uB05D\uB098\uB294 \uC720\uB8CC \uAC00\uACA9\uB3C4 "0\uC6D0"\uC744
+  // \uD3EC\uD568\uD574 \uBB34\uB8CC\uB85C \uC798\uBABB \uD310\uC815\uB41C\uB2E4.
+  if (text.includes("free") || /(?<![0-9])0\uC6D0/.test(text)) return true;
+  // "\uB9CC 65\uC138 \uC774\uC0C1 \uBB34\uB8CC"\uCC98\uB7FC \uD2B9\uC815 \uB300\uC0C1\uC5D0\uAC8C\uB9CC \uBB34\uB8CC\uC778 \uAD00\uB78C\uB8CC\uB294
+  // \uC804\uCCB4 \uBB34\uB8CC\uB85C \uCDE8\uAE09\uD558\uC9C0 \uC54A\uB294\uB2E4.
+  if (!text.includes("\uBB34\uB8CC")) return false;
+  return hasUnconditionalFreeMention(text);
 }
 
 function regionFromAddress(address: string): string | null {

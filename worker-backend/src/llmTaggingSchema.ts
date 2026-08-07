@@ -64,7 +64,7 @@ const FESTIVAL_GUIDE = `축제(festival) 분류 기준:
 
 const LOCAL_EVENT_GUIDE = `로컬 매장 이벤트(local_event) 분류 기준:
 - discount: %, 원 단위 할인, N+1, 세일.
-- freebie: 무료 증정, 사이드 메뉴 무료, 음료 1잔 무료.
+- freebie: 무료 증정, 사이드 메뉴 무료, 음료 1잔 무료. "65세 이상 무료", "청소년 무료입장"처럼 특정 대상에게만 무료인 경우는 freebie로 분류하지 말 것.
 - new_limited: 신메뉴, 한정 메뉴, 시즌 한정 출시.
 - popup: 팝업 스토어, 콜라보 행사, 일시적 입점.
 - opening: 신규 오픈 기념, 그랜드 오픈, 리뉴얼 오픈.

@@ -23,6 +23,7 @@ import {
   formatCompactDate,
   getNumber,
   getString,
+  isFreeText,
   logProviderResult,
   normalizeEventForMap,
   parseXmlItemsAny,
@@ -228,10 +229,7 @@ export class CulturePortalEventProvider
         region: getString(row, ["area", "sido", "region"]),
         venue: getString(row, ["place", "placeName", "venue", "fcltynm"]),
         updatedAt: getString(row, ["regDate", "modifiedDate", "updateDate"]),
-        isFree:
-          clean(getString(row, ["price", "charge", "useFee"]))?.includes(
-            "\uBB34\uB8CC",
-          ) ?? null,
+        isFree: isFreeText(clean(getString(row, ["price", "charge", "useFee"]))),
         raw: row,
       },
       resolveCoordinates ? this.resolver : undefined,

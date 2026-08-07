@@ -8,13 +8,28 @@ interface StructureInput {
   now?: Date;
 }
 
+// "65세 이상 무료", "청소년 무료입장"처럼 특정 대상에게만 무료인 문구를
+// 다른 패턴보다 먼저 매칭해 조건을 포함한 전체 문구를 benefit으로 남긴다.
+// 이 패턴이 없으면 뒤의 `/(무료...)/` 패턴이 조건 부분을 버리고 "무료"만
+// 추출해, 전체 무료가 아닌 이벤트가 무조건 무료처럼 보이는 문제가 있었다.
+export const AGE_CONDITIONAL_FREE_PATTERN =
+  /((?:(?:만\s?)?\d{1,2}\s?세\s?(?:이상|이하|미만|초과)|청소년|어린이|미취학(?:아동)?|경로\s?우대\S{0,3}|국가유공자|장애인|다자녀(?:\s?가정)?|임산부)[^\n.]{0,12}무료)/i;
+
 const benefitPatterns = [
+  AGE_CONDITIONAL_FREE_PATTERN,
   /(\d{1,2}\s?%\s?(?:할인|discount))/i,
   /(무료\s?(?:제공|증정|시식|음료|쿠폰)?)/i,
   /(1\s*\+\s*1|원\s?\+\s?원)/i,
   /(리뷰\s?(?:이벤트|작성|인증)[^\n.]*)/i,
   /(방문\s?(?:이벤트|인증)[^\n.]*)/i
 ];
+
+// AGE_CONDITIONAL_FREE_PATTERN에 해당하는 조건부 무료 문구를 걷어낸 뒤에도
+// "무료"가 남아 있는지로, 대상 제한 없는 무료 언급이 따로 있는지 판별한다.
+export function hasUnconditionalFreeMention(text: string): boolean {
+  const stripped = text.replace(new RegExp(AGE_CONDITIONAL_FREE_PATTERN.source, "gi"), "");
+  return /무료/i.test(stripped);
+}
 
 export function structureLocalEvent(input: StructureInput): StructuredLocalEventResult {
   const text = normalizeText(input.captionText);
@@ -45,7 +60,8 @@ export function inferLocalEventType(text: string | null | undefined): LocalEvent
   const normalized = normalizeText(text).toLowerCase();
   if (/(팝업|popup)/i.test(normalized)) return "popup";
   if (/(리뷰|review)/i.test(normalized)) return "review_event";
-  if (/(무료|증정|freebie|gift)/i.test(normalized)) return "freebie";
+  if (/(증정|freebie|gift)/i.test(normalized)) return "freebie";
+  if (/무료/i.test(normalized) && hasUnconditionalFreeMention(normalized)) return "freebie";
   if (/(할인|discount|쿠폰|coupon)/i.test(normalized)) return "discount";
   if (/(한정|limited|시즌|season)/i.test(normalized)) return "limited_menu";
   if (/(오픈|개업|opening)/i.test(normalized)) return "opening_event";

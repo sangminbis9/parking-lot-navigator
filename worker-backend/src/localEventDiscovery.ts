@@ -2,6 +2,7 @@ import type { LocalEvent, LocalEventStatus } from "@parking/shared-types";
 import {
   inferLocalEventType,
   structureLocalEvent,
+  AGE_CONDITIONAL_FREE_PATTERN,
 } from "../../backend/src/features/localEvents/localEventStructuring.js";
 import { upsertLocalEvent } from "./localEvents.js";
 import { logAgentActivity } from "./agents/headAgent.js";
@@ -1010,6 +1011,8 @@ function distanceMeters(
 }
 
 function extractBenefit(text: string): string | null {
+  const conditional = text.match(AGE_CONDITIONAL_FREE_PATTERN);
+  if (conditional?.[1]) return conditional[1].trim();
   const match = text.match(BENEFIT_PATTERN);
   if (!match?.[0]) return null;
   return match[0].trim();
