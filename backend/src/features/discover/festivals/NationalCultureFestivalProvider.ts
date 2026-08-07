@@ -298,7 +298,7 @@ async function normalizeNationalCultureFestival(
       address,
       lat,
       lng,
-      sourceUrl: clean(row.homepageUrl) ?? clean(row.relateInfo),
+      sourceUrl: normalizeHomepageUrl(row.homepageUrl),
       imageUrl: null,
       tags: [
         "culture-festival",
@@ -406,6 +406,20 @@ function clean(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text.length > 0 ? text : null;
+}
+
+// homepageUrl often arrives without a scheme (e.g. "www.example.go.kr") or,
+// when blank, this field used to fall back to relateInfo — a free-text
+// description, not a URL. Both cases produced a source_url that the image
+// enrichment agent's `LIKE 'http%'` filter silently excludes from scraping,
+// so bare domains never got a chance and description text was never a URL
+// to begin with.
+function normalizeHomepageUrl(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  if (/^https?:\/\//i.test(text)) return text;
+  const looksLikeDomain = !/\s/.test(text) && text.includes(".");
+  return looksLikeDomain ? `https://${text}` : null;
 }
 
 function toNumber(value: unknown): number | null {
