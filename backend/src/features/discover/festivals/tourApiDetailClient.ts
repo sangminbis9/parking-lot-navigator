@@ -415,10 +415,30 @@ function extractFirstUrl(value: unknown): string | null {
   const raw = clean(value);
   if (!raw) return null;
   const href = /href\s*=\s*["']([^"']+)["']/i.exec(raw)?.[1];
-  if (href) return clean(href);
+  if (href) return normalizeUrlToken(href);
   const text = cleanHtml(raw);
   if (!text) return null;
-  return clean(text);
+  for (const token of text.split(/\s+/)) {
+    const url = normalizeUrlToken(token);
+    if (url) return url;
+  }
+  return null;
+}
+
+// homepage often arrives as label text ("공식 홈페이지 www.foo.org"), several
+// links across lines, or a scheme-less bare domain rather than a single
+// clean URL. Scan tokens in order and normalize the first URL-shaped one —
+// bare domains get https:// prepended so the image agent's `LIKE 'http%'`
+// filter can still find them; label words without a dot never match and are
+// skipped.
+function normalizeUrlToken(token: string): string | null {
+  const trimmed = token.replace(/^["'(<]+|["')>.,;]+$/g, "");
+  if (!trimmed) return null;
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return trimmed;
+  if (/^(?:[a-z0-9가-힣-]+\.)+[a-z]{2,}(?:\/\S*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return null;
 }
 
 function cleanHtml(value: unknown): string | null {

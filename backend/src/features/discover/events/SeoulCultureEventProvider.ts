@@ -212,13 +212,26 @@ function normalizeSeoulEvent(
     source: "seoul_open_data",
     category: categoryFromText(row.CODENAME),
     sourceId: hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`),
-    sourceUrl: row.ORG_LINK ?? null,
+    sourceUrl: normalizeOrgLink(row.ORG_LINK),
     imageUrl: row.MAIN_IMG ?? null,
     shortDescription: row.ORG_NAME ?? null,
     price: feeText || null,
     region: row.GUNAME ?? null,
     updatedAt: row.RGSTDATE ?? new Date().toISOString(),
   };
+}
+
+// ORG_LINK sometimes arrives with leading/trailing whitespace or as a
+// scheme-less bare domain — either form fails the image agent's
+// `LIKE 'http%'` filter and the link is never scraped.
+function normalizeOrgLink(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return trimmed;
+  if (/^(?:[a-z0-9가-힣-]+\.)+[a-z]{2,}(?:\/\S*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return null;
 }
 
 function parseDateRange(
