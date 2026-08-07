@@ -15,6 +15,13 @@ interface StructureInput {
 export const AGE_CONDITIONAL_FREE_PATTERN =
   /((?:(?:만\s?)?\d{1,2}\s?세\s?(?:이상|이하|미만|초과)|청소년|어린이|미취학(?:아동)?|경로\s?우대\S{0,3}|국가유공자|장애인|다자녀(?:\s?가정)?|임산부)[^\n.]{0,12}무료)/i;
 
+// "무료 주차", "주차비 무료", "무료 배송"처럼 핵심 혜택과 무관하게 곁다리로
+// 언급되는 부가 서비스 안내는 이벤트 본연의 혜택이 아니므로 freebie 판단
+// 근거로 삼지 않는다. 이게 없으면 "50% 할인 ... 무료 배송" 같은 할인
+// 게시물이 부가 서비스 문구 때문에 freebie로 잘못 분류된다.
+export const INCIDENTAL_FREE_PATTERN =
+  /((?:무료\s?(?:주차|발렛|배송|택배|와이파이|wifi)|주차\s?(?:비)?\s?무료|배송\s?(?:비)?\s?무료))/gi;
+
 const benefitPatterns = [
   AGE_CONDITIONAL_FREE_PATTERN,
   /(\d{1,2}\s?%\s?(?:할인|discount))/i,
@@ -27,7 +34,9 @@ const benefitPatterns = [
 // AGE_CONDITIONAL_FREE_PATTERN에 해당하는 조건부 무료 문구를 걷어낸 뒤에도
 // "무료"가 남아 있는지로, 대상 제한 없는 무료 언급이 따로 있는지 판별한다.
 export function hasUnconditionalFreeMention(text: string): boolean {
-  const stripped = text.replace(new RegExp(AGE_CONDITIONAL_FREE_PATTERN.source, "gi"), "");
+  const stripped = text
+    .replace(new RegExp(AGE_CONDITIONAL_FREE_PATTERN.source, "gi"), "")
+    .replace(INCIDENTAL_FREE_PATTERN, "");
   return /무료/i.test(stripped);
 }
 
