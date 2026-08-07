@@ -12,7 +12,7 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { seoulCultureMaxPages } from "./eventProviderConfig.js";
-import { categoryFromText, EVENT_FEED_CACHE_TTL_MS } from "./eventProviderUtils.js";
+import { categoryFromText, EVENT_FEED_CACHE_TTL_MS, isFreeText } from "./eventProviderUtils.js";
 
 const SEOUL_CULTURE_PAGE_SIZE = 1000;
 const SEOUL_CULTURE_SUCCESS_CODES = new Set([
@@ -195,11 +195,7 @@ function normalizeSeoulEvent(
   if (!row.TITLE || !dates || !Number.isFinite(lat) || !Number.isFinite(lng))
     return null;
   const feeText = row.USE_FEE ?? "";
-  const lowerFeeText = feeText.toLowerCase();
-  const isFree =
-    feeText.includes("\uBB34\uB8CC") ||
-    feeText.includes("0\uC6D0") ||
-    lowerFeeText.includes("free");
+  const isFree = isFreeText(feeText);
   return {
     id: `seoul-culture:${hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`)}`,
     title: row.TITLE,

@@ -4,6 +4,7 @@ import type {
   TaggingInput,
   TaggingResult,
 } from "./llmTaggingSchema.js";
+import { hasUnconditionalFreeMention } from "../../backend/src/features/localEvents/localEventStructuring.js";
 
 const FESTIVAL_RULES: Array<{
   pattern: RegExp;
@@ -29,7 +30,7 @@ const LOCAL_EVENT_RULES: Array<{
   category: LocalEventPrimaryCategory;
   tag?: string;
 }> = [
-  { pattern: /무료|free|증정|드림|드려요/i, category: "freebie", tag: "무료" },
+  { pattern: /free|증정|드림|드려요/i, category: "freebie", tag: "무료" },
   { pattern: /%|할인|세일|sale|N\+1|1\+1/i, category: "discount", tag: "할인" },
   { pattern: /신메뉴|한정|new|limited|시즌\s*한정/i, category: "new_limited", tag: "신메뉴" },
   { pattern: /팝업|pop[-\s]?up|콜라보/i, category: "popup", tag: "팝업" },
@@ -68,6 +69,14 @@ export function fallbackTag(input: TaggingInput): TaggingResult {
       }
     }
     return { id: input.id, primaryCategory: "etc", categoryTags: [] };
+  }
+
+  // "65세 이상 무료"처럼 특정 대상에게만 무료인 문구는 조건 부분을 걷어낸
+  // 뒤에도 "무료"가 남아 있을 때만(=대상 제한 없는 무료 언급이 따로 있을
+  // 때만) freebie로 태깅한다. 그렇지 않으면 아래 LOCAL_EVENT_RULES 순회에서
+  // 다른 규칙(할인 등)으로 넘어간다.
+  if (/무료/i.test(text) && hasUnconditionalFreeMention(text)) {
+    return { id: input.id, primaryCategory: "freebie", categoryTags: ["무료"] };
   }
 
   for (const rule of LOCAL_EVENT_RULES) {
