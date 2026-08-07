@@ -338,4 +338,82 @@ describe("NationalCultureFestivalProvider", () => {
     expect(first[0].id).toMatch(/^public-data-culture:[0-9a-f]{16}$/);
     expect(first[0].id).not.toBe(first[1].id);
   });
+
+  it("adds https:// to scheme-less homepage domains so the image agent can scrape them", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            response: {
+              header: { resultCode: "00" },
+              body: {
+                totalCount: 1,
+                items: [
+                  {
+                    fstvlNm: "Bare Domain Festival",
+                    fstvlStartDate: "2099-05-01",
+                    fstvlEndDate: "2099-05-05",
+                    latitude: "37.5665",
+                    longitude: "126.9780",
+                    homepageUrl: "www.example.go.kr"
+                  }
+                ]
+              }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 37.5665,
+      lng: 126.978,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items[0].sourceUrl).toBe("https://www.example.go.kr");
+  });
+
+  it("does not treat description text (relateInfo) as a source URL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            response: {
+              header: { resultCode: "00" },
+              body: {
+                totalCount: 1,
+                items: [
+                  {
+                    fstvlNm: "No Homepage Festival",
+                    fstvlStartDate: "2099-05-01",
+                    fstvlEndDate: "2099-05-05",
+                    latitude: "37.5665",
+                    longitude: "126.9780",
+                    relateInfo: "가을 정취를 느낄 수 있는 지역 대표 축제"
+                  }
+                ]
+              }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    const provider = new NationalCultureFestivalProvider("test-key", "https://api.data.go.kr");
+    const items = await provider.festivals({
+      lat: 37.5665,
+      lng: 126.978,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500
+    });
+
+    expect(items[0].sourceUrl).toBeNull();
+  });
 });
