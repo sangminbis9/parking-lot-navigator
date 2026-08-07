@@ -198,6 +198,101 @@ describe("additional TourAPI festival providers", () => {
     ).toBe(true);
   });
 
+  it("picks the first URL-shaped token out of label text mixed with a scheme-less domain", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/searchFestival2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-2",
+            title: "Label Text Festival",
+            addr1: "Busan",
+            eventstartdate: "20990801",
+            eventenddate: "20990805",
+            mapx: "129.0756",
+            mapy: "35.1796",
+            cat1: "A02",
+            cat2: "A0207",
+            cat3: "A02070100",
+          }),
+        );
+      }
+      if (url.pathname.endsWith("/detailCommon2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-2",
+            homepage:
+              "공식 홈페이지 www.hibimf.org\n공식 인스타그램 https://www.instagram.com/busanmagicfestival",
+          }),
+        );
+      }
+      return Promise.resolve(tourResponse({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new TourApiFestivalProvider(
+      "test-key",
+      "https://apis.data.go.kr",
+      1,
+    );
+    const items = await provider.festivals({
+      lat: 35.1796,
+      lng: 129.0756,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].sourceUrl).toBe("https://www.hibimf.org");
+  });
+
+  it("returns null sourceUrl for free-text homepage with no URL-shaped token", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/searchFestival2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-3",
+            title: "No Homepage Festival",
+            addr1: "Daegu",
+            eventstartdate: "20990801",
+            eventenddate: "20990805",
+            mapx: "128.6014",
+            mapy: "35.8714",
+            cat1: "A02",
+            cat2: "A0207",
+            cat3: "A02070100",
+          }),
+        );
+      }
+      if (url.pathname.endsWith("/detailCommon2")) {
+        return Promise.resolve(
+          tourResponse({
+            contentid: "detail-3",
+            homepage: "홈페이지 없음",
+          }),
+        );
+      }
+      return Promise.resolve(tourResponse({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new TourApiFestivalProvider(
+      "test-key",
+      "https://apis.data.go.kr",
+      1,
+    );
+    const items = await provider.festivals({
+      lat: 35.8714,
+      lng: 128.6014,
+      radiusMeters: 1000,
+      upcomingWithinDays: 36500,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0].sourceUrl).toBeNull();
+  });
+
   it("returns an empty list when provider fetch is aborted", async () => {
     const controller = new AbortController();
     controller.abort();
