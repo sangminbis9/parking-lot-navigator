@@ -51,8 +51,17 @@ describe("fallbackTag - festival domain", () => {
   });
 });
 
+// 수집 시점에 소스가 결정적으로 확정하는 카테고리 — LLM이 추측 배정하지 않으므로
+// llmTaggingSchema.ts의 태깅 스키마에는 의도적으로 포함하지 않는다.
+const DETERMINISTIC_ONLY_CATEGORIES = new Set(["trade_expo"]);
+
 describe("FESTIVAL_PRIMARY_CATEGORIES sync", () => {
-  it("keeps shared-types and llmTaggingSchema category sets identical", () => {
-    expect(new Set(SCHEMA_CATEGORIES)).toEqual(new Set(SHARED_CATEGORIES));
+  it("keeps shared-types and llmTaggingSchema category sets identical outside deterministic-only categories", () => {
+    const shared = new Set(SHARED_CATEGORIES);
+    for (const deterministic of DETERMINISTIC_ONLY_CATEGORIES) {
+      expect(SHARED_CATEGORIES).toContain(deterministic);
+      shared.delete(deterministic);
+    }
+    expect(new Set(SCHEMA_CATEGORIES)).toEqual(shared);
   });
 });

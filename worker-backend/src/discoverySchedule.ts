@@ -14,6 +14,7 @@ export const DISCOVERY_PROVIDER_CHUNKS: Array<{
   { kind: "events", providers: ["kcisa_428"] },
   { kind: "events", providers: ["kcisa_196"] },
   { kind: "festivals", providers: ["city-scraped"] },
+  { kind: "festivals", providers: ["akei-trade-expo"] },
 ];
 
 export const DISCOVERY_PROVIDER_CHUNK_COUNT =

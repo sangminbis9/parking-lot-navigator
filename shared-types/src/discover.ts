@@ -38,6 +38,7 @@ export const FESTIVAL_PRIMARY_CATEGORIES = [
   "film_media",
   "art_exhibition",
   "general_event",
+  "trade_expo",
   "etc",
 ] as const;
 export type FestivalPrimaryCategory =
