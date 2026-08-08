@@ -147,25 +147,36 @@ export class TourApiDetailClient {
     return extractFirstItem<TourApiDetailIntroItem>(body);
   }
 
-  detail(contentId: string, signal?: AbortSignal): Promise<TourApiDetail> {
+  detail(
+    contentId: string,
+    signal?: AbortSignal,
+    hasImage = false,
+  ): Promise<TourApiDetail> {
     const key = contentId.trim();
     if (!key) {
       return Promise.resolve(emptyDetail());
     }
     const cached = this.cache.get(key);
     if (cached) return cached;
-    const promise = this.fetchDetail(key, signal).catch(() => emptyDetail());
+    const promise = this.fetchDetail(key, hasImage, signal).catch(() =>
+      emptyDetail(),
+    );
     this.cache.set(key, promise);
     return promise;
   }
 
   private async fetchDetail(
     contentId: string,
+    hasImage: boolean,
     signal?: AbortSignal,
   ): Promise<TourApiDetail> {
+    // 리스트 응답(firstimage)에 이미 이미지가 있으면 enrichTourApiItems가
+    // detail.imageUrl을 버리므로(item.imageUrl ?? detail.imageUrl), detailImage2
+    // 호출은 순수 낭비다. 건너뛰어 subrequest 예산을 요금/할인 등 실제로
+    // 쓰이는 필드에 돌린다.
     const [common, images, intro] = await Promise.all([
       this.fetchCommon(contentId, signal),
-      this.fetchImages(contentId, signal),
+      hasImage ? Promise.resolve([]) : this.fetchImages(contentId, signal),
       this.fetchIntroItemCached(contentId, signal).catch(() => null),
     ]);
     return {
@@ -267,7 +278,11 @@ export async function enrichTourApiItems<
     if (item.description && item.sourceUrl && item.imageUrl && item.venueName)
       return item;
     if (toEnrich && !toEnrich.has(item)) return item;
-    const detail = await client.detail(item.contentId, signal);
+    const detail = await client.detail(
+      item.contentId,
+      signal,
+      Boolean(item.imageUrl),
+    );
     return {
       ...item,
       description: item.description ?? detail.description,
