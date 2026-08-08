@@ -147,6 +147,13 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "축제", description: nil, rawTags: ["행사", "이벤트"]), .defaultFestival)
     }
 
+    func testMapPinCategoryGeneralEventFallsBackToKeyword() {
+        // generalEvent는 전용 핀이 없고, 제목의 "박람회" 키워드로 exhibition 핀에 떨어진다
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .generalEvent, categoryTags: [], title: "지역 산업박람회", description: nil, rawTags: []), .exhibition)
+        // 키워드 신호도 없으면 기본 핀
+        XCTAssertEqual(MapPinCategory.resolve(primaryCategory: .generalEvent, categoryTags: [], title: "동네 모임", description: nil, rawTags: []), .defaultFestival)
+    }
+
     func testMapPinCategoryUsesTagKeywordsBeforeTitle() {
         XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: ["불꽃놀이"], title: "", description: nil, rawTags: []), .night)
         XCTAssertEqual(MapPinCategory.resolve(primaryCategory: nil, categoryTags: [], title: "", description: nil, rawTags: ["플리마켓"]), .market)
