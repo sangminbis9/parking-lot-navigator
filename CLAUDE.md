@@ -153,7 +153,7 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 ```bash
 pnpm install
 pnpm -C worker-backend typecheck
-pnpm -C worker-backend deploy
+pnpm -C worker-backend run deploy
 pnpm --filter @parking/backend test
 pnpm --filter @parking/backend preflight
 ```
