@@ -170,15 +170,16 @@ export async function queryFestivalsFromCache(
 // 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
 // 좌표가 실제로 가깝고(provider마다 지오코딩이 수백m씩 어긋나는 경우가 있어 격자
 // 반올림 대신 실거리로 판단) 날짜 범위가 겹치는 항목끼리만 하나의 중복 후보로 보고,
-// 그 안에서 제목이 정규화 후 완전히 같거나(어순까지 같은 흔한 경우) 문자 구성이
-// 충분히 비슷하면(어순만 다른 경우, 예: "봄꽃축제 제1회" vs "제1회 봄꽃축제") 같은
-// 축제로 묶어 설명·부제·이미지가 더 풍부한 항목을 남긴다. 날짜까지 요구하는 이유:
-// 같은 제목·같은 장소(투어 공연 등)라도 회차가 다르면 서로 다른 항목이므로, 좌표만으로
-// 묶으면 서로 다른 공연 회차가 하나로 합쳐지는 오탐이 생긴다. 제목 유사도는 좌표·날짜로
-// 이미 좁혀진 후보 안에서만 적용해, 완전히 다른 두 축제가 우연히 제목이 비슷해서
-// 잘못 합쳐지는 오탐 위험을 낮춘다.
+// 그 안에서 제목이 (공백 차이를 무시하고) 완전히 같거나 단어 구성이 완전히 같으면
+// (어순만 다른 경우, 예: "봄꽃축제 제1회" vs "제1회 봄꽃축제") 같은 축제로 묶어
+// 설명·부제·이미지가 더 풍부한 항목을 남긴다. 날짜까지 요구하는 이유: 같은 제목·같은
+// 장소(투어 공연 등)라도 회차가 다르면 서로 다른 항목이므로, 좌표만으로 묶으면 서로
+// 다른 공연 회차가 하나로 합쳐지는 오탐이 생긴다. 단어 구성 비교는 정확히 같은
+// 단어 집합일 때만 통과시키고, 유사도 점수 같은 fuzzy 매칭은 쓰지 않는다 — 짧은
+// 한국어 제목은 "축제"/"페스티벌" 같은 공통 단어와 지명 비중이 커서, 문자 단위
+// 유사도는 "가을 축제"↔"가을꽃 축제", "제1회 전통시장 축제"↔"제2회 전통시장 축제"처럼
+// 실제로는 다른 축제를 임계값 이상으로 잘못 판정하는 사례가 있었다(정보 오표기 위험).
 const FESTIVAL_DEDUPE_MAX_DISTANCE_METERS = 1500;
-const FESTIVAL_TITLE_SIMILARITY_THRESHOLD = 0.72;
 
 // clusterFilter가 주어지면, 카테고리 등으로 후보를 미리 좁힌 다음 dedup하는 대신
 // 그룹(중복 묶음) 단위로 조건을 확인한다. 그래야 같은 실제 축제가 provider별로 다른
@@ -223,8 +224,7 @@ function belongsToFestivalCluster(
   if (!dateRangesOverlap(representative, festival)) return false;
   return (
     festivalDedupeKey(representative) === festivalDedupeKey(festival) ||
-    titleSimilarity(representative.title, festival.title) >=
-      FESTIVAL_TITLE_SIMILARITY_THRESHOLD
+    wordOrderInvariantKey(representative.title) === wordOrderInvariantKey(festival.title)
   );
 }
 
@@ -239,18 +239,19 @@ function normalizeFestivalTitle(title: string): string {
     .replace(/^\d{4}년?/, ""); // provider마다 선행 연도 표기 유무가 달라 무시
 }
 
-// 문자 집합 기준 Jaccard 유사도 — 순서에 영향받지 않아 어순만 다른 제목을 같은
-// 축제로 인식한다. backend/src/deduplication/deduplicateParking.ts의 주차장 이름
-// dedup과 같은 패턴.
-function titleSimilarity(a: string, b: string): number {
-  const normalizedA = normalizeFestivalTitle(a);
-  const normalizedB = normalizeFestivalTitle(b);
-  if (normalizedA === normalizedB) return 1;
-  const aSet = new Set([...normalizedA]);
-  const bSet = new Set([...normalizedB]);
-  const intersection = [...aSet].filter((char) => bSet.has(char)).length;
-  const union = new Set([...aSet, ...bSet]).size;
-  return union === 0 ? 0 : intersection / union;
+// 공백 기준 단어 집합을 정렬해 비교 — 단어 순서만 바뀐 제목을 완전 일치로 인식한다.
+// (문자 단위로 쪼개지 않는 이유는 위 상수 설명 참고: 서로 다른 단어가 섞인 제목까지
+// 같은 축제로 오판하는 걸 막기 위함.)
+function wordOrderInvariantKey(title: string): string {
+  const tokens = title
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length > 0 && /^\d{4}년?$/.test(tokens[0])) {
+    tokens.shift(); // provider마다 선행 연도 표기 유무가 달라 무시
+  }
+  return tokens.sort().join("|");
 }
 
 // provider마다 같은 축제의 시작/종료일을 며칠씩 다르게 보고하는 경우가 있어(예: 사전 행사 포함

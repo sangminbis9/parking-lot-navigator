@@ -45,6 +45,28 @@ describe("dedupeFestivals", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("does not merge lexically similar but distinct festival titles (false-positive regression)", () => {
+    const pairs: [string, string][] = [
+      ["가을 축제", "가을꽃 축제"],
+      ["제1회 전통시장 축제", "제2회 전통시장 축제"],
+      ["송도 벚꽃축제", "송도 불꽃축제"],
+      ["서울 빛초롱 축제", "서울 빛 축제"],
+      ["김장 문화 축제", "장 문화 축제"],
+      ["문화의 날 축제", "문화의 밤 축제"],
+    ];
+
+    for (const [titleA, titleB] of pairs) {
+      const festivals = [
+        makeFestival({ id: "a", title: titleA }),
+        makeFestival({ id: "b", title: titleB }),
+      ];
+
+      const result = dedupeFestivals(festivals);
+
+      expect(result, `"${titleA}" vs "${titleB}" should stay separate`).toHaveLength(2);
+    }
+  });
+
   it("does not merge same-titled events far apart", () => {
     const festivals = [
       makeFestival({ id: "a", title: "가을 문화 축제", lat: 37.5665, lng: 126.978 }),
