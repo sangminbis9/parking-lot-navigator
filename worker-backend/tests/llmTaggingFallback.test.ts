@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackTag } from "../src/llmTaggingFallback.js";
+import { fallbackTag, festivalOverrideForEtc } from "../src/llmTaggingFallback.js";
 import { FESTIVAL_PRIMARY_CATEGORIES as SCHEMA_CATEGORIES } from "../src/llmTaggingSchema.js";
 import { FESTIVAL_PRIMARY_CATEGORIES as SHARED_CATEGORIES } from "@parking/shared-types";
 
@@ -48,6 +48,63 @@ describe("fallbackTag - festival domain", () => {
     });
 
     expect(result.primaryCategory).toBe("general_event");
+  });
+
+  it("classifies a bare '-축제' title with no theme keyword as general_event via the generic catch-all", () => {
+    const result = fallbackTag({
+      domain: "festival",
+      id: "e",
+      title: "보령머드축제",
+      source: "public-data-culture-festival",
+    });
+
+    expect(result.primaryCategory).toBe("general_event");
+  });
+
+  it("still prioritizes a specific theme (nature_flower) over the generic 축제 catch-all", () => {
+    const result = fallbackTag({
+      domain: "festival",
+      id: "f",
+      title: "여의도 벚꽃축제",
+      source: "tourapi",
+    });
+
+    expect(result.primaryCategory).toBe("nature_flower");
+  });
+});
+
+describe("festivalOverrideForEtc", () => {
+  it("forces kopis rows to music_performance regardless of title text", () => {
+    const override = festivalOverrideForEtc({
+      domain: "festival",
+      id: "g",
+      title: "국내 도서관 사용자 이용통계 시스템",
+      source: "kopis",
+    });
+
+    expect(override).toEqual({ category: "music_performance", tag: "공연" });
+  });
+
+  it("catches a bare '-축제' title an LLM already tagged etc", () => {
+    const override = festivalOverrideForEtc({
+      domain: "festival",
+      id: "h",
+      title: "소래포구축제",
+      source: "city-scraped",
+    });
+
+    expect(override).toEqual({ category: "general_event", tag: "지역행사" });
+  });
+
+  it("returns null when no rule matches, leaving the LLM's etc verdict untouched", () => {
+    const override = festivalOverrideForEtc({
+      domain: "festival",
+      id: "i",
+      title: "구청 정기 회의",
+      source: "seoul_open_data",
+    });
+
+    expect(override).toBeNull();
   });
 });
 

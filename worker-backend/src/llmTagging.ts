@@ -1,5 +1,5 @@
 import { callAiJson } from "./agents/workersAiClient.js";
-import { fallbackTag } from "./llmTaggingFallback.js";
+import { fallbackTag, festivalOverrideForEtc } from "./llmTaggingFallback.js";
 import {
   buildSystemPrompt,
   TAGGING_VERSION,
@@ -267,7 +267,18 @@ async function processBatch(
   for (const input of batch) {
     const llm = succeeded.get(input.id);
     if (llm) {
-      finals.push({ input, result: llm, fromLlm: true });
+      let result = llm;
+      if (args.domain === "festival" && result.primaryCategory === "etc") {
+        const override = festivalOverrideForEtc(input);
+        if (override) {
+          result = {
+            ...result,
+            primaryCategory: override.category,
+            categoryTags: override.tag ? [override.tag] : result.categoryTags,
+          };
+        }
+      }
+      finals.push({ input, result, fromLlm: true });
       args.result.succeededLlm += 1;
     } else {
       finals.push({ input, result: fallbackTag(input), fromLlm: false });
