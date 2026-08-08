@@ -1,6 +1,7 @@
 import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
   currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
@@ -155,6 +156,8 @@ interface DiscoveryRowPayload {
   offersJson: string | null;
   rawPayload: string;
   dataUpdatedAt: string;
+  primaryCategory: string | null;
+  taggingVersion: number;
 }
 
 export async function queryFestivalsFromCache(
@@ -530,8 +533,8 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         start_date, end_date, status, is_free, venue_name, address, lat, lng,
         rating, review_count, lowest_price_text, lowest_price_platform,
         source_url, image_url, images_json, tags_json, amenities_json, offers_json, raw_payload,
-        data_updated_at, first_seen_at, last_seen_at, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        data_updated_at, primary_category, tagging_version, first_seen_at, last_seen_at, synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         type = excluded.type,
         source = excluded.source,
@@ -559,10 +562,12 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         offers_json = excluded.offers_json,
         raw_payload = excluded.raw_payload,
         data_updated_at = excluded.data_updated_at,
+        primary_category = COALESCE(excluded.primary_category, primary_category),
+        tagging_version = CASE WHEN excluded.primary_category IS NOT NULL THEN excluded.tagging_version ELSE tagging_version END,
         last_seen_at = excluded.last_seen_at,
         synced_at = excluded.synced_at`;
 
-function prepareDiscoveryUpsert(
+export function prepareDiscoveryUpsert(
   db: D1Database,
   item: DiscoveryItem,
   syncedAt: string,
@@ -598,6 +603,8 @@ function prepareDiscoveryUpsert(
       row.offersJson,
       row.rawPayload,
       row.dataUpdatedAt,
+      row.primaryCategory,
+      row.taggingVersion,
       syncedAt,
       syncedAt,
       syncedAt,
@@ -680,7 +687,7 @@ async function upsertDiscoveryItems(
   return upserted;
 }
 
-function discoveryRow(
+export function discoveryRow(
   item: DiscoveryItem,
   syncedAt: string,
 ): DiscoveryRowPayload {
@@ -717,6 +724,8 @@ function discoveryRow(
     offersJson: null,
     rawPayload: JSON.stringify(item),
     dataUpdatedAt: syncedAt,
+    primaryCategory: item.primaryCategory ?? null,
+    taggingVersion: item.primaryCategory ? TAGGING_VERSION : 0,
   };
 }
 

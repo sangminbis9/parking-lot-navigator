@@ -33,6 +33,8 @@ import {
   CITY_FESTIVAL_CHUNK_SIZE
 } from "./cityFestivalSchedule.js";
 import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
+import { runAkeiTradeExpoDiscovery } from "./akeiTradeExpoDiscovery.js";
+import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { runTagging } from "./llmTagging.js";
@@ -890,6 +892,20 @@ app.post("/admin/sync-city-festivals", async (c) => {
   }
 });
 
+app.post("/admin/sync-akei-trade-expos", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  try {
+    const result = await runAkeiTradeExpoDiscovery(c.env.DB, new Date());
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/run-head-review", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -994,6 +1010,10 @@ export default {
       // 하루 1회 도시별 축제 스크래핑을 실행한다 (계정의 5개 cron trigger 한도 때문).
       if (scheduledAt.getUTCHours() === 4) {
         ctx.waitUntil(syncCityFestivalsScheduled(env, scheduledAt));
+      }
+      // 같은 이유로 AKEI 무역박람회 스크래핑은 UTC 5시 가드로 하루 1회 실행한다.
+      if (scheduledAt.getUTCHours() === 5) {
+        ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
       }
       return;
     }
@@ -1114,7 +1134,9 @@ async function loadDiscoveryRuntime(env: Env): Promise<{
     else setGeocodeStore(null);
     return {
       festivalService: createFestivalService(
-        env.DB ? [new CityScrapedFestivalProvider(env.DB)] : [],
+        env.DB
+          ? [new CityScrapedFestivalProvider(env.DB), new AkeiTradeExpoFestivalProvider(env.DB)]
+          : [],
       ),
       eventService: createEventService(),
     };
@@ -1187,6 +1209,20 @@ async function syncCityFestivalsScheduled(env: Env, scheduledAt: Date): Promise<
   } catch (error) {
     console.error("city festival discovery sync failed", error);
     await notifyOpsFailure(env, "city festival discovery sync", error);
+  }
+}
+
+async function syncAkeiTradeExposScheduled(env: Env, scheduledAt: Date): Promise<void> {
+  try {
+    const result = await runAkeiTradeExpoDiscovery(env.DB!, scheduledAt);
+    if (result.failedMonths.length > 0 || result.unmappedVenues > 0) {
+      console.warn(
+        `akei trade expo discovery failedMonths=${result.failedMonths.join(",")} unmappedVenues=${result.unmappedVenues}`,
+      );
+    }
+  } catch (error) {
+    console.error("akei trade expo discovery sync failed", error);
+    await notifyOpsFailure(env, "akei trade expo discovery sync", error);
   }
 }
 
@@ -1283,7 +1319,9 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     parkingProvider: createCompositeParkingProvider({ d1: env.DB }),
     realtimeParkingProvider: createRealtimeParkingProvider(),
     festivalService: createFestivalService(
-      env.DB ? [new CityScrapedFestivalProvider(env.DB)] : [],
+      env.DB
+        ? [new CityScrapedFestivalProvider(env.DB), new AkeiTradeExpoFestivalProvider(env.DB)]
+        : [],
     ),
     eventService: createEventService(),
     searchHistoryService: new SearchHistoryService(searchHistoryRepository),

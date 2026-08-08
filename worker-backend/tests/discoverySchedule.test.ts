@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
+  DISCOVERY_PROVIDER_CHUNKS,
 } from "../src/discoverySchedule.js";
+import { AkeiTradeExpoFestivalProvider } from "../src/akeiTradeExpoProvider.js";
 
 describe("currentDiscoveryChunkIndex", () => {
   it("visits every discovery provider chunk within a 24 hour window", () => {
@@ -23,5 +25,17 @@ describe("currentDiscoveryChunkIndex", () => {
     for (let index = 0; index < DISCOVERY_PROVIDER_CHUNK_COUNT; index += 1) {
       expect(seen.has(index)).toBe(true);
     }
+  });
+});
+
+describe("AKEI trade expo provider name consistency", () => {
+  it("keeps the akei-trade-expo entry in DISCOVERY_PROVIDER_CHUNKS in sync with the provider's health().name", () => {
+    const fakeDb = {} as unknown as D1Database;
+    const providerName = new AkeiTradeExpoFestivalProvider(fakeDb).health().name;
+    const chunkedProviderNames = DISCOVERY_PROVIDER_CHUNKS.flatMap(
+      (chunk) => chunk.providers,
+    );
+
+    expect(chunkedProviderNames).toContain(providerName);
   });
 });

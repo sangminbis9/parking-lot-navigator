@@ -12,6 +12,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
     case filmMedia = "film_media"
     case artExhibition = "art_exhibition"
     case generalEvent = "general_event"
+    case tradeExpo = "trade_expo"
     case etc
 
     var displayName: String {
@@ -27,6 +28,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .filmMedia: return "영화·미디어"
         case .artExhibition: return "예술·전시"
         case .generalEvent: return "지역행사"
+        case .tradeExpo: return "산업·박람회"
         case .etc: return "기타"
         }
     }
@@ -44,6 +46,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .filmMedia: return "film.fill"
         case .artExhibition: return "paintpalette.fill"
         case .generalEvent: return "megaphone.fill"
+        case .tradeExpo: return "building.2.fill"
         case .etc: return "star.circle"
         }
     }
@@ -61,6 +64,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .filmMedia: return Color(red: 0.149, green: 0.388, blue: 0.408)         // #264653
         case .artExhibition: return Color(red: 0.616, green: 0.306, blue: 0.867)     // #9D4EDD
         case .generalEvent: return Color(red: 0.271, green: 0.427, blue: 0.663)      // #4569A9
+        case .tradeExpo: return Color(red: 0.361, green: 0.404, blue: 0.490) // #5C677D
         case .etc: return Color(red: 0.424, green: 0.459, blue: 0.490)               // #6C757D
         }
     }
@@ -78,6 +82,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .filmMedia:         return "🎬"
         case .artExhibition:     return "🎨"
         case .generalEvent:      return "📢"
+        case .tradeExpo:         return "🏢"
         case .etc:               return "🎪"
         }
     }
