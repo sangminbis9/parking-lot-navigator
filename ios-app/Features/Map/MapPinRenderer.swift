@@ -116,7 +116,7 @@ extension MapPinCategory {
         case .familyKids: return .family
         case .traditionCulture: return .tradition
         case .sportsOutdoor: return .sports
-        case .natureFlower, .etc: return nil  // 전용 카테고리 없음 → keyword/기본 핀으로
+        case .natureFlower, .generalEvent, .etc: return nil  // 전용 카테고리 없음 → keyword/기본 핀으로
         }
     }
 
