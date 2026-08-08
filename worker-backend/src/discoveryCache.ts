@@ -168,65 +168,89 @@ export async function queryFestivalsFromCache(
 }
 
 // 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
-// 1차로 정규화된 제목이 같은 것끼리 묶고, 그 안에서 좌표가 실제로 가깝고(provider마다
-// 지오코딩이 수백m씩 어긋나는 경우가 있어 격자 반올림 대신 실거리로 판단) 날짜 범위가
-// 겹치는 항목끼리만 하나의 중복 그룹으로 보고, 설명·부제·이미지가 더 풍부한 항목을 남긴다.
-// 날짜까지 요구하는 이유: 같은 제목·같은 장소(투어 공연 등)라도 회차가 다르면 서로 다른
-// 항목이므로, 좌표만으로 묶으면 서로 다른 공연 회차가 하나로 합쳐지는 오탐이 생긴다.
+// 좌표가 실제로 가깝고(provider마다 지오코딩이 수백m씩 어긋나는 경우가 있어 격자
+// 반올림 대신 실거리로 판단) 날짜 범위가 겹치는 항목끼리만 하나의 중복 후보로 보고,
+// 그 안에서 제목이 정규화 후 완전히 같거나(어순까지 같은 흔한 경우) 문자 구성이
+// 충분히 비슷하면(어순만 다른 경우, 예: "봄꽃축제 제1회" vs "제1회 봄꽃축제") 같은
+// 축제로 묶어 설명·부제·이미지가 더 풍부한 항목을 남긴다. 날짜까지 요구하는 이유:
+// 같은 제목·같은 장소(투어 공연 등)라도 회차가 다르면 서로 다른 항목이므로, 좌표만으로
+// 묶으면 서로 다른 공연 회차가 하나로 합쳐지는 오탐이 생긴다. 제목 유사도는 좌표·날짜로
+// 이미 좁혀진 후보 안에서만 적용해, 완전히 다른 두 축제가 우연히 제목이 비슷해서
+// 잘못 합쳐지는 오탐 위험을 낮춘다.
 const FESTIVAL_DEDUPE_MAX_DISTANCE_METERS = 1500;
+const FESTIVAL_TITLE_SIMILARITY_THRESHOLD = 0.72;
 
 // clusterFilter가 주어지면, 카테고리 등으로 후보를 미리 좁힌 다음 dedup하는 대신
 // 그룹(중복 묶음) 단위로 조건을 확인한다. 그래야 같은 실제 축제가 provider별로 다른
 // category 태그를 갖고 있어도 항상 같은 승자를 고르며(=/api/festivals와 /api/performances가
 // 같은 id를 돌려줌), 조건에 맞는 멤버가 하나라도 있으면 그룹 전체에서 가장 풍부한 항목을 남긴다.
-function dedupeFestivals(
+export function dedupeFestivals(
   festivals: Festival[],
   clusterFilter?: (cluster: Festival[]) => boolean,
 ): Festival[] {
-  const groups = new Map<string, Festival[]>();
-  const order: string[] = [];
+  const clusters: Festival[][] = [];
   for (const festival of festivals) {
-    const key = festivalDedupeKey(festival);
-    if (!groups.has(key)) {
-      groups.set(key, []);
-      order.push(key);
+    const cluster = clusters.find((c) => belongsToFestivalCluster(c[0], festival));
+    if (cluster) {
+      cluster.push(festival);
+    } else {
+      clusters.push([festival]);
     }
-    groups.get(key)!.push(festival);
   }
 
   const result: Festival[] = [];
-  for (const key of order) {
-    const clusters: Festival[][] = [];
-    for (const festival of groups.get(key)!) {
-      const cluster = clusters.find(
-        (c) =>
-          distanceMeters(c[0].lat, c[0].lng, festival.lat, festival.lng) <=
-          FESTIVAL_DEDUPE_MAX_DISTANCE_METERS &&
-          dateRangesOverlap(c[0], festival),
-      );
-      if (cluster) {
-        cluster.push(festival);
-      } else {
-        clusters.push([festival]);
-      }
-    }
-    for (const cluster of clusters) {
-      if (clusterFilter && !clusterFilter(cluster)) continue;
-      result.push(
-        cluster.reduce((best, f) =>
-          festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
-        ),
-      );
-    }
+  for (const cluster of clusters) {
+    if (clusterFilter && !clusterFilter(cluster)) continue;
+    result.push(
+      cluster.reduce((best, f) =>
+        festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
+      ),
+    );
   }
   return result;
 }
 
+function belongsToFestivalCluster(
+  representative: Festival,
+  festival: Festival,
+): boolean {
+  if (
+    distanceMeters(representative.lat, representative.lng, festival.lat, festival.lng) >
+    FESTIVAL_DEDUPE_MAX_DISTANCE_METERS
+  ) {
+    return false;
+  }
+  if (!dateRangesOverlap(representative, festival)) return false;
+  return (
+    festivalDedupeKey(representative) === festivalDedupeKey(festival) ||
+    titleSimilarity(representative.title, festival.title) >=
+      FESTIVAL_TITLE_SIMILARITY_THRESHOLD
+  );
+}
+
 function festivalDedupeKey(festival: Festival): string {
-  return festival.title
+  return normalizeFestivalTitle(festival.title);
+}
+
+function normalizeFestivalTitle(title: string): string {
+  return title
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/^\d{4}년?/, ""); // provider마다 선행 연도 표기 유무가 달라 무시
+}
+
+// 문자 집합 기준 Jaccard 유사도 — 순서에 영향받지 않아 어순만 다른 제목을 같은
+// 축제로 인식한다. backend/src/deduplication/deduplicateParking.ts의 주차장 이름
+// dedup과 같은 패턴.
+function titleSimilarity(a: string, b: string): number {
+  const normalizedA = normalizeFestivalTitle(a);
+  const normalizedB = normalizeFestivalTitle(b);
+  if (normalizedA === normalizedB) return 1;
+  const aSet = new Set([...normalizedA]);
+  const bSet = new Set([...normalizedB]);
+  const intersection = [...aSet].filter((char) => bSet.has(char)).length;
+  const union = new Set([...aSet, ...bSet]).size;
+  return union === 0 ? 0 : intersection / union;
 }
 
 // provider마다 같은 축제의 시작/종료일을 며칠씩 다르게 보고하는 경우가 있어(예: 사전 행사 포함
