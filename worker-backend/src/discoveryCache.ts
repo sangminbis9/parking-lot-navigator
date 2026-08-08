@@ -579,6 +579,59 @@ function prepareDiscoveryUpsert(
     );
 }
 
+const DISCOVERY_ENRICHMENT_FIELDS = [
+  "admissionFee",
+  "discountInfo",
+  "bookingInfo",
+  "contactPhone",
+  "ageLimit",
+  "programInfo",
+  "organizerName",
+] as const;
+
+// raw_payload는 매 sync마다 통째로 덮어써지므로, 이번 사이클에 detail
+// enrichment 대상으로 선택되지 않아 값이 null인 필드는 D1에 이미 저장된
+// 이전 값으로 채워 넣는다. 새 값이 있으면 항상 새 값이 우선한다.
+async function mergeWithExistingEnrichment(
+  db: D1Database,
+  items: DiscoveryItem[],
+): Promise<DiscoveryItem[]> {
+  const festivalItems = items.filter(
+    (item): item is Festival => !("eventType" in item),
+  );
+  if (festivalItems.length === 0) return items;
+
+  const ids = festivalItems.map((item) => `festival:${item.id}`);
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT id, raw_payload FROM discovery_items WHERE id IN (${placeholders})`,
+    )
+    .bind(...ids)
+    .all<{ id: string; raw_payload: string | null }>();
+
+  const existingById = new Map<string, Record<string, unknown> | null>();
+  for (const row of rows.results ?? []) {
+    existingById.set(row.id, parseRawPayload(row.raw_payload));
+  }
+  if (existingById.size === 0) return items;
+
+  return items.map((item) => {
+    if ("eventType" in item) return item;
+    const existing = existingById.get(`festival:${item.id}`);
+    if (!existing) return item;
+    let changed = false;
+    const merged: Festival = { ...item };
+    for (const field of DISCOVERY_ENRICHMENT_FIELDS) {
+      if (merged[field] == null && typeof existing[field] === "string" && existing[field]) {
+        merged[field] = existing[field] as string;
+        changed = true;
+      }
+    }
+    return changed ? merged : item;
+  });
+}
+
 async function upsertDiscoveryItems(
   db: D1Database,
   items: DiscoveryItem[],
@@ -592,7 +645,8 @@ async function upsertDiscoveryItems(
     start += DISCOVERY_UPSERT_BATCH_SIZE
   ) {
     const slice = items.slice(start, start + DISCOVERY_UPSERT_BATCH_SIZE);
-    const statements = slice.map((item) =>
+    const merged = await mergeWithExistingEnrichment(db, slice);
+    const statements = merged.map((item) =>
       prepareDiscoveryUpsert(db, item, syncedAt),
     );
     await db.batch(statements);
