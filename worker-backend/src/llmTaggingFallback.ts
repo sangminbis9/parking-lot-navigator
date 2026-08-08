@@ -22,6 +22,7 @@ const FESTIVAL_RULES: Array<{
   { pattern: /마켓|플리\s*마켓|야시장|장터|market/i, category: "market_flea", tag: "마켓" },
   { pattern: /마라톤|자전거|트레일|등산|카약|스포츠|sport/i, category: "sports_outdoor", tag: "스포츠" },
   { pattern: /영화제|미디어아트|애니메이션|film|cinema/i, category: "film_media", tag: "영화" },
+  { pattern: /박람회|엑스포|expo|무역전|산업전|취업박람회|잡페어|job\s*fair|컨벤션|convention/i, category: "general_event", tag: "박람회" },
   { pattern: /미술|사진|조각|디자인|공예|전시|exhibition/i, category: "art_exhibition", tag: "전시" },
 ];
 
