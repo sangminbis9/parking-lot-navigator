@@ -24,6 +24,7 @@ const FESTIVAL_RULES: Array<{
   { pattern: /영화제|미디어아트|애니메이션|film|cinema/i, category: "film_media", tag: "영화" },
   { pattern: /박람회|엑스포|expo|무역전|산업전|취업박람회|잡페어|job\s*fair|컨벤션|convention/i, category: "general_event", tag: "박람회" },
   { pattern: /미술|사진|조각|디자인|공예|전시|exhibition/i, category: "art_exhibition", tag: "전시" },
+  { pattern: /축제|페스티벌|페스타|festa/i, category: "general_event", tag: "지역행사" },
 ];
 
 const LOCAL_EVENT_RULES: Array<{
@@ -90,4 +91,32 @@ export function fallbackTag(input: TaggingInput): TaggingResult {
     }
   }
   return { id: input.id, primaryCategory: "etc", categoryTags: [] };
+}
+
+// LLM이 festival 항목을 etc로 분류했을 때만 호출하는 결정론적 보정.
+// kopis는 항상 공연이라는 확정 규칙과, FESTIVAL_RULES(축제/페스티벌 캐치올 포함)로
+// LLM이 놓친 명확한 케이스를 다시 잡아준다. LLM이 etc가 아닌 다른 카테고리를
+// 골랐을 때는 절대 호출하지 않는다 — 이미 맞는 판단을 덮어쓰지 않기 위해서다.
+export function festivalOverrideForEtc(
+  input: TaggingInput,
+): { category: FestivalPrimaryCategory; tag?: string } | null {
+  if (input.source === "kopis") {
+    return { category: "music_performance", tag: "공연" };
+  }
+  const text = [
+    input.title,
+    input.subtitle,
+    input.categoryText,
+    input.benefit,
+    input.description,
+    input.tagsHint,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .join(" ");
+  for (const rule of FESTIVAL_RULES) {
+    if (rule.pattern.test(text)) {
+      return { category: rule.category, tag: rule.tag };
+    }
+  }
+  return null;
 }
