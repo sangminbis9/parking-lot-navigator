@@ -9,6 +9,7 @@ export const FESTIVAL_PRIMARY_CATEGORIES = [
   "sports_outdoor",
   "film_media",
   "art_exhibition",
+  "general_event",
   "etc",
 ] as const;
 
@@ -60,6 +61,7 @@ const FESTIVAL_GUIDE = `축제(festival) 분류 기준:
 - sports_outdoor: 마라톤, 자전거, 트레일, 등산, 카약, 스포츠 대회.
 - film_media: 영화제, 미디어아트, 애니메이션, 만화.
 - art_exhibition: 미술, 사진, 조각, 디자인, 공예 전시·페어.
+- general_event: 박람회, 엑스포, 취업박람회, 산업전, 무역전, 컨벤션, 총회 등 산업·행사성 모임. 위 테마(공연/먹거리/꽃/야경/전통/가족/마켓/스포츠/영화/전시)에 해당하면 그쪽을 우선한다.
 - etc: 위 카테고리 어디에도 명확히 들어가지 않을 때.`;
 
 const LOCAL_EVENT_GUIDE = `로컬 매장 이벤트(local_event) 분류 기준:
