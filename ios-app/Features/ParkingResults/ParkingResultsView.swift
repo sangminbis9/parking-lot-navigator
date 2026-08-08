@@ -352,7 +352,7 @@ private struct DiscoverDescriptionCard: View {
             detailRow(label: "주소", value: presentation.address)
 
             if presentation.isFestivalSource {
-                detailRow(label: "이용요금", value: clean(presentation.admissionFee) ?? "무료")
+                detailRow(label: "이용요금", value: clean(presentation.admissionFee) ?? "요금 정보 없음")
                 detailRow(label: "할인 정보", value: clean(presentation.discountInfo) ?? "할인 정보 없음")
                 detailRow(label: "예매처", value: clean(presentation.bookingInfo) ?? "예매 없이 현장 참여 가능")
                 detailRow(label: "관람 가능 연령", value: clean(presentation.ageLimit) ?? "연령 제한 없음")

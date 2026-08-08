@@ -108,7 +108,17 @@ struct RemoteImage<Placeholder: View>: View {
             }
         }
         .task(id: taskID) {
-            guard loaded == nil, let url else { return }
+            guard let url else {
+                loaded = nil
+                return
+            }
+            if let cached = RemoteImageCache.shared.cached(url, maxPixel: maxPixel) {
+                loaded = cached
+                return
+            }
+            // url이 바뀌었는데 이전 핀의 이미지가 loaded에 남아있으면
+            // 새로 로드되기 전까지 이전 사진이 그대로 보인다. 먼저 비운다.
+            loaded = nil
             let image = await RemoteImageCache.shared.load(url, maxPixel: maxPixel)
             if !Task.isCancelled { loaded = image }
         }
