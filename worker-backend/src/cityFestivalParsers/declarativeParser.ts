@@ -1,10 +1,29 @@
 import * as cheerio from "cheerio";
+import { fetchWithTimeout } from "../../../backend/src/features/discover/events/eventProviderUtils.js";
+import { DetailFetchBudget } from "./types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "./types.js";
 
-export function parseDeclarative(
+const DETAIL_FETCH_TIMEOUT_MS = 8000;
+
+// 일부 사이트(순창군 sftf 등)는 상세 페이지에서 라벨과 값이 별도 엘리먼트로
+// 분리되지 않고 <li><span>장소</span>실제값</li>처럼 한 엘리먼트에 붙어 있어,
+// selector로 텍스트를 뽑으면 "장소실제값"처럼 라벨이 그대로 섞인다. 이런
+// 게시판 템플릿에서 반복적으로 쓰이는 라벨 단어만 화이트리스트로 앞에서
+// 제거한다(2026-08-09 순창 sftf 실측 확인).
+const DETAIL_LABEL_PREFIXES = ["장소", "주소", "위치", "소재지"];
+
+function stripDetailLabelPrefix(text: string): string {
+  for (const label of DETAIL_LABEL_PREFIXES) {
+    if (text.startsWith(label)) return text.slice(label.length).trim();
+  }
+  return text;
+}
+
+export async function parseDeclarative(
   html: string,
-  config: CitySiteConfig
-): RawCityFestivalCandidate[] {
+  config: CitySiteConfig,
+  budget?: DetailFetchBudget
+): Promise<RawCityFestivalCandidate[]> {
   if (!config.selectors) return [];
   const {
     itemSelector,
@@ -13,7 +32,9 @@ export function parseDeclarative(
     linkSelector,
     imageSelector,
     venueSelector,
-    addressSelector
+    addressSelector,
+    detailVenueSelector,
+    detailAddressSelector
   } = config.selectors;
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
@@ -46,7 +67,48 @@ export function parseDeclarative(
     });
   });
 
+  if (detailVenueSelector || detailAddressSelector) {
+    await Promise.all(
+      results.map((candidate) =>
+        fillLocationFromDetail(candidate, detailVenueSelector, detailAddressSelector, budget)
+      )
+    );
+  }
+
   return results;
+}
+
+async function fillLocationFromDetail(
+  candidate: RawCityFestivalCandidate,
+  detailVenueSelector: string | undefined,
+  detailAddressSelector: string | undefined,
+  budget: DetailFetchBudget | undefined
+): Promise<void> {
+  if (!candidate.detailUrl) return;
+  if (budget && !budget.tryConsume()) return;
+  try {
+    const response = await fetchWithTimeout(
+      new URL(candidate.detailUrl),
+      { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
+      DETAIL_FETCH_TIMEOUT_MS
+    );
+    if (!response.ok) return;
+    const $detail = cheerio.load(await response.text());
+    if (detailVenueSelector) {
+      const venue = stripDetailLabelPrefix(
+        $detail(detailVenueSelector).first().text().replace(/\s+/g, " ").trim()
+      );
+      if (venue) candidate.venueRaw = venue;
+    }
+    if (detailAddressSelector) {
+      const address = stripDetailLabelPrefix(
+        $detail(detailAddressSelector).first().text().replace(/\s+/g, " ").trim()
+      );
+      if (address) candidate.addressRaw = address;
+    }
+  } catch {
+    // best-effort: 상세 페이지 fetch 실패는 무시하고 fallback 좌표로 남긴다
+  }
 }
 
 function resolveUrl(value: string | null, baseUrl: string): string | null {
