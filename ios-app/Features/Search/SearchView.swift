@@ -202,8 +202,11 @@ struct SearchView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(FestivalDesign.secondaryText)
+                        .frame(width: 44, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("검색어 지우기")
             }
         }
     }

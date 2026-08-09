@@ -79,7 +79,7 @@ struct RegionAccordionPicker: View {
                 Text("도시")
                     .font(.festival(size: 11, weight: .semibold))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.festival(size: 10, weight: .semibold))
                     .rotationEffect(isExpanded ? .degrees(180) : .zero)
             }
             .foregroundStyle(FestivalDesign.secondaryText)

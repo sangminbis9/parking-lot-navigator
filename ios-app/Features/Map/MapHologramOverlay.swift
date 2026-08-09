@@ -36,7 +36,7 @@ struct MapHologramOverlay: View {
                             if let statusText, !statusText.isEmpty {
                                 Text(statusText)
                                     .font(.festival(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(FestivalDesign.onAccent)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(FestivalDesign.chipShape.fill(tint))
@@ -82,7 +82,8 @@ struct MapHologramOverlay: View {
                 .padding(.top, 10)
                 .padding(.leading, 10)
                 .padding(.bottom, 10)
-                .padding(.trailing, onToggleFavorite != nil ? 56 : 34)
+                // 우상단 버튼(각 30pt + 간격 4 + 패딩 8)이 본문 위에 겹치지 않도록 자리를 비워 둔다.
+                .padding(.trailing, onToggleFavorite != nil ? 76 : 50)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
@@ -95,8 +96,11 @@ struct MapHologramOverlay: View {
                             .foregroundColor(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
                             .frame(width: 20, height: 20)
                             .background(Circle().fill(Color(.systemGray6)))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isFavorite ? "관심 축제 해제" : "관심 축제로 저장")
                 }
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -104,8 +108,11 @@ struct MapHologramOverlay: View {
                         .foregroundColor(FestivalDesign.secondaryText)
                         .frame(width: 20, height: 20)
                         .background(Circle().fill(Color(.systemGray6)))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("카드 닫기")
             }
             .padding(8)
         }
@@ -119,23 +126,5 @@ struct MapHologramOverlay: View {
                     lineWidth: isSponsored ? 1.5 : 1
                 )
         )
-    }
-
-    private var connector: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.35), tint.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 2, height: 20)
-            Circle()
-                .fill(tint)
-                .frame(width: 6, height: 6)
-        }
-        .allowsHitTesting(false)
     }
 }

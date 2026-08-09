@@ -244,7 +244,8 @@ private struct PreviewPinView: View {
                     Circle()
                         .stroke(.white, lineWidth: 1.25)
                 )
-                .shadow(color: FestivalDesign.navy.opacity(0.24), radius: 2, y: 1)
+                // 지도 타일 위 마커라 다크에서도 그림자는 어두워야 한다.
+                .shadow(color: Color.black.opacity(0.24), radius: 2, y: 1)
 
             Triangle()
                 .fill(pin.tint)

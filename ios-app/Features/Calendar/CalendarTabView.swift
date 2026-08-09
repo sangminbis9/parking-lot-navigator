@@ -210,10 +210,6 @@ struct CalendarTabView: View {
 
     // MARK: - Agenda
 
-    private func agendaSection(items: [Festival]) -> some View {
-        agendaContent(items: items)
-    }
-
     private func agendaContent(items: [Festival]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(agendaTitle(count: items.count))
@@ -422,14 +418,6 @@ struct CalendarTabView: View {
         weekendMode = true
         monthAnchor = saturday
         selectedDay = calendar.startOfDay(for: saturday)
-        haptic()
-    }
-
-    private func jumpToNextUpcoming() {
-        guard let next = viewModel.nextFestivalDay(onOrAfter: selectedDay ?? Date()) else { return }
-        weekendMode = false
-        monthAnchor = next
-        selectedDay = next
         haptic()
     }
 

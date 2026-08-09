@@ -184,15 +184,21 @@ private struct DiscoverResultHeader: View {
                         Image(systemName: isFavorite ? "star.fill" : "star")
                             .font(.festival(size: 20, weight: .semibold))
                             .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isFavorite ? "관심 축제 해제" : "관심 축제로 저장")
                 }
                 if let shareURL {
                     ShareLink(item: shareURL) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.festival(size: 18, weight: .semibold))
                             .foregroundStyle(FestivalDesign.secondaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("공유")
                 }
                 Text(presentation.source)
                     .font(.festival(.caption, weight: .semibold))
