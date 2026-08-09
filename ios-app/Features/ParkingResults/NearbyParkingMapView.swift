@@ -174,7 +174,7 @@ private struct NearbyParkingMapCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("🅿️ \(parkingLot.name)")
+                    Text(parkingLot.name)
                         .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)
@@ -212,6 +212,6 @@ private struct NearbyParkingMapCard: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(isSelected ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.45), lineWidth: isSelected ? 2 : 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(isSelected ? 0.22 : 0.14), radius: isSelected ? 16 : 12, y: 6)
+        .festivalShadow(isSelected ? .high : .medium)
     }
 }

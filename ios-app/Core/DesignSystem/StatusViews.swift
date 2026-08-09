@@ -19,7 +19,7 @@ struct StatusBadge: View {
             .padding(.vertical, 4)
             .background(background)
             .foregroundStyle(foreground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(FestivalDesign.chipShape)
     }
 
     private var background: Color {
@@ -49,6 +49,7 @@ struct LoadingStateView: View {
     var body: some View {
         VStack(spacing: 12) {
             ProgressView()
+                .tint(FestivalDesign.teal)
             Text(text)
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
@@ -63,14 +64,13 @@ struct FailureStateView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("문제가 발생했습니다")
-                .font(.festival(.headline))
             Text(message)
                 .font(.festival(.subheadline))
-                .foregroundStyle(FestivalDesign.secondaryText)
+                .foregroundStyle(FestivalDesign.navy)
                 .multilineTextAlignment(.center)
             Button("다시 시도", action: retry)
                 .buttonStyle(.borderedProminent)
+                .tint(FestivalDesign.teal)
         }
         .padding()
     }
