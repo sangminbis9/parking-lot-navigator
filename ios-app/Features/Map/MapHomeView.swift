@@ -705,7 +705,7 @@ struct MapHomeView: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.12), radius: 10, y: 4)
+        .festivalShadow(.medium)
     }
 
     private var mapControls: some View {
@@ -832,7 +832,7 @@ struct MapHomeView: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 14, y: 7)
+        .festivalShadow(.high)
     }
 
     private func standaloneParkingPanel(parkingLot: ParkingLot) -> some View {
@@ -917,7 +917,7 @@ struct MapHomeView: View {
                 RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                     .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
             )
-            .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 12, y: 6)
+            .festivalShadow(.high)
         }
     }
 
@@ -1001,7 +1001,7 @@ struct MapHomeView: View {
     private func handleMapBackgroundTap() {
         // 1차 탭: 홀로그램이 떠 있으면 홀로그램만 끄고 주변 주차장은 유지
         if hologramPin != nil {
-            withAnimation(.easeOut(duration: 0.18)) {
+            withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
                 hologramPin = nil
             }
             return
@@ -1025,7 +1025,7 @@ struct MapHomeView: View {
             let targetZoom = max(mapZoomLevel, 15)
             let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
             focusMapBelowCenter(to: pin.coordinate, zoomLevel: targetZoom)
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            withAnimation(FestivalDesign.Motion.spring) {
                 hologramAnchor = anchor
                 hologramPin = pin
             }
@@ -1114,7 +1114,7 @@ struct MapHomeView: View {
         default:
             break
         }
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
             hologramPin = nil
         }
     }
@@ -1151,7 +1151,7 @@ struct MapHomeView: View {
                     onToggleFavorite: { festivalFavorites.toggle(festival) },
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
-                        withAnimation(.easeOut(duration: 0.18)) {
+                        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
                             hologramPin = nil
                         }
                         clearMapFocus()
@@ -1172,7 +1172,7 @@ struct MapHomeView: View {
                     isSponsored: event.isSponsored,
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
-                        withAnimation(.easeOut(duration: 0.18)) {
+                        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
                             hologramPin = nil
                         }
                         clearMapFocus()
@@ -1712,7 +1712,7 @@ private struct ParkingMapCard: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(isSelected ? FestivalDesign.teal : FestivalDesign.creamDeep.opacity(0.35), lineWidth: isSelected ? 1.5 : 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.06), radius: 7, y: 3)
+        .festivalShadow(.low)
         .onTapGesture(perform: onSelect)
     }
 
@@ -1795,7 +1795,7 @@ private struct StandaloneParkingMapCard: View {
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 12, y: 6)
+        .festivalShadow(.high)
     }
 
     private func parkingInfoPill(title: String, value: String) -> some View {

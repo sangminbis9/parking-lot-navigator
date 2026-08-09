@@ -83,7 +83,7 @@ struct AppRootView: View {
                 }
             }
             .id(tabRouter.selectedTab)
-            .animation(.easeInOut(duration: 0.16), value: tabRouter.selectedTab)
+            .animation(.easeInOut(duration: FestivalDesign.Motion.quick), value: tabRouter.selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             FestivalTabBar(selection: $tabRouter.selectedTab)

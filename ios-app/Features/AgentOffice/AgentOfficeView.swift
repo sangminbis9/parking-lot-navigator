@@ -921,7 +921,7 @@ private struct AgentInfoBadge: View {
         .background(FestivalDesign.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(agent.status.color.opacity(0.45), lineWidth: 1.5))
-        .shadow(color: FestivalDesign.navy.opacity(0.14), radius: 10, x: 0, y: 3)
+        .festivalShadow(.medium)
     }
 
     private func shortTime(_ ts: String) -> String {

@@ -43,7 +43,7 @@ struct RegionAccordionPicker: View {
         let label = (!isOn && cityCount > 0) ? "\(region.name) +\(cityCount)" : region.name
 
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.easeInOut(duration: FestivalDesign.Motion.quick)) {
                 if let idx = selected.firstIndex(of: region.name) {
                     selected.remove(at: idx)
                 } else {
@@ -71,7 +71,7 @@ struct RegionAccordionPicker: View {
     private func expandButton(_ regionName: String) -> some View {
         let isExpanded = expanded.contains(regionName)
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.easeInOut(duration: FestivalDesign.Motion.standard)) {
                 if isExpanded { expanded.remove(regionName) } else { expanded.insert(regionName) }
             }
         } label: {
@@ -103,7 +103,7 @@ struct RegionAccordionPicker: View {
         let isOn = selected.contains(city)
         let display = FestivalFilter.cityDisplayName(city)
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.easeInOut(duration: FestivalDesign.Motion.quick)) {
                 if let idx = selected.firstIndex(of: city) {
                     selected.remove(at: idx)
                 } else {

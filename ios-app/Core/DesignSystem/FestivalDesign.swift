@@ -195,6 +195,62 @@ enum FestivalDesign {
     static var cardRadius: CGFloat { isHandDrawn ? 18 : 8 }
     static var controlRadius: CGFloat { isHandDrawn ? 14 : 8 }
 
+    /// 화면 전역에서 재사용하는 간격 스케일. 임의의 padding 숫자 대신 이 값을 쓴다.
+    enum Spacing {
+        static let xs: CGFloat = 4
+        static let sm: CGFloat = 8
+        static let md: CGFloat = 12
+        static let lg: CGFloat = 16
+        static let xl: CGFloat = 24
+        static let xxl: CGFloat = 32
+    }
+
+    /// 카드/시트 등에서 쓰는 3단계 그림자(고도). radius/y가 화면마다 제각각 지정되던 것을 통일한다.
+    enum Elevation {
+        case low
+        case medium
+        case high
+
+        fileprivate var radius: CGFloat {
+            switch self {
+            case .low: return 6
+            case .medium: return 10
+            case .high: return 16
+            }
+        }
+
+        fileprivate var y: CGFloat {
+            switch self {
+            case .low: return 2
+            case .medium: return 3
+            case .high: return 6
+            }
+        }
+
+        fileprivate var opacity: Double {
+            switch self {
+            case .low: return 0.06
+            case .medium: return 0.10
+            case .high: return 0.14
+            }
+        }
+    }
+
+    /// `.shadow(color:radius:y:)`에 그대로 넘길 수 있는 고도 값. 그림자 색은 항상 `navy` 톤을 쓴다.
+    static func shadow(_ level: Elevation) -> (color: Color, radius: CGFloat, y: CGFloat) {
+        (navy.opacity(level.opacity), level.radius, level.y)
+    }
+
+    /// 앱 전역에서 재사용하는 모션 지속시간. 탭 전환/시트 열닫이 화면마다 다른 숫자를 쓰지 않도록 한다.
+    enum Motion {
+        /// 탭 전환, 선택 하이라이트 같은 즉각적 피드백.
+        static let quick: Double = 0.16
+        /// 시트/카드 표시-숨김 등 일반적인 전환.
+        static let standard: Double = 0.18
+        /// 카드 선택처럼 약간의 탄성이 필요한 전환.
+        static let spring = Animation.spring(response: 0.32, dampingFraction: 0.78)
+    }
+
     /// 손그림 테마의 거친 차콜 외곽선 색. (비손그림 테마에서는 사용하지 않음)
     static var outline: Color { Color(red: 0.176, green: 0.161, blue: 0.145) } // #2D2925
 
@@ -332,7 +388,7 @@ struct FestivalCardBackground: ViewModifier {
                     RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
                         .stroke(isSelected ? FestivalDesign.teal : FestivalDesign.creamDeep.opacity(0.42), lineWidth: isSelected ? 1.5 : 1)
                 )
-                .shadow(color: FestivalDesign.navy.opacity(isSelected ? 0.11 : 0.06), radius: isSelected ? 10 : 7, y: 3)
+                .festivalShadow(isSelected ? .medium : .low)
         }
     }
 
@@ -362,6 +418,12 @@ struct FestivalCardBackground: ViewModifier {
 extension View {
     func festivalCard(isSelected: Bool = false) -> some View {
         modifier(FestivalCardBackground(isSelected: isSelected))
+    }
+
+    /// `FestivalDesign.Elevation` 3단계를 그대로 적용하는 그림자.
+    func festivalShadow(_ level: FestivalDesign.Elevation) -> some View {
+        let shadow = FestivalDesign.shadow(level)
+        return self.shadow(color: shadow.color, radius: shadow.radius, y: shadow.y)
     }
 
     func festivalNavigationTitle(_ title: String) -> some View {
