@@ -239,7 +239,7 @@ enum MapPinRenderer {
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: FestivalDesign.uiFont(size: innerD * (count > 99 ? 0.34 : 0.42), weight: .heavy),
-                .foregroundColor: UIColor.white,
+                .foregroundColor: FestivalDesign.uiOnPinFill(fill),
                 .paragraphStyle: paragraph
             ]
             let textSize = (badgeText as NSString).size(withAttributes: attributes)

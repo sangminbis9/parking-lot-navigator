@@ -479,7 +479,7 @@ struct MapHomeView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.festival(.subheadline, weight: .semibold))
-                .foregroundStyle(FestivalDesign.teal)
+                .foregroundStyle(FestivalDesign.tealText)
             TextField(
                 "",
                 text: $viewModel.query,
@@ -510,7 +510,7 @@ struct MapHomeView: View {
                 }
                 .frame(width: 34, height: 34)
                 .background(FestivalDesign.teal)
-                .foregroundStyle(FestivalDesign.onAccent)
+                .foregroundStyle(FestivalDesign.onFill(FestivalDesign.teal))
                 .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -569,7 +569,7 @@ struct MapHomeView: View {
                                             : FestivalDesign.coral.opacity(0.15))
                                 .foregroundStyle(festivalFilterModel.filter.isEmpty
                                                  ? FestivalDesign.secondaryText
-                                                 : FestivalDesign.coral)
+                                                 : FestivalDesign.coralText)
                                 .clipShape(FestivalDesign.controlShape)
                                 .overlay(
                                     FestivalDesign.controlShape
@@ -638,7 +638,7 @@ struct MapHomeView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
-                .foregroundStyle(isOn ? FestivalDesign.onAccent : FestivalDesign.secondaryText)
+                .foregroundStyle(isOn ? FestivalDesign.onFill(tint) : FestivalDesign.secondaryText)
                 .clipShape(FestivalDesign.controlShape)
                 .overlay(
                     FestivalDesign.controlShape
@@ -663,7 +663,7 @@ struct MapHomeView: View {
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(FestivalDesign.coral)
+                                .foregroundStyle(FestivalDesign.coralText)
                                 .padding(.top, 2)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(destination.name)
@@ -766,7 +766,7 @@ struct MapHomeView: View {
                             .foregroundStyle(FestivalDesign.navy)
                         Text("\(itemCount)")
                             .font(.festival(.caption, weight: .bold))
-                            .foregroundStyle(FestivalDesign.teal)
+                            .foregroundStyle(FestivalDesign.tealText)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(FestivalDesign.tealSoft)
@@ -915,7 +915,7 @@ struct MapHomeView: View {
     private func inlineError(_ message: String) -> some View {
         Text(message)
             .font(.festival(.subheadline))
-            .foregroundStyle(FestivalDesign.onAccent)
+            .foregroundStyle(FestivalDesign.onFill(FestivalDesign.coral))
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(FestivalDesign.coral.opacity(0.9))
@@ -1529,7 +1529,7 @@ private struct MapFloatingIcon: View {
     var body: some View {
         Image(systemName: systemName)
             .font(.festival(size: size * 0.38, weight: .bold))
-            .foregroundStyle(FestivalDesign.onAccent)
+            .foregroundStyle(FestivalDesign.onFill(tint))
             .frame(width: size, height: size)
             .background(Circle().fill(tint))
             .overlay(
@@ -1551,7 +1551,7 @@ private struct HomeMapPillButtonStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(isFilled ? tint : tint.opacity(0.12))
-            .foregroundStyle(isFilled ? FestivalDesign.onAccent : tint)
+            .foregroundStyle(isFilled ? FestivalDesign.onFill(tint) : FestivalDesign.readable(tint))
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
@@ -1641,7 +1641,7 @@ private struct ParkingMapCard: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(FestivalDesign.teal.opacity(0.16))
-                        .foregroundStyle(FestivalDesign.teal)
+                        .foregroundStyle(FestivalDesign.tealText)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 Text("\(parkingLot.distanceFromDestinationMeters)m")
@@ -1657,7 +1657,7 @@ private struct ParkingMapCard: View {
             HStack(spacing: 6) {
                 Text("\u{CD94}\u{CC9C} \(recommendation.scorePercent)\u{C810}")
                     .font(.festival(.caption, weight: .bold))
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
                 Text(recommendation.primaryReason)
                     .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
@@ -1823,7 +1823,7 @@ struct DiscoverThumbnail: View {
     private var placeholder: some View {
         Image(systemName: symbol)
             .font(.festival(.title3, weight: .semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(FestivalDesign.readable(tint))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -1838,13 +1838,13 @@ private struct EventStackSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.festival(.subheadline, weight: .bold))
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
                 Text("이 위치의 이벤트")
                     .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                 Text("\(items.count)")
                     .font(.festival(.caption, weight: .bold))
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(FestivalDesign.tealSoft)
@@ -1885,7 +1885,7 @@ private struct EventStackSheet: View {
                     .lineLimit(1)
                 Text(item.statusText)
                     .font(.festival(.caption2, weight: .bold))
-                    .foregroundStyle(item.tint)
+                    .foregroundStyle(FestivalDesign.readable(item.tint))
             }
             Spacer(minLength: 4)
             Image(systemName: "chevron.right")

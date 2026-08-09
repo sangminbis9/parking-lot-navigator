@@ -70,7 +70,7 @@ struct ParkingDetailView: View {
                 Spacer()
                 Text("\(recommendation.scorePercent)점")
                     .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
             }
             ForEach(recommendation.reasons, id: \.self) { reason in
                 Label(reason, systemImage: "checkmark.circle.fill")
@@ -101,7 +101,7 @@ struct ParkingDetailView: View {
     private var staleWarningCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.coralText)
             Text("주차 정보 업데이트가 지연되었을 수 있습니다. 현장 상황과 실제 진입 가능 여부를 확인해 주세요.")
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)

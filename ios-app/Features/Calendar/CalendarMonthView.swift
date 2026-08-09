@@ -21,7 +21,7 @@ struct CalendarMonthView: View {
                 ForEach(0..<7, id: \.self) { idx in
                     Text(weekdaySymbols[idx])
                         .font(.festival(size: 11, weight: .semibold))
-                        .foregroundStyle(idx == 0 ? FestivalDesign.coral : (idx == 6 ? FestivalDesign.parkingBlue : FestivalDesign.secondaryText))
+                        .foregroundStyle(idx == 0 ? FestivalDesign.coralText : (idx == 6 ? FestivalDesign.parkingBlueText : FestivalDesign.secondaryText))
                         .frame(maxWidth: .infinity)
                 }
             }

@@ -57,7 +57,7 @@ struct AgentOfficeView: View {
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
                     .font(.festival(.caption))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
             }
         }
         .padding(14)
@@ -294,7 +294,7 @@ private struct AgentRoleCard: View {
                         .foregroundStyle(FestivalDesign.navy)
                     Text(agent.role)
                         .font(.festival(.caption, weight: .semibold))
-                        .foregroundStyle(agent.status.color)
+                        .foregroundStyle(FestivalDesign.readable(agent.status.color))
                 }
             }
             Text(agent.line)
@@ -358,7 +358,7 @@ private struct ActivityRow: View {
                 HStack {
                     Text(event.agentId.uppercased())
                         .font(.festival(.caption, weight: .bold))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(FestivalDesign.readable(accent))
                     Text(event.action)
                         .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
@@ -878,7 +878,7 @@ private struct AgentInfoBadge: View {
                         .frame(width: 5, height: 5)
                     Text(agent.status.title)
                         .font(.festival(size: 8, weight: .bold))
-                        .foregroundStyle(agent.status.color)
+                        .foregroundStyle(FestivalDesign.readable(agent.status.color))
                     Spacer()
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
@@ -977,7 +977,7 @@ private struct PixelBubble: View {
             Text(speaker)
                 .font(.festival(size: 7, weight: .heavy))
                 .tracking(0.4)
-                .foregroundStyle(accent)
+                .foregroundStyle(FestivalDesign.readable(accent))
             Text(text)
                 .font(.festival(size: 9))
                 .foregroundStyle(FestivalDesign.navy)
@@ -1519,7 +1519,7 @@ private struct ProviderHealthRow: View {
             Spacer()
             Text(providerStatusText)
                 .font(.festival(.caption, weight: .bold))
-                .foregroundStyle(color)
+                .foregroundStyle(FestivalDesign.readable(color))
         }
         .padding(.vertical, 6)
     }

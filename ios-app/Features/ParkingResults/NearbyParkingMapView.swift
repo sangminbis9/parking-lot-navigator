@@ -192,7 +192,7 @@ private struct NearbyParkingMapCard: View {
 
             Text("\(recommendation.scorePercent)점 · \(recommendation.primaryReason)")
                 .font(.festival(.caption, weight: .semibold))
-                .foregroundStyle(FestivalDesign.teal)
+                .foregroundStyle(FestivalDesign.tealText)
 
             HStack {
                 Button("상세") { onDetail() }

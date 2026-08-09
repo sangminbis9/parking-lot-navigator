@@ -38,7 +38,7 @@ struct SettingsView: View {
                         .fill(FestivalDesign.cream)
                     Image(systemName: "paintpalette.fill")
                         .font(.festival(.headline))
-                        .foregroundStyle(FestivalDesign.coral)
+                        .foregroundStyle(FestivalDesign.coralText)
                 }
                 .frame(width: 42, height: 42)
 
@@ -83,7 +83,7 @@ struct SettingsView: View {
                         .fill(FestivalDesign.cream)
                     Image(systemName: "bell.badge.fill")
                         .font(.festival(.headline))
-                        .foregroundStyle(FestivalDesign.coral)
+                        .foregroundStyle(FestivalDesign.coralText)
                 }
                 .frame(width: 42, height: 42)
 
@@ -196,7 +196,7 @@ struct SettingsView: View {
                     if let error = provider.lastError {
                         Text(error)
                             .font(.festival(.caption))
-                            .foregroundStyle(FestivalDesign.coral)
+                            .foregroundStyle(FestivalDesign.coralText)
                     }
                 }
                 .padding(10)
@@ -207,7 +207,7 @@ struct SettingsView: View {
             if let errorMessage {
                 Text(errorMessage)
                     .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
             }
         }
         .padding(14)
@@ -361,7 +361,7 @@ struct ThemeSettingsView: View {
     private var contrastNote: some View {
         HStack(spacing: 8) {
             Image(systemName: "textformat.size")
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.coralText)
             Text("배경 위 글씨는 대비를 확보한 본문색과 보조색만 사용합니다.")
                 .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
@@ -393,7 +393,7 @@ struct ThemeSettingsView: View {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.festival(.subheadline, weight: .bold))
-                            .foregroundStyle(FestivalDesign.coral)
+                            .foregroundStyle(FestivalDesign.coralText)
                     }
                 }
 
@@ -423,7 +423,7 @@ struct ThemeSettingsView: View {
     private func previewPill(_ title: String, tint: Color) -> some View {
         Text(title)
             .font(.festival(.caption, weight: .semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(FestivalDesign.readable(tint))
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(tint.opacity(0.14))

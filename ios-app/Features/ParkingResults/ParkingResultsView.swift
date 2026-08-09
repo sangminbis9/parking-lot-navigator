@@ -127,7 +127,7 @@ struct ParkingResultsView: View {
         HStack(spacing: 10) {
             Image(systemName: "map")
                 .font(.festival(size: 17, weight: .semibold))
-                .foregroundStyle(FestivalDesign.teal)
+                .foregroundStyle(FestivalDesign.tealText)
             Text("지도에서 주차장 보기")
                 .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
@@ -183,7 +183,7 @@ private struct DiscoverResultHeader: View {
                     Button(action: onToggleFavorite) {
                         Image(systemName: isFavorite ? "star.fill" : "star")
                             .font(.festival(size: 20, weight: .semibold))
-                            .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                            .foregroundStyle(isFavorite ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -489,7 +489,7 @@ struct ParkingLotRow: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text("\(recommendation.scorePercent)점")
                         .font(.festival(.subheadline, weight: .semibold))
-                        .foregroundStyle(FestivalDesign.teal)
+                        .foregroundStyle(FestivalDesign.tealText)
                     Text("\(parkingLot.distanceFromDestinationMeters)m")
                         .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)

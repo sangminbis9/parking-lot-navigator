@@ -90,7 +90,7 @@ struct AppRootView: View {
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .paperGrainOverlay()
-        .tint(FestivalDesign.coral)
+        .tint(FestivalDesign.coralText)
         // 팔레트는 자체 다크 변형을 쓰지만, 키보드·DatePicker 같은 시스템 컨트롤은 이 값으로만 따라온다.
         .preferredColorScheme(themeStore.isDarkMode ? .dark : .light)
         .environmentObject(tabRouter)
@@ -157,7 +157,7 @@ struct AppRootView: View {
         appearance.backgroundColor = UIColor(FestivalDesign.surface)
         appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
 
-        let selectedColor = UIColor(FestivalDesign.coral)
+        let selectedColor = UIColor(FestivalDesign.coralText)
         let normalColor = UIColor(FestivalDesign.secondaryText)
         let selectedAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: selectedColor]
         let normalAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: normalColor]
@@ -180,7 +180,7 @@ struct AppRootView: View {
         appearance.backgroundColor = UIColor(FestivalDesign.surface)
         appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
 
-        let titleColor = UIColor(FestivalDesign.coral)
+        let titleColor = UIColor(FestivalDesign.coralText)
         appearance.titleTextAttributes = [
             .foregroundColor: titleColor,
             .font: FestivalDesign.uiFont(size: 17, weight: .bold)
@@ -234,7 +234,7 @@ private struct FestivalTabBar: View {
             VStack(spacing: 4) {
                 Image(systemName: tab.systemImage)
                     .font(.festival(size: 15, weight: .bold))
-                    .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                    .foregroundStyle(isSelected ? FestivalDesign.coralText : FestivalDesign.secondaryText)
                 Text(tab.title)
                     .font(.festival(size: 10, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? FestivalDesign.navy : FestivalDesign.secondaryText)
