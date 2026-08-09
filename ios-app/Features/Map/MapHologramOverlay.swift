@@ -111,7 +111,7 @@ struct MapHologramOverlay: View {
         }
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: Color.black.opacity(0.14), radius: 14, x: 0, y: 5)
+        .festivalShadow(.high)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
