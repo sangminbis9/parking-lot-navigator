@@ -59,3 +59,19 @@ export class DetailFetchBudget {
     return true;
   }
 }
+
+// 상세 페이지 fetch를 Promise.all로 한꺼번에 origin에 쏘면 서버가 burst를
+// 못 버텨 대부분 실패한다(2026-08-09 인천 itour 연수구 실측: 13건 동시 요청
+// 시 9건 실패, fallback 좌표로 남음). 소규모씩 나눠 순차 배치로 처리해
+// origin 부하를 줄인다.
+export const DETAIL_FETCH_CONCURRENCY = 3;
+
+export async function mapWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += concurrency) {
+    await Promise.all(items.slice(i, i + concurrency).map(fn));
+  }
+}

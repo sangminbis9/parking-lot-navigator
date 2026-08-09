@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
+import { DETAIL_FETCH_CONCURRENCY, mapWithConcurrency } from "../types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate, DetailFetchBudget } from "../types.js";
 
 // 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록은 /travel/info/list.do에
@@ -63,7 +64,9 @@ export async function parseJbTour(
     });
   });
 
-  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate, budget)));
+  await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
+    fillLocationFromDetailPage(candidate, budget)
+  );
 
   return results;
 }

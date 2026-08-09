@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
+import { DETAIL_FETCH_CONCURRENCY, mapWithConcurrency } from "../types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate, DetailFetchBudget } from "../types.js";
 
 const DETAIL_FETCH_TIMEOUT_MS = 8000;
@@ -52,7 +53,9 @@ export async function parseSokchoCulture(
     });
   });
 
-  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate, budget)));
+  await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
+    fillLocationFromDetailPage(candidate, budget)
+  );
 
   return results;
 }
