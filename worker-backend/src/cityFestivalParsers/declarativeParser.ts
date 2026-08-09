@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../../backend/src/features/discover/events/eventProviderUtils.js";
-import { DetailFetchBudget } from "./types.js";
+import { DetailFetchBudget, DETAIL_FETCH_CONCURRENCY, mapWithConcurrency } from "./types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "./types.js";
 
 const DETAIL_FETCH_TIMEOUT_MS = 8000;
@@ -68,10 +68,8 @@ export async function parseDeclarative(
   });
 
   if (detailVenueSelector || detailAddressSelector) {
-    await Promise.all(
-      results.map((candidate) =>
-        fillLocationFromDetail(candidate, detailVenueSelector, detailAddressSelector, budget)
-      )
+    await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
+      fillLocationFromDetail(candidate, detailVenueSelector, detailAddressSelector, budget)
     );
   }
 
