@@ -69,7 +69,7 @@ export async function parseDeclarative(
 
   if (detailVenueSelector || detailAddressSelector) {
     await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
-      fillLocationFromDetail(candidate, detailVenueSelector, detailAddressSelector, budget)
+      fillLocationFromDetail(candidate, detailVenueSelector, detailAddressSelector, budget, config.siteId)
     );
   }
 
@@ -80,10 +80,11 @@ async function fillLocationFromDetail(
   candidate: RawCityFestivalCandidate,
   detailVenueSelector: string | undefined,
   detailAddressSelector: string | undefined,
-  budget: DetailFetchBudget | undefined
+  budget: DetailFetchBudget | undefined,
+  siteId: string
 ): Promise<void> {
   if (!candidate.detailUrl) return;
-  if (budget && !budget.tryConsume()) return;
+  if (budget && !budget.tryConsume(siteId)) return;
   try {
     const response = await fetchWithTimeout(
       new URL(candidate.detailUrl),

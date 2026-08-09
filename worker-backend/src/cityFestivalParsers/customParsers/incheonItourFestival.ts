@@ -55,7 +55,7 @@ export async function parseIncheonItourFestival(
   });
 
   await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
-    fillLocationFromDetailPage(candidate, budget)
+    fillLocationFromDetailPage(candidate, budget, config.siteId)
   );
 
   return results;
@@ -63,10 +63,11 @@ export async function parseIncheonItourFestival(
 
 async function fillLocationFromDetailPage(
   candidate: RawCityFestivalCandidate,
-  budget: DetailFetchBudget | undefined
+  budget: DetailFetchBudget | undefined,
+  siteId: string
 ): Promise<void> {
   if (!candidate.detailUrl) return;
-  if (budget && !budget.tryConsume()) return;
+  if (budget && !budget.tryConsume(siteId)) return;
   try {
     const response = await fetchWithTimeout(
       new URL(candidate.detailUrl),

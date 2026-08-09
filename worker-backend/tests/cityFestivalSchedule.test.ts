@@ -8,7 +8,7 @@ import { CITY_FESTIVAL_SITES } from "../src/cityFestivalSites.js";
 
 describe("currentCityFestivalChunkIndex", () => {
   it("visits every chunk across enough days when site count exceeds one chunk", () => {
-    const siteCount = 20; // chunkCount = ceil(20/15) = 2
+    const siteCount = 20; // chunkCount = ceil(20/CITY_FESTIVAL_CHUNK_SIZE) = 2
     const seen = new Set<number>();
     for (let day = 0; day < 10; day += 1) {
       const date = new Date(Date.UTC(2026, 0, 1 + day, 4, 0));
@@ -40,8 +40,12 @@ describe("currentCityFestivalChunkIndex", () => {
 describe("sitesForChunk", () => {
   it("slices the array into the requested chunk", () => {
     const sites = Array.from({ length: 20 }, (_, i) => `site-${i}`);
-    expect(sitesForChunk(sites, 0, CITY_FESTIVAL_CHUNK_SIZE)).toEqual(sites.slice(0, 15));
-    expect(sitesForChunk(sites, 1, CITY_FESTIVAL_CHUNK_SIZE)).toEqual(sites.slice(15, 20));
+    expect(sitesForChunk(sites, 0, CITY_FESTIVAL_CHUNK_SIZE)).toEqual(
+      sites.slice(0, CITY_FESTIVAL_CHUNK_SIZE),
+    );
+    expect(sitesForChunk(sites, 1, CITY_FESTIVAL_CHUNK_SIZE)).toEqual(
+      sites.slice(CITY_FESTIVAL_CHUNK_SIZE, 20),
+    );
   });
 
   it("returns an empty array for a chunk index beyond the array length", () => {

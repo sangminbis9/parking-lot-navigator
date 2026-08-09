@@ -23,6 +23,12 @@ const DEFAULT_GEOCODE_MISS_BUDGET = 30;
 // 12개) 무제한이면 15개 사이트가 함께 도는 chunk에서 subrequest 한도를
 // 넘는다(2026-08-09 wrangler tail로 확인, DetailFetchBudget 주석 참고).
 const DEFAULT_DETAIL_FETCH_BUDGET = 6;
+// 사이트 하나가 예산을 독점해 뒤에 오는 사이트를 굶기지 못하도록 siteId별
+// 상한을 둔다(DetailFetchBudget 주석 참고).
+// 2026-08-09: detail budget을 20→15로 낮추면서 cap도 3→2로 낮췄다. cap이
+// budget보다 크게 남으면(예: 10개 사이트 × cap3=30 > budget15) 앞쪽 몇 개
+// 사이트가 다시 예산을 다 써버려 뒤쪽 사이트가 굶는 FIFO 패턴이 재현된다.
+const DETAIL_FETCH_PER_SITE_CAP = 2;
 
 export interface CityFestivalDiscoveryResult {
   processed: number;
@@ -51,7 +57,8 @@ export async function runCityFestivalDiscovery(
     ? Number(rawDetailFetchBudgetInput)
     : DEFAULT_DETAIL_FETCH_BUDGET;
   const detailFetchBudget = new DetailFetchBudget(
-    Number.isFinite(rawDetailFetchBudget) ? rawDetailFetchBudget : DEFAULT_DETAIL_FETCH_BUDGET
+    Number.isFinite(rawDetailFetchBudget) ? rawDetailFetchBudget : DEFAULT_DETAIL_FETCH_BUDGET,
+    DETAIL_FETCH_PER_SITE_CAP
   );
 
   let processed = 0;
