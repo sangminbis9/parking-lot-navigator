@@ -40,7 +40,7 @@ struct NotificationSettingsView: View {
                 Circle().fill(FestivalDesign.cream)
                 Image(systemName: "bell.badge.fill")
                     .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
             }
             .frame(width: 42, height: 42)
 
@@ -63,7 +63,7 @@ struct NotificationSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
                 Text("알림 권한이 꺼져 있어요")
                     .font(.festival(.subheadline, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
@@ -242,7 +242,7 @@ struct NotificationSettingsView: View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
                 .font(.festival(.subheadline, weight: .bold))
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.coralText)
             Text(title)
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
@@ -290,7 +290,7 @@ struct NotificationSettingsView: View {
                 Text(label)
                     .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
             }
-            .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+            .foregroundStyle(isOn ? FestivalDesign.onFill(tint) : FestivalDesign.navy)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(isOn ? tint : FestivalDesign.surface)
@@ -306,7 +306,7 @@ struct NotificationSettingsView: View {
         Button(action: action) {
             Text(label)
                 .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
-                .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+                .foregroundStyle(isOn ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)

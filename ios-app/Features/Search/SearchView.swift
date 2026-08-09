@@ -184,7 +184,7 @@ struct SearchView: View {
     private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(FestivalDesign.teal)
+                .foregroundStyle(FestivalDesign.tealText)
             TextField(
                 "",
                 text: $query,
@@ -262,7 +262,7 @@ struct SearchView: View {
                     ForEach(chips, id: \.self) { label in
                         Text(label)
                             .font(.festival(.caption, weight: .semibold))
-                            .foregroundStyle(FestivalDesign.coral)
+                            .foregroundStyle(FestivalDesign.coralText)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                             .background(FestivalDesign.cream.opacity(0.55))
@@ -777,14 +777,14 @@ private struct DiscoverTabFilterSheet: View {
                     Button("초기화") {
                         filters = DiscoverTabFilters()
                     }
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("완료") {
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
                 }
             }
         }
@@ -913,7 +913,7 @@ private struct DiscoverTabFilterSheet: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(isSelected ? tint.opacity(0.18) : FestivalDesign.cream.opacity(0.42))
-            .foregroundStyle(isSelected ? tint : FestivalDesign.navy)
+            .foregroundStyle(isSelected ? FestivalDesign.readable(tint) : FestivalDesign.navy)
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
@@ -965,7 +965,7 @@ private struct DiscoverTabFilterSheet: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isSelected ? FestivalDesign.coral.opacity(0.16) : FestivalDesign.cream.opacity(0.42))
-                .foregroundStyle(isSelected ? FestivalDesign.coral : FestivalDesign.navy)
+                .foregroundStyle(isSelected ? FestivalDesign.coralText : FestivalDesign.navy)
                 .clipShape(FestivalDesign.controlShape)
                 .overlay(
                     FestivalDesign.controlShape
@@ -993,7 +993,7 @@ private struct DiscoverSegmentButtonStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(isSelected ? tint.opacity(0.16) : FestivalDesign.surface)
-            .foregroundStyle(isSelected ? tint : FestivalDesign.secondaryText)
+            .foregroundStyle(isSelected ? FestivalDesign.readable(tint) : FestivalDesign.secondaryText)
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
@@ -1012,7 +1012,7 @@ private struct DiscoverControlButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background(isActive ? tint.opacity(0.16) : FestivalDesign.cream.opacity(0.35))
-            .foregroundStyle(isActive ? tint : FestivalDesign.navy)
+            .foregroundStyle(isActive ? FestivalDesign.readable(tint) : FestivalDesign.navy)
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
@@ -1106,7 +1106,7 @@ private struct DiscoverTabRow: View {
                 }
                 Text(item.dateText)
                     .font(.festival(.caption, weight: .semibold))
-                    .foregroundStyle(FestivalDesign.teal)
+                    .foregroundStyle(FestivalDesign.tealText)
                 Text(item.address)
                     .font(.festival(.caption))
                     .foregroundStyle(FestivalDesign.secondaryText)
@@ -1121,7 +1121,7 @@ private struct DiscoverTabRow: View {
             } label: {
                 Image(systemName: isFavorite ? "star.fill" : "star")
                     .font(.festival(size: 18, weight: .semibold))
-                    .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                    .foregroundStyle(isFavorite ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -1215,7 +1215,7 @@ struct DestinationRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "mappin.circle.fill")
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.coralText)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(destination.name)

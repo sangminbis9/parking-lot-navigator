@@ -320,6 +320,119 @@ enum FestivalDesign {
     /// 라이트에서는 흰색이지만, 다크에서는 채움색이 밝아지므로 어두운 바탕색으로 뒤집는다.
     static var onAccent: Color { FestivalAppearance.isDark ? background : .white }
 
+    // MARK: - 글자 대비
+
+    /// 강조색을 글자·아이콘으로 쓸 때의 색. 원색 그대로는 밝은 바탕에서 묻히므로
+    /// (노란 lantern이 대표적으로 1.5:1까지 떨어진다) 대비 3.3:1을 넘길 때까지 잉크를 섞는다.
+    /// 채움색으로 쓸 때는 원색이 그대로 필요하므로 팔레트 값은 건드리지 않고 여기서 파생시킨다.
+    static var coralText: Color { readable(coral) }
+    static var lanternText: Color { readable(lantern) }
+    static var tealText: Color { readable(teal) }
+    static var parkingBlueText: Color { readable(parkingBlue) }
+
+    /// 글자가 놓일 수 있는 배경 중 가장 불리한 면. 같은 색이 카드 위에도 바탕 위에도
+    /// 올라가므로, 최악의 면 하나를 기준으로 계산해 화면별로 색이 달라지는 것을 막는다.
+    private static var textCanvas: Color {
+        let theme = FestivalTheme.current
+        let isDark = FestivalAppearance.isDark
+        let cacheKey = theme.rawValue + (isDark ? "-dark" : "-light")
+        if let cached = canvasCache[cacheKey] { return cached }
+        let p = theme.palette
+        let surfaces = [p.background, p.surface, p.cream, p.tealSoft, p.parkingSoft]
+        let worst = isDark
+            ? surfaces.max(by: { luminance($0) < luminance($1) })
+            : surfaces.min(by: { luminance($0) < luminance($1) })
+        let result = worst ?? p.surface
+        canvasCache[cacheKey] = result
+        return result
+    }
+
+    /// - Parameter color: 팔레트 강조색. 이미 대비가 충분하면 그대로 돌려준다.
+    static func readable(_ color: Color) -> Color {
+        let canvas = textCanvas
+        let key = ContrastKey(color: color, reference: canvas)
+        if let cached = readableCache[key] { return cached }
+        let inkColor: Color = luminance(canvas) > 0.35 ? .black : .white
+        var result = color
+        var amount = 0.0
+        while amount < 1.0, contrastRatio(result, canvas) < 3.3 {
+            amount = min(1.0, amount + 0.05)
+            result = mix(color, inkColor, amount)
+        }
+        readableCache[key] = result
+        return result
+    }
+
+    /// 강조색으로 꽉 채운 면 위의 글자색. 흰 글자가 대비 3:1도 못 내는 조합
+    /// (노란 lantern 배지가 대표적)에서만 어두운 잉크로 바꾼다.
+    static func onFill(_ fill: Color) -> Color {
+        let base = onAccent
+        return contrastRatio(base, fill) >= 3.0 ? base : ink(on: fill)
+    }
+
+    /// 지도 핀 위의 글자·아이콘 색(UIKit 렌더링용). 지도 타일은 다크 모드에서도 밝게 남으므로
+    /// 흰 글자를 기준으로 판단하고, 노란 핀처럼 대비가 안 나올 때만 어두운 잉크로 바꾼다.
+    static func uiOnPinFill(_ fill: UIColor) -> UIColor {
+        let color = Color(fill)
+        return contrastRatio(.white, color) >= 3.0 ? .white : UIColor(ink(on: color))
+    }
+
+    /// 채움색 위에서 4.5:1을 낼 때까지 본문색을 검정 쪽으로 섞은 잉크.
+    private static func ink(on fill: Color) -> Color {
+        let base = navy
+        let key = ContrastKey(color: fill, reference: base)
+        if let cached = onFillCache[key] { return cached }
+        var result = base
+        var amount = 0.0
+        while amount < 1.0, contrastRatio(result, fill) < 4.5 {
+            amount = min(1.0, amount + 0.05)
+            result = mix(base, .black, amount)
+        }
+        onFillCache[key] = result
+        return result
+    }
+
+    /// WCAG 상대 명도 기준 대비비(1.0 ~ 21.0).
+    static func contrastRatio(_ lhs: Color, _ rhs: Color) -> Double {
+        let a = luminance(lhs)
+        let b = luminance(rhs)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    private struct ContrastKey: Hashable {
+        let color: Color
+        let reference: Color
+    }
+
+    // 팔레트 색은 개수가 정해져 있어 캐시가 무한히 자라지 않는다. 본문(메인 스레드)에서만 읽고 쓴다.
+    private static var readableCache: [ContrastKey: Color] = [:]
+    private static var onFillCache: [ContrastKey: Color] = [:]
+    private static var canvasCache: [String: Color] = [:]
+
+    private static func components(_ color: Color) -> (r: Double, g: Double, b: Double) {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(g), Double(b))
+    }
+
+    private static func luminance(_ color: Color) -> Double {
+        let c = components(color)
+        func channel(_ value: Double) -> Double {
+            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+
+    private static func mix(_ base: Color, _ target: Color, _ amount: Double) -> Color {
+        let b = components(base)
+        let t = components(target)
+        return Color(
+            red: b.r + (t.r - b.r) * amount,
+            green: b.g + (t.g - b.g) * amount,
+            blue: b.b + (t.b - b.b) * amount
+        )
+    }
+
     static var isHandDrawn: Bool { FestivalTheme.current.isHandDrawn }
 
     static var cardRadius: CGFloat { isHandDrawn ? 18 : 8 }
@@ -581,7 +694,7 @@ extension View {
                 ToolbarItem(placement: .principal) {
                     Text(title)
                         .font(.festival(.headline, weight: .bold))
-                        .foregroundStyle(FestivalDesign.coral)
+                        .foregroundStyle(FestivalDesign.coralText)
                 }
             }
             .toolbarBackground(FestivalDesign.surface, for: .navigationBar)

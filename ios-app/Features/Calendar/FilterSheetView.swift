@@ -71,7 +71,7 @@ struct FilterSheetView: View {
                         dismiss()
                     }
                     .font(.festival(size: 15, weight: .bold))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
                 }
             }
         }
@@ -179,7 +179,7 @@ struct FilterSheetView: View {
                 Text(category.displayName)
                     .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
             }
-            .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+            .foregroundStyle(isOn ? FestivalDesign.onFill(category.tint) : FestivalDesign.navy)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(isOn ? category.tint : FestivalDesign.surface)
@@ -211,7 +211,7 @@ struct FilterSheetView: View {
         Button(action: action) {
             Text(label)
                 .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
-                .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+                .foregroundStyle(isOn ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)

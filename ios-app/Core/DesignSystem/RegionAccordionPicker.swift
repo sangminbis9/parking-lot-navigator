@@ -53,7 +53,7 @@ struct RegionAccordionPicker: View {
         } label: {
             Text(label)
                 .font(.festival(size: 13, weight: isOn ? .bold : .semibold))
-                .foregroundStyle(isOn ? FestivalDesign.surface : FestivalDesign.navy)
+                .foregroundStyle(isOn ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.navy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)

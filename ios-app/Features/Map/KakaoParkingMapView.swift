@@ -755,13 +755,13 @@ private extension UIImage {
                 width: iconSize,
                 height: iconSize
             )
-            image.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+            image.withTintColor(FestivalDesign.uiOnPinFill(coreColor), renderingMode: .alwaysOriginal).draw(in: iconRect)
         } else if let letter, !letter.isEmpty {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: FestivalDesign.uiFont(size: size * 0.46, weight: .heavy),
-                .foregroundColor: UIColor.white,
+                .foregroundColor: FestivalDesign.uiOnPinFill(coreColor),
                 .paragraphStyle: paragraph
             ]
             let textSize = (letter as NSString).size(withAttributes: attributes)

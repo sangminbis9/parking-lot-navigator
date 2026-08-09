@@ -18,7 +18,7 @@ struct UpcomingFestivalsEntryView: View {
         VStack(spacing: 6) {
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 22))
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.coralText)
             Text("다가오는 축제가 없어요")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(FestivalDesign.navy)
@@ -55,7 +55,7 @@ struct UpcomingFestivalsEntryView: View {
                     .frame(width: 5, height: 5)
                 Text(festival.status.displayText)
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern)
+                    .foregroundStyle(festival.status == .ongoing ? FestivalDesign.tealText : FestivalDesign.lanternText)
             }
             Text(festival.title)
                 .font(.system(size: 13, weight: .bold))

@@ -52,7 +52,7 @@ struct CalendarDayCell: View {
             if isSaved {
                 Image(systemName: "star.fill")
                     .font(.festival(size: 7, weight: .bold))
-                    .foregroundStyle(isSelected ? FestivalDesign.surface : FestivalDesign.lantern)
+                    .foregroundStyle(isSelected ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.lanternText)
                     .padding(3)
             }
         }
@@ -61,13 +61,13 @@ struct CalendarDayCell: View {
 
     private var numberColor: Color {
         if isSelected {
-            return FestivalDesign.surface
+            return FestivalDesign.onFill(FestivalDesign.coral)
         }
         if weekdayIndex == 1 {
-            return FestivalDesign.coral
+            return FestivalDesign.coralText
         }
         if weekdayIndex == 7 {
-            return FestivalDesign.parkingBlue
+            return FestivalDesign.parkingBlueText
         }
         return FestivalDesign.navy
     }

@@ -36,7 +36,7 @@ struct MapHologramOverlay: View {
                             if let statusText, !statusText.isEmpty {
                                 Text(statusText)
                                     .font(.festival(size: 10, weight: .bold))
-                                    .foregroundColor(FestivalDesign.onAccent)
+                                    .foregroundColor(FestivalDesign.onFill(tint))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(FestivalDesign.chipShape.fill(tint))
@@ -44,7 +44,7 @@ struct MapHologramOverlay: View {
                             if let categoryText, !categoryText.isEmpty {
                                 Text(categoryText)
                                     .font(.festival(size: 10, weight: .medium))
-                                    .foregroundColor(tint)
+                                    .foregroundColor(FestivalDesign.readable(tint))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
@@ -74,7 +74,7 @@ struct MapHologramOverlay: View {
                             Image(systemName: "arrow.right")
                                 .font(.festival(size: 10, weight: .bold))
                         }
-                        .foregroundColor(tint)
+                        .foregroundColor(FestivalDesign.readable(tint))
                         .padding(.top, 1)
                     }
                     Spacer(minLength: 0)
@@ -93,7 +93,7 @@ struct MapHologramOverlay: View {
                     Button(action: onToggleFavorite) {
                         Image(systemName: isFavorite ? "star.fill" : "star")
                             .font(.festival(size: 9, weight: .bold))
-                            .foregroundColor(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                            .foregroundColor(isFavorite ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
                             .frame(width: 20, height: 20)
                             .background(Circle().fill(Color(.systemGray6)))
                             .frame(width: 30, height: 30)

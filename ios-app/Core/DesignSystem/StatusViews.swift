@@ -34,11 +34,11 @@ struct StatusBadge: View {
 
     private var foreground: Color {
         switch kind {
-        case .realtime: return FestivalDesign.teal
-        case .warning: return FestivalDesign.coral
+        case .realtime: return FestivalDesign.tealText
+        case .warning: return FestivalDesign.coralText
         case .neutral: return FestivalDesign.secondaryText
-        case .source: return FestivalDesign.parkingBlue
-        case .sponsor: return FestivalDesign.lantern
+        case .source: return FestivalDesign.parkingBlueText
+        case .sponsor: return FestivalDesign.lanternText
         }
     }
 }

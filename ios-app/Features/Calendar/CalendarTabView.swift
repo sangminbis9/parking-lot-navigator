@@ -145,7 +145,7 @@ struct CalendarTabView: View {
             } label: {
                 Image(systemName: favoritesStore.saved.isEmpty ? "bookmark" : "bookmark.fill")
                     .font(.festival(size: 14, weight: .bold))
-                    .foregroundStyle(FestivalDesign.lantern)
+                    .foregroundStyle(FestivalDesign.lanternText)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
                     .clipShape(Circle())
@@ -158,7 +158,7 @@ struct CalendarTabView: View {
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.festival(size: 14, weight: .bold))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
                     .clipShape(Circle())
@@ -201,7 +201,7 @@ struct CalendarTabView: View {
     private func presetLabel(_ text: String, filled: Bool = false) -> some View {
         Text(text)
             .font(.festival(size: 12, weight: .semibold))
-            .foregroundStyle(filled ? FestivalDesign.surface : FestivalDesign.coral)
+            .foregroundStyle(filled ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.coralText)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(filled ? FestivalDesign.coral : FestivalDesign.cream.opacity(0.55))
@@ -220,7 +220,7 @@ struct CalendarTabView: View {
             if case .failed(let message) = viewModel.state {
                 Text(message)
                     .font(.festival(size: 12))
-                    .foregroundStyle(FestivalDesign.coral)
+                    .foregroundStyle(FestivalDesign.coralText)
                     .padding(.horizontal, 16)
             } else if items.isEmpty {
                 emptyAgenda
@@ -256,7 +256,7 @@ struct CalendarTabView: View {
             HStack(spacing: 6) {
                 Image(systemName: "music.note")
                     .font(.festival(size: 12, weight: .bold))
-                    .foregroundStyle(FestivalPrimaryCategory.musicPerformance.tint)
+                    .foregroundStyle(FestivalDesign.readable(FestivalPrimaryCategory.musicPerformance.tint))
                 Text("근처 공연 · \(items.count)개")
                     .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
@@ -519,7 +519,7 @@ private struct AgendaRow: View {
                 Button(action: onToggleSave) {
                     Image(systemName: isSaved ? "star.fill" : "star")
                         .font(.festival(size: 16, weight: .semibold))
-                        .foregroundStyle(isSaved ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                        .foregroundStyle(isSaved ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
                         .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
@@ -529,7 +529,7 @@ private struct AgendaRow: View {
                     Button(action: onToggleReminder) {
                         Image(systemName: isReminderOn ? "bell.fill" : "bell")
                             .font(.festival(size: 15, weight: .semibold))
-                            .foregroundStyle(isReminderOn ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                            .foregroundStyle(isReminderOn ? FestivalDesign.coralText : FestivalDesign.secondaryText)
                             .frame(width: 40, height: 40)
                             .contentShape(Rectangle())
                     }
@@ -565,7 +565,7 @@ private struct PerformanceRow: View {
                 HStack(spacing: 6) {
                     Text(p.status.displayText)
                         .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(FestivalPrimaryCategory.musicPerformance.tint)
+                        .foregroundStyle(FestivalDesign.readable(FestivalPrimaryCategory.musicPerformance.tint))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(FestivalPrimaryCategory.musicPerformance.tint.opacity(0.12))
@@ -638,7 +638,7 @@ private struct SavedFestivalsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("\u{B2EB}\u{AE30}") { dismiss() } // 닫기
-                        .foregroundStyle(FestivalDesign.coral)
+                        .foregroundStyle(FestivalDesign.coralText)
                 }
             }
         }
@@ -667,7 +667,7 @@ private struct SavedFestivalsSheet: View {
                 } label: {
                     Image(systemName: reminderService.isScheduled(id: saved.id) ? "bell.fill" : "bell")
                         .font(.festival(size: 15, weight: .semibold))
-                        .foregroundStyle(reminderService.isScheduled(id: saved.id) ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                        .foregroundStyle(reminderService.isScheduled(id: saved.id) ? FestivalDesign.coralText : FestivalDesign.secondaryText)
                         .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
