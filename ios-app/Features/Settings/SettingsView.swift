@@ -10,7 +10,6 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                settingsHeader
                 themeSettingsCard
                 notificationSettingsCard
                 merchantCard
@@ -23,40 +22,6 @@ struct SettingsView: View {
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("설정")
         .task { await load() }
-    }
-
-    private var settingsHeader: some View {
-        HStack(spacing: 12) {
-            Image("FestivalMascotGuide")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 62, height: 62)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("앱 안내와 데이터 상태")
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("축제 탐색과 주차 추천에 쓰이는 연결 정보를 확인합니다.")
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(
-            LinearGradient(
-                colors: [FestivalDesign.tealSoft, FestivalDesign.cream.opacity(0.78)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
     }
 
     private var merchantURL: URL {

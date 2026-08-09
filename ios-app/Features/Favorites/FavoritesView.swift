@@ -7,8 +7,6 @@ struct FavoritesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                favoritesHeader
-
                 if store.favorites.isEmpty {
                     emptyState
                 } else {
@@ -23,40 +21,6 @@ struct FavoritesView: View {
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("즐겨찾기")
-    }
-
-    private var favoritesHeader: some View {
-        HStack(spacing: 12) {
-            Image("FestivalMascotIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 62, height: 62)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("다시 가고 싶은 장소")
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("축제와 목적지를 저장해두면 주차 추천까지 빠르게 이어집니다.")
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(
-            LinearGradient(
-                colors: [FestivalDesign.cream.opacity(0.9), FestivalDesign.tealSoft],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
     }
 
     private var emptyState: some View {

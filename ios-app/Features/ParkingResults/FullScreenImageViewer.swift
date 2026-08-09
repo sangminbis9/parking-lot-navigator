@@ -34,7 +34,10 @@ struct FullScreenImageViewer: View {
                     .foregroundStyle(.white)
                     .frame(width: 38, height: 38)
                     .background(.black.opacity(0.45), in: Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("닫기")
             .padding(.top, 12)
             .padding(.trailing, 16)
         }

@@ -821,9 +821,10 @@ struct MapHomeView: View {
                     .frame(width: 28, height: 28)
                     .background(FestivalDesign.cream.opacity(0.55))
                     .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(8)
             .accessibilityLabel("안내 카드 닫기")
         }
         .background(FestivalDesign.surface.opacity(0.97))

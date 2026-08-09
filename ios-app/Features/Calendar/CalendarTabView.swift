@@ -630,7 +630,7 @@ private struct SavedFestivalsSheet: View {
                             Text("\u{C800}\u{C7A5}\u{D55C} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 저장한 축제가 없어요
                                 .font(.festival(size: 14, weight: .semibold))
                                 .foregroundStyle(FestivalDesign.secondaryText)
-                            Text("\u{CE98}\u{B9B0}\u{B354}\u{C5D0}\u{C11C} \u{BCC4}\u{D45C}\u{B97C} \u{D0ED}\u{D574} \u{CD95}\u{C81C}\u{B97C} \u{C800}\u{C7A5}\u{D574} \u{BCF4}\u{C138}\u{C694}.") // 캘린더에서 별표를 탭해 축제를 저장해 보세요.
+                            Text("\u{C774}\u{BCA4}\u{D2B8} \u{D0ED}\u{C5D0}\u{C11C} \u{2606} \u{C744} \u{D0ED}\u{D574} \u{AD00}\u{C2EC} \u{CD95}\u{C81C}\u{B97C} \u{CD94}\u{AC00}\u{D574} \u{BCF4}\u{C138}\u{C694}") // 이벤트 탭에서 ☆ 을 탭해 관심 축제를 추가해 보세요
                                 .font(.festival(size: 12))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                                 .multilineTextAlignment(.center)
@@ -673,15 +673,18 @@ private struct SavedFestivalsSheet: View {
                 }
             }
             Spacer(minLength: 0)
-            VStack(spacing: 10) {
+            VStack(spacing: 2) {
                 Button {
                     onToggleReminder(saved)
                 } label: {
                     Image(systemName: reminderService.isScheduled(id: saved.id) ? "bell.fill" : "bell")
                         .font(.festival(size: 15, weight: .semibold))
                         .foregroundStyle(reminderService.isScheduled(id: saved.id) ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(reminderService.isScheduled(id: saved.id) ? "\u{C54C}\u{B9BC} \u{B044}\u{AE30}" : "\u{C54C}\u{B9BC} \u{CF1C}\u{AE30}") // 알림 끄기 / 알림 켜기
                 Button {
                     reminderService.cancel(id: saved.id)
                     store.remove(id: saved.id)
@@ -689,8 +692,11 @@ private struct SavedFestivalsSheet: View {
                     Image(systemName: "trash")
                         .font(.festival(size: 14, weight: .semibold))
                         .foregroundStyle(FestivalDesign.secondaryText)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("\u{C800}\u{C7A5} \u{D574}\u{C81C}") // 저장 해제
             }
         }
         .padding(12)
