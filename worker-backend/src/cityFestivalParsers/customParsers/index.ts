@@ -21,7 +21,10 @@ import { parseBsjungguAnnualSchedule } from "./bsjungguAnnualSchedule.js";
 import { parseDalseoDscf } from "./dalseoDscf.js";
 import { parseIncheonItourFestival } from "./incheonItourFestival.js";
 
-export type CustomParserFn = (html: string, config: CitySiteConfig) => RawCityFestivalCandidate[];
+export type CustomParserFn = (
+  html: string,
+  config: CitySiteConfig
+) => RawCityFestivalCandidate[] | Promise<RawCityFestivalCandidate[]>;
 
 // selectors만으로 표현 안 되는 사이트(JS 렌더링 위젯, 비정형 마크업 등)를 위한
 // 탈출구. siteId를 키로 등록하고, CitySiteConfig.customParser에 같은 키를 지정한다.
