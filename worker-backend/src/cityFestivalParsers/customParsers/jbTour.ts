@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
 
 // 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록은 /travel/info/list.do에
@@ -14,11 +15,19 @@ import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
 // 전체 YYYY.MM.DD), pohangTour.ts와 같은 방식으로 앞 조각의 연도를 이어받고
 // 종료월이 시작월보다 작으면(연말→연초) 종료 연도에 1을 더한다.
 const BASE_URL = "https://tour.jb.go.kr";
+const DETAIL_FETCH_TIMEOUT_MS = 8000;
 
-export function parseJbTour(
+// 목록 페이지(list.do)에는 "기간" 외 위치 정보가 전혀 없다(2026-08-09 확인:
+// .stay_infobox li는 기간 한 줄뿐). 반면 상세 페이지(view.do)에는 "길찾기"
+// 버튼의 fnLoadFindRoutePopup('lat', 'lng') 인자로 정확한 좌표가, "위치정보"
+// dd에 도로명 주소가 각각 그대로 박혀 있다(전주/익산/김제 등 3개 표본으로
+// 교차 확인). Kakao geocoding을 거치지 않고 바로 쓸 수 있는 정밀 좌표라
+// 상세 페이지를 항목당 한 번씩 추가로 fetch해 채운다. 개별 fetch 실패는
+// best-effort로 무시하고 해당 항목만 fallback 좌표로 남긴다.
+export async function parseJbTour(
   html: string,
   _config: CitySiteConfig
-): RawCityFestivalCandidate[] {
+): Promise<RawCityFestivalCandidate[]> {
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
 
@@ -53,7 +62,36 @@ export function parseJbTour(
     });
   });
 
+  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate)));
+
   return results;
+}
+
+async function fillLocationFromDetailPage(candidate: RawCityFestivalCandidate): Promise<void> {
+  if (!candidate.detailUrl) return;
+  try {
+    const response = await fetchWithTimeout(
+      new URL(candidate.detailUrl),
+      { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
+      DETAIL_FETCH_TIMEOUT_MS
+    );
+    if (!response.ok) return;
+    const detailHtml = await response.text();
+
+    const coordMatch = detailHtml.match(
+      /fnLoadFindRoutePopup\('(-?\d+(?:\.\d+)?)',\s*'(-?\d+(?:\.\d+)?)'\)/
+    );
+    if (coordMatch) {
+      candidate.lat = Number(coordMatch[1]);
+      candidate.lng = Number(coordMatch[2]);
+    }
+
+    const $detail = cheerio.load(detailHtml);
+    const address = $detail("dt.location").next("dd").text().replace(/\s+/g, " ").trim();
+    if (address) candidate.addressRaw = address;
+  } catch {
+    // best-effort: 상세 페이지 fetch 실패는 무시하고 fallback 좌표로 남긴다
+  }
 }
 
 // "기간: 2026.09.04~09.12" 같은 텍스트를 "YYYY-MM-DD"/"YYYY-MM-DD"로 재구성한다.
