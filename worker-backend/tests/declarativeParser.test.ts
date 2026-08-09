@@ -19,7 +19,7 @@ const tableConfig: CitySiteConfig = {
 };
 
 describe("parseDeclarative", () => {
-  it("extracts candidates from a table-based board using configured selectors", () => {
+  it("extracts candidates from a table-based board using configured selectors", async () => {
     const html = `
       <table><tbody>
         <tr class="row">
@@ -35,7 +35,7 @@ describe("parseDeclarative", () => {
       </tbody></table>
     `;
 
-    const result = parseDeclarative(html, tableConfig);
+    const result = await parseDeclarative(html, tableConfig);
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
@@ -49,20 +49,20 @@ describe("parseDeclarative", () => {
     });
   });
 
-  it("returns an empty array when the site config has no selectors (custom-parser sites)", () => {
+  it("returns an empty array when the site config has no selectors (custom-parser sites)", async () => {
     const noSelectorConfig: CitySiteConfig = { ...tableConfig, selectors: undefined };
-    expect(parseDeclarative("<html></html>", noSelectorConfig)).toEqual([]);
+    expect(await parseDeclarative("<html></html>", noSelectorConfig)).toEqual([]);
   });
 
-  it("skips items with no matching link and returns null detailUrl/imageUrl instead of throwing", () => {
+  it("skips items with no matching link and returns null detailUrl/imageUrl instead of throwing", async () => {
     const html = `<table><tbody><tr class="row"><td class="title">링크 없는 항목</td><td class="date">2026.11.01</td></tr></tbody></table>`;
-    const result = parseDeclarative(html, tableConfig);
+    const result = await parseDeclarative(html, tableConfig);
     expect(result).toHaveLength(1);
     expect(result[0].detailUrl).toBeNull();
     expect(result[0].imageUrl).toBeNull();
   });
 
-  it("extracts venueRaw and addressRaw when venueSelector/addressSelector are configured", () => {
+  it("extracts venueRaw and addressRaw when venueSelector/addressSelector are configured", async () => {
     const configWithAddress: CitySiteConfig = {
       ...tableConfig,
       selectors: {
@@ -82,13 +82,13 @@ describe("parseDeclarative", () => {
       </tbody></table>
     `;
 
-    const result = parseDeclarative(html, configWithAddress);
+    const result = await parseDeclarative(html, configWithAddress);
 
     expect(result[0].venueRaw).toBe("시민공원");
     expect(result[0].addressRaw).toBe("테스트시 테스트로 1");
   });
 
-  it("leaves venueRaw/addressRaw null when venueSelector/addressSelector are not configured", () => {
+  it("leaves venueRaw/addressRaw null when venueSelector/addressSelector are not configured", async () => {
     const html = `
       <table><tbody>
         <tr class="row">
@@ -97,7 +97,7 @@ describe("parseDeclarative", () => {
         </tr>
       </tbody></table>
     `;
-    const result = parseDeclarative(html, tableConfig);
+    const result = await parseDeclarative(html, tableConfig);
     expect(result[0].venueRaw).toBeNull();
     expect(result[0].addressRaw).toBeNull();
   });

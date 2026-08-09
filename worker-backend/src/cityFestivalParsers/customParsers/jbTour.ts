@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
-import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
+import type { CitySiteConfig, RawCityFestivalCandidate, DetailFetchBudget } from "../types.js";
 
 // 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록은 /travel/info/list.do에
 // sigun_cd_arr(시/군 코드) 쿼리 파라미터를 붙이면 실제로 서버사이드에서
@@ -26,7 +26,8 @@ const DETAIL_FETCH_TIMEOUT_MS = 8000;
 // best-effort로 무시하고 해당 항목만 fallback 좌표로 남긴다.
 export async function parseJbTour(
   html: string,
-  _config: CitySiteConfig
+  _config: CitySiteConfig,
+  budget?: DetailFetchBudget
 ): Promise<RawCityFestivalCandidate[]> {
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
@@ -62,13 +63,17 @@ export async function parseJbTour(
     });
   });
 
-  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate)));
+  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate, budget)));
 
   return results;
 }
 
-async function fillLocationFromDetailPage(candidate: RawCityFestivalCandidate): Promise<void> {
+async function fillLocationFromDetailPage(
+  candidate: RawCityFestivalCandidate,
+  budget: DetailFetchBudget | undefined
+): Promise<void> {
   if (!candidate.detailUrl) return;
+  if (budget && !budget.tryConsume()) return;
   try {
     const response = await fetchWithTimeout(
       new URL(candidate.detailUrl),

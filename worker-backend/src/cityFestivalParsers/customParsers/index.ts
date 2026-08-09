@@ -1,4 +1,4 @@
-import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
+import type { CitySiteConfig, DetailFetchBudget, RawCityFestivalCandidate } from "../types.js";
 import { parseTongyeongUtour } from "./tongyeongUtour.js";
 import { parseJeongseonArirang } from "./jeongseonArirang.js";
 import { parseChungnamTour } from "./chungnamTour.js";
@@ -23,7 +23,8 @@ import { parseIncheonItourFestival } from "./incheonItourFestival.js";
 
 export type CustomParserFn = (
   html: string,
-  config: CitySiteConfig
+  config: CitySiteConfig,
+  budget?: DetailFetchBudget
 ) => RawCityFestivalCandidate[] | Promise<RawCityFestivalCandidate[]>;
 
 // selectors만으로 표현 안 되는 사이트(JS 렌더링 위젯, 비정형 마크업 등)를 위한

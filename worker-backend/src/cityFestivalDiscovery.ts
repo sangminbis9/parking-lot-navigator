@@ -5,6 +5,7 @@ import {
 } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { CUSTOM_PARSERS } from "./cityFestivalParsers/customParsers/index.js";
 import { parseDeclarative } from "./cityFestivalParsers/declarativeParser.js";
+import { DetailFetchBudget } from "./cityFestivalParsers/types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate } from "./cityFestivalParsers/types.js";
 import { CITY_FESTIVAL_SITES } from "./cityFestivalSites.js";
 import { createD1GeocodeStore } from "./geocodeStore.js";
@@ -17,6 +18,11 @@ const CITY_FESTIVAL_INTER_SITE_DELAY_MS = 300;
 const CITY_FESTIVAL_FETCH_TIMEOUT_MS = 20000;
 const DEFAULT_AUTO_PUBLISH_MIN_SCORE = 0.7;
 const DEFAULT_GEOCODE_MISS_BUDGET = 30;
+// 기존 missBudget과 별개로 상세 페이지 fetch 자체의 총량을 제한한다. 상세
+// 페이지가 있는 사이트당 후보 수만큼 fetch가 추가되므로(경남 시/군당 최대
+// 12개) 무제한이면 15개 사이트가 함께 도는 chunk에서 subrequest 한도를
+// 넘는다(2026-08-09 wrangler tail로 확인, DetailFetchBudget 주석 참고).
+const DEFAULT_DETAIL_FETCH_BUDGET = 6;
 
 export interface CityFestivalDiscoveryResult {
   processed: number;
@@ -40,6 +46,14 @@ export async function runCityFestivalDiscovery(
   const missBudget = Number.isFinite(rawMissBudget) ? rawMissBudget : DEFAULT_GEOCODE_MISS_BUDGET;
   const resolver = new KakaoEventCoordinateResolver(env, { missBudget });
 
+  const rawDetailFetchBudgetInput = env.CITY_FESTIVAL_DETAIL_FETCH_BUDGET?.trim();
+  const rawDetailFetchBudget = rawDetailFetchBudgetInput
+    ? Number(rawDetailFetchBudgetInput)
+    : DEFAULT_DETAIL_FETCH_BUDGET;
+  const detailFetchBudget = new DetailFetchBudget(
+    Number.isFinite(rawDetailFetchBudget) ? rawDetailFetchBudget : DEFAULT_DETAIL_FETCH_BUDGET
+  );
+
   let processed = 0;
   let published = 0;
   const failedSites: string[] = [];
@@ -48,7 +62,7 @@ export async function runCityFestivalDiscovery(
 
   for (const site of sites) {
     try {
-      const candidates = await discoverSite(site, htmlCache);
+      const candidates = await discoverSite(site, htmlCache, detailFetchBudget);
       processed += candidates.length;
       await resolver.warmup(
         candidates
@@ -113,7 +127,8 @@ const CITY_FESTIVAL_FETCH_RETRY_DELAY_MS = 500;
 
 async function discoverSite(
   site: CitySiteConfig,
-  htmlCache: Map<string, { html: string } | { error: Error }>
+  htmlCache: Map<string, { html: string } | { error: Error }>,
+  detailFetchBudget: DetailFetchBudget
 ): Promise<RawCityFestivalCandidate[]> {
   let entry = htmlCache.get(site.listUrl);
   if (!entry) {
@@ -130,9 +145,9 @@ async function discoverSite(
     if (!parser) {
       throw new Error(`no custom parser registered for customParser=${site.customParser}`);
     }
-    return parser(html, site);
+    return parser(html, site, detailFetchBudget);
   }
-  return parseDeclarative(html, site);
+  return parseDeclarative(html, site, detailFetchBudget);
 }
 
 async function fetchSiteHtml(site: CitySiteConfig): Promise<{ html: string } | { error: Error }> {
