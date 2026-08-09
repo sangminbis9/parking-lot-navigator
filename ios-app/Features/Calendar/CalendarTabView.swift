@@ -107,7 +107,10 @@ struct CalendarTabView: View {
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.surface)
                     .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("\u{C774}\u{C804} \u{B2EC}") // 이전 달
             Spacer()
             VStack(spacing: 2) {
                 Text(monthTitle)
@@ -115,11 +118,11 @@ struct CalendarTabView: View {
                     .foregroundStyle(FestivalDesign.navy)
                 if viewModel.state.isLoading {
                     Text("\u{BD88}\u{B7EC}\u{C624}\u{B294} \u{C911}\u{2026}")
-                        .font(.festival(size: 10))
+                        .font(.festival(size: 11))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
-                    Text("\(viewModel.allFestivals.count)\u{AC1C} \u{CD95}\u{C81C} \u{00B7} \u{D544}\u{D130} \(filterDescription)")
-                        .font(.festival(size: 10))
+                    Text("\u{D544}\u{D130} \(filterDescription)")
+                        .font(.festival(size: 11))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
             }
@@ -133,7 +136,10 @@ struct CalendarTabView: View {
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.surface)
                     .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("\u{B2E4}\u{C74C} \u{B2EC}") // 다음 달
             Button {
                 presentingSaved = true
             } label: {
@@ -143,7 +149,10 @@ struct CalendarTabView: View {
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
                     .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("\u{C800}\u{C7A5}\u{D55C} \u{CD95}\u{C81C}") // 저장한 축제
             Button {
                 presentingFilter = true
             } label: {
@@ -153,7 +162,10 @@ struct CalendarTabView: View {
                     .frame(width: 32, height: 32)
                     .background(FestivalDesign.cream.opacity(0.6))
                     .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("\u{D544}\u{D130}") // 필터
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -285,10 +297,11 @@ struct CalendarTabView: View {
             Text("즐겨찾기한 축제가 없어요")
                 .font(.festival(size: 14, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            Text("이벤트 탭 목록에서 ☆ 을 탭해\n관심 축제를 추가해보세요")
+            Text("이벤트 탭에서 ☆ 을 탭해 관심 축제를 추가해 보세요")
                 .font(.festival(size: 12))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
@@ -514,20 +527,26 @@ private struct AgendaRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            VStack(spacing: 10) {
+            VStack(spacing: 2) {
                 Button(action: onToggleSave) {
                     Image(systemName: isSaved ? "star.fill" : "star")
                         .font(.festival(size: 16, weight: .semibold))
                         .foregroundStyle(isSaved ? FestivalDesign.lantern : FestivalDesign.secondaryText)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isSaved ? "\u{C990}\u{ACA8}\u{CC3E}\u{AE30} \u{D574}\u{C81C}" : "\u{C990}\u{ACA8}\u{CC3E}\u{AE30}") // 즐겨찾기 해제 / 즐겨찾기
                 if isSaved {
                     Button(action: onToggleReminder) {
                         Image(systemName: isReminderOn ? "bell.fill" : "bell")
                             .font(.festival(size: 15, weight: .semibold))
                             .foregroundStyle(isReminderOn ? FestivalDesign.coral : FestivalDesign.secondaryText)
+                            .frame(width: 40, height: 40)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(isReminderOn ? "\u{C54C}\u{B9BC} \u{B044}\u{AE30}" : "\u{C54C}\u{B9BC} \u{CF1C}\u{AE30}") // 알림 끄기 / 알림 켜기
                 }
             }
         }
