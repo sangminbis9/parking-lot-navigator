@@ -20,7 +20,12 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
       titleSelector: "dd strong",
       dateSelector: "dd > ul > li:first-child",
       linkSelector: "a",
-      imageSelector: "dt img"
+      imageSelector: "dt img",
+      // 상세 페이지(bo_v_card)의 <ul> 안 2번째 <li>가 "장소"다(일정/장소/
+      // 주최·주관/연락처 순서 고정, 2026-08-09 여러 wr_id로 교차 확인).
+      // 라벨과 값이 같은 <li> 안에 붙어 있어 declarativeParser의
+      // stripDetailLabelPrefix가 "장소" 접두어를 제거한다.
+      detailVenueSelector: ".bo-v-card dl.dl ul li:nth-child(2)"
     }
   },
   {
@@ -254,6 +259,13 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
   // 있다). 합천군(sigunguCode=48890)은 자체 사이트·포털 모두 오늘
   // (2026-07-30) 기준 미래 날짜 데이터가 0건이라 제외했다(자체 게시판은
   // "매년 4월 첫째주" 류 연도 없는 날짜이거나 2025년 이후 갱신되지 않음).
+  // 목록 페이지(.srh_list)에는 위치 정보가 없다. 링크를 따라가는 상세 페이지가
+  // festa.gyeongnam.go.kr 자체 마이크로사이트(예: /jinflower →
+  // index.do?siteCd=263)면 .info_bar .site에 도로명 주소 전체가 정적 HTML로
+  // 그대로 박혀 있다(2026-08-09 확인: 진주/창원 등 여러 siteCd 표본 교차
+  // 검증). 일부 축제는 이 링크가 외부 자체 도메인(예: 진주개천예술제 →
+  // gaecheonart.com)으로 나가 셀렉터가 매치되지 않는데, 이 경우는 fetch 실패와
+  // 동일하게 best-effort로 무시되고 fallback 좌표로 남는다.
   ...[
     { siteId: "gyeongnam-changwon", cityName: "창원시", code: "48120", pages: [1, 2], lat: 35.2278577, lng: 128.6818148 },
     { siteId: "gyeongnam-jinju", cityName: "진주시", code: "48170", pages: [1], lat: 35.1802165, lng: 128.1077384 },
@@ -284,7 +296,8 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
         titleSelector: ".srh_list_info strong.ellipsis",
         dateSelector: ".srh_list_info p",
         linkSelector: "a",
-        imageSelector: ".imgbnr img"
+        imageSelector: ".imgbnr img",
+        detailAddressSelector: ".info_bar .site"
       }
     }))
   ),

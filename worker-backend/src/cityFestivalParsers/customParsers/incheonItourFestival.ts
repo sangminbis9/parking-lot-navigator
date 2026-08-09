@@ -1,5 +1,8 @@
 import * as cheerio from "cheerio";
-import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
+import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
+import type { CitySiteConfig, RawCityFestivalCandidate, DetailFetchBudget } from "../types.js";
+
+const DETAIL_FETCH_TIMEOUT_MS = 8000;
 
 // 인천관광공사 통합 포털(itour.incheon.go.kr) "축제" 목록
 // (ssst/ssst/list.do?pageNm=fstv)은 li.item_fstv 반복 구조이고 div.date에
@@ -9,7 +12,17 @@ import type { CitySiteConfig, RawCityFestivalCandidate } from "../types.js";
 // 읽는다) declarative parser의 href 기반 링크 추출로는 상세 URL을 만들 수
 // 없다. cotId로 상세 URL(detail.do?cotId=...)을 직접 조립하기 위해 커스텀
 // 파서로 처리한다.
-export function parseIncheonItourFestival(html: string, config: CitySiteConfig): RawCityFestivalCandidate[] {
+// 목록 페이지에는 위치 정보가 전혀 없다. 상세 페이지의 .location ul.list
+// 첫 항목(주소)이 .text 안에 도로명 주소를 담고 있어(2026-08-09 여러
+// cotId로 교차 확인) 상세 페이지를 항목당 한 번씩 추가로 fetch해 채운다.
+// 국가유산청 순회전시처럼 12개 지역을 한 항목으로 묶은 예외적인 행사는
+// 주소 칸에 여러 지역명이 나열돼 있어 Kakao geocoding이 실패하면 그대로
+// fallback 좌표로 남는다(정상 동작).
+export async function parseIncheonItourFestival(
+  html: string,
+  config: CitySiteConfig,
+  budget?: DetailFetchBudget
+): Promise<RawCityFestivalCandidate[]> {
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
 
@@ -40,7 +53,30 @@ export function parseIncheonItourFestival(html: string, config: CitySiteConfig):
     });
   });
 
+  await Promise.all(results.map((candidate) => fillLocationFromDetailPage(candidate, budget)));
+
   return results;
+}
+
+async function fillLocationFromDetailPage(
+  candidate: RawCityFestivalCandidate,
+  budget: DetailFetchBudget | undefined
+): Promise<void> {
+  if (!candidate.detailUrl) return;
+  if (budget && !budget.tryConsume()) return;
+  try {
+    const response = await fetchWithTimeout(
+      new URL(candidate.detailUrl),
+      { headers: { "User-Agent": "Mozilla/5.0 ParkingLotNavigator/1.0" } },
+      DETAIL_FETCH_TIMEOUT_MS
+    );
+    if (!response.ok) return;
+    const $detail = cheerio.load(await response.text());
+    const address = $detail(".location .text").first().text().replace(/\s+/g, " ").trim();
+    if (address) candidate.addressRaw = address;
+  } catch {
+    // best-effort: 상세 페이지 fetch 실패는 무시하고 fallback 좌표로 남긴다
+  }
 }
 
 function resolveUrl(value: string | null, baseUrl: string): string | null {
