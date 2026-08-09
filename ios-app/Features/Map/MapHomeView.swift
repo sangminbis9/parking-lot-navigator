@@ -1551,11 +1551,11 @@ private struct HomeMapPillButtonStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(isFilled ? tint : tint.opacity(0.12))
-            .foregroundStyle(isFilled ? .white : tint)
+            .foregroundStyle(isFilled ? FestivalDesign.onAccent : tint)
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
-                    .stroke(isFilled ? .white.opacity(0.2) : tint.opacity(0.25), lineWidth: 1)
+                    .stroke(isFilled ? Color.clear : tint.opacity(0.25), lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.86 : 1)

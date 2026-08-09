@@ -104,9 +104,11 @@ private struct OfficeFloorView: View {
     let activity: [AgentActivityEvent]
     @State private var selectedAgentId: String?
     @State private var showBoardLog = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
+        // 캐릭터가 계속 움직이는 화면이라, 동작 줄이기를 켠 사용자에게는 정지 프레임으로 보여준다.
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion)) { timeline in
             GeometryReader { proxy in
                 let size = proxy.size
                 let t = timeline.date.timeIntervalSinceReferenceDate
@@ -882,8 +884,11 @@ private struct AgentInfoBadge: View {
                         Image(systemName: "xmark")
                             .font(.festival(size: 8, weight: .bold))
                             .foregroundStyle(FestivalDesign.navy.opacity(0.5))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("말풍선 닫기")
                 }
                 Text(agent.name)
                     .font(.festival(size: 12, weight: .heavy))
@@ -997,7 +1002,8 @@ private struct PixelBubble: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(accent.opacity(0.55), lineWidth: 1)
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 3, y: 1)
+        // navy는 다크에서 밝은 본문색이 되므로, 그림자는 검정으로 고정한다.
+        .shadow(color: Color.black.opacity(0.10), radius: 3, y: 1)
     }
 }
 

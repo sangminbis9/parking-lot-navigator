@@ -327,13 +327,8 @@ struct ThemeSettingsView: View {
             }
         }
         .padding(14)
-        .background(
-            LinearGradient(
-                colors: [FestivalDesign.cream.opacity(0.9), FestivalDesign.tealSoft],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        // 실제 화면 배경은 단색이므로 미리보기도 같은 색을 써야 예고가 맞다.
+        .background(FestivalDesign.background)
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
