@@ -27,7 +27,7 @@ const DETAIL_FETCH_TIMEOUT_MS = 8000;
 // best-effort로 무시하고 해당 항목만 fallback 좌표로 남긴다.
 export async function parseJbTour(
   html: string,
-  _config: CitySiteConfig,
+  config: CitySiteConfig,
   budget?: DetailFetchBudget
 ): Promise<RawCityFestivalCandidate[]> {
   const $ = cheerio.load(html);
@@ -65,7 +65,7 @@ export async function parseJbTour(
   });
 
   await mapWithConcurrency(results, DETAIL_FETCH_CONCURRENCY, (candidate) =>
-    fillLocationFromDetailPage(candidate, budget)
+    fillLocationFromDetailPage(candidate, budget, config.siteId)
   );
 
   return results;
@@ -73,10 +73,11 @@ export async function parseJbTour(
 
 async function fillLocationFromDetailPage(
   candidate: RawCityFestivalCandidate,
-  budget: DetailFetchBudget | undefined
+  budget: DetailFetchBudget | undefined,
+  siteId: string
 ): Promise<void> {
   if (!candidate.detailUrl) return;
-  if (budget && !budget.tryConsume()) return;
+  if (budget && !budget.tryConsume(siteId)) return;
   try {
     const response = await fetchWithTimeout(
       new URL(candidate.detailUrl),

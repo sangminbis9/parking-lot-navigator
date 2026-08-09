@@ -46,16 +46,28 @@ export interface CitySiteConfig {
 // "Too many subrequests" 에러로 통째로 실패한다(2026-08-09 wrangler tail로
 // 확인). runCityFestivalDiscovery()가 invocation마다 하나씩 만들어 모든
 // 사이트/파서가 공유하는 예산으로 상세 페이지 fetch 총량을 제한한다.
+// 전체 예산을 순서대로(FIFO) 소진하면 사이트 배열에서 앞선 사이트(예: 인천
+// 연수구 후보 13건)가 예산을 거의 다 가져가 뒤에 오는 사이트(제물포 12건 등)는
+// 단 한 건도 상세 페이지를 못 읽고 전부 fallback 좌표에 몰린다(2026-08-09
+// 실측). siteId별 상한을 둬 한 사이트가 예산을 독점하지 못하게 막는다.
 export class DetailFetchBudget {
   private remaining: number;
+  private readonly perSiteCap: number;
+  private readonly perSiteConsumed = new Map<string, number>();
 
-  constructor(limit: number) {
+  constructor(limit: number, perSiteCap: number = limit) {
     this.remaining = limit;
+    this.perSiteCap = perSiteCap;
   }
 
-  tryConsume(): boolean {
+  tryConsume(siteId?: string): boolean {
     if (this.remaining <= 0) return false;
+    if (siteId) {
+      const used = this.perSiteConsumed.get(siteId) ?? 0;
+      if (used >= this.perSiteCap) return false;
+    }
     this.remaining -= 1;
+    if (siteId) this.perSiteConsumed.set(siteId, (this.perSiteConsumed.get(siteId) ?? 0) + 1);
     return true;
   }
 }
