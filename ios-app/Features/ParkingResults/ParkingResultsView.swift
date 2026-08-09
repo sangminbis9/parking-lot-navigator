@@ -82,14 +82,9 @@ struct ParkingResultsView: View {
                     .scaledToFit()
                     .frame(width: 34, height: 34)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("주변 주차장 추천")
-                        .font(.festival(.headline))
-                        .foregroundStyle(FestivalDesign.navy)
-                    Text("축제 정보 확인 후 바로 이동할 수 있게 아래에 모아뒀어요.")
-                        .font(.festival(.caption))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                }
+                Text("주변 주차장 추천")
+                    .font(.festival(.headline))
+                    .foregroundStyle(FestivalDesign.navy)
             }
 
             Button {
@@ -101,7 +96,7 @@ struct ParkingResultsView: View {
             .disabled(viewModel.isLoading)
 
             if viewModel.isLoading {
-                LoadingStateView(text: "방문할 축제 근처 주차장을 찾는 중입니다")
+                LoadingStateView(text: "근처 주차장을 찾는 중입니다")
                     .frame(height: 160)
                     .padding()
                     .festivalCard()
@@ -129,32 +124,21 @@ struct ParkingResultsView: View {
     }
 
     private var routePreviewCard: some View {
-        ZStack {
-            LinearGradient(
-                colors: [FestivalDesign.tealSoft, FestivalDesign.cream.opacity(0.65)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            VStack(spacing: 10) {
-                Image(systemName: "map")
-                    .font(.festival(size: 34, weight: .semibold))
-                    .foregroundStyle(FestivalDesign.teal)
-                Text("목적지 주변 주차 미리보기")
-                    .font(.festival(.subheadline, weight: .semibold))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("상세 화면에서 경로와 실시간 정보를 이어서 확인할 수 있어요.")
-                    .font(.festival(.caption))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
+        HStack(spacing: 10) {
+            Image(systemName: "map")
+                .font(.festival(size: 17, weight: .semibold))
+                .foregroundStyle(FestivalDesign.teal)
+            Text("지도에서 주차장 보기")
+                .font(.festival(.subheadline, weight: .semibold))
+                .foregroundStyle(FestivalDesign.navy)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.festival(size: 13, weight: .semibold))
+                .foregroundStyle(FestivalDesign.secondaryText)
         }
-        .frame(height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .festivalCard()
     }
 }
 
@@ -330,7 +314,9 @@ private struct DiscoverDescriptionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            detailSection(label: "\u{D589}\u{C0AC} \u{C124}\u{BA85}", value: descriptionText)
+            if let description = clean(presentation.description) {
+                detailSection(label: "행사 설명", value: description)
+            }
 
             if let sourceUrl = clean(presentation.sourceUrl), let url = URL(string: sourceUrl) {
                 Button {
@@ -397,15 +383,6 @@ private struct DiscoverDescriptionCard: View {
         }
         .padding(14)
         .festivalCard()
-    }
-
-    private var descriptionText: String {
-        if let description = clean(presentation.description) {
-            return description
-        }
-        let venueText = clean(presentation.venueName) ?? presentation.address
-        let priceText = clean(presentation.price).map { " \u{AC00}\u{ACA9}: \($0)." } ?? ""
-        return "\(presentation.title) \u{D589}\u{C0AC}\u{B294} \(presentation.dateText)\u{C5D0} \(venueText)\u{C5D0}\u{C11C} \u{C9C4}\u{D589}\u{B418}\u{B294} \(presentation.typeText)\u{C785}\u{B2C8}\u{B2E4}.\(priceText) \u{C790}\u{C138}\u{D55C} \u{B0B4}\u{C6A9}\u{C740} \(presentation.source)\u{C758} \u{C6D0}\u{BCF8} \u{B370}\u{C774}\u{D130} \u{C81C}\u{ACF5} \u{BC94}\u{C704}\u{C5D0} \u{B530}\u{B77C} \u{D45C}\u{C2DC}\u{B429}\u{B2C8}\u{B2E4}."
     }
 
     private func clean(_ value: String?) -> String? {
@@ -480,7 +457,7 @@ struct ParkingLotRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("🅿️ \(parkingLot.name)")
+                    Text(parkingLot.name)
                         .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
                         .lineLimit(2)

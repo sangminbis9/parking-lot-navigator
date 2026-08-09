@@ -21,7 +21,7 @@ struct ParkingDetailView: View {
                     staleWarningCard
                 }
 
-                actionCard
+                actionButtons
             }
             .padding(16)
         }
@@ -65,6 +65,7 @@ struct ParkingDetailView: View {
                 .foregroundStyle(FestivalDesign.navy)
             HStack {
                 Text("추천 점수")
+                    .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                 Spacer()
                 Text("\(recommendation.scorePercent)점")
@@ -103,13 +104,13 @@ struct ParkingDetailView: View {
                 .foregroundStyle(FestivalDesign.coral)
             Text("주차 정보 업데이트가 지연되었을 수 있습니다. 현장 상황과 실제 진입 가능 여부를 확인해 주세요.")
                 .font(.festival(.subheadline))
-                .foregroundStyle(FestivalDesign.coral)
+                .foregroundStyle(FestivalDesign.navy)
         }
         .padding(14)
         .festivalCard()
     }
 
-    private var actionCard: some View {
+    private var actionButtons: some View {
         VStack(spacing: 10) {
             Button {
                 destinationStore.addRecent(destination)
@@ -130,13 +131,12 @@ struct ParkingDetailView: View {
             .buttonStyle(.bordered)
             .tint(FestivalDesign.navy)
         }
-        .padding(14)
-        .festivalCard()
     }
 
     private func detailRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)

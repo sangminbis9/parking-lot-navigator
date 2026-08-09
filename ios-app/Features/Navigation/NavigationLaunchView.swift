@@ -120,6 +120,7 @@ struct NavigationLaunchView: View {
     private func infoRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
+                .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
             Spacer()
             Text(value)
