@@ -330,43 +330,56 @@ private struct DiscoverDescriptionCard: View {
             }
 
             detailRow(label: "일정", value: presentation.dateText)
-            if presentation.isFestivalSource {
-                detailRow(label: "장소", value: clean(presentation.venueName) ?? "장소 정보 없음")
-            } else if let venueName = presentation.venueName, !venueName.isEmpty {
+            // 값이 없는 항목은 "정보 없음" 행으로 채우지 않고 감춘다.
+            // 특히 예매처/연령 제한은 값이 없다고 해서 "예매 불필요", "제한 없음"이 사실인 것도 아니다.
+            if let venueName = clean(presentation.venueName) {
                 detailRow(label: "장소", value: venueName)
             }
             detailRow(label: "주소", value: presentation.address)
 
             if presentation.isFestivalSource {
-                detailRow(label: "이용요금", value: clean(presentation.admissionFee) ?? "요금 정보 없음")
-                detailRow(label: "할인 정보", value: clean(presentation.discountInfo) ?? "할인 정보 없음")
-                detailRow(label: "예매처", value: clean(presentation.bookingInfo) ?? "예매 없이 현장 참여 가능")
-                detailRow(label: "관람 가능 연령", value: clean(presentation.ageLimit) ?? "연령 제한 없음")
-                detailRow(label: "프로그램 상세", value: clean(presentation.programInfo) ?? "프로그램 정보 업데이트 예정")
-                detailRow(label: "주최·주관", value: clean(presentation.organizerName) ?? "주최·주관 정보 없음")
+                if let admissionFee = clean(presentation.admissionFee) {
+                    detailRow(label: "이용요금", value: admissionFee)
+                }
+                if let discountInfo = clean(presentation.discountInfo) {
+                    detailRow(label: "할인 정보", value: discountInfo)
+                }
+                if let bookingInfo = clean(presentation.bookingInfo) {
+                    detailRow(label: "예매처", value: bookingInfo)
+                }
+                if let ageLimit = clean(presentation.ageLimit) {
+                    detailRow(label: "관람 가능 연령", value: ageLimit)
+                }
+                if let programInfo = clean(presentation.programInfo) {
+                    detailRow(label: "프로그램 상세", value: programInfo)
+                }
+                if let organizerName = clean(presentation.organizerName) {
+                    detailRow(label: "주최·주관", value: organizerName)
+                }
 
-                if let contactPhone = clean(presentation.contactPhone),
-                   let telUrl = URL(string: "tel:\(contactPhone.filter { $0.isNumber || $0 == "+" })") {
-                    Button {
-                        openURL(telUrl)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("문의 전화번호")
-                                    .font(.festival(.caption, weight: .semibold))
-                                    .foregroundStyle(FestivalDesign.secondaryText)
-                                Text(contactPhone)
-                                    .font(.festival(.subheadline, weight: .semibold))
+                if let contactPhone = clean(presentation.contactPhone) {
+                    if let telUrl = URL(string: "tel:\(contactPhone.filter { $0.isNumber || $0 == "+" })") {
+                        Button {
+                            openURL(telUrl)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("문의 전화번호")
+                                        .font(.festival(.caption, weight: .semibold))
+                                        .foregroundStyle(FestivalDesign.secondaryText)
+                                    Text(contactPhone)
+                                        .font(.festival(.subheadline, weight: .semibold))
+                                        .foregroundStyle(FestivalDesign.navy)
+                                }
+                                Spacer()
+                                Image(systemName: "phone.fill")
                                     .foregroundStyle(FestivalDesign.navy)
                             }
-                            Spacer()
-                            Image(systemName: "phone.fill")
-                                .foregroundStyle(FestivalDesign.navy)
                         }
+                        .buttonStyle(.plain)
+                    } else {
+                        detailRow(label: "문의 전화번호", value: contactPhone)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    detailRow(label: "문의 전화번호", value: clean(presentation.contactPhone) ?? "문의처 정보 없음")
                 }
             }
 

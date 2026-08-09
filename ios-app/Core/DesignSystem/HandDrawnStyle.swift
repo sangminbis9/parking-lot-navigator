@@ -129,7 +129,8 @@ struct RoughRoundedRectangle: InsettableShape {
 struct PaperTexture: View {
     var body: some View {
         Canvas { context, size in
-            let charcoal = Color(red: 0.176, green: 0.161, blue: 0.145) // FestivalDesign.outline
+            // 다크에서는 종이가 어두워지므로 반점/해칭 잉크도 함께 밝은 쪽으로 뒤집힌다.
+            let charcoal = FestivalDesign.outline
 
             // 1) 종이 알갱이 반점.
             let step: CGFloat = 9

@@ -337,7 +337,8 @@ enum MapPinRenderer {
         let body = UIBezierPath(roundedRect: rect, cornerRadius: corner)
 
         if handDrawn {
-            let outline = UIColor(FestivalDesign.outline)
+            // 핀은 밝은 지도 타일 위에 놓이므로, 다크모드에서도 외곽선은 차콜을 유지해야 실루엣이 남는다.
+            let outline = UIColor(red: 0.176, green: 0.161, blue: 0.145, alpha: 1)
             let shadow = UIBezierPath(roundedRect: rect.offsetBy(dx: 2.5, dy: 3.5), cornerRadius: corner)
             outline.withAlphaComponent(0.85).setFill()
             shadow.fill()
@@ -351,7 +352,7 @@ enum MapPinRenderer {
             cg.setShadow(
                 offset: CGSize(width: 0, height: 2.5),
                 blur: 5,
-                color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor
+                color: UIColor.black.withAlphaComponent(0.18).cgColor
             )
             surface.setFill()
             body.fill()

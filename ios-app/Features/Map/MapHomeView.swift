@@ -466,23 +466,13 @@ struct MapHomeView: View {
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .background(
-            LinearGradient(
-                colors: [
-                    FestivalDesign.surface.opacity(0.98),
-                    FestivalDesign.cream.opacity(0.86),
-                    FestivalDesign.tealSoft.opacity(0.92)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(FestivalDesign.surface.opacity(0.98))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(FestivalDesign.creamDeep.opacity(0.45))
                 .frame(height: 1)
         }
-        .shadow(color: FestivalDesign.navy.opacity(0.12), radius: 12, y: 5)
+        .festivalShadow(.medium)
     }
 
     private var searchPanel: some View {
@@ -496,6 +486,7 @@ struct MapHomeView: View {
                 prompt: Text("축제, 장소, 주소 검색")
                     .foregroundColor(FestivalDesign.secondaryText)
             )
+                .font(.festival(.subheadline))
                 .focused($isSearchFocused)
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
@@ -519,7 +510,7 @@ struct MapHomeView: View {
                 }
                 .frame(width: 34, height: 34)
                 .background(FestivalDesign.teal)
-                .foregroundStyle(.white)
+                .foregroundStyle(FestivalDesign.onAccent)
                 .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -569,9 +560,7 @@ struct MapHomeView: View {
                         Button {
                             presentingFestivalFilter = true
                         } label: {
-                            Image(systemName: festivalFilterModel.filter.isEmpty
-                                  ? "slider.horizontal.3"
-                                  : "slider.horizontal.3")
+                            Image(systemName: "slider.horizontal.3")
                                 .font(.festival(.caption, weight: .bold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
@@ -591,6 +580,8 @@ struct MapHomeView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("축제 필터")
+                        // 적용 여부가 색으로만 드러나므로 보이스오버에도 상태를 알린다.
+                        .accessibilityValue(festivalFilterModel.filter.isEmpty ? "미적용" : "적용됨")
                     }
                     if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                         ProgressView()
@@ -647,13 +638,12 @@ struct MapHomeView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
-                .foregroundStyle(isOn ? .white : FestivalDesign.secondaryText)
+                .foregroundStyle(isOn ? FestivalDesign.onAccent : FestivalDesign.secondaryText)
                 .clipShape(FestivalDesign.controlShape)
                 .overlay(
                     FestivalDesign.controlShape
-                        .stroke(isOn ? Color.white.opacity(0.25) : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+                        .stroke(isOn ? Color.clear : FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
                 )
-                .shadow(color: isOn ? tint.opacity(0.22) : .clear, radius: 7, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityValue(isOn ? "\u{CF1C}\u{C9D0}" : "\u{AEBC}\u{C9D0}")
@@ -925,7 +915,7 @@ struct MapHomeView: View {
     private func inlineError(_ message: String) -> some View {
         Text(message)
             .font(.festival(.subheadline))
-            .foregroundStyle(.white)
+            .foregroundStyle(FestivalDesign.onAccent)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(FestivalDesign.coral.opacity(0.9))
@@ -1539,27 +1529,14 @@ private struct MapFloatingIcon: View {
     var body: some View {
         Image(systemName: systemName)
             .font(.festival(size: size * 0.38, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(FestivalDesign.onAccent)
             .frame(width: size, height: size)
-            .background(
-                ZStack {
-                    Circle()
-                        .fill(tint)
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.22), .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            )
+            .background(Circle().fill(tint))
             .overlay(
                 Circle()
-                    .stroke(.white.opacity(0.85), lineWidth: 2)
+                    .stroke(FestivalDesign.surface.opacity(0.85), lineWidth: 2)
             )
-            .shadow(color: FestivalDesign.navy.opacity(0.22), radius: 10, y: 4)
+            .festivalShadow(.high)
     }
 }
 
