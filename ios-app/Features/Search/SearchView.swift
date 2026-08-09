@@ -39,8 +39,13 @@ struct SearchView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 discoverHeader
-                searchCard
-                discoverControls
+
+                VStack(spacing: 10) {
+                    searchField
+                    discoverControls
+                }
+                .padding(12)
+                .festivalCard()
 
                 if isLoading {
                     LoadingStateView(text: "축제와 이벤트를 불러오는 중입니다")
@@ -57,13 +62,9 @@ struct SearchView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("축제 / 이벤트")
-                            .font(.festival(.headline))
-                            .foregroundStyle(FestivalDesign.navy)
-                        Spacer()
-                        StatusBadge(text: "\(filteredItems.count)개", kind: .source)
-                    }
+                    Text("\(filteredItems.count)개")
+                        .font(.festival(.caption, weight: .semibold))
+                        .foregroundStyle(FestivalDesign.secondaryText)
 
                     activeFilterChips
 
@@ -166,40 +167,21 @@ struct SearchView: View {
     }
 
     private var discoverHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image("FestivalMascotGuide")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 64, height: 64)
+                .frame(width: 48, height: 48)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("지금 가볼 만한 축제")
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("목록에서 장소를 고르면 근처 주차장을 바로 추천합니다.")
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(2)
-            }
-            Spacer()
+            Text("장소를 고르면 근처 주차장을 바로 추천합니다.")
+                .font(.festival(.subheadline))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Spacer(minLength: 0)
         }
-        .padding(14)
-        .background(
-            LinearGradient(
-                colors: [FestivalDesign.cream.opacity(0.9), FestivalDesign.tealSoft],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
     }
 
-    private var searchCard: some View {
+    private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(FestivalDesign.teal)
@@ -209,6 +191,7 @@ struct SearchView: View {
                 prompt: Text("축제, 이벤트, 장소 검색")
                     .foregroundColor(FestivalDesign.secondaryText)
             )
+            .font(.festival(.subheadline))
             .focused($isSearchFocused)
             .textInputAutocapitalization(.never)
             .submitLabel(.search)
@@ -223,8 +206,6 @@ struct SearchView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
-        .festivalCard()
     }
 
     private var discoverControls: some View {
@@ -267,8 +248,6 @@ struct SearchView: View {
                 .buttonStyle(DiscoverControlButtonStyle(tint: FestivalDesign.coral, isActive: filters.hasFilters))
             }
         }
-        .padding(12)
-        .festivalCard()
     }
 
     @ViewBuilder
@@ -300,16 +279,17 @@ struct SearchView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return VStack(spacing: 12) {
             Image("FestivalMascotNight")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 132, height: 132)
                 .accessibilityHidden(true)
-            Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "표시할 축제가 없습니다" : "검색 결과가 없습니다")
+            Text(hasQuery ? "검색 결과가 없습니다" : "표시할 항목이 없습니다")
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
-            Text("검색어를 바꾸거나 잠시 후 다시 확인해 주세요.")
+            Text(hasQuery ? "다른 검색어로 찾아보세요." : "잠시 후 다시 확인해 주세요.")
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
@@ -775,7 +755,6 @@ private struct DiscoverTabFilterSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    filterHeader
                     statusSection
                     if kind != .events {
                         festivalCategorySection
@@ -807,40 +786,6 @@ private struct DiscoverTabFilterSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-
-    private var filterHeader: some View {
-        HStack(spacing: 12) {
-            Image("FestivalMascotIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 58, height: 58)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("보고 싶은 축제를 골라볼게요")
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text("장르, 지역, 진행 상태, 출처를 조합해서 목록을 좁힙니다.")
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(
-            LinearGradient(
-                colors: [FestivalDesign.cream.opacity(0.9), FestivalDesign.tealSoft],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
     }
 
     private var statusSection: some View {
@@ -1150,10 +1095,12 @@ private struct DiscoverTabRow: View {
                     .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
                     .lineLimit(2)
-                Text(item.subtitle)
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(2)
+                if item.subtitle != item.address {
+                    Text(item.subtitle)
+                        .font(.festival(.subheadline))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(2)
+                }
                 Text(item.dateText)
                     .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.teal)
@@ -1172,9 +1119,11 @@ private struct DiscoverTabRow: View {
                 Image(systemName: isFavorite ? "star.fill" : "star")
                     .font(.festival(size: 18, weight: .semibold))
                     .foregroundStyle(isFavorite ? FestivalDesign.lantern : FestivalDesign.secondaryText)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isFavorite ? "즐겨찾기 해제" : "즐겨찾기")
         }
     }
 }
