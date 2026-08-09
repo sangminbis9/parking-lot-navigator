@@ -79,7 +79,7 @@ struct NotificationSettingsView: View {
             } label: {
                 Text("설정 열기")
                     .font(.festival(.subheadline, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(FestivalDesign.onAccent)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 14)
                     .background(FestivalDesign.navy)

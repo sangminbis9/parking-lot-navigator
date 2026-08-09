@@ -109,13 +109,13 @@ struct MapHologramOverlay: View {
             }
             .padding(8)
         }
-        .background(Color.white)
+        .background(FestivalDesign.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .festivalShadow(.high)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
-                    isSponsored ? FestivalDesign.lantern : Color.black.opacity(0.07),
+                    isSponsored ? FestivalDesign.lantern : FestivalDesign.creamDeep.opacity(0.45),
                     lineWidth: isSponsored ? 1.5 : 1
                 )
         )

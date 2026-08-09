@@ -91,6 +91,8 @@ struct AppRootView: View {
         }
         .paperGrainOverlay()
         .tint(FestivalDesign.coral)
+        // 팔레트는 자체 다크 변형을 쓰지만, 키보드·DatePicker 같은 시스템 컨트롤은 이 값으로만 따라온다.
+        .preferredColorScheme(themeStore.isDarkMode ? .dark : .light)
         .environmentObject(tabRouter)
         .environmentObject(festivalFilterModel)
         .onAppear {
@@ -101,6 +103,9 @@ struct AppRootView: View {
             discoveryService.scheduleNextRefresh()
         }
         .onChange(of: themeStore.selectedTheme) { _ in
+            Self.configureTabBarAppearance()
+        }
+        .onChange(of: themeStore.isDarkMode) { _ in
             Self.configureTabBarAppearance()
         }
         .onChange(of: tabRouter.selectedTab) { _ in
@@ -206,12 +211,8 @@ private struct FestivalTabBar: View {
         .padding(.bottom, 0)
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(
-                colors: [FestivalDesign.surface.opacity(0.99), FestivalDesign.cream.opacity(0.94)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea(edges: .bottom)
+            FestivalDesign.surface
+                .ignoresSafeArea(edges: .bottom)
         )
         .overlay(
             Rectangle()
@@ -221,7 +222,7 @@ private struct FestivalTabBar: View {
                 .frame(height: FestivalDesign.isHandDrawn ? 2 : 1),
             alignment: .top
         )
-        .shadow(color: FestivalDesign.navy.opacity(0.10), radius: 8, y: -2)
+        .shadow(color: FestivalDesign.shadow(.medium).color, radius: 8, y: -2)
     }
 
     private func tabButton(_ tab: AppTab) -> some View {

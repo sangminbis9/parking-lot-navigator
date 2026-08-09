@@ -38,7 +38,12 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 현재 외관(라이트/다크)에 맞는 팔레트. 화면 코드는 항상 이쪽을 쓴다.
     var palette: FestivalThemePalette {
+        FestivalAppearance.isDark ? darkPalette : lightPalette
+    }
+
+    var lightPalette: FestivalThemePalette {
         switch self {
         case .honey:
             return FestivalThemePalette(
@@ -134,12 +139,122 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 다크 팔레트. 라이트와 같은 필드 이름을 쓰되 역할을 뒤집는다.
+    /// - `background`/`surface`/`cream`/`creamDeep`은 어두운 쪽에서 밝아지는 4단 층위(바탕 → 카드 → 강조면 → 테두리).
+    /// - `navy`는 본문 텍스트라서 다크에서는 밝은 색이 된다.
+    /// - 포인트 색(coral/lantern/teal/parkingBlue)은 어두운 바탕 대비를 위해 라이트보다 밝고 채도를 조금 낮춘다.
+    var darkPalette: FestivalThemePalette {
+        switch self {
+        case .honey:
+            return FestivalThemePalette(
+                background: Color(red: 0.078, green: 0.071, blue: 0.059),
+                surface: Color(red: 0.129, green: 0.118, blue: 0.098),
+                cream: Color(red: 0.239, green: 0.208, blue: 0.129),
+                creamDeep: Color(red: 0.376, green: 0.337, blue: 0.243),
+                coral: Color(red: 1.0, green: 0.573, blue: 0.478),
+                lantern: Color(red: 1.0, green: 0.824, blue: 0.376),
+                teal: Color(red: 0.365, green: 0.784, blue: 0.769),
+                tealSoft: Color(red: 0.125, green: 0.235, blue: 0.227),
+                navy: Color(red: 0.949, green: 0.937, blue: 0.910),
+                secondaryText: Color(red: 0.675, green: 0.655, blue: 0.616),
+                parkingBlue: Color(red: 0.478, green: 0.667, blue: 0.980),
+                parkingSoft: Color(red: 0.137, green: 0.184, blue: 0.275)
+            )
+        case .peach:
+            return FestivalThemePalette(
+                background: Color(red: 0.086, green: 0.067, blue: 0.063),
+                surface: Color(red: 0.145, green: 0.118, blue: 0.110),
+                cream: Color(red: 0.259, green: 0.184, blue: 0.161),
+                creamDeep: Color(red: 0.400, green: 0.298, blue: 0.267),
+                coral: Color(red: 0.976, green: 0.522, blue: 0.451),
+                lantern: Color(red: 0.976, green: 0.741, blue: 0.400),
+                teal: Color(red: 0.353, green: 0.749, blue: 0.702),
+                tealSoft: Color(red: 0.118, green: 0.227, blue: 0.216),
+                navy: Color(red: 0.953, green: 0.933, blue: 0.925),
+                secondaryText: Color(red: 0.686, green: 0.647, blue: 0.635),
+                parkingBlue: Color(red: 0.463, green: 0.655, blue: 0.980),
+                parkingSoft: Color(red: 0.137, green: 0.180, blue: 0.275)
+            )
+        case .mint:
+            return FestivalThemePalette(
+                background: Color(red: 0.059, green: 0.082, blue: 0.075),
+                surface: Color(red: 0.102, green: 0.137, blue: 0.125),
+                cream: Color(red: 0.149, green: 0.255, blue: 0.220),
+                creamDeep: Color(red: 0.275, green: 0.412, blue: 0.357),
+                coral: Color(red: 0.976, green: 0.549, blue: 0.459),
+                lantern: Color(red: 0.976, green: 0.757, blue: 0.412),
+                teal: Color(red: 0.337, green: 0.808, blue: 0.706),
+                tealSoft: Color(red: 0.110, green: 0.243, blue: 0.208),
+                navy: Color(red: 0.929, green: 0.961, blue: 0.945),
+                secondaryText: Color(red: 0.635, green: 0.714, blue: 0.678),
+                parkingBlue: Color(red: 0.463, green: 0.671, blue: 0.980),
+                parkingSoft: Color(red: 0.129, green: 0.188, blue: 0.275)
+            )
+        case .sky:
+            return FestivalThemePalette(
+                background: Color(red: 0.059, green: 0.075, blue: 0.094),
+                surface: Color(red: 0.102, green: 0.125, blue: 0.153),
+                cream: Color(red: 0.149, green: 0.220, blue: 0.318),
+                creamDeep: Color(red: 0.275, green: 0.357, blue: 0.475),
+                coral: Color(red: 0.976, green: 0.537, blue: 0.596),
+                lantern: Color(red: 0.976, green: 0.757, blue: 0.400),
+                teal: Color(red: 0.357, green: 0.714, blue: 0.894),
+                tealSoft: Color(red: 0.110, green: 0.216, blue: 0.278),
+                navy: Color(red: 0.929, green: 0.949, blue: 0.976),
+                secondaryText: Color(red: 0.655, green: 0.706, blue: 0.776),
+                parkingBlue: Color(red: 0.478, green: 0.675, blue: 0.980),
+                parkingSoft: Color(red: 0.129, green: 0.188, blue: 0.294)
+            )
+        case .lavender:
+            return FestivalThemePalette(
+                background: Color(red: 0.075, green: 0.063, blue: 0.094),
+                surface: Color(red: 0.125, green: 0.110, blue: 0.153),
+                cream: Color(red: 0.239, green: 0.200, blue: 0.337),
+                creamDeep: Color(red: 0.376, green: 0.325, blue: 0.494),
+                coral: Color(red: 0.949, green: 0.549, blue: 0.675),
+                lantern: Color(red: 0.957, green: 0.745, blue: 0.416),
+                teal: Color(red: 0.478, green: 0.675, blue: 0.855),
+                tealSoft: Color(red: 0.157, green: 0.169, blue: 0.278),
+                navy: Color(red: 0.949, green: 0.937, blue: 0.976),
+                secondaryText: Color(red: 0.698, green: 0.667, blue: 0.757),
+                parkingBlue: Color(red: 0.518, green: 0.635, blue: 0.980),
+                parkingSoft: Color(red: 0.149, green: 0.176, blue: 0.294)
+            )
+        case .crayon:
+            // 밤에 보는 스티커북: 짙은 갈색 종이 위에 밝은 크레파스 색을 얹는다.
+            return FestivalThemePalette(
+                background: Color(red: 0.098, green: 0.086, blue: 0.071),   // #191612
+                surface: Color(red: 0.149, green: 0.129, blue: 0.106),      // #26211B
+                cream: Color(red: 0.255, green: 0.212, blue: 0.153),        // #413628
+                creamDeep: Color(red: 0.404, green: 0.337, blue: 0.243),    // #67563E
+                coral: Color(red: 0.976, green: 0.678, blue: 0.427),        // #F9AD6D
+                lantern: Color(red: 0.965, green: 0.769, blue: 0.376),      // #F6C460
+                teal: Color(red: 0.541, green: 0.780, blue: 0.404),         // #8AC767 (leaf)
+                tealSoft: Color(red: 0.176, green: 0.243, blue: 0.145),     // #2D3E25
+                navy: Color(red: 0.965, green: 0.945, blue: 0.906),         // #F6F1E7 (ivory ink)
+                secondaryText: Color(red: 0.729, green: 0.671, blue: 0.596), // #BAAB98
+                parkingBlue: Color(red: 0.502, green: 0.686, blue: 0.933),   // #80AFEE
+                parkingSoft: Color(red: 0.153, green: 0.204, blue: 0.278)    // #273447
+            )
+        }
+    }
+
     static var current: FestivalTheme {
         guard let rawValue = UserDefaults.standard.string(forKey: storageKey),
               let theme = FestivalTheme(rawValue: rawValue) else {
             return .honey
         }
         return theme
+    }
+}
+
+/// 라이트/다크 선택. 테마와 마찬가지로 UserDefaults를 직접 읽어
+/// `FestivalDesign`의 static 색 접근 경로에서 바로 쓸 수 있게 한다.
+enum FestivalAppearance {
+    static let storageKey = "festivalDarkMode"
+
+    static var isDark: Bool {
+        UserDefaults.standard.bool(forKey: storageKey)
     }
 }
 
@@ -165,12 +280,23 @@ final class FestivalThemeStore: ObservableObject {
         }
     }
 
+    @Published var isDarkMode: Bool {
+        didSet {
+            UserDefaults.standard.set(isDarkMode, forKey: FestivalAppearance.storageKey)
+        }
+    }
+
     init() {
         selectedTheme = FestivalTheme.current
+        isDarkMode = FestivalAppearance.isDark
     }
 
     func select(_ theme: FestivalTheme) {
         selectedTheme = theme
+    }
+
+    func setDarkMode(_ enabled: Bool) {
+        isDarkMode = enabled
     }
 }
 
@@ -189,6 +315,10 @@ enum FestivalDesign {
     static var secondaryText: Color { palette.secondaryText }
     static var parkingBlue: Color { palette.parkingBlue }
     static var parkingSoft: Color { palette.parkingSoft }
+
+    /// 강조색(coral/teal/navy 등)으로 꽉 채운 면 위에 얹는 글자·아이콘 색.
+    /// 라이트에서는 흰색이지만, 다크에서는 채움색이 밝아지므로 어두운 바탕색으로 뒤집는다.
+    static var onAccent: Color { FestivalAppearance.isDark ? background : .white }
 
     static var isHandDrawn: Bool { FestivalTheme.current.isHandDrawn }
 
@@ -236,9 +366,14 @@ enum FestivalDesign {
         }
     }
 
-    /// `.shadow(color:radius:y:)`에 그대로 넘길 수 있는 고도 값. 그림자 색은 항상 `navy` 톤을 쓴다.
+    /// `.shadow(color:radius:y:)`에 그대로 넘길 수 있는 고도 값.
+    /// 라이트에서는 `navy` 톤을 쓰지만, 다크에서 `navy`는 본문용 밝은 색이라 그대로 쓰면 그림자가 발광한다.
+    /// 다크에서는 검정에 더 높은 불투명도를 써서 카드가 바탕에서 떠 보이게 한다.
     static func shadow(_ level: Elevation) -> (color: Color, radius: CGFloat, y: CGFloat) {
-        (navy.opacity(level.opacity), level.radius, level.y)
+        let color = FestivalAppearance.isDark
+            ? Color.black.opacity(min(level.opacity * 3, 0.5))
+            : navy.opacity(level.opacity)
+        return (color, level.radius, level.y)
     }
 
     /// 앱 전역에서 재사용하는 모션 지속시간. 탭 전환/시트 열닫이 화면마다 다른 숫자를 쓰지 않도록 한다.
@@ -251,8 +386,20 @@ enum FestivalDesign {
         static let spring = Animation.spring(response: 0.32, dampingFraction: 0.78)
     }
 
-    /// 손그림 테마의 거친 차콜 외곽선 색. (비손그림 테마에서는 사용하지 않음)
-    static var outline: Color { Color(red: 0.176, green: 0.161, blue: 0.145) } // #2D2925
+    /// 손그림 테마의 거친 외곽선 색. (비손그림 테마에서는 사용하지 않음)
+    /// 라이트는 차콜 크레용, 다크는 어두운 종이 위에 얹는 아이보리 크레용.
+    static var outline: Color {
+        FestivalAppearance.isDark
+            ? Color(red: 0.949, green: 0.918, blue: 0.859) // #F2EADB
+            : Color(red: 0.176, green: 0.161, blue: 0.145) // #2D2925
+    }
+
+    /// 손그림 카드의 오프셋 스티커 그림자 잉크. 외곽선과 달리 라이트/다크 모두 어둡게 유지한다.
+    static var stickerShadowInk: Color {
+        FestivalAppearance.isDark
+            ? Color.black.opacity(0.55)
+            : Color(red: 0.176, green: 0.161, blue: 0.145).opacity(0.85)
+    }
 
     /// 버튼/입력 등 컨트롤용 모양. 크레파스 테마에서는 손그림 외곽선, 그 외에는 기존 RoundedRectangle 그대로.
     static var controlShape: AnyShape {
@@ -403,7 +550,7 @@ struct FestivalCardBackground: ViewModifier {
             .clipShape(shape)
             .background(
                 shape
-                    .fill(FestivalDesign.outline.opacity(0.85))
+                    .fill(FestivalDesign.stickerShadowInk)
                     .offset(x: 3, y: 4.5)
             )
             .overlay(

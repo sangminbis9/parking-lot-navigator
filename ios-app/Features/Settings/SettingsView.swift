@@ -130,7 +130,7 @@ struct SettingsView: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 12)
                 .background(FestivalDesign.navy)
-                .foregroundStyle(.white)
+                .foregroundStyle(FestivalDesign.onAccent)
                 .clipShape(FestivalDesign.controlShape)
             }
         }
@@ -245,6 +245,7 @@ struct ThemeSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                appearanceCard
                 themePreviewCard
                 themePickerCard
                 contrastNote
@@ -253,6 +254,26 @@ struct ThemeSettingsView: View {
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("테마")
+    }
+
+    private var appearanceCard: some View {
+        Toggle(isOn: Binding(
+            get: { themeStore.isDarkMode },
+            set: { themeStore.setDarkMode($0) }
+        )) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("다크 모드")
+                    .font(.festival(.headline))
+                    .foregroundStyle(FestivalDesign.navy)
+                Text("팔레트마다 준비된 야간 색으로 바뀝니다.")
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(FestivalDesign.teal)
+        .padding(14)
+        .festivalCard()
     }
 
     private var themePreviewCard: some View {
@@ -291,7 +312,7 @@ struct ThemeSettingsView: View {
                     Text("오늘 갈 축제를 찾아볼까요?")
                         .font(.festival(.headline))
                         .foregroundStyle(FestivalDesign.navy)
-                    Text("선택한 파스텔 톤은 배경과 카드에 쓰이고, 글씨는 항상 진한 색으로 유지됩니다.")
+                    Text("선택한 톤은 배경과 카드에 쓰이고, 글씨는 배경과 대비되는 색으로 유지됩니다.")
                         .font(.festival(.subheadline))
                         .foregroundStyle(FestivalDesign.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -346,7 +367,7 @@ struct ThemeSettingsView: View {
         HStack(spacing: 8) {
             Image(systemName: "textformat.size")
                 .foregroundStyle(FestivalDesign.coral)
-            Text("파스텔 배경 위에는 흰 글씨를 쓰지 않고, 진한 본문색과 보조 회색을 사용합니다.")
+            Text("배경 위 글씨는 대비를 확보한 본문색과 보조색만 사용합니다.")
                 .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
