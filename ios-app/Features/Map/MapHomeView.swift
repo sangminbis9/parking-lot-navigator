@@ -150,14 +150,19 @@ struct MapHomeView: View {
             )
             .presentationDetents([.medium, .large])
         }
-        .onChange(of: festivalFilterModel.filter) { _ in
-            guard viewModel.showsFestivalLayer else { return }
+        // 필터 변경은 body diff(onChange)가 아니라 모델 publisher로 받는다.
+        // 시트가 덮고 있거나 다른 탭에서 바꾼 경우에도 즉시 새로고침되도록.
+        // @Published는 willSet에 값을 보내므로 모델을 다시 읽지 않고 전달된 값을 쓴다.
+        .onReceive(festivalFilterModel.$filter.dropFirst()) { newFilter in
             discoverRefreshTask?.cancel()
             discoverRefreshTask = Task {
                 await viewModel.loadDiscoverLayers(
                     viewport: mapViewport,
-                    filter: festivalFilterModel.filter
+                    filter: newFilter
                 )
+                await MainActor.run {
+                    lastDiscoverRefreshViewport = mapViewport
+                }
             }
         }
         .onChange(of: hologramPin?.id) { _ in
