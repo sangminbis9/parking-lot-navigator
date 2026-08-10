@@ -226,7 +226,9 @@ final class MapHomeViewModel: ObservableObject {
                 radiusMeters: realtimeParkingRadiusMeters
             )
         } catch {
-            errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+            if !isCancellation(error) {
+                errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+            }
         }
         isLoadingRealtimeParking = false
     }
@@ -240,9 +242,18 @@ final class MapHomeViewModel: ObservableObject {
                 radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
             )
             staticFreeParkingLots = items.filter { $0.feeSummary == "무료" }
+            errorMessage = nil
         } catch {
-            errorMessage = "\u{BB34}\u{B8CC} \u{C8FC}\u{CC28}\u{C7A5} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+            if !isCancellation(error) {
+                errorMessage = "\u{BB34}\u{B8CC} \u{C8FC}\u{CC28}\u{C7A5} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
+            }
         }
+    }
+
+    /// 지도를 연달아 움직이면 직전 새로고침 Task가 취소된다. 취소는 실패가 아니므로 오류로 알리지 않는다.
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        return (error as? URLError)?.code == .cancelled
     }
 
     func loadInitialDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default) async {
