@@ -171,7 +171,8 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverLayers(viewport: viewport)
     }
 
-    func setRealtimeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+    /// 실시간 주차와 무료 주차장은 같은 주차 핀 자리를 쓰므로 둘 중 하나만 켠다.
+    func setRealtimeParkingLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsRealtimeParkingLayer = isVisible
         if !isVisible {
             if !selectedDiscoverParkingContext && !showsFreeParkingLayer {
@@ -180,9 +181,13 @@ final class MapHomeViewModel: ObservableObject {
             }
             return
         }
+        showsFreeParkingLayer = false
+        staticFreeParkingLots = []
+        await loadRealtimeParkingLayer()
+        noteRealtimeCoverage(around: viewport)
     }
 
-    func setFreeParkingLayerVisible(_ isVisible: Bool, center: CLLocationCoordinate2D) async {
+    func setFreeParkingLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
         showsFreeParkingLayer = isVisible
         if !isVisible {
             if !selectedDiscoverParkingContext && !showsRealtimeParkingLayer {
@@ -190,6 +195,23 @@ final class MapHomeViewModel: ObservableObject {
             }
             staticFreeParkingLots = []
             return
+        }
+        showsRealtimeParkingLayer = false
+        await loadRealtimeParkingLayer()
+        await loadStaticFreeParkingLots(viewport: viewport, force: true)
+    }
+
+    /// 실시간 주차 제공처는 대전·서울 일부·인천공항뿐이라, 그 밖의 지역에서는 켜도 핀이 하나도 없다.
+    /// 조용히 비어 있으면 토글이 고장난 것처럼 보이므로 이유를 알린다.
+    private func noteRealtimeCoverage(around viewport: MapViewport) {
+        guard errorMessage == nil else { return }
+        let center = CLLocation(latitude: viewport.center.latitude, longitude: viewport.center.longitude)
+        let radius = Double(max(viewport.radiusMeters, localDiscoverRadiusMeters))
+        let hasNearby = realtimeParkingLots.contains { lot in
+            center.distance(from: CLLocation(latitude: lot.lat, longitude: lot.lng)) <= radius
+        }
+        if !hasNearby {
+            errorMessage = "이 지역은 아직 실시간 주차 정보가 없습니다. 현재 대전, 서울 일부, 인천공항만 지원합니다."
         }
     }
 
