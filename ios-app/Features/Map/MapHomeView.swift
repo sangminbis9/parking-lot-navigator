@@ -598,12 +598,7 @@ struct MapHomeView: View {
                         tint: FestivalDesign.parkingBlue,
                         isOn: viewModel.showsRealtimeParkingLayer
                     ) {
-                        Task {
-                            await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, center: mapCenter)
-                            if viewModel.showsRealtimeParkingLayer {
-                                await viewModel.loadRealtimeParkingLayer()
-                            }
-                        }
+                        Task { await viewModel.setRealtimeParkingLayerVisible(!viewModel.showsRealtimeParkingLayer, viewport: mapViewport) }
                     }
                     layerToggle(
                         title: "무료 주차장",
@@ -611,13 +606,7 @@ struct MapHomeView: View {
                         tint: FestivalDesign.lantern,
                         isOn: viewModel.showsFreeParkingLayer
                     ) {
-                        Task {
-                            await viewModel.setFreeParkingLayerVisible(!viewModel.showsFreeParkingLayer, center: mapCenter)
-                            if viewModel.showsFreeParkingLayer {
-                                await viewModel.loadRealtimeParkingLayer()
-                                await viewModel.loadStaticFreeParkingLots(viewport: mapViewport, force: true)
-                            }
-                        }
+                        Task { await viewModel.setFreeParkingLayerVisible(!viewModel.showsFreeParkingLayer, viewport: mapViewport) }
                     }
                 }
             }
