@@ -1,5 +1,6 @@
 import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
+import { REGION_FALLBACK_COORDINATES } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
@@ -193,13 +194,39 @@ export function dedupeFestivals(
   clusterFilter?: (cluster: Festival[]) => boolean,
 ): Festival[] {
   const clusters: Festival[][] = [];
+  // 제목 키가 같은 묶음만 후보로 본다. 전체 묶음을 훑는 방식(O(n²))은 좌표 미상 항목이
+  // 지역 대표 좌표(예: 서울 37.5665/126.978)에 천 건 넘게 쌓인 뒤로 Worker CPU 한도를
+  // 넘겨 /api/festivals·/api/performances가 503(error code 1102)으로 죽었다.
+  const clustersByTitleKey = new Map<string, number[]>();
+  const clustersByWordKey = new Map<string, number[]>();
+  const register = (map: Map<string, number[]>, key: string, index: number) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(index);
+    else map.set(key, [index]);
+  };
+
   for (const festival of festivals) {
-    const cluster = clusters.find((c) => belongsToFestivalCluster(c[0], festival));
-    if (cluster) {
-      cluster.push(festival);
-    } else {
-      clusters.push([festival]);
+    const titleKey = festivalDedupeKey(festival);
+    const wordKey = wordOrderInvariantKey(festival.title);
+    // 두 키 중 하나만 같아도 후보이므로 합집합을 만들고, 원래 동작대로 먼저 만들어진
+    // 묶음이 이기도록 인덱스 오름차순으로 확인한다.
+    const candidates = [
+      ...new Set([
+        ...(clustersByTitleKey.get(titleKey) ?? []),
+        ...(clustersByWordKey.get(wordKey) ?? []),
+      ]),
+    ].sort((a, b) => a - b);
+    const matched = candidates.find((index) =>
+      isSameFestivalOccurrence(clusters[index][0], festival),
+    );
+    if (matched !== undefined) {
+      clusters[matched].push(festival);
+      continue;
     }
+    const index = clusters.length;
+    clusters.push([festival]);
+    register(clustersByTitleKey, titleKey, index);
+    register(clustersByWordKey, wordKey, index);
   }
 
   const result: Festival[] = [];
@@ -214,7 +241,8 @@ export function dedupeFestivals(
   return result;
 }
 
-function belongsToFestivalCluster(
+// 제목 키가 이미 같다고 확인된 두 항목이 실제로 같은 회차인지(좌표·기간) 본다.
+function isSameFestivalOccurrence(
   representative: Festival,
   festival: Festival,
 ): boolean {
@@ -224,11 +252,7 @@ function belongsToFestivalCluster(
   ) {
     return false;
   }
-  if (!dateRangesOverlap(representative, festival)) return false;
-  return (
-    festivalDedupeKey(representative) === festivalDedupeKey(festival) ||
-    wordOrderInvariantKey(representative.title) === wordOrderInvariantKey(festival.title)
-  );
+  return dateRangesOverlap(representative, festival);
 }
 
 function festivalDedupeKey(festival: Festival): string {
@@ -484,6 +508,16 @@ function centersForKind(): Array<{ id: string; lat: number; lng: number }> {
   return NATIONAL_DISCOVERY_CENTERS;
 }
 
+// 좌표를 못 구한 항목은 수집 단계에서 지역 대표 좌표(예: 서울 37.5665/126.978)로 저장된다.
+// 실제 위치가 아니므로 지도에서는 한 점에 수천 개가 겹치고 거리 정렬도 의미가 없어진다.
+// 지오코딩이 좌표를 채우면 자동으로 다시 노출되도록, 삭제 대신 응답에서만 제외한다.
+function isRegionFallbackCoordinate(lat: number, lng: number): boolean {
+  return REGION_FALLBACK_COORDINATES.some(
+    (coordinate) =>
+      Math.abs(coordinate.lat - lat) < 1e-7 && Math.abs(coordinate.lng - lng) < 1e-7,
+  );
+}
+
 async function queryDiscoveryRows(
   db: D1Database,
   type: DiscoveryType,
@@ -520,6 +554,7 @@ async function queryDiscoveryRows(
     )
     .all<DiscoveryItemRow>();
   return (rows.results ?? [])
+    .filter((row) => !isRegionFallbackCoordinate(row.lat, row.lng))
     .filter((row) => distanceMeters(lat, lng, row.lat, row.lng) <= radiusMeters)
     .filter((row) => rowPassesFilters(row, options))
     .sort((a, b) => sortDiscoveryRows(a, b, lat, lng))
