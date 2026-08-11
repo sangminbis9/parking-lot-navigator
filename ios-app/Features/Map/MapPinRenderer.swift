@@ -49,8 +49,8 @@ enum MapPinCategory: String, CaseIterable {
     func fillColor(theme: FestivalTheme) -> UIColor {
         let palette = theme.palette
         switch self {
-        case .defaultFestival: return UIColor(palette.coral)
-        case .parking: return UIColor(palette.parkingBlue)
+        case .defaultFestival: return FestivalDesign.ui(palette.coral)
+        case .parking: return FestivalDesign.ui(palette.parkingBlue)
         case .music: return UIColor(red: 0.910, green: 0.420, blue: 0.451, alpha: 1)
         case .food: return UIColor(red: 0.953, green: 0.694, blue: 0.357, alpha: 1)
         case .night: return UIColor(red: 0.290, green: 0.310, blue: 0.521, alpha: 1)
@@ -160,6 +160,8 @@ enum MapPinRenderer {
     private struct Key: Hashable {
         let category: MapPinCategory
         let themeID: String
+        // 라이트/다크로 색이 달라지므로 외관도 캐시 키에 넣는다. 빠지면 토글 후에도 옛 핀이 남는다.
+        let styleKey: String
         let selected: Bool
         let scaleKey: Int
     }
@@ -173,7 +175,13 @@ enum MapPinRenderer {
         selected: Bool,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
-        let key = Key(category: category, themeID: theme.rawValue, selected: selected, scaleKey: Int((scale * 100).rounded()))
+        let key = Key(
+            category: category,
+            themeID: theme.rawValue,
+            styleKey: FestivalAppearance.styleKey,
+            selected: selected,
+            scaleKey: Int((scale * 100).rounded())
+        )
         if let cached = cache[key] { return cached }
         let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale)
         cache[key] = image
@@ -194,7 +202,7 @@ enum MapPinRenderer {
 
     /// 실시간 주차장용: 혼잡도 색(fill)으로 채운 "P" 주차 핀. 색은 테마와 무관하므로 색+scale로만 캐시한다.
     static func parkingImage(fill: UIColor, theme: FestivalTheme, selected: Bool = false, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
-        let key = "\(fill.pinColorKey)|\(selected)|\(Int((scale * 100).rounded()))"
+        let key = "\(fill.pinColorKey)|\(FestivalAppearance.styleKey)|\(selected)|\(Int((scale * 100).rounded()))"
         if let cached = parkingCache[key] { return cached }
         let image = draw(category: .parking, theme: theme, selected: selected, label: nil, scale: scale, fillOverride: fill)
         parkingCache[key] = image
@@ -265,7 +273,7 @@ enum MapPinRenderer {
         let corner = badge * cornerRatio
         let accent = fillOverride ?? category.fillColor(theme: theme)
         let glyphColor = accent.pinDeepened(0.62)
-        let surface = UIColor(theme.palette.surface)
+        let surface = FestivalDesign.ui(theme.palette.surface)
 
         // 라벨 버블 측정
         let labelFont = FestivalDesign.uiFont(size: 14, weight: .semibold)

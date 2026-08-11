@@ -39,9 +39,17 @@ enum FestivalTheme: String, CaseIterable, Identifiable {
     }
 
     /// 현재 외관(라이트/다크)에 맞는 팔레트. 화면 코드는 항상 이쪽을 쓴다.
+    /// 필드마다 라이트/다크 값을 하나로 묶은 동적 색이라, 다크 모드를 토글해도
+    /// 뷰가 다시 만들어질 때까지 기다리지 않고 그리는 시점에 바로 새 색으로 풀린다.
     var palette: FestivalThemePalette {
-        FestivalAppearance.isDark ? darkPalette : lightPalette
+        Self.dynamicPalettes[self] ?? lightPalette
     }
+
+    private static let dynamicPalettes: [FestivalTheme: FestivalThemePalette] = Dictionary(
+        uniqueKeysWithValues: FestivalTheme.allCases.map {
+            ($0, FestivalThemePalette(light: $0.lightPalette, dark: $0.darkPalette))
+        }
+    )
 
     var lightPalette: FestivalThemePalette {
         switch self {
@@ -256,6 +264,23 @@ enum FestivalAppearance {
     static var isDark: Bool {
         UserDefaults.standard.bool(forKey: storageKey)
     }
+
+    /// 현재 외관의 trait. 지도 핀 비트맵처럼 뷰 계층 밖에서 그릴 때는
+    /// 동적 색이 시스템 외관을 따라가 버리므로, 이 trait으로 명시적으로 풀어야 한다.
+    static var trait: UITraitCollection {
+        UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
+    }
+
+    /// 오프스크린 렌더 캐시 키에 섞는 외관 식별자.
+    static var styleKey: String { isDark ? "dark" : "light" }
+
+    /// 라이트/다크 값을 하나의 동적 색으로 묶는다. SwiftUI가 body를 다시 계산하지 않아도
+    /// 그리는 시점에 trait에 맞춰 다시 풀리기 때문에, 토글이 화면에 즉시 반영된다.
+    static func dynamic(light: Color, dark: Color) -> Color {
+        let lightColor = UIColor(light)
+        let darkColor = UIColor(dark)
+        return Color(UIColor { $0.userInterfaceStyle == .dark ? darkColor : lightColor })
+    }
 }
 
 struct FestivalThemePalette {
@@ -272,6 +297,25 @@ struct FestivalThemePalette {
     let parkingBlue: Color
     let parkingSoft: Color
 }
+
+extension FestivalThemePalette {
+    /// 라이트/다크 팔레트를 필드별 동적 색으로 합친다.
+    init(light: FestivalThemePalette, dark: FestivalThemePalette) {
+        background = FestivalAppearance.dynamic(light: light.background, dark: dark.background)
+        surface = FestivalAppearance.dynamic(light: light.surface, dark: dark.surface)
+        cream = FestivalAppearance.dynamic(light: light.cream, dark: dark.cream)
+        creamDeep = FestivalAppearance.dynamic(light: light.creamDeep, dark: dark.creamDeep)
+        coral = FestivalAppearance.dynamic(light: light.coral, dark: dark.coral)
+        lantern = FestivalAppearance.dynamic(light: light.lantern, dark: dark.lantern)
+        teal = FestivalAppearance.dynamic(light: light.teal, dark: dark.teal)
+        tealSoft = FestivalAppearance.dynamic(light: light.tealSoft, dark: dark.tealSoft)
+        navy = FestivalAppearance.dynamic(light: light.navy, dark: dark.navy)
+        secondaryText = FestivalAppearance.dynamic(light: light.secondaryText, dark: dark.secondaryText)
+        parkingBlue = FestivalAppearance.dynamic(light: light.parkingBlue, dark: dark.parkingBlue)
+        parkingSoft = FestivalAppearance.dynamic(light: light.parkingSoft, dark: dark.parkingSoft)
+    }
+}
+
 
 final class FestivalThemeStore: ObservableObject {
     @Published var selectedTheme: FestivalTheme {
@@ -318,7 +362,9 @@ enum FestivalDesign {
 
     /// 강조색(coral/teal/navy 등)으로 꽉 채운 면 위에 얹는 글자·아이콘 색.
     /// 라이트에서는 흰색이지만, 다크에서는 채움색이 밝아지므로 어두운 바탕색으로 뒤집는다.
-    static var onAccent: Color { FestivalAppearance.isDark ? background : .white }
+    static var onAccent: Color {
+        FestivalAppearance.dynamic(light: .white, dark: FestivalTheme.current.darkPalette.background)
+    }
 
     // MARK: - 글자 대비
 
@@ -332,14 +378,13 @@ enum FestivalDesign {
 
     /// 글자가 놓일 수 있는 배경 중 가장 불리한 면. 같은 색이 카드 위에도 바탕 위에도
     /// 올라가므로, 최악의 면 하나를 기준으로 계산해 화면별로 색이 달라지는 것을 막는다.
-    private static var textCanvas: Color {
+    private static func textCanvas(dark: Bool) -> Color {
         let theme = FestivalTheme.current
-        let isDark = FestivalAppearance.isDark
-        let cacheKey = theme.rawValue + (isDark ? "-dark" : "-light")
+        let cacheKey = theme.rawValue + (dark ? "-dark" : "-light")
         if let cached = canvasCache[cacheKey] { return cached }
-        let p = theme.palette
+        let p = dark ? theme.darkPalette : theme.lightPalette
         let surfaces = [p.background, p.surface, p.cream, p.tealSoft, p.parkingSoft]
-        let worst = isDark
+        let worst = dark
             ? surfaces.max(by: { luminance($0) < luminance($1) })
             : surfaces.min(by: { luminance($0) < luminance($1) })
         let result = worst ?? p.surface
@@ -349,47 +394,75 @@ enum FestivalDesign {
 
     /// - Parameter color: 팔레트 강조색. 이미 대비가 충분하면 그대로 돌려준다.
     static func readable(_ color: Color) -> Color {
-        let canvas = textCanvas
-        let key = ContrastKey(color: color, reference: canvas)
+        let key = DerivedKey(color: color, themeID: FestivalTheme.current.rawValue)
         if let cached = readableCache[key] { return cached }
+        let result = FestivalAppearance.dynamic(
+            light: readableColor(color, dark: false),
+            dark: readableColor(color, dark: true)
+        )
+        readableCache[key] = result
+        return result
+    }
+
+    private static func readableColor(_ color: Color, dark: Bool) -> Color {
+        let source = resolve(color, dark: dark)
+        let canvas = textCanvas(dark: dark)
         let inkColor: Color = luminance(canvas) > 0.35 ? .black : .white
-        var result = color
+        var result = source
         var amount = 0.0
         while amount < 1.0, contrastRatio(result, canvas) < 3.3 {
             amount = min(1.0, amount + 0.05)
-            result = mix(color, inkColor, amount)
+            result = mix(source, inkColor, amount)
         }
-        readableCache[key] = result
         return result
     }
 
     /// 강조색으로 꽉 채운 면 위의 글자색. 흰 글자가 대비 3:1도 못 내는 조합
     /// (노란 lantern 배지가 대표적)에서만 어두운 잉크로 바꾼다.
     static func onFill(_ fill: Color) -> Color {
-        let base = onAccent
-        return contrastRatio(base, fill) >= 3.0 ? base : ink(on: fill)
+        let key = DerivedKey(color: fill, themeID: FestivalTheme.current.rawValue)
+        if let cached = onFillCache[key] { return cached }
+        let result = FestivalAppearance.dynamic(
+            light: onFillColor(fill, dark: false),
+            dark: onFillColor(fill, dark: true)
+        )
+        onFillCache[key] = result
+        return result
+    }
+
+    private static func onFillColor(_ fill: Color, dark: Bool) -> Color {
+        let resolvedFill = resolve(fill, dark: dark)
+        let base: Color = dark ? FestivalTheme.current.darkPalette.background : .white
+        return contrastRatio(base, resolvedFill) >= 3.0 ? base : ink(on: resolvedFill, dark: dark)
     }
 
     /// 지도 핀 위의 글자·아이콘 색(UIKit 렌더링용). 지도 타일은 다크 모드에서도 밝게 남으므로
     /// 흰 글자를 기준으로 판단하고, 노란 핀처럼 대비가 안 나올 때만 어두운 잉크로 바꾼다.
     static func uiOnPinFill(_ fill: UIColor) -> UIColor {
-        let color = Color(fill)
-        return contrastRatio(.white, color) >= 3.0 ? .white : UIColor(ink(on: color))
+        let color = Color(fill.resolvedColor(with: FestivalAppearance.trait))
+        return contrastRatio(.white, color) >= 3.0
+            ? .white
+            : UIColor(ink(on: color, dark: FestivalAppearance.isDark))
     }
 
     /// 채움색 위에서 4.5:1을 낼 때까지 본문색을 검정 쪽으로 섞은 잉크.
-    private static func ink(on fill: Color) -> Color {
-        let base = navy
+    private static func ink(on fill: Color, dark: Bool) -> Color {
+        let base = resolve(navy, dark: dark)
         let key = ContrastKey(color: fill, reference: base)
-        if let cached = onFillCache[key] { return cached }
+        if let cached = inkCache[key] { return cached }
         var result = base
         var amount = 0.0
         while amount < 1.0, contrastRatio(result, fill) < 4.5 {
             amount = min(1.0, amount + 0.05)
             result = mix(base, .black, amount)
         }
-        onFillCache[key] = result
+        inkCache[key] = result
         return result
+    }
+
+    /// 동적 색을 지정한 외관의 확정 색으로 푼다. 대비 계산은 확정된 RGB가 있어야 성립한다.
+    private static func resolve(_ color: Color, dark: Bool) -> Color {
+        Color(UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light)))
     }
 
     /// WCAG 상대 명도 기준 대비비(1.0 ~ 21.0).
@@ -404,9 +477,15 @@ enum FestivalDesign {
         let reference: Color
     }
 
+    private struct DerivedKey: Hashable {
+        let color: Color
+        let themeID: String
+    }
+
     // 팔레트 색은 개수가 정해져 있어 캐시가 무한히 자라지 않는다. 본문(메인 스레드)에서만 읽고 쓴다.
-    private static var readableCache: [ContrastKey: Color] = [:]
-    private static var onFillCache: [ContrastKey: Color] = [:]
+    private static var readableCache: [DerivedKey: Color] = [:]
+    private static var onFillCache: [DerivedKey: Color] = [:]
+    private static var inkCache: [ContrastKey: Color] = [:]
     private static var canvasCache: [String: Color] = [:]
 
     private static func components(_ color: Color) -> (r: Double, g: Double, b: Double) {
@@ -483,9 +562,10 @@ enum FestivalDesign {
     /// 라이트에서는 `navy` 톤을 쓰지만, 다크에서 `navy`는 본문용 밝은 색이라 그대로 쓰면 그림자가 발광한다.
     /// 다크에서는 검정에 더 높은 불투명도를 써서 카드가 바탕에서 떠 보이게 한다.
     static func shadow(_ level: Elevation) -> (color: Color, radius: CGFloat, y: CGFloat) {
-        let color = FestivalAppearance.isDark
-            ? Color.black.opacity(min(level.opacity * 3, 0.5))
-            : navy.opacity(level.opacity)
+        let color = FestivalAppearance.dynamic(
+            light: FestivalTheme.current.lightPalette.navy.opacity(level.opacity),
+            dark: Color.black.opacity(min(level.opacity * 3, 0.5))
+        )
         return (color, level.radius, level.y)
     }
 
@@ -501,18 +581,16 @@ enum FestivalDesign {
 
     /// 손그림 테마의 거친 외곽선 색. (비손그림 테마에서는 사용하지 않음)
     /// 라이트는 차콜 크레용, 다크는 어두운 종이 위에 얹는 아이보리 크레용.
-    static var outline: Color {
-        FestivalAppearance.isDark
-            ? Color(red: 0.949, green: 0.918, blue: 0.859) // #F2EADB
-            : Color(red: 0.176, green: 0.161, blue: 0.145) // #2D2925
-    }
+    static let outline: Color = FestivalAppearance.dynamic(
+        light: Color(red: 0.176, green: 0.161, blue: 0.145), // #2D2925
+        dark: Color(red: 0.949, green: 0.918, blue: 0.859)   // #F2EADB
+    )
 
     /// 손그림 카드의 오프셋 스티커 그림자 잉크. 외곽선과 달리 라이트/다크 모두 어둡게 유지한다.
-    static var stickerShadowInk: Color {
-        FestivalAppearance.isDark
-            ? Color.black.opacity(0.55)
-            : Color(red: 0.176, green: 0.161, blue: 0.145).opacity(0.85)
-    }
+    static let stickerShadowInk: Color = FestivalAppearance.dynamic(
+        light: Color(red: 0.176, green: 0.161, blue: 0.145).opacity(0.85),
+        dark: Color.black.opacity(0.55)
+    )
 
     /// 버튼/입력 등 컨트롤용 모양. 크레파스 테마에서는 손그림 외곽선, 그 외에는 기존 RoundedRectangle 그대로.
     static var controlShape: AnyShape {
@@ -576,12 +654,18 @@ enum FestivalDesign {
         style == .headline ? .semibold : .regular
     }
 
-    static var uiCream: UIColor { UIColor(cream) }
-    static var uiCoral: UIColor { UIColor(coral) }
-    static var uiLantern: UIColor { UIColor(lantern) }
-    static var uiTeal: UIColor { UIColor(teal) }
-    static var uiNavy: UIColor { UIColor(navy) }
-    static var uiParkingBlue: UIColor { UIColor(parkingBlue) }
+    /// UIKit 렌더링용 색. 오프스크린 렌더러(`UIGraphicsImageRenderer`)는 뷰 계층 밖이라
+    /// 동적 색이 앱이 아닌 시스템 외관을 따라간다. 앱이 고른 외관으로 미리 풀어서 넘긴다.
+    static func ui(_ color: Color) -> UIColor {
+        UIColor(color).resolvedColor(with: FestivalAppearance.trait)
+    }
+
+    static var uiCream: UIColor { ui(cream) }
+    static var uiCoral: UIColor { ui(coral) }
+    static var uiLantern: UIColor { ui(lantern) }
+    static var uiTeal: UIColor { ui(teal) }
+    static var uiNavy: UIColor { ui(navy) }
+    static var uiParkingBlue: UIColor { ui(parkingBlue) }
 
     static func congestionColor(_ status: CongestionStatus) -> Color {
         switch status {

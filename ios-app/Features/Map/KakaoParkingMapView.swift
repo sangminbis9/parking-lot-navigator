@@ -520,6 +520,12 @@ private struct MapPinSnapshot: Equatable {
     }
 }
 
+/// 핀 스타일 ID의 테마 성분. 라이트/다크에 따라 핀 색이 달라지므로 외관까지 넣어야
+/// 토글했을 때 카카오맵이 새 스타일을 등록하고 핀이 즉시 바뀐다.
+private var pinStyleThemeKey: String {
+    FestivalTheme.current.rawValue + "-" + FestivalAppearance.styleKey
+}
+
 private extension MapPinItem {
     var poiID: String {
         id.map { character in
@@ -531,7 +537,7 @@ private extension MapPinItem {
     }
 
     func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false, isSelected: Bool = false) -> String {
-        let theme = FestivalTheme.current.rawValue
+        let theme = pinStyleThemeKey
         switch kind {
         case .currentLocation:
             return "current-location"
@@ -562,16 +568,17 @@ private extension MapPinItem {
 
     func dynamicDiscoverStyleIDAndImage(styleID: String) -> (id: String, image: UIImage)? {
         let theme = FestivalTheme.current
+        let themeKey = pinStyleThemeKey
         switch kind {
         case .parking(let lot):
             if parkingCongestionColored {
                 let key = lot.stale ? "stale" : lot.congestionStatus.rawValue
-                let base = "parking-cong-\(key)-\(theme.rawValue)"
+                let base = "parking-cong-\(key)-\(themeKey)"
                 guard styleID == base || styleID == "\(base)-sel" else { return nil }
                 let fill = lot.stale ? UIColor.systemGray : FestivalDesign.uiCongestionColor(lot.congestionStatus)
                 return (styleID, MapPinRenderer.parkingImage(fill: fill, theme: theme, selected: styleID == "\(base)-sel"))
             }
-            let base = "parking-\(theme.rawValue)"
+            let base = "parking-\(themeKey)"
             guard styleID == base || styleID == "\(base)-sel" else { return nil }
             return (styleID, MapPinRenderer.image(category: .parking, theme: theme, selected: styleID == "\(base)-sel"))
         case .festival(let festival):
@@ -579,7 +586,7 @@ private extension MapPinItem {
         case .event(let event):
             return discoverImage(styleID: styleID, category: MapPinCategory.forEvent(event), title: event.title, theme: theme)
         case .cluster(let cluster):
-            guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(theme.rawValue)" else { return nil }
+            guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(themeKey)" else { return nil }
             return (styleID, MapPinRenderer.clusterImage(tint: cluster.tint, count: cluster.count, isParking: cluster.isParking, theme: theme))
         default:
             return nil
@@ -587,7 +594,7 @@ private extension MapPinItem {
     }
 
     private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme) -> (id: String, image: UIImage)? {
-        let base = "disc-\(category.rawValue)-\(theme.rawValue)"
+        let base = "disc-\(category.rawValue)-\(pinStyleThemeKey)"
         if styleID == "\(base)-sel" {
             return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true))
         }
