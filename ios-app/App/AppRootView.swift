@@ -154,7 +154,7 @@ struct AppRootView: View {
     private static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(FestivalDesign.surface)
+        appearance.backgroundColor = UIColor(FestivalDesign.barSurface)
         appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
 
         let selectedColor = UIColor(FestivalDesign.coralText)
@@ -177,7 +177,7 @@ struct AppRootView: View {
     private static func configureNavigationBarAppearance() {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(FestivalDesign.surface)
+        appearance.backgroundColor = UIColor(FestivalDesign.barSurface)
         appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
 
         let titleColor = UIColor(FestivalDesign.coralText)
@@ -211,7 +211,7 @@ private struct FestivalTabBar: View {
         .padding(.bottom, 0)
         .frame(maxWidth: .infinity)
         .background(
-            FestivalDesign.surface
+            FestivalDesign.barSurface
                 .ignoresSafeArea(edges: .bottom)
         )
         .overlay(
