@@ -360,6 +360,23 @@ enum FestivalDesign {
     static var parkingBlue: Color { palette.parkingBlue }
     static var parkingSoft: Color { palette.parkingSoft }
 
+    /// 상·하단 바(탭바·네비게이션바) 배경. `surface`는 라이트 테마에서 대부분 흰색이라
+    /// 테마를 바꿔도 바가 그대로 보인다. 테마색(cream)을 섞어 바에서도 테마가 드러나게 한다.
+    static var barSurface: Color {
+        FestivalAppearance.dynamic(
+            light: barSurfaceColor(dark: false),
+            dark: barSurfaceColor(dark: true)
+        )
+    }
+
+    /// 바 배경의 테마색 비중. 올리면 테마가 더 뚜렷해지고, 내리면 본문과의 경계가 옅어진다.
+    private static let barTintAmount = 0.55
+
+    private static func barSurfaceColor(dark: Bool) -> Color {
+        let p = dark ? FestivalTheme.current.darkPalette : FestivalTheme.current.lightPalette
+        return mix(p.surface, p.cream, barTintAmount)
+    }
+
     /// 강조색(coral/teal/navy 등)으로 꽉 채운 면 위에 얹는 글자·아이콘 색.
     /// 라이트에서는 흰색이지만, 다크에서는 채움색이 밝아지므로 어두운 바탕색으로 뒤집는다.
     static var onAccent: Color {
