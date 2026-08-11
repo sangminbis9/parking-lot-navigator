@@ -176,6 +176,9 @@ struct MapHomeView: View {
             // 테마가 바뀌면 핀 styleID(테마 포함)가 달라져 KakaoParkingMapView가 자동 재렌더한다.
             // 이 onChange는 body가 테마 변화를 구독하도록 의존성을 만드는 역할만 한다.
         }
+        .onChange(of: themeStore.isDarkMode) { _ in
+            // 위와 같은 이유. 핀 styleID에 외관이 들어가 있어 다크 모드 토글도 재렌더를 일으킨다.
+        }
         .onReceive(locationProvider.$coordinate.compactMap { $0 }.prefix(1)) { coordinate in
             handleLocationUpdate(coordinate)
         }
