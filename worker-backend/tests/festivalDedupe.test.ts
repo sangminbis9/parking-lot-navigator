@@ -110,4 +110,18 @@ describe("dedupeFestivals", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("b");
   });
+
+  // 좌표 미상 축제가 지역 대표 좌표 한 점에 수천 건 쌓여도 CPU 한도 안에서 끝나야 한다.
+  // 전수 비교(O(n²)) 시절 이 입력이 Worker에서 503(error code 1102)을 냈다.
+  it("dedupes thousands of festivals stacked on one coordinate quickly", () => {
+    const festivals = Array.from({ length: 3000 }, (_, i) =>
+      makeFestival({ id: `f${i}`, title: `축제 ${i}` }),
+    );
+
+    const startedAt = Date.now();
+    const result = dedupeFestivals(festivals);
+
+    expect(result).toHaveLength(3000);
+    expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
 });
