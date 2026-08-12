@@ -798,7 +798,7 @@ extension View {
                         .foregroundStyle(FestivalDesign.coralText)
                 }
             }
-            .toolbarBackground(FestivalDesign.surface, for: .navigationBar)
+            .toolbarBackground(FestivalDesign.barSurface, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
     }
 }
