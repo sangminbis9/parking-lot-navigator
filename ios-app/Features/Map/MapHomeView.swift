@@ -474,7 +474,7 @@ struct MapHomeView: View {
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .background(FestivalDesign.surface.opacity(0.98))
+        .background(FestivalDesign.barSurface.opacity(0.98))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(FestivalDesign.creamDeep.opacity(0.45))
