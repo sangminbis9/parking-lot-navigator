@@ -232,13 +232,67 @@ export function dedupeFestivals(
   const result: Festival[] = [];
   for (const cluster of clusters) {
     if (clusterFilter && !clusterFilter(cluster)) continue;
-    result.push(
-      cluster.reduce((best, f) =>
-        festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
-      ),
-    );
+    result.push(mergeFestivalCluster(cluster));
   }
   return result;
+}
+
+// 같은 축제라도 provider마다 채우는 필드가 다르다(한쪽은 설명만, 다른 쪽은 이미지·요금만).
+// 가장 정보가 많은 항목을 기준으로 삼고 비어 있는 필드만 다른 항목에서 채운다.
+// id·좌표·기간·source는 기준 항목 것을 유지한다 — 지도 핀과 상세 조회가 한 출처를 가리켜야 하고,
+// 기간을 합치면 provider 한 곳의 잘못된 날짜가 노출 기간을 부풀린다.
+const MERGEABLE_TEXT_FIELDS: readonly (keyof Festival)[] = [
+  "subtitle",
+  "description",
+  "venueName",
+  "address",
+  "sourceUrl",
+  "imageUrl",
+  "admissionFee",
+  "discountInfo",
+  "bookingInfo",
+  "contactPhone",
+  "ageLimit",
+  "programInfo",
+  "organizerName",
+];
+const MERGEABLE_LIST_FIELDS: readonly (keyof Festival)[] = [
+  "imageUrls",
+  "tags",
+  "categoryTags",
+];
+
+function mergeFestivalCluster(cluster: Festival[]): Festival {
+  const base = cluster.reduce((best, f) =>
+    festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
+  );
+  if (cluster.length === 1) return base;
+
+  const merged = { ...base } as unknown as Record<string, unknown>;
+  const donors = cluster.filter((f) => f !== base);
+  for (const field of MERGEABLE_TEXT_FIELDS) {
+    if (hasText(merged[field])) continue;
+    const donor = donors.find((f) => hasText(f[field]));
+    if (donor) merged[field] = donor[field];
+  }
+  for (const field of MERGEABLE_LIST_FIELDS) {
+    const current = merged[field];
+    if (Array.isArray(current) && current.length > 0) continue;
+    const donor = donors.find((f) => {
+      const value = f[field];
+      return Array.isArray(value) && value.length > 0;
+    });
+    if (donor) merged[field] = donor[field];
+  }
+  if (merged.primaryCategory == null) {
+    const donor = donors.find((f) => f.primaryCategory != null);
+    if (donor) merged.primaryCategory = donor.primaryCategory;
+  }
+  return merged as unknown as Festival;
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 // 제목 키가 이미 같다고 확인된 두 항목이 실제로 같은 회차인지(좌표·기간) 본다.
@@ -252,7 +306,33 @@ function isSameFestivalOccurrence(
   ) {
     return false;
   }
+  // 회차·연도 수식어는 아래 festivalCoreTitle에서 제목 비교 시 무시하므로, 양쪽 모두
+  // 명시한 회차(또는 연도)가 서로 다르면 여기서 다른 회차로 갈라낸다.
+  if (conflictingQualifier(festivalEdition(representative.title), festivalEdition(festival.title))) {
+    return false;
+  }
+  if (conflictingQualifier(festivalYear(representative.title), festivalYear(festival.title))) {
+    return false;
+  }
   return dateRangesOverlap(representative, festival);
+}
+
+function conflictingQualifier(a: number | null, b: number | null): boolean {
+  return a !== null && b !== null && a !== b;
+}
+
+function festivalEdition(title: string): number | null {
+  const matched = title.match(/제\s*(\d{1,3})\s*회/) ?? title.match(/^\s*(\d{1,3})\s*회\s/);
+  return matched ? Number(matched[1]) : null;
+}
+
+// 제목 앞뒤에 붙은 연도만 본다 ("2026 한강페스티벌", "DDP 건축투어 2026").
+// 제목 중간의 숫자("문학주간2026")는 이름의 일부라 수식어로 보지 않는다.
+function festivalYear(title: string): number | null {
+  const matched =
+    title.match(/^\s*((?:19|20)\d{2})년?(?=\s|$)/) ??
+    title.match(/(?:^|\s)((?:19|20)\d{2})년?\s*$/);
+  return matched ? Number(matched[1]) : null;
 }
 
 function festivalDedupeKey(festival: Festival): string {
@@ -260,25 +340,49 @@ function festivalDedupeKey(festival: Festival): string {
 }
 
 function normalizeFestivalTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/^\d{4}년?/, ""); // provider마다 선행 연도 표기 유무가 달라 무시
+  return festivalCoreTitle(title).replace(/\s+/g, "");
+}
+
+// provider마다 같은 축제에 회차·연도·주최기관 접두어를 붙이거나 빼서 보낸다
+// (예: "수원화성문화제"/"제63회 수원화성문화제", "DDP 건축투어"/"DDP 건축투어 2026",
+// "뮤지컬 베토벤"/"[세종문화회관] 뮤지컬 베토벤"). 이런 수식어만 벗겨낸 핵심 제목이
+// 완전히 같을 때만 같은 축제로 본다 — 유사도 점수 기반 fuzzy 매칭은 여전히 쓰지 않는다.
+// 회차·연도가 양쪽 다 있고 서로 다른 경우는 isSameFestivalOccurrence에서 걸러낸다.
+const TITLE_LEADING_AFFIXES: RegExp[] = [
+  /^[[(【〈《『][^\])】〉》』]*[\])】〉》』]\s*/, // 주최기관·시리즈 접두어
+  /^(?:국제)?인증전시회\s*/, // AKEI 게시판 라벨
+  /^(?:19|20)\d{2}년?\s*/, // 연도
+  /^제?\s*\d{1,3}\s*회\s*/, // 회차
+];
+const TITLE_TRAILING_AFFIXES: RegExp[] = [
+  /\s+(?:19|20)\d{2}년?$/, // 연도
+  /\s*제?\s*\d{1,3}\s*회$/, // 회차 ("봄꽃축제 제1회")
+];
+
+function festivalCoreTitle(title: string): string {
+  let text = title.toLowerCase().trim();
+  // 접두어가 겹쳐 붙는 경우가 있어("인증전시회 2026 …") 더 벗겨낼 게 없을 때까지 반복한다.
+  for (let pass = 0; pass < TITLE_LEADING_AFFIXES.length; pass += 1) {
+    const before = text;
+    for (const pattern of TITLE_LEADING_AFFIXES) text = text.replace(pattern, "");
+    for (const pattern of TITLE_TRAILING_AFFIXES) text = text.replace(pattern, "");
+    text = text.trim();
+    if (text === before) break;
+  }
+  // 수식어만으로 이루어진 제목이면 원본을 그대로 쓴다(빈 키로 서로 뭉치는 것 방지).
+  return text.length > 0 ? text : title.toLowerCase().trim();
 }
 
 // 공백 기준 단어 집합을 정렬해 비교 — 단어 순서만 바뀐 제목을 완전 일치로 인식한다.
 // (문자 단위로 쪼개지 않는 이유는 위 상수 설명 참고: 서로 다른 단어가 섞인 제목까지
 // 같은 축제로 오판하는 걸 막기 위함.)
 function wordOrderInvariantKey(title: string): string {
-  const tokens = title
-    .toLowerCase()
+  return festivalCoreTitle(title)
     .split(/\s+/)
     .map((token) => token.trim())
-    .filter(Boolean);
-  if (tokens.length > 0 && /^\d{4}년?$/.test(tokens[0])) {
-    tokens.shift(); // provider마다 선행 연도 표기 유무가 달라 무시
-  }
-  return tokens.sort().join("|");
+    .filter(Boolean)
+    .sort()
+    .join("|");
 }
 
 // provider마다 같은 축제의 시작/종료일을 며칠씩 다르게 보고하는 경우가 있어(예: 사전 행사 포함
