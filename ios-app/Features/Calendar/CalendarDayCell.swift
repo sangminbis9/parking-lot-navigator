@@ -26,19 +26,23 @@ struct CalendarDayCell: View {
             Text("\(dayNumber)")
                 .font(.festival(size: 13, weight: isToday ? .bold : .semibold))
                 .foregroundStyle(numberColor)
-            HStack(spacing: 3) {
+            // 4pt 점은 축제가 몇 개인지도, 어떤 종류인지도 읽히지 않았다.
+            // 셀 폭을 채우는 막대로 바꿔 색(카테고리)과 개수를 동시에 보이게 한다.
+            HStack(spacing: 2) {
                 ForEach(0..<min(festivals.count, 3), id: \.self) { idx in
-                    Circle()
-                        .fill(dotColor(for: festivals[idx]))
-                        .frame(width: 4, height: 4)
+                    Capsule()
+                        .fill(barColor(for: festivals[idx]))
+                        .frame(height: 3.5)
                 }
                 if festivals.count > 3 {
-                    Text("+")
-                        .font(.festival(size: 9, weight: .bold))
-                        .foregroundStyle(FestivalDesign.secondaryText)
+                    Text("+\(festivals.count - 3)")
+                        .font(.festival(size: 8, weight: .bold))
+                        .foregroundStyle(isSelected ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.secondaryText)
+                        .fixedSize()
                 }
             }
-            .frame(height: 6)
+            .frame(height: 8)
+            .padding(.horizontal, 5)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 56)
@@ -82,7 +86,11 @@ struct CalendarDayCell: View {
         return Color.clear
     }
 
-    private func dotColor(for festival: Festival) -> Color {
+    private func barColor(for festival: Festival) -> Color {
+        // 선택된 날은 산호색 배경이라 카테고리색을 그대로 얹으면 탁해진다.
+        if isSelected {
+            return FestivalDesign.onFill(FestivalDesign.coral).opacity(0.85)
+        }
         if let category = festival.primaryCategory {
             return category.tint
         }

@@ -1131,9 +1131,10 @@ private struct DiscoverTabRow: View {
     }
 }
 
-private struct DiscoverTabThumbnail: View {
+struct DiscoverTabThumbnail: View {
     let imageUrl: String?
     let isFestival: Bool
+    var size: CGFloat = 82
 
     var body: some View {
         ZStack {
@@ -1146,7 +1147,7 @@ private struct DiscoverTabThumbnail: View {
                 endPoint: .bottomTrailing
             )
             if let imageUrl, let url = URL(string: imageUrl) {
-                RemoteImage(url: url, downsamplePoints: 82) {
+                RemoteImage(url: url, downsamplePoints: size) {
                     Image("FestivalMascotIcon")
                         .resizable()
                         .scaledToFit()
@@ -1159,7 +1160,7 @@ private struct DiscoverTabThumbnail: View {
                     .padding(14)
             }
         }
-        .frame(width: 82, height: 82)
+        .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 }

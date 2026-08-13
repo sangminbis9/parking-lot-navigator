@@ -15,7 +15,6 @@ struct CalendarTabView: View {
 
     @State private var monthAnchor: Date = Date()
     @State private var selectedDay: Date? = Date()
-    @State private var weekendMode = false
     @State private var presentingFilter = false
     @State private var presentingSaved = false
     @State private var showNotificationDeniedAlert = false
@@ -33,8 +32,8 @@ struct CalendarTabView: View {
     }
 
     var body: some View {
-        let byDay = favoriteFestivalsByDay
-        let agendaItems = agendaFestivals(from: byDay)
+        let byDay = festivalsByDay
+        let sections = daySections(from: byDay)
         VStack(spacing: 0) {
             header
             CalendarMonthView(
@@ -46,16 +45,11 @@ struct CalendarTabView: View {
                 onSwipeMonth: { shiftMonth(by: $0) }
             )
             .padding(.top, 12)
-            legend
+            quickJumpRow
                 .padding(.vertical, 10)
             Divider()
                 .overlay(FestivalDesign.creamDeep.opacity(0.4))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    agendaContent(items: agendaItems)
-                    performanceSection
-                }
-            }
+            agendaScroll(sections: sections)
         }
         .background(FestivalDesign.background)
         .task {
@@ -179,13 +173,13 @@ struct CalendarTabView: View {
         .festivalShadow(.low)
     }
 
-    private var legend: some View {
+    private var quickJumpRow: some View {
         HStack(spacing: 8) {
             Spacer()
             Button {
-                weekendMode = false
-                monthAnchor = Date()
-                selectedDay = Date()
+                let today = Date()
+                monthAnchor = today
+                selectedDay = calendar.startOfDay(for: today)
                 haptic()
             } label: {
                 presetLabel("\u{C624}\u{B298}") // 오늘
@@ -193,7 +187,7 @@ struct CalendarTabView: View {
             Button {
                 jumpToWeekend()
             } label: {
-                presetLabel("\u{C774}\u{BC88} \u{C8FC}\u{B9D0}", filled: weekendMode) // 이번 주말
+                presetLabel("\u{C774}\u{BC88} \u{C8FC}\u{B9D0}") // 이번 주말
             }
         }
         .padding(.horizontal, 16)
@@ -211,35 +205,115 @@ struct CalendarTabView: View {
 
     // MARK: - Agenda
 
-    private func agendaContent(items: [Festival]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(agendaTitle(count: items.count))
-                .font(.festival(size: 14, weight: .bold))
-                .foregroundStyle(FestivalDesign.navy)
-                .padding(.horizontal, 16)
-
-            if case .failed(let message) = viewModel.state {
-                Text(message)
-                    .font(.festival(size: 12))
-                    .foregroundStyle(FestivalDesign.coralText)
-                    .padding(.horizontal, 16)
-            } else if items.isEmpty {
-                emptyAgenda
-            } else {
-                ForEach(items) { festival in
-                    AgendaRow(
-                        festival: festival,
-                        isSaved: favoritesStore.contains(id: festival.id),
-                        isReminderOn: reminderService.isScheduled(id: festival.id),
-                        onSelect: { handleSelectFestival(festival) },
-                        onToggleSave: { toggleSave(festival) },
-                        onToggleReminder: { toggleReminderForFestival(festival) }
-                    )
-                    .padding(.horizontal, 16)
+    /// 달 전체의 축제를 날짜 구획으로 이어서 보여준다. 날짜를 눌러야 목록이 생기는
+    /// 예전 방식은 빈 날짜를 고르면 화면이 통째로 비어 무엇이 있는지 알 수 없었다.
+    /// 이제 날짜 선택은 필터가 아니라 스크롤 이동이다.
+    private func agendaScroll(sections: [DaySection]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    monthSummary(sections: sections)
+                    if case .failed(let message) = viewModel.state {
+                        Text(message)
+                            .font(.festival(size: 12))
+                            .foregroundStyle(FestivalDesign.coralText)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    } else if sections.isEmpty {
+                        emptyAgenda
+                    } else {
+                        ForEach(sections) { section in
+                            Section {
+                                ForEach(section.festivals) { festival in
+                                    AgendaRow(
+                                        festival: festival,
+                                        isSaved: favoritesStore.contains(id: festival.id),
+                                        isReminderOn: reminderService.isScheduled(id: festival.id),
+                                        onSelect: { handleSelectFestival(festival) },
+                                        onToggleSave: { toggleSave(festival) },
+                                        onToggleReminder: { toggleReminderForFestival(festival) }
+                                    )
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, 10)
+                                }
+                            } header: {
+                                daySectionHeader(section)
+                                    .id(section.id)
+                            }
+                        }
+                    }
+                    performanceSection
+                }
+                .padding(.top, 14)
+            }
+            .onChange(of: selectedDay) { day in
+                guard let target = scrollTarget(for: day, in: sections) else { return }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .top)
                 }
             }
         }
-        .padding(.vertical, 14)
+    }
+
+    private func monthSummary(sections: [DaySection]) -> some View {
+        var ids = Set<String>()
+        var savedCount = 0
+        for section in sections {
+            for festival in section.festivals where ids.insert(festival.id).inserted {
+                if favoritesStore.contains(id: festival.id) { savedCount += 1 }
+            }
+        }
+        return HStack(spacing: 6) {
+            Text("\(monthTitle) \u{00B7} \u{CD95}\u{C81C} \(ids.count)\u{AC1C}") // yyyy년 M월 · 축제 N개
+                .font(.festival(size: 14, weight: .bold))
+                .foregroundStyle(FestivalDesign.navy)
+            if savedCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.festival(size: 9, weight: .bold))
+                    Text("\(savedCount)")
+                        .font(.festival(size: 11, weight: .bold))
+                }
+                .foregroundStyle(FestivalDesign.lanternText)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(FestivalDesign.lantern.opacity(0.16))
+                .clipShape(FestivalDesign.chipShape)
+            }
+            Spacer()
+            if viewModel.state.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private func daySectionHeader(_ section: DaySection) -> some View {
+        let isSelected = selectedDay.map { calendar.isDate($0, inSameDayAs: section.date) } ?? false
+        let isToday = calendar.isDateInToday(section.date)
+        return HStack(spacing: 6) {
+            Text(Self.agendaDayFormatter.string(from: section.date))
+                .font(.festival(size: 13, weight: .bold))
+                .foregroundStyle(isSelected ? FestivalDesign.coralText : FestivalDesign.navy)
+            if isToday {
+                Text("\u{C624}\u{B298}") // 오늘
+                    .font(.festival(size: 10, weight: .bold))
+                    .foregroundStyle(FestivalDesign.onFill(FestivalDesign.coral))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(FestivalDesign.coral)
+                    .clipShape(FestivalDesign.chipShape)
+            }
+            Text("\(section.festivals.count)")
+                .font(.festival(size: 11, weight: .bold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(FestivalDesign.background)
     }
 
     private var performanceSection: some View {
@@ -253,12 +327,13 @@ struct CalendarTabView: View {
             Divider()
                 .overlay(FestivalDesign.creamDeep.opacity(0.4))
                 .padding(.horizontal, 16)
+                .padding(.top, 4)
 
             HStack(spacing: 6) {
                 Image(systemName: "music.note")
                     .font(.festival(size: 12, weight: .bold))
                     .foregroundStyle(FestivalDesign.readable(FestivalPrimaryCategory.musicPerformance.tint))
-                Text("근처 공연 · \(items.count)개")
+                Text("\(selectedDayTitle) 근처 공연 · \(items.count)개")
                     .font(.festival(size: 14, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
                 Spacer()
@@ -288,57 +363,95 @@ struct CalendarTabView: View {
 
     private var emptyAgenda: some View {
         VStack(spacing: 10) {
-            Image(systemName: "star")
+            Image(systemName: "calendar.badge.exclamationmark")
                 .font(.festival(size: 30))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            Text("즐겨찾기한 축제가 없어요")
+            Text("\u{C774} \u{B2EC}\u{C5D0}\u{B294} \u{C870}\u{AC74}\u{C5D0} \u{B9DE}\u{B294} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 이 달에는 조건에 맞는 축제가 없어요
                 .font(.festival(size: 14, weight: .semibold))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            Text("이벤트 탭에서 ☆ 을 탭해 관심 축제를 추가해 보세요")
+            Text("\u{BC18}\u{ACBD}\u{C774}\u{B098} \u{C870}\u{D68C} \u{AE30}\u{AC04}\u{C744} \u{B113}\u{D788}\u{AC70}\u{B098} \u{B2E4}\u{B978} \u{B2EC}\u{C744} \u{BCF4}\u{C138}\u{C694}") // 반경이나 조회 기간을 넓히거나 다른 달을 보세요
                 .font(.festival(size: 12))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+            Button {
+                presentingFilter = true
+            } label: {
+                presetLabel("\u{D544}\u{D130} \u{C5F4}\u{AE30}", filled: true) // 필터 열기
+            }
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 40)
+        .padding(.top, 32)
+        .padding(.bottom, 24)
     }
 
     // MARK: - Derived
 
-    private var favoriteFestivalsByDay: [String: [Festival]] {
-        // 현재 위치/필터 기준으로 불러온 근처 축제 목록(viewModel.allFestivals)에는
-        // 없는 즐겨찾기도 있을 수 있어(반경·조회 기간 밖 등), 캐시된 SavedFestival로 폴백한다.
-        let loadedByID = Dictionary(viewModel.allFestivals.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let favorites = favoritesStore.saved.map { loadedByID[$0.id] ?? $0.asFestival }
-        var result: [String: [Festival]] = [:]
-        for festival in favorites {
-            guard let start = CalendarViewModel.dayFormatter.date(from: festival.startDate) else { continue }
-            let end = CalendarViewModel.dayFormatter.date(from: festival.endDate) ?? start
-            var cursor = start
-            var safety = 0
-            while cursor <= end, safety < 200 {
-                let key = CalendarViewModel.dayFormatter.string(from: cursor)
-                result[key, default: []].append(festival)
-                guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
-                cursor = next
-                safety += 1
-            }
+    struct DaySection: Identifiable {
+        let id: String
+        let date: Date
+        let festivals: [Festival]
+    }
+
+    /// 필터를 통과한 근처 축제 전체. 반경·기간 밖이라 목록에 없는 즐겨찾기는
+    /// 캐시된 SavedFestival로 채워 넣어, 저장해 둔 축제가 달력에서 사라지지 않게 한다.
+    private var festivalsByDay: [String: [Festival]] {
+        var result = viewModel.festivalsByDay
+        let loadedIDs = Set(viewModel.allFestivals.map(\.id))
+        for saved in favoritesStore.saved where !loadedIDs.contains(saved.id) {
+            bucket(saved.asFestival, into: &result)
         }
         return result
     }
 
-    private func agendaFestivals(from byDay: [String: [Festival]]) -> [Festival] {
-        guard let day = selectedDay else { return [] }
-        if weekendMode {
-            var combined = byDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
-            if let sunday = calendar.date(byAdding: .day, value: 1, to: day) {
-                combined += byDay[CalendarViewModel.dayFormatter.string(from: sunday)] ?? []
-            }
-            var seen = Set<String>()
-            return combined.filter { seen.insert($0.id).inserted }
+    private func bucket(_ festival: Festival, into result: inout [String: [Festival]]) {
+        guard let start = CalendarViewModel.dayFormatter.date(from: festival.startDate) else { return }
+        let end = CalendarViewModel.dayFormatter.date(from: festival.endDate) ?? start
+        var cursor = start
+        var safety = 0
+        while cursor <= end, safety < 200 {
+            result[CalendarViewModel.dayFormatter.string(from: cursor), default: []].append(festival)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+            safety += 1
         }
-        return byDay[CalendarViewModel.dayFormatter.string(from: day)] ?? []
+    }
+
+    /// 보고 있는 달에서 축제가 있는 날만 구획으로 만든다. 이번 달을 볼 때는
+    /// 이미 지난 날짜를 건너뛴다.
+    private func daySections(from byDay: [String: [Festival]]) -> [DaySection] {
+        guard let interval = calendar.dateInterval(of: .month, for: monthAnchor) else { return [] }
+        let isCurrentMonth = calendar.isDate(monthAnchor, equalTo: Date(), toGranularity: .month)
+        var cursor = isCurrentMonth ? max(interval.start, calendar.startOfDay(for: Date())) : interval.start
+        var sections: [DaySection] = []
+        while cursor < interval.end {
+            let key = CalendarViewModel.dayFormatter.string(from: cursor)
+            if let items = byDay[key], !items.isEmpty {
+                sections.append(DaySection(id: key, date: cursor, festivals: sortedForAgenda(items)))
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return sections
+    }
+
+    /// 즐겨찾기를 맨 위로 올리고, 그다음은 가까운 순.
+    private func sortedForAgenda(_ items: [Festival]) -> [Festival] {
+        items.sorted { lhs, rhs in
+            let lhsSaved = favoritesStore.contains(id: lhs.id)
+            let rhsSaved = favoritesStore.contains(id: rhs.id)
+            if lhsSaved != rhsSaved { return lhsSaved }
+            if lhs.distanceMeters != rhs.distanceMeters { return lhs.distanceMeters < rhs.distanceMeters }
+            return lhs.title < rhs.title
+        }
+    }
+
+    /// 고른 날에 축제가 없으면 그 뒤로 가장 가까운 날의 구획으로 보낸다.
+    private func scrollTarget(for day: Date?, in sections: [DaySection]) -> String? {
+        guard let day else { return nil }
+        let key = CalendarViewModel.dayFormatter.string(from: day)
+        return sections.first { $0.id >= key }?.id ?? sections.last?.id
     }
 
     private static let monthTitleFormatter: DateFormatter = {
@@ -355,12 +468,8 @@ struct CalendarTabView: View {
         return formatter
     }()
 
-    private func agendaTitle(count: Int) -> String {
-        if weekendMode {
-            return "\u{C774}\u{BC88} \u{C8FC}\u{B9D0} \u{00B7} \(count)\u{AC1C} \u{CD95}\u{C81C}" // 이번 주말 · N개 축제
-        }
-        let dayText = selectedDay.map { Self.agendaDayFormatter.string(from: $0) } ?? ""
-        return "\(dayText) \u{00B7} \(count)\u{AC1C} \u{CD95}\u{C81C}" // M월 d일 (E) · N개 축제
+    private var selectedDayTitle: String {
+        selectedDay.map { Self.agendaDayFormatter.string(from: $0) } ?? ""
     }
 
     private var savedDayKeys: Set<String> {
@@ -416,14 +525,12 @@ struct CalendarTabView: View {
         let weekday = calendar.component(.weekday, from: today)
         let offset = (7 - weekday) % 7 // 토요일까지 남은 일수
         guard let saturday = calendar.date(byAdding: .day, value: offset, to: today) else { return }
-        weekendMode = true
         monthAnchor = saturday
         selectedDay = calendar.startOfDay(for: saturday)
         haptic()
     }
 
     private func handleSelectDay(_ day: Date) {
-        weekendMode = false
         selectedDay = day
         haptic()
     }
@@ -485,35 +592,49 @@ private struct AgendaRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(festival.primaryCategory?.tint ?? statusColor)
-                .frame(width: 4)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(festival.status.displayText)
-                        .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(statusColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(statusColor.opacity(0.12))
-                        .clipShape(FestivalDesign.chipShape)
-                    Text(festival.startDate == festival.endDate ? festival.startDate : "\(festival.startDate) ~ \(festival.endDate)")
-                        .font(.festival(size: 11, weight: .medium))
-                        .foregroundStyle(FestivalDesign.secondaryText)
+            DiscoverTabThumbnail(imageUrl: festival.imageUrl, isFestival: true, size: 68)
+                .overlay(alignment: .topLeading) {
+                    if isSaved {
+                        Image(systemName: "star.fill")
+                            .font(.festival(size: 9, weight: .bold))
+                            .foregroundStyle(FestivalDesign.onFill(FestivalDesign.lantern))
+                            .padding(4)
+                            .background(FestivalDesign.lantern)
+                            .clipShape(Circle())
+                            .padding(4)
+                    }
+                }
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    StatusBadge(
+                        text: festival.status.displayText,
+                        kind: festival.status == .ongoing ? .realtime : .sponsor
+                    )
+                    if let category = festival.primaryCategory {
+                        Text(category.displayName)
+                            .font(.festival(size: 10, weight: .semibold))
+                            .foregroundStyle(FestivalDesign.readable(category.tint))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(category.tint.opacity(0.16))
+                            .clipShape(FestivalDesign.chipShape)
+                    }
                 }
                 Text(festival.title)
                     .font(.festival(size: 15, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                if let venue = festival.venueName, !venue.isEmpty {
-                    Text(venue)
-                        .font(.festival(size: 12))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                }
-                Text(festival.address)
-                    .font(.festival(size: 11))
+                Text(periodAndFee)
+                    .font(.festival(size: 12, weight: .medium))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .lineLimit(1)
+                if !placeLine.isEmpty {
+                    Text(placeLine)
+                        .font(.festival(size: 12))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             VStack(spacing: 2) {
@@ -521,7 +642,7 @@ private struct AgendaRow: View {
                     Image(systemName: isSaved ? "star.fill" : "star")
                         .font(.festival(size: 16, weight: .semibold))
                         .foregroundStyle(isSaved ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -531,7 +652,7 @@ private struct AgendaRow: View {
                         Image(systemName: isReminderOn ? "bell.fill" : "bell")
                             .font(.festival(size: 15, weight: .semibold))
                             .foregroundStyle(isReminderOn ? FestivalDesign.coralText : FestivalDesign.secondaryText)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -545,8 +666,40 @@ private struct AgendaRow: View {
         .onTapGesture(perform: onSelect)
     }
 
-    private var statusColor: Color {
-        festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern
+    /// 기간과 요금은 한 줄에 붙인다. 요금 정보가 없으면 기간만 남긴다.
+    private var periodAndFee: String {
+        var parts = [periodText]
+        if let fee = festival.admissionFee?.trimmingCharacters(in: .whitespacesAndNewlines), !fee.isEmpty {
+            parts.append(fee)
+        }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private var periodText: String {
+        let start = Self.shortDate(festival.startDate)
+        let end = Self.shortDate(festival.endDate)
+        return start == end ? start : "\(start) ~ \(end)"
+    }
+
+    private var placeLine: String {
+        var parts: [String] = []
+        let venue = festival.venueName?.trimmingCharacters(in: .whitespaces) ?? ""
+        parts.append(venue.isEmpty ? festival.address : venue)
+        if festival.distanceMeters > 0 {
+            parts.append(Self.distanceText(festival.distanceMeters))
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
+    }
+
+    /// "2026-08-14" → "8.14". 날짜 구획 안에서는 연도가 군더더기다.
+    private static func shortDate(_ raw: String) -> String {
+        let parts = raw.split(separator: "-")
+        guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else { return raw }
+        return "\(month).\(day)"
+    }
+
+    private static func distanceText(_ meters: Int) -> String {
+        meters < 1000 ? "\(meters)m" : String(format: "%.1fkm", Double(meters) / 1000)
     }
 }
 
