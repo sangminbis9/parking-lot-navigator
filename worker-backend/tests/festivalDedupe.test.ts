@@ -111,6 +111,71 @@ describe("dedupeFestivals", () => {
     expect(result[0].id).toBe("b");
   });
 
+  it("merges titles that differ only by an edition, year, or organizer prefix", () => {
+    const pairs: [string, string][] = [
+      ["수원화성문화제", "제63회 수원화성문화제"],
+      ["무주반딧불축제", "제30회 무주반딧불축제"],
+      ["화성 루나빛축제", "제3회 화성 루나 빛 축제"],
+      ["DDP 건축투어", "DDP 건축투어 2026"],
+      ["DDP 건축투어", "[서울디자인재단] DDP 건축투어"],
+      ["뮤지컬 [베토벤]", "[세종문화회관] 뮤지컬 [베토벤]"],
+      ["2026 서울 일러스트코리아 in aT", "인증전시회 2026 서울 일러스트코리아 in aT"],
+      ["금남로 차 없는 거리 걷자잉", "2026 금남로 차 없는 거리 걷자잉"],
+    ];
+
+    for (const [titleA, titleB] of pairs) {
+      const result = dedupeFestivals([
+        makeFestival({ id: "a", title: titleA }),
+        makeFestival({ id: "b", title: titleB }),
+      ]);
+
+      expect(result, `"${titleA}" vs "${titleB}" should merge`).toHaveLength(1);
+    }
+  });
+
+  it("keeps different editions apart even when both are stated and the dates overlap", () => {
+    const result = dedupeFestivals([
+      makeFestival({ id: "a", title: "제1회 전통시장 축제" }),
+      makeFestival({ id: "b", title: "제2회 전통시장 축제" }),
+    ]);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("keeps sibling sessions apart when the difference is a trailing qualifier", () => {
+    const result = dedupeFestivals([
+      makeFestival({ id: "a", title: "[은평센터] 춤추는 라운지 [나를 위한 춤 - A반]" }),
+      makeFestival({ id: "b", title: "[은평센터] 춤추는 라운지 [나를 위한 춤 - B반]" }),
+    ]);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("fills empty fields of the richest item from the other providers", () => {
+    const result = dedupeFestivals([
+      makeFestival({
+        id: "rich",
+        title: "제30회 무주반딧불축제",
+        description: "가장 긴 설명",
+        subtitle: "부제",
+      }),
+      makeFestival({
+        id: "poor",
+        title: "무주반딧불축제",
+        imageUrl: "https://example.com/a.jpg",
+        sourceUrl: "https://example.com/a",
+        tags: ["문화관광축제"],
+      }),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("rich");
+    expect(result[0].description).toBe("가장 긴 설명");
+    expect(result[0].imageUrl).toBe("https://example.com/a.jpg");
+    expect(result[0].sourceUrl).toBe("https://example.com/a");
+    expect(result[0].tags).toEqual(["문화관광축제"]);
+  });
+
   // 좌표 미상 축제가 지역 대표 좌표 한 점에 수천 건 쌓여도 CPU 한도 안에서 끝나야 한다.
   // 전수 비교(O(n²)) 시절 이 입력이 Worker에서 503(error code 1102)을 냈다.
   it("dedupes thousands of festivals stacked on one coordinate quickly", () => {
