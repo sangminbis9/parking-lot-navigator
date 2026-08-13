@@ -51,6 +51,8 @@ struct MapHomeView: View {
         MapPinRenderer.selectedTipToTop * MapPinRenderer.scale * UIScreen.main.scale + 4
     }
     private let hologramConnectorTotalHeight: CGFloat = 16  // 10pt bar + 6pt dot
+    // 카드 폭. 최소 폭(320pt) 화면에서도 좌우 여백이 남는 값.
+    private let hologramCardWidth: CGFloat = 288
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -1110,7 +1112,7 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private func hologramOverlay(for pin: MapPinItem) -> some View {
-        let cardWidth: CGFloat = 268
+        let cardWidth = hologramCardWidth
         let containerWidth = max(mapContainerSize.width, cardWidth)
         let totalHeight = hologramOverlayHeight + hologramConnectorTotalHeight
         let containerHeight = max(mapContainerSize.height, totalHeight)
@@ -1184,7 +1186,7 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private func hologramConnectorLayer() -> some View {
-        let cardWidth: CGFloat = 268
+        let cardWidth = hologramCardWidth
         let containerWidth = max(mapContainerSize.width, cardWidth)
         let halfWidth = cardWidth / 2
         let clampedX = min(max(hologramAnchor.x, halfWidth + 8), containerWidth - halfWidth - 8)
