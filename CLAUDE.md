@@ -146,6 +146,19 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - 수동 sync: `POST /admin/sync-akei-trade-expos` (다른 admin sync와 동일하게 `Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 제약: AKEI 게시판에서 실제로 수집하는 기간은 현재~3개월 범위다. `/api/festivals`의 `upcomingWithinDays`는 최대 365일까지 요청 가능하지만, 3개월보다 먼 미래의 무역박람회는 아직 AKEI에도 게시되지 않아 자연히 비어 보인다 — 버그 아님.
 
+## 요금 정보 파이프라인
+
+축제·공연·박람회 요금은 소스마다 필드가 달라 예전에는 축제는 `raw_payload.admissionFee`, 이벤트형 행은 `lowest_price_text`/`is_free` 컬럼으로 갈라져 있었고, `/api/festivals`는 전자만 읽어 이벤트형 행의 요금이 통째로 누락됐다. 지금은 세 층으로 정리돼 있다.
+
+1. **정규화 (`worker-backend/src/feeNormalize.ts`)** — `normalizeFee()`가 어떤 소스의 요금 문구든 `{ feeType: free|paid|unknown, feeText }`로 만든다. 금액(`5,000원`)이 있으면 무조건 유료, `65세 이상 무료`처럼 특정 대상만 무료인 문구는 free로 치지 않는다. HTML 태그 제거·공백 정리·300자 상한 포함. `feeFreeFlag()`는 판별 불가를 `NULL`로 남겨 "유료"와 "모름"을 섞지 않는다.
+2. **저장/조회 (`discoveryCache.ts`)** — `discoveryRow`가 축제·이벤트 양쪽 모두 `lowest_price_text` + `is_free`에 같은 모양으로 쓴다. 읽을 때는 `mapFestivalRow`가 `raw_payload.admissionFee` → `raw_payload.price` → `lowest_price_text` → `is_free===1 ? "무료"` 순으로 fallback한다. `mergeWithExistingEnrichment`가 `lowest_price_text`도 함께 보므로, 채워 넣은 요금이 다음 sync의 `raw_payload` 통째 덮어쓰기에 지워지지 않는다.
+3. **Backfill (`worker-backend/src/feeBackfill.ts`)** — KOPIS `pcseguidance`와 TourAPI `usetimefestival`은 목록이 아니라 항목별 detail 응답에만 있어 sync 중 전부 호출할 수 없다. `runFeeBackfill()`이 `fee_checked_at IS NULL`이고 요금이 빈 행을 시작일 순으로 시간당 `FEE_BACKFILL_MAX_ITEMS`(기본 120)건씩 조회해 채운다. 결과가 "요금 정보 없음"이어도 `fee_checked_at`을 남겨 같은 행에 예산을 재소모하지 않고, 호출 실패는 `NULL`로 두어 다음 시간에 재시도한다.
+
+- 마이그레이션: `migrations/0017_discovery_fee_checked_at.sql` (`fee_checked_at` 컬럼 + `(source, fee_checked_at)` 인덱스).
+- cron: 기존 `"15 * * * *"` 핸들러에서 UTC 4시(city-festival)·5시(AKEI)를 제외한 매시간 실행 — subrequest 예산이 겹치지 않게.
+- 수동 실행: `POST /admin/backfill-fees?maxItems=<1..400>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다.
+
 ## 자주 쓰는 명령
 
 루트에서 실행:
@@ -191,6 +204,7 @@ curl -X POST \
 - `PATCH /api/admin/local-events/:id`
 - `GET /api/map/items?type=festival|event|all`
 - `POST /admin/sync-local-events`
+- `POST /admin/backfill-fees`
 
 앱에서 이벤트가 안 보일 때 먼저 확인할 것:
 
