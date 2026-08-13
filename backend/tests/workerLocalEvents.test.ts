@@ -19,7 +19,9 @@ describe("worker local events", () => {
       limit: 10
     });
 
-    expect(db.lastSelectSql).not.toMatch(/\bLIMIT\b/i);
+    // 스캔은 ORDER BY로 가까운 순 정렬한 뒤 LIMIT으로 자른다 (정렬 없는 LIMIT은 임의 행을 버린다).
+    expect(db.lastSelectSql).toMatch(/\bLIMIT\s+\?/i);
+    expect(db.lastSelectSql.indexOf("ORDER BY")).toBeLessThan(db.lastSelectSql.indexOf("LIMIT"));
     expect(result.items).toHaveLength(10);
     expect(result.nextCursor).toBe("10");
   });

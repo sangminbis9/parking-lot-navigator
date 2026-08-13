@@ -12,6 +12,9 @@ import {
   structureLocalEvent,
 } from "../../backend/src/features/localEvents/localEventStructuring.js";
 
+// bbox 모서리에 있어 원(radiusMeters) 밖으로 걸러질 행을 감안한 여유분.
+const LOCAL_EVENT_SCAN_SLACK = 200;
+
 export interface LocalEventQueryOptions {
   lat: number;
   lng: number;
@@ -61,6 +64,11 @@ export async function queryLocalEvents(
     options.radiusMeters /
     Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
   const now = new Date().toISOString();
+  // bbox 조건만 걸고 전부 가져오면 승인 이벤트가 늘어날수록 Worker 메모리를 그대로 밟는다
+  // (/api/festivals가 같은 패턴으로 1102를 냈다). localEventSort와 같은 순서를 SQL에 두고,
+  // 현재 페이지에 필요한 만큼(+ bbox 모서리에서 원 밖으로 떨어질 몫)만 읽는다.
+  const lngScale = Math.cos((options.lat * Math.PI) / 180) ** 2;
+  const scanLimit = offset + options.limit + LOCAL_EVENT_SCAN_SLACK;
   let rows: D1Result<LocalEventRow>;
   try {
     rows = await db
@@ -74,7 +82,11 @@ export async function queryLocalEvents(
            AND lng BETWEEN ? AND ?
            AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))
            AND (end_date IS NULL OR end_date >= date('now', '-1 day'))
-           AND (end_date IS NOT NULL OR start_date >= date('now', '-14 days'))`,
+           AND (end_date IS NOT NULL OR start_date >= date('now', '-14 days'))
+         ORDER BY is_sponsored DESC,
+                  priority_score DESC,
+                  (lat - ?) * (lat - ?) + (lng - ?) * (lng - ?) * ?
+         LIMIT ?`,
       )
       .bind(
         status,
@@ -83,6 +95,12 @@ export async function queryLocalEvents(
         options.lng - lngDelta,
         options.lng + lngDelta,
         now,
+        options.lat,
+        options.lat,
+        options.lng,
+        options.lng,
+        lngScale,
+        scanLimit,
       )
       .all<LocalEventRow>();
   } catch (error) {
@@ -91,15 +109,22 @@ export async function queryLocalEvents(
     }
     throw error;
   }
-  const matched = (rows.results ?? [])
+  const scanned = rows.results ?? [];
+  const matched = scanned
     .map((row) => mapLocalEventRow(row, options.lat, options.lng))
     .filter((item) => item.distanceMeters <= options.radiusMeters)
     .sort(localEventSort);
   const page = matched.slice(offset, offset + options.limit);
   const nextOffset = offset + page.length;
+  // 스캔 상한에 걸렸다면 뒤에 더 있을 수 있으므로 커서를 닫지 않는다.
+  const scanCapped = scanned.length >= scanLimit;
   return {
     items: page,
-    nextCursor: nextOffset < matched.length ? String(nextOffset) : null,
+    nextCursor:
+      nextOffset < matched.length ||
+      (scanCapped && page.length === options.limit)
+        ? String(nextOffset)
+        : null,
   };
 }
 

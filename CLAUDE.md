@@ -37,9 +37,9 @@ func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWit
 
 **Worker `/api/performances`**
 
-- `worker-backend/src/discoveryCache.ts`: `queryPerformancesFromCache()` — D1에서 kopis 이벤트 + music_performance 축제를 Promise.all로 병렬 쿼리
+- `worker-backend/src/discoveryCache.ts`: `queryPerformancesFromCache()` — `discovery_items`의 `type='festival'` 행을 한 번 조회한 뒤 `source`로 가른다. `PERFORMANCE_EVENT_SOURCES`(현재 `kopis`)에 속하면 `events`, 나머지 중 `music_performance` 묶음만 `festivals`로 나간다. KOPIS를 포함한 public API 이벤트는 `discoveryRow`에서 `type='festival'`로 저장되므로 D1에 `type='event'` 행은 존재하지 않는다.
 - `worker-backend/src/index.ts`: `GET /api/performances?lat=&lng=&radiusMeters=&upcomingWithinDays=`
-- `KOPIS_MAX_PAGES = "100"`, `KOPIS_DETAIL_MAX_ITEMS = "50"`, HTTP 429 → 빈 배열 반환 → 루프 조기 종료
+- `KOPIS_MAX_PAGES = "10"`, `KOPIS_DETAIL_MAX_ITEMS = "5"` (wrangler.toml 실제값), HTTP 429 → 빈 배열 반환 → 루프 조기 종료
 
 **달력 탭 (`ios-app/Features/Calendar/`)**
 
@@ -106,21 +106,21 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 
 ## 현재 로컬 이벤트 수집 구조
 
-현재 production provider는 `worker-backend/src/localEventDiscovery.ts`의 `naver_place_feed_kakao_local`이다.
+현재 production provider는 `worker-backend/src/localEventDiscovery.ts`이고, 저장되는 `source`는 `naver_blog`다.
 
 수집 흐름:
 
-1. Kakao Category Search로 전국 주요 지역의 음식점(`FD6`)과 카페(`CE7`) 업체 후보를 수집한다.
-2. Naver Local Search API로 Kakao 업체와 매칭되는 Naver Place ID/링크를 찾는다.
-3. Naver Place feed 공개 HTML에서 임베디드 JSON/텍스트를 읽어 이벤트 키워드를 찾는다.
+1. Naver Search Open API(블로그)로 지역·업종 키워드 조합을 검색해 이벤트 후보 글을 모은다.
+2. 제목/본문에서 매장명과 혜택·기간 키워드를 뽑아낸다.
+3. Kakao Local Keyword Search로 그 매장명을 조회해 실제 업체(`FD6`/`CE7`)와 좌표·주소를 매칭한다.
 4. 혜택, 날짜, 매장명, 주소, 좌표, 원본 링크를 구조화한다.
 5. 점수 기준을 만족하면 `approved`, 아니면 `pending`으로 저장한다.
 
 중요:
 
-- 더 이상 Naver Blog Search를 메인 수집에 사용하지 않는다.
+- Naver Place feed HTML 스크래핑은 실패해 폐기했다. 다시 시도하지 않는다.
 - Instagram 무단 HTML 크롤링, 로그인 세션 흉내, 봇 탐지 우회, 비공식 API 호출은 금지한다.
-- Naver Place feed도 공개 페이지를 best-effort로 읽는 수준만 허용한다. 우회 헤더, 로그인 쿠키, 내부 API 역호출을 추가하지 않는다.
+- 공개 API(Naver Search / Kakao Local)만 쓴다. 우회 헤더, 로그인 쿠키, 내부 API 역호출을 추가하지 않는다.
 - 게시물 이미지 원본을 무단 저장하지 않는다. 가능하면 원본 링크 또는 허용된 이미지 URL만 참조한다.
 - 댓글 작성자, 개인 계정, 개인정보는 저장하지 않는다.
 
@@ -129,9 +129,9 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - `LOCAL_EVENT_PROVIDER_ENABLED`
 - `LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE`
 - `LOCAL_EVENT_SEARCH_MAX_QUERIES`
-- `LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY`
-- `KAKAO_CATEGORY_RADIUS_METERS`
-- `KAKAO_CATEGORY_MAX_PAGES`
+- `LOCAL_EVENT_BLOG_DISPLAY`
+- `LOCAL_EVENT_MAX_KAKAO_LOOKUPS`
+- `LOCAL_EVENT_KAKAO_RADIUS_METERS`
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
 - `KAKAO_REST_API_KEY`

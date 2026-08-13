@@ -69,13 +69,9 @@ export type Env = {
   CITY_FESTIVAL_GEOCODE_MISS_BUDGET?: string;
   CITY_FESTIVAL_DETAIL_FETCH_BUDGET?: string;
   LOCAL_EVENT_SEARCH_MAX_QUERIES: string;
-  LOCAL_EVENT_MAX_PLACES_PER_REGION_CATEGORY: string;
-  KAKAO_CATEGORY_RADIUS_METERS: string;
-  KAKAO_CATEGORY_MAX_PAGES: string;
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
   NAVER_SEARCH_BASE_URL: string;
-  NAVER_PLACE_BASE_URL: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -305,7 +301,15 @@ const listQuerySchema = z.object({
   deviceId: z.string().min(8).max(128).optional(),
 });
 
-app.use("*", cors());
+// 앱이 쓰는 공개 API에만 CORS를 연다. admin 경로는 Bearer 토큰으로 보호되지만,
+// 브라우저에서 임의 origin이 응답 본문을 읽을 이유가 없으므로 CORS 헤더를 주지 않는다.
+const publicCors = cors();
+app.use("*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (path === "/admin" || path.startsWith("/admin/")) return next();
+  if (path === "/api/admin" || path.startsWith("/api/admin/")) return next();
+  return publicCors(c, next);
+});
 
 app.route("/merchant", createMerchantApp());
 app.route("/legal", createLegalApp());
@@ -1145,18 +1149,6 @@ async function loadDiscoveryRuntime(env: Env): Promise<{
   return discoveryRuntimePromise;
 }
 
-async function syncDiscoveryScheduled(
-  env: Env,
-  kinds: Array<"festivals" | "events">,
-): Promise<void> {
-  try {
-    const backend = await loadBackend(env);
-    await syncDiscoveryCache(env.DB!, backend, kinds);
-  } catch (error) {
-    console.error("discovery sync failed", error);
-  }
-}
-
 async function syncDiscoveryChunkScheduled(
   env: Env,
   chunkIndex: number,
@@ -1329,8 +1321,61 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
   };
 }
 
+// backend/src의 모듈들은 config/env.ts(모듈 로드 시점 zod 파싱)와 일부 process.env 직접
+// 참조로 설정을 읽으므로, Worker 바인딩을 process.env로 옮겨줘야 한다. 다만 전부 복사하면
+// SYNC_ADMIN_TOKEN·MERCHANT_SESSION_SECRET처럼 backend가 쓰지도 않는 시크릿까지 전역에
+// 올라간다. backend가 실제로 읽는 키만 옮긴다 — backend/src/config/env.ts의 envSchema나
+// process.env 직접 참조를 추가할 때 이 목록도 같이 갱신할 것.
+const BACKEND_ENV_KEYS = [
+  // backend/src/config/env.ts envSchema
+  "NODE_ENV",
+  "PORT",
+  "HOST",
+  "LOG_LEVEL",
+  "PARKING_PROVIDER_MODE",
+  "DEFAULT_SEARCH_RADIUS_METERS",
+  "DEFAULT_DISCOVER_RADIUS_METERS",
+  "STALE_THRESHOLD_SECONDS",
+  "CACHE_TTL_SECONDS",
+  "DISCOVER_CACHE_TTL_SECONDS",
+  "FESTIVAL_PROVIDER_ENABLED",
+  "EVENT_PROVIDER_ENABLED",
+  "KAKAO_REST_API_KEY",
+  "KAKAO_LOCAL_BASE_URL",
+  "SEOUL_OPEN_DATA_KEY",
+  "SEOUL_OPEN_DATA_BASE_URL",
+  "SEOUL_SEONGDONG_IOT_KEY",
+  "SEOUL_HANGANG_PARKING_KEY",
+  "PUBLIC_DATA_SERVICE_KEY",
+  "PUBLIC_DATA_ENV",
+  "PUBLIC_DATA_BASE_URL",
+  "CULTURE_PORTAL_API_KEY",
+  "KOPIS_API_KEY",
+  "KOPIS_BASE_URL",
+  "KCISA_428_API_KEY",
+  "KCISA_196_API_KEY",
+  "KCISA_BASE_URL",
+  // provider 튜닝값 (process.env 직접 참조)
+  "CULTURE_PORTAL_MAX_PAGES",
+  "EVENT_GEOCODE_MISS_BUDGET",
+  "KCISA_MAX_PAGES",
+  "KOPIS_MAX_PAGES",
+  "KOPIS_DETAIL_MAX_ITEMS",
+  "NATIONAL_CULTURE_MAX_PAGES",
+  "SEOUL_CULTURE_MAX_PAGES",
+  "TOUR_AREA_DATE_RESOLVE_MAX_ITEMS",
+  "TOUR_AREA_FESTIVAL_MAX_PAGES",
+  "TOUR_ENRICH_MAX_ITEMS",
+  "TOUR_FESTIVAL_MAX_PAGES",
+  // worker-backend/src/discoveryCache.ts positiveIntegerFromEnv
+  "DISCOVERY_SYNC_CONCURRENCY",
+  "DISCOVERY_SYNC_FETCH_TIMEOUT_MS",
+] as const;
+
 function syncProcessEnv(env: Env): void {
-  for (const [key, value] of Object.entries(env)) {
+  const source = env as unknown as Record<string, unknown>;
+  for (const key of BACKEND_ENV_KEYS) {
+    const value = source[key];
     if (typeof value === "string") {
       process.env[key] = value;
     }
