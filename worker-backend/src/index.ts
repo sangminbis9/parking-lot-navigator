@@ -263,7 +263,7 @@ const cityFestivalDiscoverySyncSchema = z.object({
 })
 
 const feeBackfillSchema = z.object({
-  maxItems: z.coerce.number().int().min(1).max(400).optional(),
+  maxItems: z.coerce.number().int().min(1).max(45).optional(),
 });
 
 const LOCAL_EVENT_CHUNK_COUNT = 12;
@@ -1043,11 +1043,6 @@ export default {
       if (scheduledAt.getUTCHours() === 5) {
         ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
       }
-      // 요금 backfill은 항목별 detail 호출이라 한 번에 다 못 돈다. 위 두
-      // 스크래핑과 subrequest 예산이 겹치지 않는 시간대에만 매시간 조금씩 돈다.
-      if (![4, 5].includes(scheduledAt.getUTCHours())) {
-        ctx.waitUntil(runFeeBackfillScheduled(env));
-      }
       return;
     }
     if (controller.cron === "30 */3 * * *") {
@@ -1056,6 +1051,10 @@ export default {
     }
     if (controller.cron === "*/20 * * * *") {
       ctx.waitUntil(runTaggingScheduled(env));
+      // 요금 backfill은 항목별 detail 호출이라 한 번에 다 못 돈다. invocation당
+      // subrequest 예산이 50이므로, 외부 호출이 많은 로컬 이벤트/스크래핑 cron
+      // 대신 호출이 가벼운 태깅 cron에 얹어 조금씩 나눠 돈다.
+      ctx.waitUntil(runFeeBackfillScheduled(env));
       return;
     }
   },
