@@ -2,6 +2,7 @@ import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { REGION_FALLBACK_COORDINATES } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
   currentDiscoveryChunkIndex,
@@ -769,41 +770,66 @@ const DISCOVERY_ENRICHMENT_FIELDS = [
 // raw_payload는 매 sync마다 통째로 덮어써지므로, 이번 사이클에 detail
 // enrichment 대상으로 선택되지 않아 값이 null인 필드는 D1에 이미 저장된
 // 이전 값으로 채워 넣는다. 새 값이 있으면 항상 새 값이 우선한다.
+// event 형태 item의 요금(price)도 같은 이유로 보존한다 — 요금 backfill이
+// 채워 넣은 값이 다음 sync에서 통째로 날아가면 backfill 자체가 무의미해진다.
 async function mergeWithExistingEnrichment(
   db: D1Database,
   items: DiscoveryItem[],
 ): Promise<DiscoveryItem[]> {
-  const festivalItems = items.filter(
-    (item): item is Festival => !("eventType" in item),
-  );
-  if (festivalItems.length === 0) return items;
+  if (items.length === 0) return items;
 
-  const ids = festivalItems.map((item) => `festival:${item.id}`);
+  const ids = items.map(discoveryItemId);
   const placeholders = ids.map(() => "?").join(",");
   const rows = await db
     .prepare(
-      `SELECT id, raw_payload FROM discovery_items WHERE id IN (${placeholders})`,
+      `SELECT id, raw_payload, lowest_price_text FROM discovery_items WHERE id IN (${placeholders})`,
     )
     .bind(...ids)
-    .all<{ id: string; raw_payload: string | null }>();
+    .all<{
+      id: string;
+      raw_payload: string | null;
+      lowest_price_text: string | null;
+    }>();
 
-  const existingById = new Map<string, Record<string, unknown> | null>();
+  const existingById = new Map<
+    string,
+    { raw: Record<string, unknown> | null; priceText: string | null }
+  >();
   for (const row of rows.results ?? []) {
-    existingById.set(row.id, parseRawPayload(row.raw_payload));
+    existingById.set(row.id, {
+      raw: parseRawPayload(row.raw_payload),
+      priceText: row.lowest_price_text,
+    });
   }
   if (existingById.size === 0) return items;
 
   return items.map((item) => {
-    if ("eventType" in item) return item;
-    const existing = existingById.get(`festival:${item.id}`);
+    const existing = existingById.get(discoveryItemId(item));
     if (!existing) return item;
+    if ("eventType" in item) {
+      const previousPrice =
+        stringFromRaw(existing.raw?.price) ?? existing.priceText;
+      if (item.price != null || !previousPrice) return item;
+      const restored = normalizeFee(previousPrice);
+      return {
+        ...item,
+        price: previousPrice,
+        isFree: item.isFree || restored.feeType === "free",
+      };
+    }
+    const raw = existing.raw;
+    if (!raw) return item;
     let changed = false;
     const merged: Festival = { ...item };
     for (const field of DISCOVERY_ENRICHMENT_FIELDS) {
-      if (merged[field] == null && typeof existing[field] === "string" && existing[field]) {
-        merged[field] = existing[field] as string;
+      if (merged[field] == null && typeof raw[field] === "string" && raw[field]) {
+        merged[field] = raw[field] as string;
         changed = true;
       }
+    }
+    if (merged.admissionFee == null && existing.priceText) {
+      merged.admissionFee = existing.priceText;
+      changed = true;
     }
     return changed ? merged : item;
   });
@@ -832,14 +858,25 @@ async function upsertDiscoveryItems(
   return upserted;
 }
 
+// discovery_items의 primary key. discoveryRow와 enrichment 병합이 같은 규칙을
+// 써야 하므로 한 곳에 둔다.
+export function discoveryItemId(item: DiscoveryItem): string {
+  return "eventType" in item
+    ? `festival:${item.source}:${item.id}`
+    : `festival:${item.id}`;
+}
+
 export function discoveryRow(
   item: DiscoveryItem,
   syncedAt: string,
 ): DiscoveryRowPayload {
   const isEvent = "eventType" in item;
+  // 요금은 소스별 필드(event.price / festival.admissionFee)를 하나로 정규화해
+  // 항상 lowest_price_text + is_free 두 컬럼에 같은 모양으로 넣는다.
+  const fee = normalizeFee(isEvent ? item.price : item.admissionFee);
   // Public API events are intentionally folded into the festival discovery domain for one map toggle and one cache type.
   return {
-    id: isEvent ? `festival:${item.source}:${item.id}` : `festival:${item.id}`,
+    id: discoveryItemId(item),
     type: "festival",
     source: item.source,
     sourceItemId: item.id,
@@ -849,14 +886,18 @@ export function discoveryRow(
     startDate: item.startDate,
     endDate: item.endDate,
     status: item.status,
-    isFree: isEvent ? (item.isFree ? 1 : 0) : null,
+    isFree: isEvent
+      ? item.isFree || fee.feeType === "free"
+        ? 1
+        : 0
+      : feeFreeFlag(fee),
     venueName: item.venueName,
     address: item.address,
     lat: item.lat,
     lng: item.lng,
     rating: null,
     reviewCount: null,
-    lowestPriceText: isEvent ? (item.price ?? null) : null,
+    lowestPriceText: fee.feeText,
     lowestPricePlatform: null,
     sourceUrl: item.sourceUrl,
     imageUrl: item.imageUrl,
@@ -922,7 +963,14 @@ function mapFestivalRow(
     primaryCategory:
       (row.primary_category as Festival["primaryCategory"]) ?? null,
     categoryTags: parseJsonArray<string>(row.category_tags_json),
-    admissionFee: textFromRaw(raw?.admissionFee),
+    // event 형태로 저장된 행(kopis·서울 열린데이터 등)은 요금이 raw_payload가
+    // 아니라 lowest_price_text/is_free 컬럼에 있다. /api/festivals가 그 행도
+    // 축제로 내보내므로 여기서 같이 읽어 요금이 통째로 누락되지 않게 한다.
+    admissionFee:
+      textFromRaw(raw?.admissionFee) ??
+      textFromRaw(raw?.price) ??
+      row.lowest_price_text ??
+      (row.is_free === 1 ? "무료" : null),
     discountInfo: textFromRaw(raw?.discountInfo),
     bookingInfo: textFromRaw(raw?.bookingInfo),
     contactPhone: textFromRaw(raw?.contactPhone),

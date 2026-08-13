@@ -147,6 +147,18 @@ export class TourApiDetailClient {
     return extractFirstItem<TourApiDetailIntroItem>(body);
   }
 
+  // 요금 backfill 전용 경로. detail()은 detailCommon2/detailImage2까지 부르지만
+  // 요금은 detailIntro2 한 번이면 되므로 subrequest 예산을 아낀다.
+  async admissionFee(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const key = contentId.trim();
+    if (!key) return null;
+    const intro = await this.fetchIntroItemCached(key, signal).catch(() => null);
+    return cleanHtml(intro?.usetimefestival);
+  }
+
   detail(
     contentId: string,
     signal?: AbortSignal,

@@ -35,6 +35,7 @@ import {
 import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
 import { runAkeiTradeExpoDiscovery } from "./akeiTradeExpoDiscovery.js";
 import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
+import { runFeeBackfill } from "./feeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { runTagging } from "./llmTagging.js";
@@ -84,6 +85,7 @@ export type Env = {
   CULTURE_PORTAL_API_KEY?: string;
   KOPIS_API_KEY?: string;
   KOPIS_BASE_URL: string;
+  FEE_BACKFILL_MAX_ITEMS?: string;
   KCISA_428_API_KEY?: string;
   KCISA_196_API_KEY?: string;
   KCISA_BASE_URL: string;
@@ -258,6 +260,10 @@ const localEventDiscoverySyncSchema = z.object({
 
 const cityFestivalDiscoverySyncSchema = z.object({
   chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
+})
+
+const feeBackfillSchema = z.object({
+  maxItems: z.coerce.number().int().min(1).max(400).optional(),
 });
 
 const LOCAL_EVENT_CHUNK_COUNT = 12;
@@ -911,6 +917,23 @@ app.post("/admin/sync-akei-trade-expos", async (c) => {
   }
 });
 
+app.post("/admin/backfill-fees", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  const query = feeBackfillSchema.parse(queryObject(c.req.raw.url));
+  try {
+    const result = await runFeeBackfill(c.env.DB, c.env, {
+      maxItems: query.maxItems,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/run-head-review", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -1020,6 +1043,11 @@ export default {
       if (scheduledAt.getUTCHours() === 5) {
         ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
       }
+      // 요금 backfill은 항목별 detail 호출이라 한 번에 다 못 돈다. 위 두
+      // 스크래핑과 subrequest 예산이 겹치지 않는 시간대에만 매시간 조금씩 돈다.
+      if (![4, 5].includes(scheduledAt.getUTCHours())) {
+        ctx.waitUntil(runFeeBackfillScheduled(env));
+      }
       return;
     }
     if (controller.cron === "30 */3 * * *") {
@@ -1070,6 +1098,18 @@ async function runTaggingScheduled(env: Env): Promise<void> {
   } catch (error) {
     console.error("tagging cron failed", error);
     await notifyOpsFailure(env, "tagging cron", error);
+  }
+}
+
+async function runFeeBackfillScheduled(env: Env): Promise<void> {
+  try {
+    const result = await runFeeBackfill(env.DB!, env);
+    if (result.scanned > 0) {
+      console.log("fee backfill done", JSON.stringify(result));
+    }
+  } catch (error) {
+    console.error("fee backfill failed", error);
+    await notifyOpsFailure(env, "fee backfill", error);
   }
 }
 
