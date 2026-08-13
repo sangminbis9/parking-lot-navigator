@@ -826,13 +826,14 @@ struct MapHomeView: View {
     private func standaloneParkingPanel(parkingLot: ParkingLot) -> some View {
         StandaloneParkingMapCard(
             parkingLot: parkingLot,
-            hasDestinationContext: viewModel.selectedDestination != nil,
             onOpenMap: {
                 openMaps(name: parkingLot.name, latitude: parkingLot.lat, longitude: parkingLot.lng)
             },
             onDetail: {
-                guard let destination = viewModel.selectedDestination else { return }
-                router.showDetail(destination: destination, parkingLot: parkingLot)
+                router.showDetail(
+                    destination: viewModel.selectedDestination ?? parkingLot.asDestination,
+                    parkingLot: parkingLot
+                )
             },
             onNavigate: {
                 guard let destination = viewModel.selectedDestination else {
@@ -1620,6 +1621,13 @@ private extension CLLocationCoordinate2D {
     }
 }
 
+private extension ParkingLot {
+    /// 목적지 없이 주차장 핀만 눌렀을 때, 상세 화면 기준점으로 쓸 자기 자신.
+    var asDestination: Destination {
+        Destination(id: id, name: name, address: address, lat: lat, lng: lng, source: source)
+    }
+}
+
 private struct ParkingMapCard: View {
     let parkingLot: ParkingLot
     let recommendation: ParkingRecommendation
@@ -1663,10 +1671,20 @@ private struct ParkingMapCard: View {
             Text(parkingLot.displayStatus)
                 .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(statusColor)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                Text("혼잡도 \(parkingLot.congestionStatus.label)")
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(statusColor)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("혼잡도 \(parkingLot.congestionStatus.label)")
             Text(parkingLot.feeSummary ?? "\u{C694}\u{AE08} \u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
                 .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Button("\u{C0C1}\u{C138}") { onDetail() }
@@ -1707,7 +1725,6 @@ private struct ParkingMapCard: View {
 
 private struct StandaloneParkingMapCard: View {
     let parkingLot: ParkingLot
-    let hasDestinationContext: Bool
     let onOpenMap: () -> Void
     let onDetail: () -> Void
     let onNavigate: () -> Void
@@ -1735,8 +1752,10 @@ private struct StandaloneParkingMapCard: View {
             HStack(spacing: 8) {
                 parkingInfoPill(title: "\u{AC00}\u{B2A5}", value: parkingLot.availableSpaces.map { "\($0)\u{BA74}" } ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
                 parkingInfoPill(title: "\u{C804}\u{CCB4}", value: parkingLot.totalCapacity.map { "\($0)\u{BA74}" } ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
-                parkingInfoPill(title: "\u{C694}\u{AE08}", value: parkingLot.feeSummary ?? "\u{C815}\u{BCF4} \u{C5C6}\u{C74C}")
+                congestionPill
             }
+
+            feeRow
 
             HStack {
                 if parkingLot.source.hasSuffix("realtime") {
@@ -1751,12 +1770,10 @@ private struct StandaloneParkingMapCard: View {
                     .buttonStyle(.bordered)
                     .tint(FestivalDesign.navy)
                     .controlSize(.small)
-                if hasDestinationContext {
-                    Button("\u{C0C1}\u{C138}") { onDetail() }
-                        .buttonStyle(.bordered)
-                        .tint(FestivalDesign.navy)
-                        .controlSize(.small)
-                }
+                Button("\u{C0C1}\u{C138}") { onDetail() }
+                    .buttonStyle(.bordered)
+                    .tint(FestivalDesign.navy)
+                    .controlSize(.small)
                 Button("\u{ACBD}\u{B85C} \u{BCF4}\u{AE30}") { onNavigate() }
                     .buttonStyle(.borderedProminent)
                     .tint(FestivalDesign.teal)
@@ -1771,6 +1788,50 @@ private struct StandaloneParkingMapCard: View {
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
         .festivalShadow(.high)
+    }
+
+    private var congestionPill: some View {
+        let tint = FestivalDesign.congestionColor(parkingLot.congestionStatus)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text("혼잡도")
+                .font(.festival(.caption2, weight: .semibold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                Text(parkingLot.congestionStatus.label)
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("혼잡도 \(parkingLot.congestionStatus.label)")
+    }
+
+    // 요금 문구는 길이가 제각각이라 잘리면 안 된다. 한 줄 폭을 다 쓰고 넘치면 줄바꿈한다.
+    private var feeRow: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("요금")
+                .font(.festival(.caption2, weight: .semibold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Text(parkingLot.feeSummary ?? "정보 없음")
+                .font(.festival(.caption, weight: .semibold))
+                .foregroundStyle(FestivalDesign.navy)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(FestivalDesign.cream.opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 
     private func parkingInfoPill(title: String, value: String) -> some View {
