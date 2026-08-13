@@ -155,7 +155,7 @@ struct AppRootView: View {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(FestivalDesign.barSurface)
-        appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
+        appearance.shadowColor = UIColor(FestivalDesign.barBorder)
 
         let selectedColor = UIColor(FestivalDesign.coralText)
         let normalColor = UIColor(FestivalDesign.secondaryText)
@@ -178,7 +178,7 @@ struct AppRootView: View {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(FestivalDesign.barSurface)
-        appearance.shadowColor = UIColor(FestivalDesign.creamDeep.opacity(0.55))
+        appearance.shadowColor = UIColor(FestivalDesign.barBorder)
 
         let titleColor = UIColor(FestivalDesign.coralText)
         appearance.titleTextAttributes = [
@@ -199,6 +199,8 @@ struct AppRootView: View {
 
 private struct FestivalTabBar: View {
     @Binding var selection: AppTab
+    // 색을 static 경로에서 읽으므로, 테마가 바뀔 때 이 뷰가 다시 계산되도록 직접 구독한다.
+    @EnvironmentObject private var themeStore: FestivalThemeStore
 
     var body: some View {
         HStack(spacing: 6) {
@@ -218,7 +220,7 @@ private struct FestivalTabBar: View {
             Rectangle()
                 .fill(FestivalDesign.isHandDrawn
                     ? FestivalDesign.outline.opacity(0.75)
-                    : FestivalDesign.creamDeep.opacity(0.55))
+                    : FestivalDesign.barBorder)
                 .frame(height: FestivalDesign.isHandDrawn ? 2 : 1),
             alignment: .top
         )

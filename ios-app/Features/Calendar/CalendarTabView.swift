@@ -169,13 +169,14 @@ struct CalendarTabView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(FestivalDesign.surface)
+        .background(FestivalDesign.barSurface)
         .overlay(
             Rectangle()
-                .fill(FestivalDesign.creamDeep.opacity(0.4))
+                .fill(FestivalDesign.barBorder)
                 .frame(height: 1),
             alignment: .bottom
         )
+        .festivalShadow(.low)
     }
 
     private var legend: some View {
