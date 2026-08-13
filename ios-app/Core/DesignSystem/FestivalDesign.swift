@@ -380,7 +380,8 @@ enum FestivalDesign {
     }
 
     /// 바와 본문 사이 경계선. 두 배경의 밝기 차가 라이트에서 1.1:1 수준이라
-    /// 옅은 크림색 선으로는 경계가 보이지 않는다. 그 모드의 잉크(navy)를 섞어 또렷하게 만든다.
+    /// 옅은 크림색 선으로는 경계가 보이지 않는다. 크림 계열의 색상을 유지한 채
+    /// 진하게 눌러, 회색 선이 아니라 테마색 선으로 경계를 만든다.
     static var barBorder: Color {
         FestivalAppearance.dynamic(
             light: barBorderColor(dark: false),
@@ -388,9 +389,18 @@ enum FestivalDesign {
         )
     }
 
+    /// 경계선은 글자가 아니라 얇은 구분선이라 본문 대비 기준(3:1)까지 갈 필요가 없다.
+    /// 이 정도면 눈에 또렷하게 잡히면서 색기가 남는다.
+    private static let barBorderContrast = 1.8
+
     private static func barBorderColor(dark: Bool) -> Color {
         let p = dark ? FestivalTheme.current.darkPalette : FestivalTheme.current.lightPalette
-        return mix(p.creamDeep, p.navy, dark ? 0.30 : 0.50)
+        return deepened(
+            resolve(p.creamDeep, dark: dark),
+            on: barSurfaceColor(dark: dark),
+            target: barBorderContrast,
+            dark: dark
+        )
     }
 
     /// 강조색(coral/teal/navy 등)으로 꽉 채운 면 위에 얹는 글자·아이콘 색.
@@ -438,17 +448,41 @@ enum FestivalDesign {
     }
 
     private static func readableColor(_ color: Color, dark: Bool) -> Color {
-        let source = resolve(color, dark: dark)
-        let canvas = textCanvas(dark: dark)
-        let inkColor: Color = luminance(canvas) > 0.35 ? .black : .white
-        var result = source
-        var amount = 0.0
-        while amount < 1.0, contrastRatio(result, canvas) < 3.3 {
-            amount = min(1.0, amount + 0.05)
-            result = mix(source, inkColor, amount)
-        }
-        return result
+        deepened(
+            resolve(color, dark: dark),
+            on: textCanvas(dark: dark),
+            target: readableContrast,
+            dark: dark
+        )
     }
+
+    private static let readableContrast = 3.3
+
+    /// 대비를 맞추려고 검정(또는 흰색)을 섞으면 세 채널이 함께 눌려 채도는 그대로인데
+    /// 명도만 죽는다. 파스텔 노랑이 올리브색이, 산호색이 벽돌색이 되는 이유가 이것이다.
+    /// 대신 색상(hue)을 고정하고 채도를 올린 뒤 명도만 이분 탐색해, 같은 대비에서
+    /// 탁한 색이 아니라 진한 사탕색으로 떨어지게 한다.
+    private static func deepened(_ color: Color, on reference: Color, target: Double, dark: Bool) -> Color {
+        if contrastRatio(color, reference) >= target { return color }
+        let source = hsb(color)
+        let saturation = min(1.0, source.s + saturationBoost)
+        // 라이트에서는 명도를 낮춰, 다크에서는 높여 대비를 확보한다.
+        var low = dark ? source.b : 0.0
+        var high = dark ? 1.0 : source.b
+        for _ in 0..<18 {
+            let middle = (low + high) / 2
+            let candidate = Color(hue: source.h, saturation: saturation, brightness: middle)
+            if contrastRatio(candidate, reference) >= target {
+                if dark { high = middle } else { low = middle }
+            } else {
+                if dark { low = middle } else { high = middle }
+            }
+        }
+        return Color(hue: source.h, saturation: saturation, brightness: dark ? high : low)
+    }
+
+    /// 명도를 눌러도 색이 남아 있게 하는 채도 보정폭. 올리면 더 쨍해지고, 내리면 탁해진다.
+    private static let saturationBoost = 0.18
 
     /// 강조색으로 꽉 채운 면 위의 글자색. 흰 글자가 대비 3:1도 못 내는 조합
     /// (노란 lantern 배지가 대표적)에서만 어두운 잉크로 바꾼다.
@@ -525,6 +559,12 @@ enum FestivalDesign {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
         return (Double(r), Double(g), Double(b))
+    }
+
+    private static func hsb(_ color: Color) -> (h: Double, s: Double, b: Double) {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return (Double(h), Double(s), Double(b))
     }
 
     private static func luminance(_ color: Color) -> Double {
