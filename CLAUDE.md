@@ -152,11 +152,12 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 
 1. **정규화 (`worker-backend/src/feeNormalize.ts`)** — `normalizeFee()`가 어떤 소스의 요금 문구든 `{ feeType: free|paid|unknown, feeText }`로 만든다. 금액(`5,000원`)이 있으면 무조건 유료, `65세 이상 무료`처럼 특정 대상만 무료인 문구는 free로 치지 않는다. HTML 태그 제거·공백 정리·300자 상한 포함. `feeFreeFlag()`는 판별 불가를 `NULL`로 남겨 "유료"와 "모름"을 섞지 않는다.
 2. **저장/조회 (`discoveryCache.ts`)** — `discoveryRow`가 축제·이벤트 양쪽 모두 `lowest_price_text` + `is_free`에 같은 모양으로 쓴다. 읽을 때는 `mapFestivalRow`가 `raw_payload.admissionFee` → `raw_payload.price` → `lowest_price_text` → `is_free===1 ? "무료"` 순으로 fallback한다. `mergeWithExistingEnrichment`가 `lowest_price_text`도 함께 보므로, 채워 넣은 요금이 다음 sync의 `raw_payload` 통째 덮어쓰기에 지워지지 않는다.
-3. **Backfill (`worker-backend/src/feeBackfill.ts`)** — KOPIS `pcseguidance`와 TourAPI `usetimefestival`은 목록이 아니라 항목별 detail 응답에만 있어 sync 중 전부 호출할 수 없다. `runFeeBackfill()`이 `fee_checked_at IS NULL`이고 요금이 빈 행을 시작일 순으로 시간당 `FEE_BACKFILL_MAX_ITEMS`(기본 120)건씩 조회해 채운다. 결과가 "요금 정보 없음"이어도 `fee_checked_at`을 남겨 같은 행에 예산을 재소모하지 않고, 호출 실패는 `NULL`로 두어 다음 시간에 재시도한다.
+3. **Backfill (`worker-backend/src/feeBackfill.ts`)** — KOPIS `pcseguidance`와 TourAPI `usetimefestival`은 목록이 아니라 항목별 detail 응답에만 있어 sync 중 전부 호출할 수 없다. `runFeeBackfill()`이 `fee_checked_at IS NULL`이고 요금이 빈 행을 시작일 순으로 한 회차에 `FEE_BACKFILL_MAX_ITEMS`(기본 30)건씩 조회해 채운다. 결과가 "요금 정보 없음"이어도 `fee_checked_at`을 남겨 같은 행에 예산을 재소모하지 않고, 일시적 실패(429·5xx·네트워크)는 `NULL`로 두어 다음 회차에 재시도한다. KOPIS가 특정 id에 항상 400을 주는 경우는 재시도해도 소용없으므로 "요금 없음"으로 확정한다.
 
 - 마이그레이션: `migrations/0017_discovery_fee_checked_at.sql` (`fee_checked_at` 컬럼 + `(source, fee_checked_at)` 인덱스).
-- cron: 기존 `"15 * * * *"` 핸들러에서 UTC 4시(city-festival)·5시(AKEI)를 제외한 매시간 실행 — subrequest 예산이 겹치지 않게.
-- 수동 실행: `POST /admin/backfill-fees?maxItems=<1..400>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- **subrequest 예산이 이 파이프라인의 상한이다.** 이 계정의 Worker는 invocation 하나당 외부 fetch 50건까지만 가능하고(51번째부터 `Too many subrequests by single Worker invocation`), backfill은 항목당 fetch 1건을 쓴다. D1 쿼리는 이 한도에 포함되지 않는다. 그래서 한 회차 상한은 30건이고 `POST /admin/backfill-fees`의 `maxItems`도 45로 제한한다. 이 값을 올리면 초과분이 통째로 실패한다.
+- cron: `"*/20 * * * *"`(태깅)에 얹어 20분마다 실행 — 하루 72회 × 30건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다.
+- 수동 실행: `POST /admin/backfill-fees?maxItems=<1..45>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다.
 
 ## 자주 쓰는 명령

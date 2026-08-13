@@ -155,7 +155,9 @@ export class TourApiDetailClient {
   ): Promise<string | null> {
     const key = contentId.trim();
     if (!key) return null;
-    const intro = await this.fetchIntroItemCached(key, signal).catch(() => null);
+    // 여기서 실패를 삼키면 호출자가 "요금 없음"과 "조회 실패"를 구분하지 못해
+    // 실패한 행에 조회 완료 표식이 찍힌다. 예외는 그대로 올려보낸다.
+    const intro = await this.fetchIntroItemCached(key, signal);
     return cleanHtml(intro?.usetimefestival);
   }
 

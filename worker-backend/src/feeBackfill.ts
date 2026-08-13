@@ -12,7 +12,8 @@ import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 // 요금이 비어 있는 행을 매시간 조금씩 훑어 채운다. 한 번 조회한 행은
 // fee_checked_at으로 표시해 정보가 없는 행에 예산이 반복 소모되지 않게 한다.
 
-const DEFAULT_MAX_ITEMS = 120;
+// invocation당 subrequest 예산이 50이라 한 번에 이보다 많이 돌 수 없다.
+const DEFAULT_MAX_ITEMS = 30;
 // tourApiDetailClient의 DETAIL_ENRICH_CONCURRENCY와 같은 이유(동시 fetch 상한).
 const BACKFILL_CONCURRENCY = 5;
 
@@ -37,6 +38,8 @@ export interface FeeBackfillResult {
   empty: number;
   failed: number;
   bySource: Record<string, { scanned: number; filled: number }>;
+  // 실패가 몰릴 때 원인을 로그 없이 응답만으로 가릴 수 있게 남기는 표본.
+  errors?: string[];
 }
 
 export interface FeeBackfillEnv {
@@ -105,23 +108,25 @@ export async function runFeeBackfill(
             : tourClient
               ? await tourClient.admissionFee(contentIdOf(row.source_item_id))
               : null;
-        return { row, text, failed: false };
+        return { row, text, failed: false, message: undefined };
       } catch (error) {
-        console.warn(
-          `fee backfill failed id=${row.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return { row, text: null, failed: true };
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.warn(`fee backfill failed id=${row.id}: ${message}`);
+        return { row, text: null, failed: true, message };
       }
     },
   );
 
-  for (const { row, text, failed } of fetched) {
+  const errorSamples = new Set<string>();
+  for (const { row, text, failed, message } of fetched) {
     result.scanned += 1;
     const bucket = (result.bySource[row.source] ??= { scanned: 0, filled: 0 });
     bucket.scanned += 1;
     if (failed) {
       // 실패한 행은 fee_checked_at을 남기지 않아 다음 회차에 다시 시도한다.
       result.failed += 1;
+      if (message && errorSamples.size < 5) errorSamples.add(message);
       continue;
     }
     const fee = normalizeFee(text);
@@ -162,6 +167,7 @@ export async function runFeeBackfill(
   for (let start = 0; start < statements.length; start += 50) {
     await db.batch(statements.slice(start, start + 50));
   }
+  if (errorSamples.size > 0) result.errors = [...errorSamples];
   return result;
 }
 
@@ -179,8 +185,13 @@ async function fetchKopisFee(
   const response = await fetchWithTimeout(url, {
     headers: { Accept: "application/xml,text/xml,*/*" },
   });
+  // 429/5xx는 일시적이라 던져서 다음 회차에 재시도하고, 그 밖의 4xx는 이 id로는
+  // 영원히 실패하므로 "요금 없음"으로 확정해 매시간 예산을 갉아먹지 않게 한다.
   if (!response.ok) {
-    throw new Error(`KOPIS detail API failed: ${response.status}`);
+    if (response.status === 429 || response.status >= 500) {
+      throw new Error(`KOPIS detail API failed: ${response.status}`);
+    }
+    return null;
   }
   const detail = parseXmlItems(await response.text(), "db")[0];
   return detail ? getString(detail, ["pcseguidance"]) : null;
