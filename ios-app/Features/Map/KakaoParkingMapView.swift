@@ -94,7 +94,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
         private var showAllDiscoverLabelsAfterZoomIn = false
-        private var renderedDarkMap: Bool?
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -207,7 +206,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
             updateMapRect()
             configureLabelsIfNeeded()
             configureCameraEventsIfNeeded()
-            applyDarkOverlayIfNeeded(on: mapView)
             if shouldMoveCamera {
                 suppressDiscoverLabelsAfterGesture = false
                 showAllDiscoverLabelsAfterZoomIn = false
@@ -296,17 +294,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
             manager.addPoiStyle(makeStyle(id: "current-location", image: .currentLocationPin))
             manager.addPoiStyle(makeStyle(id: "destination", image: .destinationPin))
             stylesReady = true
-        }
-
-        /// 카카오맵은 다크 베이스맵을 제공하지 않는다. 지도 전체를 덮는 DimScreen이 유일한 수단이라
-        /// 다크 모드에서는 이걸로 타일 밝기를 낮춘다. cover를 `.map`으로 두어 우리 핀은 그대로 밝게 남긴다.
-        private func applyDarkOverlayIfNeeded(on mapView: KakaoMap) {
-            let dark = FestivalAppearance.isDark
-            guard renderedDarkMap != dark else { return }
-            renderedDarkMap = dark
-            mapView.dimScreen.cover = .map
-            mapView.dimScreen.color = UIColor(white: 0.03, alpha: 0.42)
-            mapView.dimScreen.isEnabled = dark
         }
 
         private func configureCameraEventsIfNeeded() {
