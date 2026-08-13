@@ -477,7 +477,7 @@ struct MapHomeView: View {
         .background(FestivalDesign.barSurface.opacity(0.98))
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(FestivalDesign.creamDeep.opacity(0.45))
+                .fill(FestivalDesign.barBorder)
                 .frame(height: 1)
         }
         .festivalShadow(.medium)

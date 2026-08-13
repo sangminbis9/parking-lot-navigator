@@ -318,15 +318,17 @@ extension FestivalThemePalette {
 
 
 final class FestivalThemeStore: ObservableObject {
+    // 색 접근 경로가 UserDefaults를 직접 읽으므로, 저장은 반드시 objectWillChange보다 먼저여야 한다.
+    // didSet에 두면 구독자가 옛 값을 읽은 채로 다시 그려질 수 있어 willSet에서 저장한다.
     @Published var selectedTheme: FestivalTheme {
-        didSet {
-            UserDefaults.standard.set(selectedTheme.rawValue, forKey: FestivalTheme.storageKey)
+        willSet {
+            UserDefaults.standard.set(newValue.rawValue, forKey: FestivalTheme.storageKey)
         }
     }
 
     @Published var isDarkMode: Bool {
-        didSet {
-            UserDefaults.standard.set(isDarkMode, forKey: FestivalAppearance.storageKey)
+        willSet {
+            UserDefaults.standard.set(newValue, forKey: FestivalAppearance.storageKey)
         }
     }
 
@@ -375,6 +377,20 @@ enum FestivalDesign {
     private static func barSurfaceColor(dark: Bool) -> Color {
         let p = dark ? FestivalTheme.current.darkPalette : FestivalTheme.current.lightPalette
         return mix(p.surface, p.cream, barTintAmount)
+    }
+
+    /// 바와 본문 사이 경계선. 두 배경의 밝기 차가 라이트에서 1.1:1 수준이라
+    /// 옅은 크림색 선으로는 경계가 보이지 않는다. 그 모드의 잉크(navy)를 섞어 또렷하게 만든다.
+    static var barBorder: Color {
+        FestivalAppearance.dynamic(
+            light: barBorderColor(dark: false),
+            dark: barBorderColor(dark: true)
+        )
+    }
+
+    private static func barBorderColor(dark: Bool) -> Color {
+        let p = dark ? FestivalTheme.current.darkPalette : FestivalTheme.current.lightPalette
+        return mix(p.creamDeep, p.navy, dark ? 0.30 : 0.50)
     }
 
     /// 강조색(coral/teal/navy 등)으로 꽉 채운 면 위에 얹는 글자·아이콘 색.
@@ -800,5 +816,12 @@ extension View {
             }
             .toolbarBackground(FestivalDesign.barSurface, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            // toolbarBackground를 지정하면 UINavigationBarAppearance의 shadowColor가 함께 적용된다는
+            // 보장이 없다. 바와 본문 배경의 밝기 차가 작으므로 경계선은 직접 그린다.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Rectangle()
+                    .fill(FestivalDesign.barBorder)
+                    .frame(height: 1)
+            }
     }
 }

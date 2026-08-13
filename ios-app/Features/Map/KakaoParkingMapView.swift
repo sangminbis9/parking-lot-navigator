@@ -94,6 +94,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
         private var showAllDiscoverLabelsAfterZoomIn = false
+        private var renderedDarkMap: Bool?
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -206,6 +207,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             updateMapRect()
             configureLabelsIfNeeded()
             configureCameraEventsIfNeeded()
+            applyDarkOverlayIfNeeded(on: mapView)
             if shouldMoveCamera {
                 suppressDiscoverLabelsAfterGesture = false
                 showAllDiscoverLabelsAfterZoomIn = false
@@ -296,6 +298,17 @@ struct KakaoParkingMapView: UIViewRepresentable {
             stylesReady = true
         }
 
+        /// 카카오맵은 다크 베이스맵을 제공하지 않는다. 지도 전체를 덮는 DimScreen이 유일한 수단이라
+        /// 다크 모드에서는 이걸로 타일 밝기를 낮춘다. cover를 `.map`으로 두어 우리 핀은 그대로 밝게 남긴다.
+        private func applyDarkOverlayIfNeeded(on mapView: KakaoMap) {
+            let dark = FestivalAppearance.isDark
+            guard renderedDarkMap != dark else { return }
+            renderedDarkMap = dark
+            mapView.dimScreen.cover = .map
+            mapView.dimScreen.color = UIColor(white: 0.03, alpha: 0.42)
+            mapView.dimScreen.isEnabled = dark
+        }
+
         private func configureCameraEventsIfNeeded() {
             guard let mapView = controller?.getView("mapview") as? KakaoMap else { return }
             if cameraStoppedEventHandler == nil {
@@ -375,13 +388,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 }
                 let option = PoiOptions(styleID: styleID, poiID: pin.poiID)
                 option.rank = rank(for: pin.kind)
-                option.clickable = true
+                // 내 위치 핀은 보여줄 정보가 없으므로 탭 대상에서 뺀다.
+                option.clickable = !pin.isCurrentLocation
                 let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
                 let poi = layer.addPoi(option: option, at: point)
-                if let handler = poi?.addPoiTappedEventHandler(
-                    target: self,
-                    handler: KakaoParkingMapView.Coordinator.poiTappedHandler
-                ) {
+                if !pin.isCurrentLocation,
+                   let handler = poi?.addPoiTappedEventHandler(
+                       target: self,
+                       handler: KakaoParkingMapView.Coordinator.poiTappedHandler
+                   ) {
                     poiTapHandlers.append(handler)
                 }
                 poi?.show()
@@ -408,6 +423,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             let thresholdMeters = max(touchRadius, 40)
 
             return latestPins
+                .filter { !$0.isCurrentLocation }
                 .map { pin in
                     (
                         pin,
@@ -527,6 +543,11 @@ private var pinStyleThemeKey: String {
 }
 
 private extension MapPinItem {
+    var isCurrentLocation: Bool {
+        if case .currentLocation = kind { return true }
+        return false
+    }
+
     var poiID: String {
         id.map { character in
             character.isLetter || character.isNumber || character == "-" || character == "_" ? character : "_"
