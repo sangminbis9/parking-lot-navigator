@@ -299,17 +299,11 @@ function festivalRichnessScore(festival: Festival): number {
   return score;
 }
 
-export async function queryEventsFromCache(
-  db: D1Database,
-  lat: number,
-  lng: number,
-  options: DiscoveryQueryOptions,
-): Promise<FreeEvent[]> {
-  const rows = await queryDiscoveryRows(db, "event", lat, lng, options);
-  return rows
-    .map((row) => mapEventRow(row, lat, lng))
-    .filter((item) => !options.freeOnly || item.isFree);
-}
+// KOPIS를 비롯한 public API 이벤트는 discoveryRow에서 type='festival'로 저장하므로
+// (discovery_items에 type='event' 행은 존재하지 않는다) 여기서 source로 갈라낸다.
+// 예전에는 type='event'를 조회해 events를 만들었는데, 그 조합은 항상 빈 배열이라
+// music_performance 태그가 붙지 않은 KOPIS 공연이 응답에서 통째로 빠졌다.
+export const PERFORMANCE_EVENT_SOURCES = new Set(["kopis"]);
 
 export async function queryPerformancesFromCache(
   db: D1Database,
@@ -317,15 +311,16 @@ export async function queryPerformancesFromCache(
   lng: number,
   options: DiscoveryQueryOptions,
 ): Promise<{ festivals: Festival[]; events: FreeEvent[] }> {
-  const [eventRows, festivalRows] = await Promise.all([
-    queryDiscoveryRows(db, "event", lat, lng, options),
-    queryDiscoveryRows(db, "festival", lat, lng, options),
-  ]);
-  const events = eventRows
-    .filter((row) => row.source === "kopis")
-    .map((row) => mapEventRow(row, lat, lng));
+  const rows = await queryDiscoveryRows(db, "festival", lat, lng, options);
+  const events = rows
+    .filter((row) => PERFORMANCE_EVENT_SOURCES.has(row.source))
+    .map((row) => mapEventRow(row, lat, lng))
+    .filter((item) => !options.freeOnly || item.isFree);
+  // 같은 항목이 events와 festivals 양쪽에 실리지 않도록 event source는 제외한다.
   const festivals = dedupeFestivals(
-    festivalRows.map((row) => mapFestivalRow(row, lat, lng)),
+    rows
+      .filter((row) => !PERFORMANCE_EVENT_SOURCES.has(row.source))
+      .map((row) => mapFestivalRow(row, lat, lng)),
     (cluster) => cluster.some((f) => f.primaryCategory === "music_performance"),
   );
   return { festivals, events };
@@ -447,8 +442,9 @@ async function syncDiscoveryKind(
   );
   const skipped = items.length - validItems.length;
   const upserted = await upsertDiscoveryItems(db, validItems, generatedAt);
-  const pruned =
-    kind === "events" ? 0 : await pruneStaleDiscovery(db, typeForKind(kind));
+  // festivals/events 어느 kind로 들어와도 행은 type='festival'로 저장되므로,
+  // 프루닝 대상도 하나뿐이다. (예전 events 가드는 지울 행이 없어 무의미했다.)
+  const pruned = await pruneStaleDiscovery(db, "festival");
   return {
     syncType: `discover:${kind}`,
     fetched: items.length,
@@ -533,6 +529,10 @@ async function queryDiscoveryRows(
   const minSeenAt = new Date(
     Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000,
   ).toISOString();
+  // LIMIT만 걸면 SQLite가 bbox 안에서 어떤 행을 돌려줄지 정해지지 않아, bbox 결과가
+  // LIMIT을 넘는 순간 가까운 축제가 조용히 빠지고 응답이 매번 달라진다. 근사 거리
+  // (경도는 위도에 따른 실거리 차이를 cos²로 보정) 오름차순으로 잘라 항상 가까운 쪽을 남긴다.
+  const lngScale = Math.cos((lat * Math.PI) / 180) ** 2;
   const rows = await db
     .prepare(
       `SELECT *
@@ -541,6 +541,7 @@ async function queryDiscoveryRows(
          AND lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
          AND last_seen_at >= ?
+       ORDER BY (lat - ?) * (lat - ?) + (lng - ?) * (lng - ?) * ?
        LIMIT ?`,
     )
     .bind(
@@ -550,6 +551,11 @@ async function queryDiscoveryRows(
       lng - lngDelta,
       lng + lngDelta,
       minSeenAt,
+      lat,
+      lat,
+      lng,
+      lng,
+      lngScale,
       Math.max(limit + 500, limit),
     )
     .all<DiscoveryItemRow>();
@@ -909,7 +915,8 @@ function rowPassesFilters(
   options: DiscoveryQueryOptions,
 ): boolean {
   if (options.ongoingOnly && row.status !== "ongoing") return false;
-  if (row.type === "event" && options.freeOnly && !row.is_free) return false;
+  // freeOnly는 event source 행에만 의미가 있어 queryPerformancesFromCache에서 처리한다.
+  // (모든 행이 type='festival'로 저장되므로 여기서 걸면 is_free가 NULL인 축제까지 사라진다.)
   if (!row.start_date || !row.end_date) return true;
   const end = Date.parse(row.end_date);
   if (!Number.isFinite(end)) return true;
@@ -1063,11 +1070,6 @@ async function finishSyncRun(
       id,
     )
     .run();
-}
-
-function typeForKind(kind: DiscoverySyncKind): DiscoveryType {
-  if (kind === "festivals") return "festival";
-  return "event";
 }
 
 function parseJsonArray<T>(value: string | null): T[] {
