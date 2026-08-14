@@ -72,6 +72,28 @@ export class DetailFetchBudget {
   }
 }
 
+// 상세 페이지 fetch 예산(invocation당 15건)은 목록에 이미 끝난 축제가 훨씬 많아
+// 대부분 소모된다 — 2026-08-14 실측으로 city_festivals 982건 중 아직 끝나지 않은
+// 행은 157건뿐이었고, 좌표가 fallback에 남은 행의 상당수가 전북 tour.jb.go.kr처럼
+// "상세 페이지에 좌표가 있는데 예산이 없어 못 읽은" 경우였다. 예산을 쓰기 전에
+// 종료일을 보고 이미 지난 축제는 건너뛴다. 날짜 형식이 사이트마다 달라 파싱하지
+// 못하면 예산을 쓰는 쪽(true)으로 남겨 기존 동작을 유지한다.
+const CANDIDATE_DATE_PATTERN = /(\d{4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/g;
+
+export function isDetailFetchWorthwhile(
+  candidate: RawCityFestivalCandidate,
+  now: Date = new Date()
+): boolean {
+  const raw = candidate.endDateRaw ?? candidate.startDateRaw;
+  if (!raw) return true;
+  const matches = [...raw.matchAll(CANDIDATE_DATE_PATTERN)];
+  const last = matches[matches.length - 1];
+  if (!last) return true;
+  const [, year, month, day] = last;
+  const endDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return endDate >= now.toISOString().slice(0, 10);
+}
+
 // 상세 페이지 fetch를 Promise.all로 한꺼번에 origin에 쏘면 서버가 burst를
 // 못 버텨 대부분 실패한다(2026-08-09 인천 itour 연수구 실측: 13건 동시 요청
 // 시 9건 실패, fallback 좌표로 남음). 소규모씩 나눠 순차 배치로 처리해

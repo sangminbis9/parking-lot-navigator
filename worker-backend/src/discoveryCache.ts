@@ -186,6 +186,20 @@ export async function queryFestivalsFromCache(
 // 실제로는 다른 축제를 임계값 이상으로 잘못 판정하는 사례가 있었다(정보 오표기 위험).
 const FESTIVAL_DEDUPE_MAX_DISTANCE_METERS = 1500;
 
+// 좌표를 공연장·전시장 자체에서 받아오는 소스. 여기서는 같은 제목·같은 기간이라도
+// 장소가 다르면 서로 다른 공연/전시이므로 위 1500m 기준을 그대로 쓴다.
+const PRECISE_COORDINATE_SOURCES = new Set(["kopis", "akei-trade-expo"]);
+
+// 나머지 축제 소스는 좌표를 주소 지오코딩이나 지역 대표 좌표로 채운다. 실제로 같은
+// 축제인데 provider마다 몇 km씩 어긋난 사례가 확인됐다 — "송도해변축제"는 행사장
+// 주소(달빛공원)와 시 게시판이 적은 인근 주소가 1.9km, "평택호 물빛축제"는 18.8km
+// 차이가 나 1500m 기준으로는 갈라져 앱에 중복 노출됐다. 제목 핵심부가 완전히 같고
+// 회차·연도가 충돌하지 않으며 기간이 겹치는 경우에만 적용되는 완화이므로, 넓혀도
+// 서로 다른 축제가 합쳐질 위험은 낮다. 전국 단위로 같은 이름을 여러 지역에서 동시에
+// 여는 프로그램(예: 12개 지역 "국가유산 미디어아트", 30km 이상 떨어짐)은 이 상한 밖에
+// 남는다.
+const FESTIVAL_DEDUPE_COARSE_MAX_DISTANCE_METERS = 20000;
+
 // clusterFilter가 주어지면, 카테고리 등으로 후보를 미리 좁힌 다음 dedup하는 대신
 // 그룹(중복 묶음) 단위로 조건을 확인한다. 그래야 같은 실제 축제가 provider별로 다른
 // category 태그를 갖고 있어도 항상 같은 승자를 고르며(=/api/festivals와 /api/performances가
@@ -301,9 +315,14 @@ function isSameFestivalOccurrence(
   representative: Festival,
   festival: Festival,
 ): boolean {
+  const maxDistance =
+    PRECISE_COORDINATE_SOURCES.has(representative.source) &&
+    PRECISE_COORDINATE_SOURCES.has(festival.source)
+      ? FESTIVAL_DEDUPE_MAX_DISTANCE_METERS
+      : FESTIVAL_DEDUPE_COARSE_MAX_DISTANCE_METERS;
   if (
     distanceMeters(representative.lat, representative.lng, festival.lat, festival.lng) >
-    FESTIVAL_DEDUPE_MAX_DISTANCE_METERS
+    maxDistance
   ) {
     return false;
   }
