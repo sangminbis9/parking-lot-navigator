@@ -12,10 +12,6 @@ struct FavoritesView: View {
                 } else {
                     destinationSection(title: "저장한 목적지", destinations: store.favorites)
                 }
-
-                if !store.recents.isEmpty {
-                    destinationSection(title: "최근 목적지", destinations: Array(store.recents.prefix(5)))
-                }
             }
             .padding(16)
         }
