@@ -761,8 +761,8 @@ struct MapHomeView: View {
         let ref = locationProvider.coordinate
         let firstItem: DiscoverListItem? = {
             switch sources.first {
-            case .festival(let f): return .festival(f, referenceCoordinate: ref)
-            case .event(let e): return .event(e, referenceCoordinate: ref)
+            case .festival(let f, _): return .festival(f, referenceCoordinate: ref)
+            case .event(let e, _): return .event(e, referenceCoordinate: ref)
             case nil: return nil
             }
         }()
@@ -987,8 +987,8 @@ struct MapHomeView: View {
         let byID = Dictionary(discoverSources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return cluster.memberIDs.compactMap { id -> DiscoverListItem? in
             switch byID[id] {
-            case .festival(let festival): return .festival(festival, referenceCoordinate: ref)
-            case .event(let event): return .event(event, referenceCoordinate: ref)
+            case .festival(let festival, _): return .festival(festival, referenceCoordinate: ref)
+            case .event(let event, _): return .event(event, referenceCoordinate: ref)
             case nil: return nil
             }
         }
