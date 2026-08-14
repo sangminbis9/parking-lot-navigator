@@ -15,6 +15,7 @@ struct ProviderStatusView: View {
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("Provider 상태")
         .task { await load() }
+        .refreshable { await load() }
     }
 
     private var providerStatusCard: some View {

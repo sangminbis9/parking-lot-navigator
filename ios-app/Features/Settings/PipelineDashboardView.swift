@@ -54,6 +54,7 @@ struct PipelineDashboardView: View {
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("파이프라인 대시보드")
         .task { await viewModel.load() }
+        .refreshable { await viewModel.load() }
     }
 
     private func discoveryCard(_ section: PipelineStats.DiscoveryItemsSection) -> some View {
