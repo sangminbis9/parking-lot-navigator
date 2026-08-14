@@ -4,8 +4,6 @@ struct SettingsView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var themeStore: FestivalThemeStore
     @EnvironmentObject private var notificationPrefs: NotificationPreferencesModel
-    @State private var providers: [ProviderHealth] = []
-    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -15,13 +13,12 @@ struct SettingsView: View {
                 merchantCard
                 appSettingsCard
                 dataSourceCard
-                providerStatusCard
+                developerSectionCard
             }
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("설정")
-        .task { await load() }
     }
 
     private var merchantURL: URL {
@@ -166,52 +163,66 @@ struct SettingsView: View {
         .festivalCard()
     }
 
-    private var providerStatusCard: some View {
+    private var developerSectionCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Provider 상태")
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Spacer()
-                StatusBadge(text: "\(providers.count)개", kind: .source)
-            }
+            Text("개발자")
+                .font(.festival(.headline))
+                .foregroundStyle(FestivalDesign.navy)
 
-            if providers.isEmpty && errorMessage == nil {
-                LoadingStateView(text: "provider 상태를 확인하는 중입니다")
-                    .frame(height: 90)
+            developerRow(icon: "building.2.fill", title: "에이전트 사무실", subtitle: "제공자·수집 현황을 마스코트로 확인") {
+                AgentOfficeView(apiClient: apiClient)
             }
-
-            ForEach(providers) { provider in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .top) {
-                        Text(provider.name)
-                            .font(.festival(.subheadline, weight: .semibold))
-                            .foregroundStyle(FestivalDesign.navy)
-                        Spacer()
-                        StatusBadge(text: provider.status, kind: provider.status == "up" ? .realtime : .warning)
-                    }
-                    Text("품질 점수 \(provider.qualityScore, specifier: "%.2f")")
-                        .font(.festival(.caption))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                    if let error = provider.lastError {
-                        Text(error)
-                            .font(.festival(.caption))
-                            .foregroundStyle(FestivalDesign.coralText)
-                    }
-                }
-                .padding(10)
-                .background(FestivalDesign.cream.opacity(0.35))
-                .clipShape(FestivalDesign.controlShape)
+            developerRow(icon: "chart.bar.doc.horizontal.fill", title: "파이프라인 대시보드", subtitle: "수집 파이프라인 통계 전체 보기") {
+                PipelineDashboardView(apiClient: apiClient)
             }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.coralText)
+            developerRow(icon: "heart.text.square.fill", title: "Provider 상태", subtitle: "주차·탐색 provider 헬스체크") {
+                ProviderStatusView(apiClient: apiClient)
             }
         }
         .padding(14)
         .festivalCard()
+    }
+
+    private func developerRow<Destination: View>(
+        icon: String,
+        title: String,
+        subtitle: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(FestivalDesign.cream)
+                    Image(systemName: icon)
+                        .font(.festival(.subheadline))
+                        .foregroundStyle(FestivalDesign.coralText)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.festival(.subheadline, weight: .semibold))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(subtitle)
+                        .font(.festival(.caption))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
+            .padding(10)
+            .background(FestivalDesign.cream.opacity(0.35))
+            .clipShape(FestivalDesign.controlShape)
+        }
+        .buttonStyle(.plain)
     }
 
     private func settingRow(_ title: String, _ value: String) -> some View {
@@ -230,13 +241,6 @@ struct SettingsView: View {
         .clipShape(FestivalDesign.controlShape)
     }
 
-    private func load() async {
-        do {
-            providers = try await apiClient.providerHealth()
-        } catch {
-            errorMessage = "provider 상태를 불러오지 못했습니다."
-        }
-    }
 }
 
 struct ThemeSettingsView: View {

@@ -13,7 +13,6 @@ enum AppTab: Hashable {
     case discover
     case favorites
     case calendar
-    case agentOffice
     case settings
 
     var title: String {
@@ -22,7 +21,6 @@ enum AppTab: Hashable {
         case .discover: return "이벤트"
         case .favorites: return "즐겨찾기"
         case .calendar: return "캘린더"
-        case .agentOffice: return "사무실"
         case .settings: return "설정"
         }
     }
@@ -33,12 +31,11 @@ enum AppTab: Hashable {
         case .discover: return "sparkles"
         case .favorites: return "star.fill"
         case .calendar: return "calendar"
-        case .agentOffice: return "building.2.fill"
         case .settings: return "gearshape.fill"
         }
     }
 
-    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .calendar, .agentOffice, .settings]
+    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .calendar, .settings]
 }
 
 final class AppTabRouter: ObservableObject {
@@ -76,8 +73,6 @@ struct AppRootView: View {
                     FavoritesView()
                 case .calendar:
                     CalendarTabView(apiClient: apiClient)
-                case .agentOffice:
-                    AgentOfficeView(apiClient: apiClient)
                 case .settings:
                     SettingsView(apiClient: apiClient)
                 }

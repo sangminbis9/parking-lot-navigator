@@ -49,6 +49,7 @@ import {
 } from "./realtimeParkingCache.js";
 import { queryStaticParkingCache } from "./staticParkingCache.js";
 import { createD1GeocodeStore } from "./geocodeStore.js";
+import { queryPipelineStats } from "./pipelineStats.js";
 
 export type Env = {
   DB?: D1Database;
@@ -713,6 +714,12 @@ app.get("/discover/providers/health", async (c) => {
     ],
     generatedAt: new Date().toISOString(),
   });
+});
+
+app.get("/discover/pipeline-stats", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const stats = await queryPipelineStats(c.env.DB);
+  return c.json(stats);
 });
 
 app.post("/admin/sync-national-parking", async (c) => {
