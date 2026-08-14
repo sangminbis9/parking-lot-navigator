@@ -64,7 +64,7 @@ enum FestivalPrimaryCategory: String, CaseIterable, Codable, Hashable {
         case .filmMedia: return Color(red: 0.149, green: 0.388, blue: 0.408)         // #264653
         case .artExhibition: return Color(red: 0.616, green: 0.306, blue: 0.867)     // #9D4EDD
         case .generalEvent: return Color(red: 0.271, green: 0.427, blue: 0.663)      // #4569A9
-        case .tradeExpo: return Color(red: 0.361, green: 0.404, blue: 0.490) // #5C677D
+        case .tradeExpo: return Color(red: 0.608, green: 0.482, blue: 0.933) // #9B7BEE
         case .etc: return Color(red: 0.424, green: 0.459, blue: 0.490)               // #6C757D
         }
     }
