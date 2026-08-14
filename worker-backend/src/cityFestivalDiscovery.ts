@@ -28,7 +28,11 @@ const DEFAULT_DETAIL_FETCH_BUDGET = 6;
 // 2026-08-09: detail budget을 20→15로 낮추면서 cap도 3→2로 낮췄다. cap이
 // budget보다 크게 남으면(예: 10개 사이트 × cap3=30 > budget15) 앞쪽 몇 개
 // 사이트가 다시 예산을 다 써버려 뒤쪽 사이트가 굶는 FIFO 패턴이 재현된다.
-const DETAIL_FETCH_PER_SITE_CAP = 2;
+// 2026-08-14: 이미 끝난 축제는 상세 fetch 전에 걸러지므로(isDetailFetchWorthwhile)
+// 한 사이트의 실제 수요가 크게 줄었다. 진행 중/예정 후보가 몰린 사이트(전주 6건 등)가
+// 두 건만 읽고 나머지를 fallback 좌표에 남기지 않도록 cap을 3으로 올린다.
+// 예산 자체(15)는 그대로라 invocation당 subrequest 총량은 변하지 않는다.
+const DETAIL_FETCH_PER_SITE_CAP = 3;
 
 export interface CityFestivalDiscoveryResult {
   processed: number;

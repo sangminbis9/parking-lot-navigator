@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../../../backend/src/features/discover/events/eventProviderUtils.js";
-import { DETAIL_FETCH_CONCURRENCY, mapWithConcurrency } from "../types.js";
+import { DETAIL_FETCH_CONCURRENCY, mapWithConcurrency, isDetailFetchWorthwhile } from "../types.js";
 import type { CitySiteConfig, RawCityFestivalCandidate, DetailFetchBudget } from "../types.js";
 
 // 전북특별자치도 관광포털(tour.jb.go.kr)의 축제 목록은 /travel/info/list.do에
@@ -77,6 +77,8 @@ async function fillLocationFromDetailPage(
   siteId: string
 ): Promise<void> {
   if (!candidate.detailUrl) return;
+  // 이미 끝난 축제는 예산을 쓰지 않는다(isDetailFetchWorthwhile 주석 참고).
+  if (!isDetailFetchWorthwhile(candidate)) return;
   if (budget && !budget.tryConsume(siteId)) return;
   try {
     const response = await fetchWithTimeout(

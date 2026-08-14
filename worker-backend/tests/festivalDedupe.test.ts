@@ -78,6 +78,65 @@ describe("dedupeFestivals", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("merges the same festival when geocoded coordinates differ by kilometers", () => {
+    // 실제 사례: "송도해변축제"는 시 게시판이 적은 인근 주소(city-scraped)와 행사장
+    // 주소(public-data-culture-festival)가 1.9km 떨어져 있어 앱에 두 번 노출됐다.
+    const festivals = [
+      makeFestival({
+        id: "a",
+        title: "송도해변축제",
+        source: "city-scraped",
+        lat: 37.3908644,
+        lng: 126.6388694,
+      }),
+      makeFestival({
+        id: "b",
+        title: "제6회 송도해변축제",
+        source: "public-data-culture-festival",
+        lat: 37.39543995,
+        lng: 126.6593123,
+        description: "풍부한 설명",
+      }),
+    ];
+
+    const result = dedupeFestivals(festivals);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("b");
+  });
+
+  it("keeps venue-precise sources apart at the same distance", () => {
+    // KOPIS 공연·AKEI 박람회는 공연장 좌표가 정확하므로, 같은 제목이라도 몇 km 떨어져
+    // 있으면 서로 다른 회차/장소다.
+    const festivals = [
+      makeFestival({ id: "a", title: "뮤지컬 베토벤", source: "kopis", lat: 37.5665, lng: 126.978 }),
+      makeFestival({ id: "b", title: "뮤지컬 베토벤", source: "kopis", lat: 37.5765, lng: 127.0 }),
+    ];
+
+    const result = dedupeFestivals(festivals);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("keeps a nationwide same-titled program apart across regions", () => {
+    // 12개 지역에서 동시에 여는 "국가유산 미디어아트"처럼 완화된 상한(20km) 밖에 있는
+    // 항목은 그대로 남는다.
+    const festivals = [
+      makeFestival({ id: "a", title: "국가유산 미디어아트", source: "city-scraped", lat: 37.7473, lng: 126.4879 }),
+      makeFestival({
+        id: "b",
+        title: "국가유산 미디어아트",
+        source: "public-data-culture-festival",
+        lat: 36.6357,
+        lng: 127.4914,
+      }),
+    ];
+
+    const result = dedupeFestivals(festivals);
+
+    expect(result).toHaveLength(2);
+  });
+
   it("does not merge same-titled events whose date ranges do not overlap", () => {
     const festivals = [
       makeFestival({

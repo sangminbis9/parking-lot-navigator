@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/config/env.js";
-import { KakaoEventCoordinateResolver } from "../src/features/discover/events/eventProviderUtils.js";
+import {
+  KakaoEventCoordinateResolver,
+  setGeocodeStore
+} from "../src/features/discover/events/eventProviderUtils.js";
+import type { GeocodeStoreEntry } from "../src/features/discover/events/eventProviderUtils.js";
 
 describe("KakaoEventCoordinateResolver", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    setGeocodeStore(null);
   });
 
   it("tries fallback queries in order until one resolves", async () => {
@@ -40,6 +45,86 @@ describe("KakaoEventCoordinateResolver", () => {
       "bad address",
       "Seoul Fallback Venue"
     ]);
+  });
+
+  it("retries the venue with parentheses and 일원 stripped", async () => {
+    const fetchMock = vi.fn(async (url: URL) => {
+      const query = url.searchParams.get("query");
+      if (query !== "화성행궁 광장") return Response.json({ documents: [] });
+      return Response.json({
+        documents: [
+          {
+            place_name: "화성행궁 광장",
+            road_address_name: "경기도 수원시 팔달구 정조로 825",
+            x: "127.0128",
+            y: "37.2814"
+          }
+        ]
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resolver = new KakaoEventCoordinateResolver(testConfig());
+    const resolved = await resolver.resolve({
+      title: "수원문화제",
+      venue: "화성행궁 광장 일원(주차장 옆)",
+      region: "수원"
+    });
+
+    expect(resolved).toMatchObject({ lat: 37.2814, lng: 127.0128 });
+    expect(fetchMock.mock.calls.map(([url]) => (url as URL).searchParams.get("query"))).toEqual([
+      "수원 화성행궁 광장 일원(주차장 옆)",
+      "화성행궁 광장 일원(주차장 옆)",
+      "수원 화성행궁 광장 일원",
+      "화성행궁 광장 일원",
+      "수원 화성행궁 광장",
+      "화성행궁 광장"
+    ]);
+  });
+
+  it("takes only the first place when the venue lists several", async () => {
+    const fetchMock = vi.fn(async (url: URL) => {
+      const query = url.searchParams.get("query");
+      if (query !== "울산 태화강국가정원") return Response.json({ documents: [] });
+      return Response.json({
+        documents: [{ place_name: "태화강국가정원", x: "129.3167", y: "35.5478" }]
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resolver = new KakaoEventCoordinateResolver(testConfig());
+    const resolved = await resolver.resolve({
+      title: "태화강 축제",
+      venue: "태화강국가정원 및 십리대숲",
+      region: "울산"
+    });
+
+    expect(resolved).toMatchObject({ lat: 35.5478, lng: 129.3167 });
+  });
+
+  it("caches a genuine empty result but not a failed request", async () => {
+    const writes: Array<{ query: string; entry: GeocodeStoreEntry }> = [];
+    setGeocodeStore({
+      getMany: async () => new Map(),
+      setMany: async (entries) => {
+        writes.push(...entries);
+      }
+    });
+
+    const fetchMock = vi.fn(async (url: URL) => {
+      const query = url.searchParams.get("query");
+      if (query === "없는 장소") return Response.json({ documents: [] });
+      return new Response("upstream down", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resolver = new KakaoEventCoordinateResolver(testConfig());
+    expect(await resolver.resolve({ title: "무제", venue: "없는 장소" })).toBeNull();
+    expect(await resolver.resolve({ title: "무제", venue: "실패하는 장소" })).toBeNull();
+    await resolver.flush();
+
+    expect(writes.map((write) => write.query)).toEqual(["없는 장소"]);
+    expect(writes[0].entry.found).toBe(false);
   });
 });
 

@@ -131,6 +131,12 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     this.missCount = 0;
   }
 
+  // 예산이 바닥나면 resolve()는 조회 없이 null을 준다. 호출자가 "찾지 못함"과
+  // "예산이 없어 시도조차 못함"을 구분해야 할 때(backfill) 이 값을 본다.
+  remainingMissBudget(): number {
+    return this.missBudget - this.missCount;
+  }
+
   async warmup(inputs: ResolverInput[]): Promise<void> {
     if (
       !this.config.KAKAO_REST_API_KEY ||
@@ -196,7 +202,12 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
   }
 
   private async lookupCoordinate(query: string): Promise<ResolvedCoordinate> {
-    const resolved = await this.fetchCoordinate(query);
+    const outcome = await this.fetchCoordinate(query);
+    // 일시적 실패(HTTP 4xx/5xx)는 "결과 없음"과 다르다. geocode_cache에는 TTL이 없어
+    // 한 번 found:false로 적히면 그 질의를 영구히 포기하게 되므로, 카카오가 정상
+    // 응답을 준 경우에만 결과를 캐시에 남긴다.
+    if (!outcome.ok) return null;
+    const resolved = outcome.value;
     this.pendingWrites.set(
       query,
       resolved
@@ -218,7 +229,9 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     return resolved;
   }
 
-  private async fetchCoordinate(query: string): Promise<ResolvedCoordinate> {
+  private async fetchCoordinate(
+    query: string,
+  ): Promise<{ ok: true; value: ResolvedCoordinate } | { ok: false }> {
     const url = new URL(
       "/v2/local/search/keyword.json",
       this.config.KAKAO_LOCAL_BASE_URL,
@@ -231,7 +244,7 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
         Accept: "application/json",
       },
     });
-    if (!response.ok) return null;
+    if (!response.ok) return { ok: false };
     const body = (await response.json()) as {
       documents?: Array<{
         place_name?: string;
@@ -245,21 +258,56 @@ export class KakaoEventCoordinateResolver implements EventCoordinateResolver {
     const lat = toNumber(doc?.y);
     const lng = toNumber(doc?.x);
     if (lat === null || lng === null || !isKoreaCoordinate(lat, lng))
-      return null;
+      return { ok: true, value: null };
     return {
-      lat,
-      lng,
-      address: clean(doc?.road_address_name) ?? clean(doc?.address_name),
-      venue: clean(doc?.place_name),
+      ok: true,
+      value: {
+        lat,
+        lng,
+        address: clean(doc?.road_address_name) ?? clean(doc?.address_name),
+        venue: clean(doc?.place_name),
+      },
     };
   }
 }
 
+// 시/군 게시판의 장소 문구는 "○○공원 일원(주차장 옆)", "A광장 및 B거리"처럼 꼬리표가
+// 붙어 있어 Kakao 키워드 검색이 통째로 실패한다. 실제로 geocode_cache에는 이런 원문이
+// found=false로 쌓여 있고, 같은 장소의 다듬은 형태는 found=true로 이미 들어 있다.
+// 괄호 제거 → 나열 앞부분만 → "일원/일대" 류 접미사 제거 순으로 누적 적용한 변형을
+// 추가 후보로 만든다. 꼬리표가 없는 장소명은 변형이 생기지 않아 질의 수가 늘지 않는다.
+const VENUE_TRIM_STEPS: Array<(value: string) => string> = [
+  (value) => value.replace(/[（(［[][^）)］\]]*[）)］\]]/g, " "),
+  (value) => value.split(/\s*(?:및|외|,|~|\+)\s*/)[0] ?? value,
+  (value) => value.replace(/\s*(?:일원|일대|주변|인근)$/u, ""),
+];
+const VENUE_TRIM_MAX_VARIANTS = 2;
+
+function trimmedVenues(venue: string | null | undefined): string[] {
+  const base = clean(venue);
+  if (!base) return [];
+  const variants: string[] = [];
+  let current = base;
+  for (const step of VENUE_TRIM_STEPS) {
+    const next = clean(step(current));
+    if (!next) break;
+    current = next;
+    if (next !== base && !variants.includes(next)) variants.push(next);
+  }
+  return variants.slice(-VENUE_TRIM_MAX_VARIANTS);
+}
+
 function candidateQueries(input: ResolverInput): string[] {
+  const region = clean(input.region);
+  const trimmed = trimmedVenues(input.venue);
   return uniqueQueries([
     clean(input.address),
     [input.region, input.venue].map(clean).filter(Boolean).join(" "),
     clean(input.venue),
+    ...trimmed.flatMap((venue) => [
+      [region, venue].filter(Boolean).join(" "),
+      venue,
+    ]),
     [input.venue, input.title].map(clean).filter(Boolean).join(" "),
     [input.region, input.title].map(clean).filter(Boolean).join(" "),
   ]);
