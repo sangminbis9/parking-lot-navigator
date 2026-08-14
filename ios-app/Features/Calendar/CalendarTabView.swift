@@ -658,6 +658,7 @@ private struct AgendaRow: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(isReminderOn ? "\u{C54C}\u{B9BC} \u{B044}\u{AE30}" : "\u{C54C}\u{B9BC} \u{CF1C}\u{AE30}") // 알림 끄기 / 알림 켜기
                 }
+                DiscoverShareButton(content: festival.shareContent, iconSize: 15, tapSize: 40)
             }
         }
         .padding(12)
@@ -743,6 +744,11 @@ private struct PerformanceRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            DiscoverShareButton(
+                content: p.shareContent(destinationId: item.discoverDestination.id),
+                iconSize: 15,
+                tapSize: 40
+            )
         }
         .padding(12)
         .festivalCard()
@@ -839,6 +845,11 @@ private struct SavedFestivalsSheet: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\u{C800}\u{C7A5} \u{D574}\u{C81C}") // 저장 해제
+                DiscoverShareButton(
+                    content: saved.presentation.shareContent(destinationId: saved.destination.id),
+                    iconSize: 15,
+                    tapSize: 40
+                )
             }
         }
         .padding(12)

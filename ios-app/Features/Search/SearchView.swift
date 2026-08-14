@@ -1113,20 +1113,28 @@ private struct DiscoverTabRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Button {
-                switch item.kind {
-                case .festival(let festival): festivalFavorites.toggle(festival)
-                case .event(let event): eventFavorites.toggle(event)
+            VStack(spacing: 0) {
+                Button {
+                    switch item.kind {
+                    case .festival(let festival): festivalFavorites.toggle(festival)
+                    case .event(let event): eventFavorites.toggle(event)
+                    }
+                } label: {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.festival(size: 18, weight: .semibold))
+                        .foregroundStyle(isFavorite ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: isFavorite ? "star.fill" : "star")
-                    .font(.festival(size: 18, weight: .semibold))
-                    .foregroundStyle(isFavorite ? FestivalDesign.lanternText : FestivalDesign.secondaryText)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel(isFavorite ? "즐겨찾기 해제" : "즐겨찾기")
+
+                DiscoverShareButton(
+                    content: item.presentation.shareContent(destinationId: item.destination.id),
+                    iconSize: 16,
+                    tapSize: 40
+                )
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isFavorite ? "즐겨찾기 해제" : "즐겨찾기")
         }
     }
 }

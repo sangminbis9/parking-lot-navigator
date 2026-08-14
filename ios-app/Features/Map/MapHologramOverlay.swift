@@ -11,6 +11,7 @@ struct MapHologramOverlay: View {
     let symbol: String
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
+    var shareContent: DiscoverShareContent? = nil
     var isSponsored: Bool = false
     let onDetails: () -> Void
     let onClose: () -> Void
@@ -43,6 +44,12 @@ struct MapHologramOverlay: View {
         }
     }
 
+    /// 우상단 버튼 줄이 차지하는 폭. 칩 줄이 그만큼 자리를 비운다.
+    private var topButtonsWidth: CGFloat {
+        let count = 1 + (onToggleFavorite != nil ? 1 : 0) + (shareContent != nil ? 1 : 0)
+        return CGFloat(count) * 30 + CGFloat(count - 1) * 4
+    }
+
     private var card: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: onDetails) {
@@ -50,7 +57,7 @@ struct MapHologramOverlay: View {
                     // 우상단 버튼 자리는 이 첫 줄에서만 비운다. 아래 본문은 카드 폭을 다 쓴다.
                     chipRow
                         .frame(minHeight: 30, alignment: .leading)
-                        .padding(.trailing, onToggleFavorite != nil ? 64 : 30)
+                        .padding(.trailing, topButtonsWidth)
 
                     HStack(alignment: .top, spacing: 10) {
                         DiscoverThumbnail(
@@ -112,6 +119,23 @@ struct MapHologramOverlay: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isFavorite ? "관심 축제 해제" : "관심 축제로 저장")
+                }
+                if let shareContent {
+                    ShareLink(
+                        item: shareContent.url,
+                        subject: Text(shareContent.title),
+                        message: Text(shareContent.message)
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.festival(size: 9, weight: .bold))
+                            .foregroundColor(FestivalDesign.secondaryText)
+                            .frame(width: 20, height: 20)
+                            .background(Circle().fill(Color(.systemGray6)))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("공유")
                 }
                 Button(action: onClose) {
                     Image(systemName: "xmark")

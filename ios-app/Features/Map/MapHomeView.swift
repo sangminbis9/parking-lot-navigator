@@ -1156,6 +1156,7 @@ struct MapHomeView: View {
                     symbol: "sparkles",
                     isFavorite: festivalFavorites.contains(id: festival.id),
                     onToggleFavorite: { festivalFavorites.toggle(festival) },
+                    shareContent: festival.shareContent,
                     onDetails: { openHologramDetail(pin) },
                     onClose: {
                         withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
@@ -1176,6 +1177,7 @@ struct MapHomeView: View {
                     symbol: "calendar",
                     isFavorite: eventFavorites.contains(id: event.id),
                     onToggleFavorite: { eventFavorites.toggle(event) },
+                    shareContent: event.shareContent,
                     isSponsored: event.isSponsored,
                     onDetails: { openHologramDetail(pin) },
                     onClose: {

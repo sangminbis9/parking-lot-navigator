@@ -88,14 +88,25 @@ struct FavoritesView: View {
                 .foregroundStyle(FestivalDesign.navy)
 
             ForEach(items) { item in
-                Button {
-                    router.showResults(for: destination(item), presentation: presentation(item))
-                } label: {
-                    DestinationRow(destination: destination(item))
-                        .padding(12)
-                        .festivalCard()
+                HStack(spacing: 0) {
+                    Button {
+                        router.showResults(for: destination(item), presentation: presentation(item))
+                    } label: {
+                        DestinationRow(destination: destination(item))
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    DiscoverShareButton(
+                        content: presentation(item).shareContent(destinationId: destination(item).id),
+                        iconSize: 16,
+                        tapSize: 40
+                    )
+                    .padding(.trailing, 4)
                 }
-                .buttonStyle(.plain)
+                .festivalCard()
             }
         }
     }
