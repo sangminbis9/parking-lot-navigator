@@ -11,6 +11,7 @@ protocol APIClientProtocol {
     func providerHealth() async throws -> [ProviderHealth]
     func discoveryProviderHealth() async throws -> [ProviderHealth]
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent]
+    func pipelineStats() async throws -> PipelineStats
 }
 
 final class APIClient: APIClientProtocol {
@@ -123,6 +124,10 @@ final class APIClient: APIClientProtocol {
     func discoveryProviderHealth() async throws -> [ProviderHealth] {
         let response: ProviderHealthResponse = try await get(endpoint("discover/providers/health"))
         return response.providers
+    }
+
+    func pipelineStats() async throws -> PipelineStats {
+        try await get(endpoint("discover/pipeline-stats"))
     }
 
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
@@ -259,6 +264,32 @@ final class MockAPIClient: APIClientProtocol {
             ProviderHealth(name: "mock-festival-provider", status: "up", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: nil, qualityScore: 1, stale: false),
             ProviderHealth(name: "mock-local-event-provider", status: "degraded", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: "Mock review backlog", qualityScore: 0.7, stale: false)
         ]
+    }
+
+    func pipelineStats() async throws -> PipelineStats {
+        let now = ISO8601DateFormatter().string(from: Date())
+        return PipelineStats(
+            generatedAt: now,
+            discoveryItems: .init(
+                total: 120,
+                byType: [.init(type: "festival", count: 120)],
+                bySource: [.init(source: "kopis", count: 40), .init(source: "public-data-culture-festival", count: 80)],
+                taggingCoverage: .init(tagged: 100, total: 120),
+                feeCoverage: .init(free: 30, paid: 60, unknown: 20, unchecked: 10)
+            ),
+            localEvents: .init(
+                total: 40,
+                byStatus: [.init(status: "approved", count: 30), .init(status: "pending", count: 10)],
+                bySource: [.init(source: "naver_blog", count: 40)],
+                needsReview: 8,
+                taggingCoverage: .init(tagged: 35, total: 40)
+            ),
+            cityFestivals: .init(total: 950, geocodeChecked: 400, geocodeUnchecked: 550, upcoming: 300, ended: 650),
+            akeiTradeExpos: .init(total: 25),
+            recentSyncRuns: [
+                .init(id: "mock-run-1", syncType: "discovery", startedAt: now, finishedAt: now, status: "success", fetched: 200, upserted: 50, skipped: 145, pruned: 5, message: nil)
+            ]
+        )
     }
 
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
