@@ -54,6 +54,7 @@ struct AppRootView: View {
         scope: "shared",
         appGroupID: AppConfiguration.current.appGroupID
     )
+    @StateObject private var toastCenter = ToastCenter()
     @Environment(\.scenePhase) private var scenePhase
 
     init(apiClient: APIClientProtocol) {
@@ -85,11 +86,16 @@ struct AppRootView: View {
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .paperGrainOverlay()
+        .overlay(alignment: .top) {
+            FestivalToastOverlay()
+                .environmentObject(toastCenter)
+        }
         .tint(FestivalDesign.coralText)
         // 팔레트는 자체 다크 변형을 쓰지만, 키보드·DatePicker 같은 시스템 컨트롤은 이 값으로만 따라온다.
         .preferredColorScheme(themeStore.isDarkMode ? .dark : .light)
         .environmentObject(tabRouter)
         .environmentObject(festivalFilterModel)
+        .environmentObject(toastCenter)
         .onAppear {
             Self.configureTabBarAppearance()
         }

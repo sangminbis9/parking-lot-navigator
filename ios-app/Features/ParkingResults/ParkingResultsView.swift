@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ParkingResultsView: View {
     let destination: Destination
@@ -39,12 +40,8 @@ struct ParkingResultsView: View {
         }
     }
 
-    private var shareURL: URL {
-        if let sourceUrl = presentation?.sourceUrl,
-           let url = URL(string: sourceUrl) {
-            return url
-        }
-        return DeepLinkRouter.shared.urlForDestination(id: destination.id)
+    private var shareContent: DiscoverShareContent? {
+        presentation?.shareContent(destinationId: destination.id)
     }
 
     var body: some View {
@@ -55,7 +52,7 @@ struct ParkingResultsView: View {
                         presentation: presentation,
                         isFavorite: isFavorite,
                         onToggleFavorite: { toggleFavorite() },
-                        shareURL: shareURL
+                        shareContent: shareContent
                     )
                     DiscoverDescriptionCard(presentation: presentation)
                 } else {
@@ -165,7 +162,7 @@ private struct DiscoverResultHeader: View {
     let presentation: DiscoverPresentation
     var isFavorite: Bool = false
     var onToggleFavorite: (() -> Void)? = nil
-    var shareURL: URL? = nil
+    var shareContent: DiscoverShareContent? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -190,15 +187,8 @@ private struct DiscoverResultHeader: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(isFavorite ? "관심 축제 해제" : "관심 축제로 저장")
                 }
-                if let shareURL {
-                    ShareLink(item: shareURL) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.festival(size: 18, weight: .semibold))
-                            .foregroundStyle(FestivalDesign.secondaryText)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("공유")
+                if let shareContent {
+                    DiscoverShareButton(content: shareContent)
                 }
                 Text(presentation.source)
                     .font(.festival(.caption, weight: .semibold))
@@ -316,6 +306,7 @@ private struct DiscoverHeroImage: View {
 
 private struct DiscoverDescriptionCard: View {
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var toastCenter: ToastCenter
     let presentation: DiscoverPresentation
 
     var body: some View {
@@ -409,6 +400,8 @@ private struct DiscoverDescriptionCard: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    // 값 영역은 꾹 눌러 직접 선택·복사할 수 있고, 한 번 탭하면 그 항목 전체가 클립보드로 간다.
+    // 탭 제스처는 Text가 아니라 바깥 VStack에 건다 — Text에 걸면 선택 제스처와 충돌한다.
     private func detailSection(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
@@ -417,9 +410,12 @@ private struct DiscoverDescriptionCard: View {
             Text(value)
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { copy(value) }
     }
 
     private func detailRow(label: String, value: String) -> some View {
@@ -430,9 +426,17 @@ private struct DiscoverDescriptionCard: View {
             Text(value)
                 .font(.festival(.subheadline, weight: .semibold))
                 .foregroundStyle(FestivalDesign.navy)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { copy(value) }
+    }
+
+    private func copy(_ value: String) {
+        UIPasteboard.general.string = value
+        toastCenter.show("복사했습니다")
     }
 }
 
