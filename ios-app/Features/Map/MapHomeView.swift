@@ -30,6 +30,8 @@ struct MapHomeView: View {
     @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var isHomeDiscoveryPanelDismissed = false
     @State private var presentingFestivalFilter = false
+    /// 레이어 토글 최소 폭. 글자 수가 다른 토글(축제/공연 2자, 이벤트/박람회 3자)이 같은 크기로 보이게 한다.
+    @ScaledMetric(relativeTo: .caption) private var layerToggleMinWidth: CGFloat = 86
     @State private var discoverListQuery = ""
     @State private var hologramPin: MapPinItem?
     @State private var eventStackCluster: MapPinCluster?
@@ -650,8 +652,10 @@ struct MapHomeView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.festival(.caption, weight: .bold))
+                .lineLimit(1)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
+                .frame(minWidth: layerToggleMinWidth)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
                 .foregroundStyle(isOn ? FestivalDesign.onFill(tint) : FestivalDesign.secondaryText)
                 .clipShape(FestivalDesign.controlShape)

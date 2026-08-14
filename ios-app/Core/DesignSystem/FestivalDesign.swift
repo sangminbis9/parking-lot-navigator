@@ -484,8 +484,8 @@ enum FestivalDesign {
     /// 명도를 눌러도 색이 남아 있게 하는 채도 보정폭. 올리면 더 쨍해지고, 내리면 탁해진다.
     private static let saturationBoost = 0.18
 
-    /// 강조색으로 꽉 채운 면 위의 글자색. 흰 글자가 대비 3:1도 못 내는 조합
-    /// (노란 lantern 배지가 대표적)에서만 어두운 잉크로 바꾼다.
+    /// 강조색으로 꽉 채운 면 위의 글자색. 기본은 흰 글자이고, 흰 글자가 대비 3:1도
+    /// 못 내는 조합(노란 lantern 배지가 대표적)에서만 같은 색상의 진한 톤으로 바꾼다.
     static func onFill(_ fill: Color) -> Color {
         let key = DerivedKey(color: fill, themeID: FestivalTheme.current.rawValue)
         if let cached = onFillCache[key] { return cached }
@@ -499,31 +499,24 @@ enum FestivalDesign {
 
     private static func onFillColor(_ fill: Color, dark: Bool) -> Color {
         let resolvedFill = resolve(fill, dark: dark)
-        let base: Color = dark ? FestivalTheme.current.darkPalette.background : .white
-        return contrastRatio(base, resolvedFill) >= 3.0 ? base : ink(on: resolvedFill, dark: dark)
+        return contrastRatio(.white, resolvedFill) >= 3.0 ? .white : deepInk(on: resolvedFill)
     }
 
     /// 지도 핀 위의 글자·아이콘 색(UIKit 렌더링용). 지도 타일은 다크 모드에서도 밝게 남으므로
-    /// 흰 글자를 기준으로 판단하고, 노란 핀처럼 대비가 안 나올 때만 어두운 잉크로 바꾼다.
+    /// 흰 글자를 기준으로 판단하고, 노란 핀처럼 대비가 안 나올 때만 진한 톤으로 바꾼다.
     static func uiOnPinFill(_ fill: UIColor) -> UIColor {
         let color = Color(fill.resolvedColor(with: FestivalAppearance.trait))
         return contrastRatio(.white, color) >= 3.0
             ? .white
-            : UIColor(ink(on: color, dark: FestivalAppearance.isDark))
+            : UIColor(deepInk(on: color))
     }
 
-    /// 채움색 위에서 4.5:1을 낼 때까지 본문색을 검정 쪽으로 섞은 잉크.
-    private static func ink(on fill: Color, dark: Bool) -> Color {
-        let base = resolve(navy, dark: dark)
-        let key = ContrastKey(color: fill, reference: base)
-        if let cached = inkCache[key] { return cached }
-        var result = base
-        var amount = 0.0
-        while amount < 1.0, contrastRatio(result, fill) < 4.5 {
-            amount = min(1.0, amount + 0.05)
-            result = mix(base, .black, amount)
-        }
-        inkCache[key] = result
+    /// 흰 글자가 대비를 못 내는 파스텔 채움색 위의 글자색. 검정을 섞으면 색이 탁해지고
+    /// 회색·검정 계열로 떨어지므로, 채움색의 색상(hue)을 유지한 채 4.5:1까지 진하게 눌러 쓴다.
+    private static func deepInk(on fill: Color) -> Color {
+        if let cached = deepInkCache[fill] { return cached }
+        let result = deepened(fill, on: fill, target: 4.5, dark: false)
+        deepInkCache[fill] = result
         return result
     }
 
@@ -539,11 +532,6 @@ enum FestivalDesign {
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 
-    private struct ContrastKey: Hashable {
-        let color: Color
-        let reference: Color
-    }
-
     private struct DerivedKey: Hashable {
         let color: Color
         let themeID: String
@@ -552,7 +540,7 @@ enum FestivalDesign {
     // 팔레트 색은 개수가 정해져 있어 캐시가 무한히 자라지 않는다. 본문(메인 스레드)에서만 읽고 쓴다.
     private static var readableCache: [DerivedKey: Color] = [:]
     private static var onFillCache: [DerivedKey: Color] = [:]
-    private static var inkCache: [ContrastKey: Color] = [:]
+    private static var deepInkCache: [Color: Color] = [:]
     private static var canvasCache: [String: Color] = [:]
 
     private static func components(_ color: Color) -> (r: Double, g: Double, b: Double) {
