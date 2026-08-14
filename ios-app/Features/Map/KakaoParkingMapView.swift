@@ -284,7 +284,9 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 competitionType: .none,
                 competitionUnit: .symbolFirst,
                 orderType: .rank,
-                zOrder: 20
+                // 지도 엔진의 기본 심볼/라벨도 내부 LabelLayer라 zOrder로 순서를 다툰다.
+                // 큰 값을 줘 우리 핀이 항상 지도 요소 위에 오게 한다.
+                zOrder: 10_001
             )
             _ = manager.addLabelLayer(option: layerOption)
 
@@ -567,8 +569,13 @@ private extension MapPinItem {
         }
     }
 
+    /// 레이어 토글 색을 테두리로 쓰므로 styleID에도 넣는다. 빠지면 카카오맵이 옛 색 스타일을 재사용한다.
+    private var layerTintStyleKey: String {
+        layerTint.map { "-t\($0.stableStyleKey)" } ?? ""
+    }
+
     private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) -> String {
-        let base = "disc-\(category.rawValue)-\(theme)"
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)-\(theme)"
         if isSelected { return "\(base)-sel" }
         guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return base }
         return "\(base)-label-\(title.stableStyleKey)"
@@ -602,15 +609,15 @@ private extension MapPinItem {
     }
 
     private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme) -> (id: String, image: UIImage)? {
-        let base = "disc-\(category.rawValue)-\(pinStyleThemeKey)"
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)-\(pinStyleThemeKey)"
         if styleID == "\(base)-sel" {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true, border: layerTint))
         }
         if styleID == base {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false, border: layerTint))
         }
         if styleID == "\(base)-label-\(title.stableStyleKey)" {
-            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel))
+            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel, border: layerTint))
         }
         return nil
     }

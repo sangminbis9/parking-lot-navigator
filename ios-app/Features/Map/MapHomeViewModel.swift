@@ -18,6 +18,9 @@ final class MapHomeViewModel: ObservableObject {
     @Published var showsFestivalLayer = true
     @Published var showsLocalEventLayer = true
     @Published var showsPerformanceLayer = true
+    /// 산업·박람회(`primary_category == .tradeExpo`)는 축제와 같은 `/api/festivals` 응답으로 오지만
+    /// 지도에서는 별도 토글로 켜고 끈다. 두 토글 중 하나라도 켜져 있으면 축제 레이어를 불러온다.
+    @Published var showsTradeExpoLayer = true
     @Published var performances: [PerformanceItem] = []
     @Published var showsRealtimeParkingLayer = false
     @Published var showsFreeParkingLayer = false
@@ -147,7 +150,16 @@ final class MapHomeViewModel: ObservableObject {
     func setFestivalLayerVisible(_ isVisible: Bool, viewport: MapViewport, filter: FestivalFilter = .default) async {
         showsFestivalLayer = isVisible
         if !isVisible {
-            festivals = []
+            if !showsTradeExpoLayer { festivals = [] }
+            return
+        }
+        await loadDiscoverLayers(viewport: viewport, filter: filter)
+    }
+
+    func setTradeExpoLayerVisible(_ isVisible: Bool, viewport: MapViewport, filter: FestivalFilter = .default) async {
+        showsTradeExpoLayer = isVisible
+        if !isVisible {
+            if !showsFestivalLayer { festivals = [] }
             return
         }
         await loadDiscoverLayers(viewport: viewport, filter: filter)
@@ -266,7 +278,7 @@ final class MapHomeViewModel: ObservableObject {
         var failedLoads = 0
         var attemptedLoads = 0
 
-        if showsFestivalLayer {
+        if showsFestivalLayer || showsTradeExpoLayer {
             attemptedLoads += 1
             switch await loadFestivalLayer(viewport: viewport, filter: filter) {
             case .success(let items):
@@ -417,6 +429,9 @@ struct MapPinItem: Identifiable {
     var showsTitleLabel = false
     /// 실시간 주차장 핀처럼 혼잡도 색으로 그릴지 여부. false면 단일 parkingBlue.
     var parkingCongestionColored = false
+    /// 이 핀이 속한 지도 상단 토글의 색. 배지 테두리를 이 색으로 그려 토글과 핀을 눈으로 잇는다.
+    /// nil이면 카테고리 색을 그대로 쓴다.
+    var layerTint: UIColor?
 }
 
 struct MapPinCluster: Identifiable {
