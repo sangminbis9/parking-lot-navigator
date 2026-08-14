@@ -22,7 +22,7 @@ type DiscoveryType = "festival" | "event";
 const DISCOVERY_RESULT_LIMIT = 5000;
 const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
 const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
-  festival: 45,
+  festival: 100,
   event: 45,
 };
 const DISCOVERY_SYNC_RADIUS_METERS = 90000;
@@ -58,6 +58,7 @@ const SEOUL_DISCOVERY_CENTER = { id: "seoul", lat: 37.5665, lng: 126.978 };
 export interface DiscoveryQueryOptions {
   radiusMeters: number;
   upcomingWithinDays: number;
+  pastWithinDays?: number;
   ongoingOnly?: boolean;
   freeOnly?: boolean;
 }
@@ -1092,7 +1093,8 @@ function rowPassesFilters(
   const end = Date.parse(row.end_date);
   if (!Number.isFinite(end)) return true;
   const max = Date.now() + options.upcomingWithinDays * 24 * 60 * 60 * 1000;
-  return end >= startOfToday() && Date.parse(row.start_date) <= max;
+  const min = startOfToday() - (options.pastWithinDays ?? 0) * 24 * 60 * 60 * 1000;
+  return end >= min && Date.parse(row.start_date) <= max;
 }
 
 function sortDiscoveryRows(
