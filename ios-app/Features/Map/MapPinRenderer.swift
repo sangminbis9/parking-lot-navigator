@@ -164,15 +164,18 @@ enum MapPinRenderer {
         let styleKey: String
         let selected: Bool
         let scaleKey: Int
+        let borderKey: String
     }
 
     private static var cache: [Key: UIImage] = [:]
 
-    /// 캐시되는 기본 핀 이미지. 키: (category, theme, isSelected, scale).
+    /// 캐시되는 기본 핀 이미지. 키: (category, theme, isSelected, scale, border).
+    /// `border`를 주면 배지 테두리만 그 색으로 그린다 (글리프는 카테고리 색 유지).
     static func image(
         category: MapPinCategory,
         theme: FestivalTheme,
         selected: Bool,
+        border: UIColor? = nil,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
         let key = Key(
@@ -180,10 +183,11 @@ enum MapPinRenderer {
             themeID: theme.rawValue,
             styleKey: FestivalAppearance.styleKey,
             selected: selected,
-            scaleKey: Int((scale * 100).rounded())
+            scaleKey: Int((scale * 100).rounded()),
+            borderKey: border?.pinColorKey ?? "-"
         )
         if let cached = cache[key] { return cached }
-        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale)
+        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border)
         cache[key] = image
         return image
     }
@@ -193,9 +197,10 @@ enum MapPinRenderer {
         category: MapPinCategory,
         theme: FestivalTheme,
         label: String,
+        border: UIColor? = nil,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
-        draw(category: category, theme: theme, selected: false, label: label, scale: scale)
+        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border)
     }
 
     private static var parkingCache: [String: UIImage] = [:]
@@ -266,7 +271,8 @@ enum MapPinRenderer {
         selected: Bool,
         label: String?,
         scale: CGFloat,
-        fillOverride: UIColor? = nil
+        fillOverride: UIColor? = nil,
+        border: UIColor? = nil
     ) -> UIImage {
         let handDrawn = theme.isHandDrawn
         let badge = baseDiameter * (selected ? selectedScaleFactor : 1)
@@ -304,7 +310,7 @@ enum MapPinRenderer {
             ctx.cgContext.scaleBy(x: scale, y: scale)
 
             if bubbleWidth > 0, let label {
-                drawLabelBubble(label, font: labelFont, fill: accent, centerX: cx, top: shadowPadding + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
+                drawLabelBubble(label, font: labelFont, fill: border ?? accent, centerX: cx, top: shadowPadding + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
             }
 
             let badgeRect = CGRect(x: cx - badge / 2, y: badgeTop, width: badge, height: badge)
@@ -320,7 +326,7 @@ enum MapPinRenderer {
 
             drawStickerBadge(
                 rect: badgeRect, corner: corner, accent: accent, surface: surface,
-                handDrawn: handDrawn, selected: selected, context: ctx
+                handDrawn: handDrawn, selected: selected, borderOverride: border, context: ctx
             )
 
             // 카테고리 글리프 (현행 유지)
@@ -332,6 +338,7 @@ enum MapPinRenderer {
     /// 앱 카드 언어의 둥근 사각 "스티커 배지" 본체.
     /// 기본 테마: surface 배경 + 카테고리색 외곽선 + soft 그림자.
     /// 크레파스 테마: 차콜 외곽선 + 블러 없는 오프셋 스티커 그림자(카드와 동일).
+    /// `borderOverride`가 있으면 두 테마 모두 그 색으로 외곽선을 그린다(지도 토글 색 연결).
     private static func drawStickerBadge(
         rect: CGRect,
         corner: CGFloat,
@@ -339,6 +346,7 @@ enum MapPinRenderer {
         surface: UIColor,
         handDrawn: Bool,
         selected: Bool,
+        borderOverride: UIColor? = nil,
         context: UIGraphicsImageRendererContext
     ) {
         let cg = context.cgContext
@@ -352,7 +360,7 @@ enum MapPinRenderer {
             shadow.fill()
             surface.setFill()
             body.fill()
-            (selected ? FestivalDesign.uiCoral : outline).setStroke()
+            (selected ? FestivalDesign.uiCoral : (borderOverride ?? outline)).setStroke()
             body.lineWidth = selected ? 2.8 : 2.4
             body.stroke()
         } else {
@@ -365,7 +373,7 @@ enum MapPinRenderer {
             surface.setFill()
             body.fill()
             cg.restoreGState()
-            (selected ? FestivalDesign.uiCoral : accent).setStroke()
+            (selected ? FestivalDesign.uiCoral : (borderOverride ?? accent)).setStroke()
             body.lineWidth = selected ? 2.8 : 2.2
             body.stroke()
         }

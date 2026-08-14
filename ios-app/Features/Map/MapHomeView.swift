@@ -350,28 +350,34 @@ struct MapHomeView: View {
         }
     }
 
+    /// 지도 상단 토글 색의 UIKit 버전. 외관(라이트/다크)에 따라 풀리므로 계산 프로퍼티여야 한다.
+    private static var tradeExpoTint: UIColor { FestivalDesign.ui(FestivalPrimaryCategory.tradeExpo.tint) }
+    private static var performanceTint: UIColor { FestivalDesign.ui(FestivalPrimaryCategory.musicPerformance.tint) }
+
     private var discoverSources: [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
         var seenFestivalIds: Set<String> = []
         var seenEventIds: Set<String> = []
 
-        if viewModel.showsFestivalLayer {
-            for f in viewModel.festivals where seenFestivalIds.insert(f.id).inserted {
-                sources.append(.festival(f))
-            }
+        // 축제 응답에는 산업·박람회(trade_expo)가 섞여 오므로 토글별로 갈라 담는다.
+        for f in viewModel.festivals {
+            let isTradeExpo = f.primaryCategory == .tradeExpo
+            guard isTradeExpo ? viewModel.showsTradeExpoLayer : viewModel.showsFestivalLayer else { continue }
+            guard seenFestivalIds.insert(f.id).inserted else { continue }
+            sources.append(.festival(f, layerTint: isTradeExpo ? Self.tradeExpoTint : FestivalDesign.uiCoral))
         }
         if viewModel.showsLocalEventLayer {
             for e in viewModel.events where seenEventIds.insert(e.id).inserted {
-                sources.append(.event(e))
+                sources.append(.event(e, layerTint: FestivalDesign.uiTeal))
             }
         }
         if viewModel.showsPerformanceLayer {
             for item in viewModel.performances {
                 switch item {
                 case .festival(let f) where festivalFilterModel.filter.matches(f) && seenFestivalIds.insert(f.id).inserted:
-                    sources.append(.festival(f))
+                    sources.append(.festival(f, layerTint: Self.performanceTint))
                 case .event(let e) where seenEventIds.insert(e.id).inserted:
-                    sources.append(.event(e))
+                    sources.append(.event(e, layerTint: Self.performanceTint))
                 default:
                     break
                 }
@@ -402,19 +408,21 @@ struct MapHomeView: View {
 
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
         switch source {
-        case .festival(let festival):
+        case .festival(let festival, let tint):
             return MapPinItem(
                 id: "festival-\(festival.id)",
                 coordinate: coordinate,
                 kind: .festival(festival),
-                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
+                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
+                layerTint: tint
             )
-        case .event(let event):
+        case .event(let event, let tint):
             return MapPinItem(
                 id: "event-\(event.id)",
                 coordinate: coordinate,
                 kind: .event(event),
-                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel
+                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
+                layerTint: tint
             )
         }
     }
@@ -565,6 +573,14 @@ struct MapHomeView: View {
                         isOn: viewModel.showsPerformanceLayer
                     ) {
                         Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport) }
+                    }
+                    layerToggle(
+                        title: "박람회",
+                        systemImage: FestivalPrimaryCategory.tradeExpo.systemImage,
+                        tint: FestivalPrimaryCategory.tradeExpo.tint,
+                        isOn: viewModel.showsTradeExpoLayer
+                    ) {
+                        Task { await viewModel.setTradeExpoLayerVisible(!viewModel.showsTradeExpoLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                     }
                     if viewModel.showsFestivalLayer {
                         Button {
@@ -1219,7 +1235,7 @@ struct MapHomeView: View {
     private func centerOnInitialDiscoverPinIfNeeded() {
         guard !didAutoCenterOnLocation else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
-        if viewModel.showsFestivalLayer, let festival = viewModel.festivals.first {
+        if viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true
             moveMap(to: CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng), zoomLevel: 12)
             return
@@ -1254,7 +1270,7 @@ struct MapHomeView: View {
     }
 
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
-        let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
+        let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
         let freeParkingActive = viewModel.showsFreeParkingLayer
         guard discoverLayersActive || freeParkingActive else { return }
         guard shouldRefreshDiscover(for: viewport) else { return }
@@ -1593,24 +1609,33 @@ private struct ParkingPinSource: OverlayPinSource {
 }
 
 private enum DiscoverPinSource: OverlayPinSource {
-    case festival(Festival)
-    case event(FreeEvent)
+    /// `layerTint`는 이 핀을 만들어낸 지도 상단 토글의 색이다. 같은 축제가 여러 레이어에 들어올 수 있어
+    /// 모델만으로는 소속 레이어를 알 수 없으므로 만들 때 함께 들고 다닌다.
+    case festival(Festival, layerTint: UIColor)
+    case event(FreeEvent, layerTint: UIColor)
 
     var id: String {
         switch self {
-        case .festival(let festival):
+        case .festival(let festival, _):
             return "festival-\(festival.id)"
-        case .event(let event):
+        case .event(let event, _):
             return "event-\(event.id)"
         }
     }
 
     var coordinate: CLLocationCoordinate2D {
         switch self {
-        case .festival(let festival):
+        case .festival(let festival, _):
             return CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
-        case .event(let event):
+        case .event(let event, _):
             return CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
+        }
+    }
+
+    var layerTint: UIColor {
+        switch self {
+        case .festival(_, let tint), .event(_, let tint):
+            return tint
         }
     }
 }
