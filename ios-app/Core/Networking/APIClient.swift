@@ -4,7 +4,7 @@ protocol APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival]
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int, pastWithinDays: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent])
     func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
@@ -12,6 +12,12 @@ protocol APIClientProtocol {
     func discoveryProviderHealth() async throws -> [ProviderHealth]
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent]
     func pipelineStats() async throws -> PipelineStats
+}
+
+extension APIClientProtocol {
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
+        try await nearbyFestivals(lat: lat, lng: lng, radiusMeters: radiusMeters, upcomingWithinDays: upcomingWithinDays, pastWithinDays: 0)
+    }
 }
 
 final class APIClient: APIClientProtocol {
@@ -52,13 +58,14 @@ final class APIClient: APIClientProtocol {
         return response.items
     }
 
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int, pastWithinDays: Int) async throws -> [Festival] {
         var components = URLComponents(url: endpoint("api/festivals"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
-            URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays))
+            URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays)),
+            URLQueryItem(name: "pastWithinDays", value: String(pastWithinDays))
         ]
         let response: DiscoverFestivalsResponse = try await get(components.url!)
         return response.items
@@ -186,7 +193,7 @@ final class MockAPIClient: APIClientProtocol {
         ]
     }
 
-    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
+    func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int, pastWithinDays: Int) async throws -> [Festival] {
         [
             Festival(id: "mock-festival", title: "Seoul Light Festival", subtitle: "Night walk festival",
                      description: nil, startDate: "2026-04-15", endDate: "2026-04-22",

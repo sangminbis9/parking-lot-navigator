@@ -166,6 +166,7 @@ const discoverQuerySchema = z.object({
   radiusMeters: z.coerce.number().optional(),
   ongoingOnly: optionalBoolean,
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
+  pastWithinDays: z.coerce.number().min(0).max(90).optional(),
   freeOnly: optionalBoolean,
 });
 
@@ -518,6 +519,7 @@ app.get("/api/festivals", async (c) =>
         query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
       ongoingOnly: query.ongoingOnly,
       upcomingWithinDays: query.upcomingWithinDays ?? 30,
+      pastWithinDays: query.pastWithinDays ?? 0,
     });
     return c.json({
       items: items.map((item) => ({
