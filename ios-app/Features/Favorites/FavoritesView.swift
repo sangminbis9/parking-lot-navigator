@@ -2,15 +2,31 @@ import SwiftUI
 
 struct FavoritesView: View {
     @EnvironmentObject private var store: DestinationStore
+    @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
+    @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
     @EnvironmentObject private var router: Router
+
+    private var isEmpty: Bool {
+        store.favorites.isEmpty && festivalFavorites.saved.isEmpty && eventFavorites.saved.isEmpty
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if store.favorites.isEmpty {
+                if isEmpty {
                     emptyState
                 } else {
-                    destinationSection(title: "저장한 목적지", destinations: store.favorites)
+                    if !festivalFavorites.saved.isEmpty {
+                        savedSection(title: "저장한 축제", items: festivalFavorites.saved) { $0.destination }
+                            presentation: { $0.presentation }
+                    }
+                    if !eventFavorites.saved.isEmpty {
+                        savedSection(title: "저장한 이벤트", items: eventFavorites.saved) { $0.destination }
+                            presentation: { $0.presentation }
+                    }
+                    if !store.favorites.isEmpty {
+                        destinationSection(title: "저장한 목적지", destinations: store.favorites)
+                    }
                 }
             }
             .padding(16)
@@ -52,6 +68,30 @@ struct FavoritesView: View {
                     router.showResults(for: destination)
                 } label: {
                     DestinationRow(destination: destination)
+                        .padding(12)
+                        .festivalCard()
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func savedSection<T: Identifiable>(
+        title: String,
+        items: [T],
+        destination: @escaping (T) -> Destination,
+        presentation: @escaping (T) -> DiscoverPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.festival(.headline))
+                .foregroundStyle(FestivalDesign.navy)
+
+            ForEach(items) { item in
+                Button {
+                    router.showResults(for: destination(item), presentation: presentation(item))
+                } label: {
+                    DestinationRow(destination: destination(item))
                         .padding(12)
                         .festivalCard()
                 }

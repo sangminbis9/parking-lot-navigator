@@ -41,6 +41,51 @@ struct SavedEvent: Codable, Hashable, Identifiable {
     }
 }
 
+extension SavedEvent {
+    /// 저장 목록에서 상세 화면으로 이동할 때 사용할 최소 Destination/Presentation.
+    var destination: Destination {
+        Destination(
+            id: "event-\(id)",
+            name: title,
+            address: address,
+            lat: lat,
+            lng: lng,
+            source: source,
+            rawCategory: "",
+            normalizedCategory: "event"
+        )
+    }
+
+    var presentation: DiscoverPresentation {
+        DiscoverPresentation(
+            title: title,
+            subtitle: storeName,
+            description: nil,
+            dateText: (endDate.map { $0 == startDate ? startDate : "\(startDate) - \($0)" }) ?? startDate,
+            venueName: storeName,
+            address: address,
+            status: .upcoming,
+            typeText: eventType,
+            source: source,
+            sourceUrl: nil,
+            imageUrl: nil,
+            imageUrls: [],
+            price: nil,
+            region: nil,
+            updatedAt: nil,
+            tags: [],
+            admissionFee: nil,
+            discountInfo: nil,
+            bookingInfo: nil,
+            contactPhone: nil,
+            ageLimit: nil,
+            programInfo: nil,
+            organizerName: nil,
+            isFestivalSource: false
+        )
+    }
+}
+
 @MainActor
 final class LocalEventFavoritesStore: ObservableObject {
     @Published private(set) var saved: [SavedEvent]
