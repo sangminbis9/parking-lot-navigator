@@ -727,7 +727,11 @@ app.get("/discover/providers/health", async (c) => {
 
 app.get("/discover/pipeline-stats", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const stats = await queryPipelineStats(c.env.DB);
+  // 앱 설정 화면이 토큰 없이 부르는 엔드포인트라 집계 자체는 열어 두되,
+  // provider 예외 문자열이 담긴 sync_runs.message는 관리자 토큰이 있을 때만 준다.
+  const stats = await queryPipelineStats(c.env.DB, {
+    includeRunMessages: hasValidAdminToken(c.req.raw, c.env),
+  });
   return c.json(stats);
 });
 
@@ -1390,15 +1394,19 @@ function authorizeAdminSync(request: Request, env: Env): Response | null {
       { status: 503 },
     );
   }
-
-  const token = request.headers
-    .get("Authorization")
-    ?.replace(/^Bearer\s+/i, "");
-  if (!token || !timingSafeStringEqual(token, env.SYNC_ADMIN_TOKEN)) {
+  if (!hasValidAdminToken(request, env)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
   return null;
+}
+
+function hasValidAdminToken(request: Request, env: Env): boolean {
+  if (!env.SYNC_ADMIN_TOKEN) return false;
+  const token = request.headers
+    .get("Authorization")
+    ?.replace(/^Bearer\s+/i, "");
+  return Boolean(token && timingSafeStringEqual(token, env.SYNC_ADMIN_TOKEN));
 }
 
 function syncErrorResponse(error: unknown): { error: string; message: string } {
