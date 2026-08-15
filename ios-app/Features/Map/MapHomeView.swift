@@ -30,8 +30,8 @@ struct MapHomeView: View {
     @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var isHomeDiscoveryPanelDismissed = false
     @State private var presentingFestivalFilter = false
-    /// 레이어 토글 최소 폭. 글자 수가 다른 토글(축제/공연 2자, 이벤트/박람회 3자)이 같은 크기로 보이게 한다.
-    @ScaledMetric(relativeTo: .caption) private var layerToggleMinWidth: CGFloat = 86
+    /// 레이어 토글 높이. SF Symbol마다 높이가 달라 토글이 들쭉날쭉해 보이는 걸 막는다.
+    @ScaledMetric(relativeTo: .caption) private var layerToggleHeight: CGFloat = 32
     @State private var discoverListQuery = ""
     @State private var hologramPin: MapPinItem?
     @State private var eventStackCluster: MapPinCluster?
@@ -110,6 +110,10 @@ struct MapHomeView: View {
 
             VStack(spacing: 10) {
                 homeMapHeader
+                festivalFilterButton
+                    .festivalShadow(.medium)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 14)
                 VStack(spacing: 10) {
                     if !viewModel.destinations.isEmpty {
                         destinationResults
@@ -584,33 +588,6 @@ struct MapHomeView: View {
                     ) {
                         Task { await viewModel.setTradeExpoLayerVisible(!viewModel.showsTradeExpoLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                     }
-                    if viewModel.showsFestivalLayer {
-                        Button {
-                            presentingFestivalFilter = true
-                        } label: {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.festival(.caption, weight: .bold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(festivalFilterModel.filter.isEmpty
-                                            ? FestivalDesign.surface.opacity(0.92)
-                                            : FestivalDesign.coral.opacity(0.15))
-                                .foregroundStyle(festivalFilterModel.filter.isEmpty
-                                                 ? FestivalDesign.secondaryText
-                                                 : FestivalDesign.coralText)
-                                .clipShape(FestivalDesign.controlShape)
-                                .overlay(
-                                    FestivalDesign.controlShape
-                                        .stroke(festivalFilterModel.filter.isEmpty
-                                                ? FestivalDesign.creamDeep.opacity(0.45)
-                                                : FestivalDesign.coral.opacity(0.5), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("축제 필터")
-                        // 적용 여부가 색으로만 드러나므로 보이스오버에도 상태를 알린다.
-                        .accessibilityValue(festivalFilterModel.filter.isEmpty ? "미적용" : "적용됨")
-                    }
                     if viewModel.isLoadingDiscover || viewModel.isLoadingRealtimeParking {
                         ProgressView()
                             .controlSize(.small)
@@ -642,6 +619,35 @@ struct MapHomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var festivalFilterButton: some View {
+        Button {
+            presentingFestivalFilter = true
+        } label: {
+            Label("필터", systemImage: "line.3.horizontal.decrease.circle")
+                .font(.festival(.caption, weight: .bold))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: layerToggleHeight)
+                .background(festivalFilterModel.filter.isEmpty
+                            ? FestivalDesign.surface.opacity(0.92)
+                            : FestivalDesign.coral.opacity(0.15))
+                .foregroundStyle(festivalFilterModel.filter.isEmpty
+                                 ? FestivalDesign.secondaryText
+                                 : FestivalDesign.coralText)
+                .clipShape(FestivalDesign.controlShape)
+                .overlay(
+                    FestivalDesign.controlShape
+                        .stroke(festivalFilterModel.filter.isEmpty
+                                ? FestivalDesign.creamDeep.opacity(0.45)
+                                : FestivalDesign.coral.opacity(0.5), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("축제 필터")
+        // 적용 여부가 색으로만 드러나므로 보이스오버에도 상태를 알린다.
+        .accessibilityValue(festivalFilterModel.filter.isEmpty ? "미적용" : "적용됨")
+    }
+
     private func layerToggle(
         title: String,
         systemImage: String,
@@ -654,8 +660,7 @@ struct MapHomeView: View {
                 .font(.festival(.caption, weight: .bold))
                 .lineLimit(1)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .frame(minWidth: layerToggleMinWidth)
+                .frame(height: layerToggleHeight)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
                 .foregroundStyle(isOn ? FestivalDesign.onFill(tint) : FestivalDesign.secondaryText)
                 .clipShape(FestivalDesign.controlShape)

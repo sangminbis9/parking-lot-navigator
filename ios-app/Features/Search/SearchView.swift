@@ -28,6 +28,7 @@ struct SearchView: View {
     @State private var availableEventCategories: [LocalEventPrimaryCategory] = []
     @State private var availableRegions: [String] = []
     @FocusState private var isSearchFocused: Bool
+    @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 32
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
@@ -209,6 +210,8 @@ struct SearchView: View {
                 .accessibilityLabel("검색어 지우기")
             }
         }
+        // 지우기 버튼(높이 32)이 나타났다 사라져도 검색란 높이가 흔들리지 않게 고정한다.
+        .frame(height: searchFieldHeight)
     }
 
     private var discoverControls: some View {
