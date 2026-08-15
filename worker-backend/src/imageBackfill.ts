@@ -1,6 +1,7 @@
 import { TourApiDetailClient } from "../../backend/src/features/discover/festivals/tourApiDetailClient.js";
 import { fetchWithTimeout } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { isRetryableBackfillError } from "./backfillRetry.js";
 
 // 목록 API는 대표 사진 한 장(TourAPI firstimage, KOPIS poster)만 준다. 갤러리
 // 전체는 항목별 detail 호출로만 얻을 수 있어 sync 중에 전부 부를 수 없다.
@@ -15,6 +16,9 @@ const BACKFILL_CONCURRENCY = 5;
 // 갤러리가 수십 장인 항목도 있어 상한을 둔다. 앱 상세 화면은 페이징이라
 // 이보다 많으면 사실상 아무도 끝까지 넘기지 않는다.
 const MAX_IMAGES_PER_ITEM = 12;
+// TourAPI 갤러리는 행사가 임박해야 채워지는 경우가 많다. 아직 시작 전이고 사진이
+// 한 장뿐인 행은 이 기간이 지나면 한 번 더 조회해, 나중에 올라온 사진을 받는다.
+const RECHECK_AFTER_DAYS = 30;
 
 type ImageSourceKind = "kopis" | "tourapi";
 
@@ -38,6 +42,9 @@ export interface ImageBackfillResult {
   filled: number;
   empty: number;
   failed: number;
+  // 재시도해도 같은 결과인 오류로 확정한 행. empty(사진이 원래 없는 행)와 섞으면
+  // 쿼터 장애가 정상 회차처럼 보인다.
+  permanentFailures: number;
   addedImages: number;
   bySource: Record<string, { scanned: number; filled: number }>;
   // 실패가 몰릴 때 원인을 로그 없이 응답만으로 가릴 수 있게 남기는 표본.
@@ -66,6 +73,7 @@ export async function runImageBackfill(
     filled: 0,
     empty: 0,
     failed: 0,
+    permanentFailures: 0,
     addedImages: 0,
     bySource: {},
   };
@@ -73,19 +81,34 @@ export async function runImageBackfill(
 
   const now = options.now ?? new Date();
   const today = now.toISOString().slice(0, 10);
+  const recheckBefore = new Date(
+    now.getTime() - RECHECK_AFTER_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const placeholders = sources.map(() => "?").join(",");
-  // 이미 끝난 행은 앱에 노출되지 않으니 예산을 쓰지 않는다.
+  // 이미 끝난 행은 앱에 노출되지 않으니 예산을 쓰지 않는다. 아직 조회하지 않은
+  // 행을 먼저 다 훑고, 남는 예산으로만 재조회 대상을 본다.
   const rows = await db
     .prepare(
       `SELECT id, source, source_item_id, image_url, images_json
          FROM discovery_items
         WHERE source IN (${placeholders})
-          AND images_checked_at IS NULL
           AND (end_date IS NULL OR end_date >= ?)
-        ORDER BY start_date
+          AND (
+            images_checked_at IS NULL
+            OR (
+              images_checked_at < ?
+              AND start_date >= ?
+              AND (
+                images_json IS NULL
+                OR NOT json_valid(images_json)
+                OR json_array_length(images_json) < 2
+              )
+            )
+          )
+        ORDER BY images_checked_at IS NOT NULL, start_date
         LIMIT ?`,
     )
-    .bind(...sources, today, maxItems)
+    .bind(...sources, today, recheckBefore, today, maxItems)
     .all<BackfillRow>();
 
   const targets = rows.results ?? [];
@@ -117,13 +140,13 @@ export async function runImageBackfill(
         return { row, urls, failed: false, message: undefined };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        // 429/5xx는 일시적이라 다음 회차에 재시도하고, 그 밖의 오류는 이 id로는
-        // 계속 실패하므로 "사진 없음"으로 확정해 예산을 갉아먹지 않게 한다.
-        if (isRetryable(message)) {
-          console.warn(`image backfill failed id=${row.id}: ${message}`);
-          return { row, urls: [], failed: true, message };
-        }
-        return { row, urls: [], failed: false, message };
+        // 일시적 실패는 다음 회차에 재시도하고, 같은 id로는 계속 실패하는 오류만
+        // 확정해 예산을 갉아먹지 않게 한다.
+        const retryable = isRetryableBackfillError(message);
+        console.warn(
+          `image backfill ${retryable ? "failed" : "gave up"} id=${row.id}: ${message}`,
+        );
+        return { row, urls: [], failed: retryable, message };
       }
     },
   );
@@ -139,17 +162,18 @@ export async function runImageBackfill(
       if (message && errorSamples.size < 5) errorSamples.add(message);
       continue;
     }
+    if (message) {
+      // 영구 실패로 확정한 행. 사진이 원래 없는 행(empty)과 따로 센다.
+      result.permanentFailures += 1;
+      if (errorSamples.size < 5) errorSamples.add(message);
+      statements.push(markChecked(db, checkedAt, row.id));
+      continue;
+    }
     const existing = mergeImages(parseImages(row.images_json), row.image_url);
     const merged = mergeImages(existing, ...urls).slice(0, MAX_IMAGES_PER_ITEM);
     if (merged.length <= existing.length) {
       result.empty += 1;
-      statements.push(
-        db
-          .prepare(
-            "UPDATE discovery_items SET images_checked_at = ? WHERE id = ?",
-          )
-          .bind(checkedAt, row.id),
-      );
+      statements.push(markChecked(db, checkedAt, row.id));
       continue;
     }
     result.filled += 1;
@@ -205,6 +229,16 @@ async function fetchKopisImages(
   return mergeImages([], poster, ...styurls);
 }
 
+function markChecked(
+  db: D1Database,
+  checkedAt: string,
+  id: string,
+): D1PreparedStatement {
+  return db
+    .prepare("UPDATE discovery_items SET images_checked_at = ? WHERE id = ?")
+    .bind(checkedAt, id);
+}
+
 // 이미지 URL을 순서대로 합치며 중복을 제거한다. TourAPI는 같은 사진을
 // `..._image2_1.jpg`(원본)과 `..._image3_1.jpg`(썸네일)로 두 번 주므로,
 // 크기 접미사를 뗀 키로 비교해 같은 사진이 두 장으로 보이지 않게 한다.
@@ -247,16 +281,6 @@ function parseImages(value: string | null): string[] {
   } catch {
     return [];
   }
-}
-
-function isRetryable(message: string): boolean {
-  if (message.includes("Too many subrequests")) return true;
-  const status = /failed: (\d{3})\b/.exec(message)?.[1];
-  if (status) return status === "429" || Number(status) >= 500;
-  // resultCode 오류(NODATA 등)는 같은 id로 다시 불러도 결과가 같다.
-  if (message.includes("detail failed:")) return false;
-  // 타임아웃·네트워크 오류처럼 상태코드가 없는 실패는 일시적으로 본다.
-  return true;
 }
 
 // discovery_items.source_item_id는 "tourapi:1100492" 형태로 저장된다.

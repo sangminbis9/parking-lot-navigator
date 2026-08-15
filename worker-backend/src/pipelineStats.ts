@@ -123,7 +123,16 @@ function isoAgo(offset: string): string {
   return `strftime('%Y-%m-%dT%H:%M:%fZ','now','${offset}')`;
 }
 
-export async function queryPipelineStats(db: D1Database): Promise<PipelineStats> {
+export interface PipelineStatsOptions {
+  // sync_runs.message에는 provider 예외 문자열이 그대로 들어간다. 관리자 토큰
+  // 없이 부르는 앱 대시보드에는 내려주지 않는다.
+  includeRunMessages?: boolean;
+}
+
+export async function queryPipelineStats(
+  db: D1Database,
+  options: PipelineStatsOptions = {},
+): Promise<PipelineStats> {
   const [
     discoveryTotal,
     discoveryByType,
@@ -413,7 +422,10 @@ export async function queryPipelineStats(db: D1Database): Promise<PipelineStats>
       })),
       lastSuccessAt: firstText(syncLastSuccess, "value"),
     },
-    recentSyncRuns: (recentSyncRuns.results ?? []) as unknown as SyncRunRow[],
+    recentSyncRuns: ((recentSyncRuns.results ?? []) as unknown as SyncRunRow[]).map(
+      (run) =>
+        options.includeRunMessages ? run : { ...run, message: null },
+    ),
   };
 }
 

@@ -19,3 +19,5 @@ ios-app/*.xcworkspace/
 DerivedData/
 .DS_Store
 .superpowers/
+.serena/
+*:Zone.Identifier

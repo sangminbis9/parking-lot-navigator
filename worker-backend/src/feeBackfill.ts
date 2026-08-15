@@ -5,6 +5,7 @@ import {
   parseXmlItems,
 } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { isRetryableBackfillError } from "./backfillRetry.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 
 // KOPIS pcseguidance와 TourAPI usetimefestival은 목록 응답에 없고 항목별 detail
@@ -37,6 +38,9 @@ export interface FeeBackfillResult {
   filled: number;
   empty: number;
   failed: number;
+  // 재시도해도 같은 결과인 오류로 확정한 행. empty(요금 정보가 원래 없는 행)와
+  // 섞으면 쿼터 장애가 정상 회차처럼 보인다.
+  permanentFailures: number;
   bySource: Record<string, { scanned: number; filled: number }>;
   // 실패가 몰릴 때 원인을 로그 없이 응답만으로 가릴 수 있게 남기는 표본.
   errors?: string[];
@@ -64,6 +68,7 @@ export async function runFeeBackfill(
     filled: 0,
     empty: 0,
     failed: 0,
+    permanentFailures: 0,
     bySource: {},
   };
   if (sources.length === 0 || maxItems <= 0) return result;
@@ -112,8 +117,13 @@ export async function runFeeBackfill(
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
-        console.warn(`fee backfill failed id=${row.id}: ${message}`);
-        return { row, text: null, failed: true, message };
+        // 같은 id로는 계속 실패하는 오류(NODATA 등)만 확정하고, 쿼터·타임아웃 등
+        // 일시적 실패는 fee_checked_at을 남기지 않아 다음 회차에 재시도한다.
+        const retryable = isRetryableBackfillError(message);
+        console.warn(
+          `fee backfill ${retryable ? "failed" : "gave up"} id=${row.id}: ${message}`,
+        );
+        return { row, text: null, failed: retryable, message };
       }
     },
   );
@@ -127,6 +137,17 @@ export async function runFeeBackfill(
       // 실패한 행은 fee_checked_at을 남기지 않아 다음 회차에 다시 시도한다.
       result.failed += 1;
       if (message && errorSamples.size < 5) errorSamples.add(message);
+      continue;
+    }
+    if (message) {
+      // 영구 실패로 확정한 행. 요금 정보가 원래 없는 행(empty)과 따로 센다.
+      result.permanentFailures += 1;
+      if (errorSamples.size < 5) errorSamples.add(message);
+      statements.push(
+        db
+          .prepare("UPDATE discovery_items SET fee_checked_at = ? WHERE id = ?")
+          .bind(checkedAt, row.id),
+      );
       continue;
     }
     const fee = normalizeFee(text);
