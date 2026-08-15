@@ -29,6 +29,7 @@ struct SearchView: View {
     @State private var availableRegions: [String] = []
     @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 32
+    @State private var showsScrollToTop = false
 
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
@@ -37,129 +38,169 @@ struct SearchView: View {
     private let queryDebounceNanoseconds: UInt64 = 250_000_000
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                discoverHeader
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    discoverHeader
+                        .id(Self.topAnchorID)
 
-                VStack(spacing: 10) {
-                    searchField
-                    discoverControls
-                }
-                .padding(12)
-                .festivalCard()
-
-                if isLoading {
-                    LoadingStateView(text: "축제와 이벤트를 불러오는 중입니다")
-                        .frame(height: 130)
-                        .padding()
-                        .festivalCard()
-                }
-
-                if let errorMessage {
-                    FailureStateView(message: errorMessage) {
-                        startDiscoverLoad(force: true)
+                    VStack(spacing: 10) {
+                        searchField
+                        discoverControls
                     }
+                    .padding(12)
                     .festivalCard()
-                }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("\(filteredItems.count)개")
-                        .font(.festival(.caption, weight: .semibold))
-                        .foregroundStyle(FestivalDesign.secondaryText)
+                    if isLoading {
+                        LoadingStateView(text: "축제와 이벤트를 불러오는 중입니다")
+                            .frame(height: 130)
+                            .padding()
+                            .festivalCard()
+                    }
 
-                    activeFilterChips
+                    if let errorMessage {
+                        FailureStateView(message: errorMessage) {
+                            startDiscoverLoad(force: true)
+                        }
+                        .festivalCard()
+                    }
 
-                    if filteredItems.isEmpty && !isLoading {
-                        emptyState
-                    } else {
-                        LazyVStack(spacing: 10) {
-                            ForEach(visibleItems) { item in
-                                Button {
-                                    isSearchFocused = false
-                                    destinationStore.addRecent(item.destination)
-                                    router.showResults(for: item.destination, presentation: item.presentation)
-                                } label: {
-                                    DiscoverTabRow(item: item)
-                                        .padding(12)
-                                        .festivalCard()
-                                }
-                                .buttonStyle(.plain)
-                            }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("\(filteredItems.count)개")
+                            .font(.festival(.caption, weight: .semibold))
+                            .foregroundStyle(FestivalDesign.secondaryText)
 
-                            if visibleItems.count < filteredItems.count {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 16)
-                                    .onAppear {
-                                        loadMoreVisibleItems()
+                        activeFilterChips
+
+                        if filteredItems.isEmpty && !isLoading {
+                            emptyState
+                        } else {
+                            LazyVStack(spacing: 10) {
+                                ForEach(visibleItems) { item in
+                                    Button {
+                                        isSearchFocused = false
+                                        destinationStore.addRecent(item.destination)
+                                        router.showResults(for: item.destination, presentation: item.presentation)
+                                    } label: {
+                                        DiscoverTabRow(item: item)
+                                            .padding(12)
+                                            .festivalCard()
                                     }
+                                    .buttonStyle(.plain)
+                                }
+
+                                if visibleItems.count < filteredItems.count {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .onAppear {
+                                            loadMoreVisibleItems()
+                                        }
+                                }
                             }
                         }
                     }
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded {
+                        isSearchFocused = false
+                    })
                 }
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded {
-                    isSearchFocused = false
-                })
+                .padding(16)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: DiscoverScrollOffsetKey.self,
+                            value: -geo.frame(in: .named(Self.scrollSpace)).minY
+                        )
+                    }
+                )
             }
-            .padding(16)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .background(FestivalDesign.background.ignoresSafeArea())
-        .festivalNavigationTitle("축제 / 이벤트")
-        .onAppear {
-            applyPendingDiscoverFilter()
-            startDiscoverLoad()
-        }
-        .onDisappear {
-            if tabRouter.selectedTab != .discover {
-                scheduleDiscoverUnload()
+            .coordinateSpace(name: Self.scrollSpace)
+            .onPreferenceChange(DiscoverScrollOffsetKey.self) { offset in
+                // 한 화면 넘게 내려갔을 때만 노출한다. 값이 경계에서 떨릴 수 있어 상태가 달라질 때만 갱신.
+                let shouldShow = offset > 600
+                guard shouldShow != showsScrollToTop else { return }
+                withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
+                    showsScrollToTop = shouldShow
+                }
             }
-        }
-        .onChange(of: tabRouter.selectedTab) { selectedTab in
-            if selectedTab == .discover {
+            .overlay(alignment: .bottomTrailing) {
+                if showsScrollToTop {
+                    Button {
+                        isSearchFocused = false
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                        }
+                    } label: {
+                        ScrollToTopBadge()
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 20)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .accessibilityLabel("목록 맨 위로")
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(FestivalDesign.background.ignoresSafeArea())
+            .festivalNavigationTitle("축제 / 이벤트")
+            .onAppear {
                 applyPendingDiscoverFilter()
                 startDiscoverLoad()
-            } else {
-                scheduleDiscoverUnload()
+            }
+            .onDisappear {
+                if tabRouter.selectedTab != .discover {
+                    scheduleDiscoverUnload()
+                }
+            }
+            .onChange(of: tabRouter.selectedTab) { selectedTab in
+                if selectedTab == .discover {
+                    applyPendingDiscoverFilter()
+                    startDiscoverLoad()
+                } else {
+                    scheduleDiscoverUnload()
+                }
+            }
+            .onChange(of: tabRouter.discoverFilterQuery) { _ in
+                applyPendingDiscoverFilter()
+            }
+            .onChange(of: locationProvider.coordinate?.latitude) { _ in
+                if sort == .distance { recomputeFilteredItems() }
+            }
+            .onChange(of: query) { newValue in
+                scheduleQueryDebounce(newValue)
+            }
+            .onChange(of: debouncedQuery) { _ in
+                resetVisibleItems()
+                recomputeFilteredItems()
+            }
+            .onChange(of: selectedKind) { _ in
+                resetVisibleItems()
+                recomputeFilteredItems()
+            }
+            .onChange(of: sort) { _ in
+                resetVisibleItems()
+                recomputeFilteredItems()
+            }
+            .onChange(of: filters) { _ in
+                resetVisibleItems()
+                recomputeFilteredItems()
+            }
+            .sheet(isPresented: $showsFilters) {
+                DiscoverTabFilterSheet(
+                    filters: $filters,
+                    kind: selectedKind,
+                    sources: availableSources,
+                    festivalCategories: availableFestivalCategories,
+                    eventCategories: availableEventCategories,
+                    regions: availableRegions
+                )
             }
         }
-        .onChange(of: tabRouter.discoverFilterQuery) { _ in
-            applyPendingDiscoverFilter()
-        }
-        .onChange(of: locationProvider.coordinate?.latitude) { _ in
-            if sort == .distance { recomputeFilteredItems() }
-        }
-        .onChange(of: query) { newValue in
-            scheduleQueryDebounce(newValue)
-        }
-        .onChange(of: debouncedQuery) { _ in
-            resetVisibleItems()
-            recomputeFilteredItems()
-        }
-        .onChange(of: selectedKind) { _ in
-            resetVisibleItems()
-            recomputeFilteredItems()
-        }
-        .onChange(of: sort) { _ in
-            resetVisibleItems()
-            recomputeFilteredItems()
-        }
-        .onChange(of: filters) { _ in
-            resetVisibleItems()
-            recomputeFilteredItems()
-        }
-        .sheet(isPresented: $showsFilters) {
-            DiscoverTabFilterSheet(
-                filters: $filters,
-                kind: selectedKind,
-                sources: availableSources,
-                festivalCategories: availableFestivalCategories,
-                eventCategories: availableEventCategories,
-                regions: availableRegions
-            )
-        }
     }
+
+    private static let topAnchorID = "discover-top"
+    private static let scrollSpace = "discover-scroll"
 
     private func applyPendingDiscoverFilter() {
         guard let filter = tabRouter.discoverFilterQuery else { return }
@@ -431,6 +472,34 @@ struct SearchView: View {
         }
         guard !Task.isCancelled else { return }
         isLoading = false
+    }
+}
+
+private struct DiscoverScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// 목록이 길어졌을 때 뜨는 "맨 위로" 알약. 카드 위에 떠 있어야 해서 채움 + 그림자로 띄운다.
+private struct ScrollToTopBadge: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.up")
+                .font(.festival(.caption, weight: .bold))
+            Text("맨 위로")
+                .font(.festival(.caption, weight: .bold))
+        }
+        .foregroundStyle(FestivalDesign.onFill(FestivalDesign.teal))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(FestivalDesign.chipShape.fill(FestivalDesign.teal))
+        .overlay(
+            FestivalDesign.chipShape
+                .stroke(FestivalDesign.surface.opacity(0.85), lineWidth: 2)
+        )
+        .festivalShadow(.high)
     }
 }
 
