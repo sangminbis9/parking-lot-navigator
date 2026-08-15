@@ -337,7 +337,7 @@ final class MockAPIClient: APIClientProtocol {
                 running: 1,
                 last24h: .init(runs: 30, success: 28, failed: 1, timeout: 1, fetched: 900, upserted: 120, skipped: 760, pruned: 20),
                 byType: [
-                    .init(syncType: "discover:festival:kopis", runs: 12, success: 12, failed: 0, fetched: 400, upserted: 60, pruned: 8, lastStartedAt: now)
+                    .init(syncType: "discover:festival:kopis", runs: 12, success: 12, failed: 0, timeout: 0, fetched: 400, upserted: 60, pruned: 8, lastStartedAt: now)
                 ],
                 lastSuccessAt: now
             ),

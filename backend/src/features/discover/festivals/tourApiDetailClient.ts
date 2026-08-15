@@ -161,6 +161,24 @@ export class TourApiDetailClient {
     return cleanHtml(intro?.usetimefestival);
   }
 
+  // 사진 backfill 전용 경로. detailImage2는 목록 응답의 firstimage와 달리
+  // 항목별 갤러리 전체를 준다. detail()은 첫 장만 쓰지만 여기서는 중복 없이
+  // 전부 돌려준다.
+  async galleryImages(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<string[]> {
+    const key = contentId.trim();
+    if (!key) return [];
+    const items = await this.fetchImages(key, signal);
+    const urls: string[] = [];
+    for (const item of items) {
+      const url = clean(item.originimgurl) ?? clean(item.smallimageurl);
+      if (url && !urls.includes(url)) urls.push(url);
+    }
+    return urls;
+  }
+
   detail(
     contentId: string,
     signal?: AbortSignal,

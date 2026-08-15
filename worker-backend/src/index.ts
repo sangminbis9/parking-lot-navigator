@@ -36,6 +36,7 @@ import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
 import { runAkeiTradeExpoDiscovery } from "./akeiTradeExpoDiscovery.js";
 import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runFeeBackfill } from "./feeBackfill.js";
+import { runImageBackfill } from "./imageBackfill.js";
 import { runGeocodeBackfill } from "./geocodeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
@@ -88,6 +89,7 @@ export type Env = {
   KOPIS_API_KEY?: string;
   KOPIS_BASE_URL: string;
   FEE_BACKFILL_MAX_ITEMS?: string;
+  IMAGE_BACKFILL_MAX_ITEMS?: string;
   GEOCODE_BACKFILL_MAX_LOOKUPS?: string;
   KCISA_428_API_KEY?: string;
   KCISA_196_API_KEY?: string;
@@ -267,6 +269,11 @@ const cityFestivalDiscoverySyncSchema = z.object({
 })
 
 const feeBackfillSchema = z.object({
+  maxItems: z.coerce.number().int().min(1).max(45).optional(),
+});
+
+// 조회 한 건이 subrequest 한 건이라 요금 backfill과 같은 상한을 쓴다.
+const imageBackfillSchema = z.object({
   maxItems: z.coerce.number().int().min(1).max(45).optional(),
 });
 
@@ -950,6 +957,23 @@ app.post("/admin/backfill-fees", async (c) => {
   }
 });
 
+app.post("/admin/backfill-images", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  const query = imageBackfillSchema.parse(queryObject(c.req.raw.url));
+  try {
+    const result = await runImageBackfill(c.env.DB, c.env, {
+      maxItems: query.maxItems,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/backfill-geocodes", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -1087,14 +1111,18 @@ export default {
       // 요금 backfill은 항목별 detail 호출이라 한 번에 다 못 돈다. invocation당
       // subrequest 예산이 50이므로, 외부 호출이 많은 로컬 이벤트/스크래핑 cron
       // 대신 호출이 가벼운 태깅 cron에 얹어 조금씩 나눠 돈다.
-      // 요금 backfill(30건)과 지오코딩 backfill(25건)을 한 invocation에서 함께
+      // 요금(30건)·지오코딩(25건)·사진(30건) backfill을 한 invocation에서 함께
       // 돌리면 50건 예산을 넘긴다. 새 cron 슬롯을 쓸 수 없어(계정당 5개 한도)
-      // UTC 시(hour) 홀짝으로 번갈아 실행한다 — 각각 하루 36회씩 돈다.
+      // 이 cron이 도는 :00/:20/:40 분에 하나씩 번갈아 실행한다 — 각각 하루
+      // 24회씩 돈다.
       const scheduledAt = new Date(controller.scheduledTime);
-      if (scheduledAt.getUTCHours() % 2 === 0) {
+      const slot = Math.floor(scheduledAt.getUTCMinutes() / 20) % 3;
+      if (slot === 0) {
         ctx.waitUntil(runFeeBackfillScheduled(env));
-      } else {
+      } else if (slot === 1) {
         ctx.waitUntil(runGeocodeBackfillScheduled(env));
+      } else {
+        ctx.waitUntil(runImageBackfillScheduled(env));
       }
       return;
     }
@@ -1150,6 +1178,18 @@ async function runFeeBackfillScheduled(env: Env): Promise<void> {
   } catch (error) {
     console.error("fee backfill failed", error);
     await notifyOpsFailure(env, "fee backfill", error);
+  }
+}
+
+async function runImageBackfillScheduled(env: Env): Promise<void> {
+  try {
+    const result = await runImageBackfill(env.DB!, env);
+    if (result.scanned > 0) {
+      console.log("image backfill done", JSON.stringify(result));
+    }
+  } catch (error) {
+    console.error("image backfill failed", error);
+    await notifyOpsFailure(env, "image backfill", error);
   }
 }
 

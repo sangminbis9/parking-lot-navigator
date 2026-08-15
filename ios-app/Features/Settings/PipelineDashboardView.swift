@@ -312,10 +312,10 @@ struct PipelineDashboardView: View {
                         Spacer()
                         StatusBadge(
                             text: "\(row.runs)회",
-                            kind: row.failed > 0 ? .warning : .source
+                            kind: row.failed + row.timeout > 0 ? .warning : .source
                         )
                     }
-                    Text("성공 \(row.success) · 실패 \(row.failed) · 수집 \(row.fetched) · 반영 \(row.upserted) · 정리 \(row.pruned)")
+                    Text("성공 \(row.success) · 실패 \(row.failed) · 타임아웃 \(row.timeout) · 수집 \(row.fetched) · 반영 \(row.upserted)")
                         .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                     if let last = row.lastStartedAt {
