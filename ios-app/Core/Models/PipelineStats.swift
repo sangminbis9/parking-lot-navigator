@@ -148,6 +148,7 @@ struct PipelineStats: Codable, Hashable {
         let runs: Int
         let success: Int
         let failed: Int
+        let timeout: Int
         let fetched: Int
         let upserted: Int
         let pruned: Int

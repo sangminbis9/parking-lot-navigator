@@ -722,7 +722,12 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         lowest_price_platform = excluded.lowest_price_platform,
         source_url = excluded.source_url,
         image_url = COALESCE(NULLIF(excluded.image_url, ''), NULLIF(image_url, '')),
-        images_json = COALESCE(NULLIF(excluded.images_json, ''), NULLIF(images_json, '')),
+        images_json = CASE
+          WHEN COALESCE(CASE WHEN json_valid(images_json) THEN json_array_length(images_json) END, 0)
+             > COALESCE(CASE WHEN json_valid(excluded.images_json) THEN json_array_length(excluded.images_json) END, 0)
+          THEN images_json
+          ELSE COALESCE(NULLIF(excluded.images_json, ''), NULLIF(images_json, ''))
+        END,
         tags_json = excluded.tags_json,
         amenities_json = excluded.amenities_json,
         offers_json = excluded.offers_json,

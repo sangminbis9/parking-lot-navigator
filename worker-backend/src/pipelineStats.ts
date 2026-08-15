@@ -25,6 +25,7 @@ interface SyncTypeRow {
   runs: number;
   success: number;
   failed: number;
+  timeout: number;
   fetched: number;
   upserted: number;
   pruned: number;
@@ -280,7 +281,8 @@ export async function queryPipelineStats(db: D1Database): Promise<PipelineStats>
          sync_type AS syncType,
          COUNT(*) AS runs,
          SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
-         SUM(CASE WHEN status IN ('failed', 'timeout') THEN 1 ELSE 0 END) AS failed,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+         SUM(CASE WHEN status = 'timeout' THEN 1 ELSE 0 END) AS timeout,
          SUM(fetched) AS fetched,
          SUM(upserted) AS upserted,
          SUM(pruned) AS pruned,
@@ -403,6 +405,7 @@ export async function queryPipelineStats(db: D1Database): Promise<PipelineStats>
         runs: Number(row.runs ?? 0),
         success: Number(row.success ?? 0),
         failed: Number(row.failed ?? 0),
+        timeout: Number(row.timeout ?? 0),
         fetched: Number(row.fetched ?? 0),
         upserted: Number(row.upserted ?? 0),
         pruned: Number(row.pruned ?? 0),

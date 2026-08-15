@@ -267,9 +267,11 @@ function shapeKeywordFestival(
   ) {
     return null;
   }
-  const imageUrls = [item.firstimage, item.firstimage2]
-    .filter((url): url is string => Boolean(url?.trim()))
-    .filter((url, i, arr) => arr.indexOf(url) === i);
+  // firstimage2는 firstimage의 썸네일(같은 사진 저해상도)이라 둘 다 담으면
+  // 갤러리에 같은 사진이 두 장으로 보인다. 원본이 없을 때만 대체로 쓴다.
+  const imageUrls = [item.firstimage?.trim() || item.firstimage2?.trim()].filter(
+    (url): url is string => Boolean(url),
+  );
   return {
     id: `keyword-tour:${item.contentid}`,
     contentId: item.contentid,
