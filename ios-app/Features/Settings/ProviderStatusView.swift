@@ -8,6 +8,7 @@ struct ProviderStatusView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                apiServerCard
                 providerStatusCard
             }
             .padding(16)
@@ -16,6 +17,24 @@ struct ProviderStatusView: View {
         .festivalNavigationTitle("Provider 상태")
         .task { await load() }
         .refreshable { await load() }
+    }
+
+    private var apiServerCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("API 서버")
+                .font(.festival(.headline))
+                .foregroundStyle(FestivalDesign.navy)
+            Text(AppConfiguration.current.apiBaseURL.absoluteString)
+                .font(.festival(.subheadline, weight: .semibold))
+                .foregroundStyle(FestivalDesign.navy)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(FestivalDesign.cream.opacity(0.35))
+                .clipShape(FestivalDesign.controlShape)
+        }
+        .padding(14)
+        .festivalCard()
     }
 
     private var providerStatusCard: some View {
