@@ -257,17 +257,19 @@ struct SearchView: View {
 
     private var discoverControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                ForEach(DiscoverTabKind.allCases) { kind in
-                    Button {
-                        selectedKind = kind
-                    } label: {
-                        Label(kind.title, systemImage: kind.systemImage)
-                            .font(.festival(.caption, weight: .bold))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity)
+            // 분류가 5개라 한 줄에 균등 분할하면 "가게 이벤트"가 잘린다. 지도 토글처럼 가로 스크롤.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(DiscoverTabKind.allCases) { kind in
+                        Button {
+                            selectedKind = kind
+                        } label: {
+                            Label(kind.title, systemImage: kind.systemImage)
+                                .font(.festival(.caption, weight: .bold))
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(DiscoverSegmentButtonStyle(isSelected: selectedKind == kind, tint: kind.tint))
                     }
-                    .buttonStyle(DiscoverSegmentButtonStyle(isSelected: selectedKind == kind, tint: kind.tint))
                 }
             }
 
@@ -459,11 +461,28 @@ struct SearchView: View {
                 lng: koreaCenter.longitude,
                 radiusMeters: discoverRadiusMeters
             )
+            // 공연 분류는 KOPIS 공연을 포함해야 지도 공연 레이어와 같은 목록이 된다.
+            // 실패해도 축제·이벤트 목록은 살려야 하므로 이 호출만 옵셔널로 받는다.
+            async let performanceItems = apiClient.nearbyPerformances(
+                lat: koreaCenter.latitude,
+                lng: koreaCenter.longitude,
+                radiusMeters: discoverRadiusMeters,
+                upcomingWithinDays: 365
+            )
             let loadedFestivals = try await festivalItems
             let loadedEvents = try await eventItems
+            let loadedPerformances = try? await performanceItems
             guard !Task.isCancelled, tabRouter.selectedTab == .discover else { return }
             festivals = loadedFestivals
-            events = loadedEvents
+            // 음악·공연 축제는 /api/festivals에도 들어 있어 이벤트만 합친다.
+            var mergedEvents = loadedEvents
+            if let performanceEvents = loadedPerformances?.events {
+                var seenIds = Set(loadedEvents.map(\.id))
+                for event in performanceEvents where seenIds.insert(event.id).inserted {
+                    mergedEvents.append(event)
+                }
+            }
+            events = mergedEvents
             resetVisibleItems()
             rebuildAllItems()
         } catch {
@@ -503,7 +522,7 @@ private struct ScrollToTopBadge: View {
     }
 }
 
-private struct DiscoverTabItem: Identifiable {
+struct DiscoverTabItem: Identifiable {
     enum Kind {
         case festival(Festival)
         case event(FreeEvent)
@@ -673,6 +692,12 @@ private struct DiscoverTabItem: Identifiable {
         return false
     }
 
+    /// 지도 공연 레이어와 같은 기준. 음악·공연 축제와 KOPIS 공연 이벤트를 함께 본다.
+    var isPerformance: Bool {
+        if festivalCategory == .musicPerformance { return true }
+        return isEvent && source == "kopis"
+    }
+
     private static func regionText(from address: String) -> String {
         let token = address
             .split(whereSeparator: { $0.isWhitespace || $0 == "," })
@@ -699,10 +724,14 @@ private struct DiscoverTabItem: Identifiable {
     }
 }
 
+/// 목록 분류는 지도 탭 레이어 토글과 같은 종류·이름·색을 쓴다. 한쪽만 바뀌면
+/// 같은 데이터가 화면마다 다른 이름으로 보이므로 지도의 토글 구성을 그대로 따른다.
 private enum DiscoverTabKind: String, CaseIterable, Identifiable {
     case all
     case festivals
-    case events
+    case localEvents
+    case performances
+    case tradeExpos
 
     var id: String { rawValue }
 
@@ -710,7 +739,9 @@ private enum DiscoverTabKind: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "전체"
         case .festivals: return "축제"
-        case .events: return "이벤트"
+        case .localEvents: return "가게 이벤트"
+        case .performances: return "공연"
+        case .tradeExpos: return "박람회"
         }
     }
 
@@ -718,7 +749,9 @@ private enum DiscoverTabKind: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "square.grid.2x2.fill"
         case .festivals: return "sparkles"
-        case .events: return "calendar"
+        case .localEvents: return "tag.fill"
+        case .performances: return "music.note"
+        case .tradeExpos: return FestivalPrimaryCategory.tradeExpo.systemImage
         }
     }
 
@@ -726,15 +759,21 @@ private enum DiscoverTabKind: String, CaseIterable, Identifiable {
         switch self {
         case .all: return FestivalDesign.coral
         case .festivals: return FestivalDesign.coral
-        case .events: return FestivalDesign.teal
+        case .localEvents: return FestivalDesign.teal
+        case .performances: return FestivalPrimaryCategory.musicPerformance.tint
+        case .tradeExpos: return FestivalPrimaryCategory.tradeExpo.tint
         }
     }
 
     func includes(_ item: DiscoverTabItem) -> Bool {
         switch self {
+        // 지도와 같은 기준: 축제 레이어는 박람회만 빼고 담고, 공연은 음악·공연 축제와
+        // KOPIS 공연을 함께 담는다(둘 다에 들어가는 항목이 있어도 지도와 같다).
         case .all: return true
-        case .festivals: return item.isFestival
-        case .events: return item.isEvent
+        case .festivals: return item.isFestival && item.festivalCategory != .tradeExpo
+        case .localEvents: return item.isEvent && !item.isPerformance
+        case .performances: return item.isPerformance
+        case .tradeExpos: return item.isFestival && item.festivalCategory == .tradeExpo
         }
     }
 }
@@ -831,10 +870,10 @@ private struct DiscoverTabFilterSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     statusSection
-                    if kind != .events {
+                    if kind != .localEvents {
                         festivalCategorySection
                     }
-                    if kind != .festivals {
+                    if kind == .all || kind == .localEvents {
                         eventCategorySection
                     }
                     filterSection(title: "지역", values: regions, selection: $filters.selectedRegions)
@@ -1142,7 +1181,7 @@ private struct FlowLayout: Layout {
     }
 }
 
-private struct DiscoverTabRow: View {
+struct DiscoverTabRow: View {
     let item: DiscoverTabItem
     @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
     @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore

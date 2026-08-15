@@ -12,6 +12,8 @@ struct SavedEvent: Codable, Hashable, Identifiable {
     let lat: Double
     let lng: Double
     let source: String
+    // 저장 목록 카드가 검색 탭 목록과 같은 썸네일을 쓰도록 함께 보관한다.
+    let imageUrl: String?
 
     init(event: FreeEvent) {
         self.id = event.id
@@ -24,6 +26,7 @@ struct SavedEvent: Codable, Hashable, Identifiable {
         self.lat = event.lat
         self.lng = event.lng
         self.source = event.source
+        self.imageUrl = event.imageUrl
     }
 
     init(destination: Destination, presentation: DiscoverPresentation) {
@@ -38,10 +41,44 @@ struct SavedEvent: Codable, Hashable, Identifiable {
         self.lat = destination.lat
         self.lng = destination.lng
         self.source = presentation.source
+        self.imageUrl = presentation.imageUrl
     }
 }
 
 extension SavedEvent {
+    /// 저장 목록용 폴백 FreeEvent. 저장 시점의 최소 필드만으로 구성한다(상세 필드는 없음).
+    var asEvent: FreeEvent {
+        FreeEvent(
+            id: id,
+            title: title,
+            eventType: eventType,
+            category: nil,
+            sourceId: nil,
+            startDate: startDate,
+            endDate: endDate,
+            status: .approved,
+            storeName: storeName,
+            venueName: storeName,
+            address: address,
+            lat: lat,
+            lng: lng,
+            distanceMeters: 0,
+            source: source,
+            sourceUrl: nil,
+            imageUrl: imageUrl,
+            benefit: nil,
+            shortDescription: nil,
+            region: nil,
+            updatedAt: nil,
+            confidenceScore: nil,
+            needsReview: nil,
+            isSponsored: false,
+            sponsorTier: nil,
+            paidUntil: nil,
+            priorityScore: 0
+        )
+    }
+
     /// 저장 목록에서 상세 화면으로 이동할 때 사용할 최소 Destination/Presentation.
     var destination: Destination {
         Destination(
@@ -68,7 +105,7 @@ extension SavedEvent {
             typeText: eventType,
             source: source,
             sourceUrl: nil,
-            imageUrl: nil,
+            imageUrl: imageUrl,
             imageUrls: [],
             price: nil,
             region: nil,
