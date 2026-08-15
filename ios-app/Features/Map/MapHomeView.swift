@@ -628,9 +628,9 @@ struct MapHomeView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: layerToggleHeight)
-                .background(festivalFilterModel.filter.isEmpty
-                            ? FestivalDesign.surface.opacity(0.92)
-                            : FestivalDesign.coral.opacity(0.15))
+                // 지도 위에 떠 있어 반투명하면 타일이 비친다. 불투명 surface를 깔고 적용 상태 틴트를 얹는다.
+                .background(festivalFilterModel.filter.isEmpty ? Color.clear : FestivalDesign.coral.opacity(0.15))
+                .background(FestivalDesign.surface)
                 .foregroundStyle(festivalFilterModel.filter.isEmpty
                                  ? FestivalDesign.secondaryText
                                  : FestivalDesign.coralText)
