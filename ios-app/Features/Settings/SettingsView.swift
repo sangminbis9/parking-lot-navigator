@@ -11,7 +11,6 @@ struct SettingsView: View {
                 themeSettingsCard
                 notificationSettingsCard
                 merchantCard
-                appSettingsCard
                 dataSourceCard
                 developerSectionCard
             }
@@ -135,18 +134,6 @@ struct SettingsView: View {
         .festivalCard()
     }
 
-    private var appSettingsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("앱 설정")
-                .font(.festival(.headline))
-                .foregroundStyle(FestivalDesign.navy)
-            settingRow("API 서버", AppConfiguration.current.apiBaseURL.absoluteString)
-            settingRow("내비 제공자", AppConfiguration.current.navigationProvider)
-        }
-        .padding(14)
-        .festivalCard()
-    }
-
     private var dataSourceCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("데이터 출처")
@@ -158,6 +145,7 @@ struct SettingsView: View {
             Text("실시간 정보는 제공처 갱신 지연과 현장 상황에 따라 다를 수 있습니다.")
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
+            settingRow("내비 제공자", AppConfiguration.current.navigationProvider)
         }
         .padding(14)
         .festivalCard()
