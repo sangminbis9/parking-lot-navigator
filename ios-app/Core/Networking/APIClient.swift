@@ -281,18 +281,66 @@ final class MockAPIClient: APIClientProtocol {
                 total: 120,
                 byType: [.init(type: "festival", count: 120)],
                 bySource: [.init(source: "kopis", count: 40), .init(source: "public-data-culture-festival", count: 80)],
+                byStatus: [.init(status: "upcoming", count: 70), .init(status: "ongoing", count: 50)],
+                byPrimaryCategory: [.init(category: "music_performance", count: 60), .init(category: "untagged", count: 20)],
                 taggingCoverage: .init(tagged: 100, total: 120),
-                feeCoverage: .init(free: 30, paid: 60, unknown: 20, unchecked: 10)
+                feeCoverage: .init(free: 30, paid: 60, unknown: 20, unchecked: 10),
+                ingestion: .init(
+                    newLast24h: 12,
+                    newLast7d: 48,
+                    refreshedLast24h: 110,
+                    staleOver7d: 4,
+                    missingCoordinates: 1,
+                    latestFirstSeenAt: now,
+                    latestSyncedAt: now,
+                    dailyNew: [.init(date: "2026-08-14", count: 20), .init(date: "2026-08-15", count: 12)],
+                    newBySourceLast7d: [.init(source: "kopis", count: 30), .init(source: "akei-trade-expo", count: 18)]
+                ),
+                tagging: .init(
+                    llmTagged: 100,
+                    fallbackTagged: 12,
+                    pending: 8,
+                    oldestPendingFirstSeenAt: now,
+                    lastTaggedAt: now,
+                    byModel: [.init(model: "mock-model", count: 100)]
+                ),
+                fee: .init(oldestUncheckedFirstSeenAt: now, lastCheckedAt: now, checkedLast24h: 60)
             ),
             localEvents: .init(
                 total: 40,
                 byStatus: [.init(status: "approved", count: 30), .init(status: "pending", count: 10)],
                 bySource: [.init(source: "naver_blog", count: 40)],
+                byEventType: [.init(eventType: "discount", count: 25), .init(eventType: "popup", count: 15)],
                 needsReview: 8,
-                taggingCoverage: .init(tagged: 35, total: 40)
+                taggingCoverage: .init(tagged: 35, total: 40),
+                ingestion: .init(
+                    newLast24h: 5,
+                    newLast7d: 18,
+                    approvedLast7d: 12,
+                    averageConfidence: 0.72,
+                    oldestPendingCreatedAt: now,
+                    latestCreatedAt: now,
+                    dailyNew: [.init(date: "2026-08-14", count: 7), .init(date: "2026-08-15", count: 5)]
+                )
             ),
-            cityFestivals: .init(total: 950, geocodeChecked: 400, geocodeUnchecked: 550, upcoming: 300, ended: 650),
-            akeiTradeExpos: .init(total: 25),
+            cityFestivals: .init(
+                total: 950,
+                geocodeChecked: 400,
+                geocodeUnchecked: 550,
+                upcoming: 300,
+                ended: 650,
+                scrapedLast24h: 120,
+                lastScrapedAt: now
+            ),
+            akeiTradeExpos: .init(total: 25, upcoming: 20, scrapedLast24h: 25, lastScrapedAt: now),
+            syncActivity: .init(
+                running: 1,
+                last24h: .init(runs: 30, success: 28, failed: 1, timeout: 1, fetched: 900, upserted: 120, skipped: 760, pruned: 20),
+                byType: [
+                    .init(syncType: "discover:festival:kopis", runs: 12, success: 12, failed: 0, fetched: 400, upserted: 60, pruned: 8, lastStartedAt: now)
+                ],
+                lastSuccessAt: now
+            ),
             recentSyncRuns: [
                 .init(id: "mock-run-1", syncType: "discovery", startedAt: now, finishedAt: now, status: "success", fetched: 200, upserted: 50, skipped: 145, pruned: 5, message: nil)
             ]
