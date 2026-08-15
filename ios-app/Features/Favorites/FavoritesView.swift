@@ -17,12 +17,16 @@ struct FavoritesView: View {
                     emptyState
                 } else {
                     if !festivalFavorites.saved.isEmpty {
-                        savedSection(title: "저장한 축제", items: festivalFavorites.saved) { $0.destination }
-                            presentation: { $0.presentation }
+                        savedSection(
+                            title: "저장한 축제",
+                            items: festivalFavorites.saved.map { DiscoverTabItem.festival($0.asFestival) }
+                        )
                     }
                     if !eventFavorites.saved.isEmpty {
-                        savedSection(title: "저장한 이벤트", items: eventFavorites.saved) { $0.destination }
-                            presentation: { $0.presentation }
+                        savedSection(
+                            title: "저장한 이벤트",
+                            items: eventFavorites.saved.map { DiscoverTabItem.event($0.asEvent) }
+                        )
                     }
                     if !store.favorites.isEmpty {
                         destinationSection(title: "저장한 목적지", destinations: store.favorites)
@@ -76,37 +80,22 @@ struct FavoritesView: View {
         }
     }
 
-    private func savedSection<T: Identifiable>(
-        title: String,
-        items: [T],
-        destination: @escaping (T) -> Destination,
-        presentation: @escaping (T) -> DiscoverPresentation
-    ) -> some View {
+    // 이벤트/축제 카드는 검색 탭 목록(DiscoverTabRow)과 같은 생김새를 쓴다.
+    private func savedSection(title: String, items: [DiscoverTabItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
 
             ForEach(items) { item in
-                HStack(spacing: 0) {
-                    Button {
-                        router.showResults(for: destination(item), presentation: presentation(item))
-                    } label: {
-                        DestinationRow(destination: destination(item))
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    DiscoverShareButton(
-                        content: presentation(item).shareContent(destinationId: destination(item).id),
-                        iconSize: 16,
-                        tapSize: 40
-                    )
-                    .padding(.trailing, 4)
+                Button {
+                    router.showResults(for: item.destination, presentation: item.presentation)
+                } label: {
+                    DiscoverTabRow(item: item)
+                        .padding(12)
+                        .festivalCard()
                 }
-                .festivalCard()
+                .buttonStyle(.plain)
             }
         }
     }

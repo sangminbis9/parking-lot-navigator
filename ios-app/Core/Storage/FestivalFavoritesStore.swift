@@ -12,6 +12,8 @@ struct SavedFestival: Codable, Hashable, Identifiable {
     let lat: Double
     let lng: Double
     let source: String
+    // 저장 목록 카드가 검색 탭 목록과 같은 썸네일을 쓰도록 함께 보관한다.
+    let imageUrl: String?
 
     init(festival: Festival) {
         self.id = festival.id
@@ -23,6 +25,7 @@ struct SavedFestival: Codable, Hashable, Identifiable {
         self.lat = festival.lat
         self.lng = festival.lng
         self.source = festival.source
+        self.imageUrl = festival.imageUrl
     }
 
     init(destination: Destination, presentation: DiscoverPresentation) {
@@ -37,6 +40,7 @@ struct SavedFestival: Codable, Hashable, Identifiable {
         self.lat = destination.lat
         self.lng = destination.lng
         self.source = presentation.source
+        self.imageUrl = presentation.imageUrl
     }
 }
 
@@ -60,7 +64,7 @@ extension SavedFestival {
             distanceMeters: 0,
             source: source,
             sourceUrl: nil,
-            imageUrl: nil,
+            imageUrl: imageUrl,
             tags: []
         )
     }
@@ -91,7 +95,7 @@ extension SavedFestival {
             typeText: "\u{CD95}\u{C81C}",
             source: source,
             sourceUrl: nil,
-            imageUrl: nil,
+            imageUrl: imageUrl,
             imageUrls: [],
             price: nil,
             region: nil,
