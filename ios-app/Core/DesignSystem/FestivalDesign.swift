@@ -499,13 +499,23 @@ enum FestivalDesign {
 
     private static func onFillColor(_ fill: Color, dark: Bool) -> Color {
         let resolvedFill = resolve(fill, dark: dark)
+        if isPaletteTeal(resolvedFill, dark: dark) { return .white }
         return contrastRatio(.white, resolvedFill) >= 3.0 ? .white : deepInk(on: resolvedFill)
+    }
+
+    /// 청록 채움은 흰 글자 대비가 3:1에 살짝 못 미쳐 진한 잉크로 떨어지지만,
+    /// 디자인상 흰 글자가 맞다(이벤트 토글, 검색 버튼, 이벤트 핀). 팔레트 청록만 예외로 둔다.
+    private static func isPaletteTeal(_ color: Color, dark: Bool) -> Bool {
+        let a = components(color)
+        let b = components(resolve(teal, dark: dark))
+        return abs(a.r - b.r) < 0.01 && abs(a.g - b.g) < 0.01 && abs(a.b - b.b) < 0.01
     }
 
     /// 지도 핀 위의 글자·아이콘 색(UIKit 렌더링용). 지도 타일은 다크 모드에서도 밝게 남으므로
     /// 흰 글자를 기준으로 판단하고, 노란 핀처럼 대비가 안 나올 때만 진한 톤으로 바꾼다.
     static func uiOnPinFill(_ fill: UIColor) -> UIColor {
         let color = Color(fill.resolvedColor(with: FestivalAppearance.trait))
+        if isPaletteTeal(color, dark: FestivalAppearance.isDark) { return .white }
         return contrastRatio(.white, color) >= 3.0
             ? .white
             : UIColor(deepInk(on: color))
