@@ -595,12 +595,15 @@ struct MapHomeView: View {
                         title: "\u{CD95}\u{C81C}",
                         systemImage: "sparkles",
                         tint: FestivalDesign.coral,
+                        // 코랄 채움 위 대비가 3:1에 못 미쳐 자동 판정은 진한 잉크를 고르지만,
+                        // 디자인상 축제 토글은 흰 글자·기호가 맞다.
+                        onFill: .white,
                         isOn: viewModel.showsFestivalLayer
                     ) {
                         Task { await viewModel.setFestivalLayerVisible(!viewModel.showsFestivalLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                     }
                     layerToggle(
-                        title: "\u{C774}\u{BCA4}\u{D2B8}",
+                        title: "\u{AC00}\u{AC8C} \u{C774}\u{BCA4}\u{D2B8}",
                         systemImage: "tag.fill",
                         tint: FestivalDesign.teal,
                         isOn: viewModel.showsLocalEventLayer
@@ -687,6 +690,7 @@ struct MapHomeView: View {
         title: String,
         systemImage: String,
         tint: Color,
+        onFill: Color? = nil,
         isOn: Bool,
         action: @escaping () -> Void
     ) -> some View {
@@ -697,7 +701,7 @@ struct MapHomeView: View {
                 .padding(.horizontal, 10)
                 .frame(height: layerToggleHeight)
                 .background(isOn ? tint : FestivalDesign.surface.opacity(0.92))
-                .foregroundStyle(isOn ? FestivalDesign.onFill(tint) : FestivalDesign.secondaryText)
+                .foregroundStyle(isOn ? (onFill ?? FestivalDesign.onFill(tint)) : FestivalDesign.secondaryText)
                 .clipShape(FestivalDesign.controlShape)
                 .overlay(
                     FestivalDesign.controlShape
