@@ -37,7 +37,10 @@ struct MapHomeView: View {
     @State private var eventStackCluster: MapPinCluster?
     @State private var hologramAnchor: CGPoint = .zero
     @State private var hologramOverlayHeight: CGFloat = 130
-    @State private var mapContainerSize: CGSize = .zero
+    /// 지도 뷰의 화면상 프레임(global). 상·하단 오버레이가 가리는 영역을 계산하는 기준.
+    @State private var mapFrame: CGRect = .zero
+    @State private var topOverlayMaxY: CGFloat = 0
+    @State private var bottomOverlayMinY: CGFloat = .greatestFiniteMagnitude
     @State private var hologramAnchorTimer: Timer?
     @State private var mapProjector = MapProjector()
     @FocusState private var isSearchFocused: Bool
@@ -55,6 +58,20 @@ struct MapHomeView: View {
     private let hologramConnectorTotalHeight: CGFloat = 16  // 10pt bar + 6pt dot
     // 카드 폭. 최소 폭(320pt) 화면에서도 좌우 여백이 남는 값.
     private let hologramCardWidth: CGFloat = 288
+    /// 클러스터를 맞출 때 핀 자체 크기·라벨이 잘리지 않도록 사방에 두는 여백(pt).
+    private let clusterFitInset: CGFloat = 44
+
+    private var mapContainerSize: CGSize { mapFrame.size }
+
+    /// 상단 헤더·하단 컨트롤에 가리지 않고 사용자가 실제로 보는 지도 영역(지도 뷰 기준 좌표).
+    private var visibleMapRect: CGRect {
+        guard mapFrame.height > 0 else { return .zero }
+        let top = max(0, topOverlayMaxY - mapFrame.minY)
+        let bottom = max(0, mapFrame.maxY - bottomOverlayMinY)
+        let height = mapFrame.height - top - bottom
+        guard height > 80 else { return CGRect(origin: .zero, size: mapFrame.size) }
+        return CGRect(x: 0, y: top, width: mapFrame.width, height: height)
+    }
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient
@@ -95,9 +112,9 @@ struct MapHomeView: View {
             .background(
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { mapContainerSize = proxy.size }
-                        .onChange(of: proxy.size) { newSize in
-                            mapContainerSize = newSize
+                        .onAppear { mapFrame = proxy.frame(in: .global) }
+                        .onChange(of: proxy.frame(in: .global)) { newFrame in
+                            mapFrame = newFrame
                         }
                 }
             )
@@ -114,6 +131,15 @@ struct MapHomeView: View {
                     .festivalShadow(.medium)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.horizontal, 14)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { topOverlayMaxY = proxy.frame(in: .global).maxY }
+                                .onChange(of: proxy.frame(in: .global)) { frame in
+                                    topOverlayMaxY = frame.maxY
+                                }
+                        }
+                    )
                 VStack(spacing: 10) {
                     if !viewModel.destinations.isEmpty {
                         destinationResults
@@ -129,6 +155,15 @@ struct MapHomeView: View {
             VStack {
                 Spacer()
                 mapControls
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { bottomOverlayMinY = proxy.frame(in: .global).minY }
+                                .onChange(of: proxy.frame(in: .global)) { frame in
+                                    bottomOverlayMinY = frame.minY
+                                }
+                        }
+                    )
                 bottomPanel
             }
             .padding(.horizontal, 14)
@@ -977,6 +1012,28 @@ struct MapHomeView: View {
         focusMap(to: shifted, zoomLevel: zoomLevel)
     }
 
+    /// 상·하단 오버레이에 가리지 않는 영역 한가운데에 좌표가 오도록 카메라를 옮긴다.
+    /// 카메라 중심은 지도 뷰 정중앙에 그려지므로, 가시 영역 중심과의 차이만큼 중심을 북/남으로 민다.
+    private func focusMapInVisibleArea(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
+        let visible = visibleMapRect
+        guard visible.height > 0, mapFrame.height > 0 else {
+            focusMap(to: coordinate, zoomLevel: zoomLevel)
+            return
+        }
+        // 가시 영역 중심이 지도 뷰 중심보다 아래면(양수) 좌표를 그만큼 아래에 그려야 하므로 중심을 북쪽으로 올린다.
+        let offsetPixels = visible.midY - mapFrame.height / 2
+        guard abs(offsetPixels) > 1 else {
+            focusMap(to: coordinate, zoomLevel: zoomLevel)
+            return
+        }
+        let metersPerPixel = 156_543.033_92 * cos(coordinate.latitude * .pi / 180) / pow(2.0, Double(zoomLevel))
+        let latOffset = Double(offsetPixels) * metersPerPixel / 111_320.0
+        focusMap(
+            to: CLLocationCoordinate2D(latitude: coordinate.latitude + latOffset, longitude: coordinate.longitude),
+            zoomLevel: zoomLevel
+        )
+    }
+
     private func clearMapFocus() {
         hasUserFocusedMapTarget = false
         shouldCenterOnNextLocation = false
@@ -1035,7 +1092,10 @@ struct MapHomeView: View {
                 eventStackCluster = cluster
             } else {
                 viewModel.selectedParkingLot = nil
-                focusMap(to: cluster.coordinate, zoomLevel: zoomLevelForCluster(cluster))
+                focusMapInVisibleArea(
+                    to: clusterBoundsCenter(cluster),
+                    zoomLevel: zoomLevelForCluster(cluster)
+                )
             }
         case .festival, .event:
             let targetZoom = max(mapZoomLevel, 15)
@@ -1066,26 +1126,39 @@ struct MapHomeView: View {
             .max() ?? 0
     }
 
-    private func zoomLevelForCluster(_ cluster: MapPinCluster) -> Int {
-        let maxDistance = maxMemberDistance(cluster)
+    /// 멤버 좌표를 감싸는 사각형의 중심. 평균보다 화면 맞춤에 가깝다.
+    private func clusterBoundsCenter(_ cluster: MapPinCluster) -> CLLocationCoordinate2D {
+        let coordinates = cluster.memberCoordinates
+        guard let first = coordinates.first else { return cluster.coordinate }
+        let lats = coordinates.map(\.latitude)
+        let lngs = coordinates.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLng = lngs.min(), let maxLng = lngs.max() else { return first }
+        return CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLng + maxLng) / 2)
+    }
 
-        let fitZoom: Int
-        switch maxDistance {
-        case ..<250:
-            fitZoom = 15
-        case ..<700:
-            fitZoom = 16
-        case ..<1_000:
-            fitZoom = 16
-        case ..<2_500:
-            fitZoom = 15
-        case ..<6_000:
-            fitZoom = 14
-        default:
-            fitZoom = 13
-        }
+    /// 멤버 전체가 "가려지지 않은" 지도 영역 안에 들어오는 가장 확대된 줌 레벨.
+    private func zoomLevelForCluster(_ cluster: MapPinCluster) -> Int {
         let comfortMaxZoom = cluster.count <= 3 ? 15 : (cluster.count <= 8 ? 16 : 17)
-        return min(comfortMaxZoom, max(mapZoomLevel + 1, fitZoom))
+        let coordinates = cluster.memberCoordinates
+        let visible = visibleMapRect
+        guard coordinates.count > 1, visible.width > 0, visible.height > 0 else {
+            return max(mapZoomLevel + 1, comfortMaxZoom)
+        }
+        let usableWidth = max(40, Double(visible.width - clusterFitInset * 2))
+        let usableHeight = max(40, Double(visible.height - clusterFitInset * 2))
+
+        for zoom in stride(from: comfortMaxZoom, through: 6, by: -1) {
+            let points = coordinates.map { mercatorPoint(for: $0, zoomLevel: zoom) }
+            let xs = points.map(\.x)
+            let ys = points.map(\.y)
+            guard let minX = xs.min(), let maxX = xs.max(),
+                  let minY = ys.min(), let maxY = ys.max() else { break }
+            if Double(maxX - minX) <= usableWidth && Double(maxY - minY) <= usableHeight {
+                return zoom
+            }
+        }
+        return 6
     }
 
     private func resolvedHologramAnchor(tapPoint: CGPoint?) -> CGPoint {
