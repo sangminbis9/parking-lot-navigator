@@ -304,15 +304,28 @@ private struct DiscoverHeroImage: View {
     }
 }
 
+/// 상세 정보 한 줄. 이모지·라벨·값이 한 벌로 움직여야 행 사이에 구분선을 넣기 쉬워
+/// 뷰가 아니라 데이터로 모은다.
+private struct DiscoverDetailEntry: Identifiable {
+    let emoji: String
+    let label: String
+    let value: String
+    /// 값 복사가 아니라 별도 동작이 있는 행(전화 걸기 등).
+    var action: (url: URL, systemImage: String)? = nil
+    var id: String { label }
+}
+
 private struct DiscoverDescriptionCard: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var toastCenter: ToastCenter
     let presentation: DiscoverPresentation
+    /// 이모지 열 너비. 값 텍스트와 구분선의 시작점을 함께 맞추는 기준이다.
+    @ScaledMetric(relativeTo: .subheadline) private var emojiColumn: CGFloat = 22
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let description = clean(presentation.description) {
-                detailSection(label: "행사 설명", value: description)
+                detailSection(emoji: "\u{1F4DD}", label: "행사 설명", value: description)
             }
 
             if let sourceUrl = clean(presentation.sourceUrl), let url = URL(string: sourceUrl) {
@@ -326,73 +339,76 @@ private struct DiscoverDescriptionCard: View {
                 .tint(FestivalDesign.navy)
             }
 
-            detailRow(label: "일정", value: presentation.dateText)
-            // 값이 없는 항목은 "정보 없음" 행으로 채우지 않고 감춘다.
-            // 특히 예매처/연령 제한은 값이 없다고 해서 "예매 불필요", "제한 없음"이 사실인 것도 아니다.
-            if let venueName = clean(presentation.venueName) {
-                detailRow(label: "장소", value: venueName)
-            }
-            detailRow(label: "주소", value: presentation.address)
-
-            if presentation.isFestivalSource {
-                if let admissionFee = clean(presentation.admissionFee) {
-                    detailRow(label: "이용요금", value: admissionFee)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                    if index > 0 { rowSeparator }
+                    entryRow(entry)
                 }
-                if let discountInfo = clean(presentation.discountInfo) {
-                    detailRow(label: "할인 정보", value: discountInfo)
-                }
-                if let bookingInfo = clean(presentation.bookingInfo) {
-                    detailRow(label: "예매처", value: bookingInfo)
-                }
-                if let ageLimit = clean(presentation.ageLimit) {
-                    detailRow(label: "관람 가능 연령", value: ageLimit)
-                }
-                if let programInfo = clean(presentation.programInfo) {
-                    detailRow(label: "프로그램 상세", value: programInfo)
-                }
-                if let organizerName = clean(presentation.organizerName) {
-                    detailRow(label: "주최·주관", value: organizerName)
-                }
-
-                if let contactPhone = clean(presentation.contactPhone) {
-                    if let telUrl = URL(string: "tel:\(contactPhone.filter { $0.isNumber || $0 == "+" })") {
-                        Button {
-                            openURL(telUrl)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("문의 전화번호")
-                                        .font(.festival(.caption, weight: .semibold))
-                                        .foregroundStyle(FestivalDesign.secondaryText)
-                                    Text(contactPhone)
-                                        .font(.festival(.subheadline, weight: .semibold))
-                                        .foregroundStyle(FestivalDesign.navy)
-                                }
-                                Spacer()
-                                Image(systemName: "phone.fill")
-                                    .foregroundStyle(FestivalDesign.navy)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        detailRow(label: "문의 전화번호", value: contactPhone)
-                    }
-                }
-            }
-
-            if let price = clean(presentation.price) {
-                detailRow(label: "\u{AC00}\u{ACA9}", value: price)
-            }
-            if let region = clean(presentation.region) {
-                detailRow(label: "\u{C9C0}\u{C5ED}", value: region)
-            }
-            detailRow(label: "\u{CD9C}\u{CC98}", value: presentation.source)
-            if let updatedAt = clean(presentation.updatedAt) {
-                detailRow(label: "\u{C5C5}\u{B370}\u{C774}\u{D2B8}", value: updatedAt)
             }
         }
         .padding(14)
         .festivalCard()
+    }
+
+    // 값이 없는 항목은 "정보 없음" 행으로 채우지 않고 감춘다.
+    // 특히 예매처/연령 제한은 값이 없다고 해서 "예매 불필요", "제한 없음"이 사실인 것도 아니다.
+    private var entries: [DiscoverDetailEntry] {
+        var items: [DiscoverDetailEntry] = []
+        items.append(DiscoverDetailEntry(emoji: "\u{1F4C5}", label: "일정", value: presentation.dateText))
+        if let venueName = clean(presentation.venueName) {
+            items.append(DiscoverDetailEntry(emoji: "\u{1F4CD}", label: "장소", value: venueName))
+        }
+        items.append(DiscoverDetailEntry(emoji: "\u{1F5FA}\u{FE0F}", label: "주소", value: presentation.address))
+
+        if presentation.isFestivalSource {
+            if let admissionFee = clean(presentation.admissionFee) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F4B0}", label: "이용요금", value: admissionFee))
+            }
+            if let discountInfo = clean(presentation.discountInfo) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F3F7}\u{FE0F}", label: "할인 정보", value: discountInfo))
+            }
+            if let bookingInfo = clean(presentation.bookingInfo) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F3AB}", label: "예매처", value: bookingInfo))
+            }
+            if let ageLimit = clean(presentation.ageLimit) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F465}", label: "관람 가능 연령", value: ageLimit))
+            }
+            if let programInfo = clean(presentation.programInfo) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F4CB}", label: "프로그램 상세", value: programInfo))
+            }
+            if let organizerName = clean(presentation.organizerName) {
+                items.append(DiscoverDetailEntry(emoji: "\u{1F3DB}\u{FE0F}", label: "주최·주관", value: organizerName))
+            }
+            if let contactPhone = clean(presentation.contactPhone) {
+                let telUrl = URL(string: "tel:\(contactPhone.filter { $0.isNumber || $0 == "+" })")
+                items.append(DiscoverDetailEntry(
+                    emoji: "\u{260E}\u{FE0F}",
+                    label: "문의 전화번호",
+                    value: contactPhone,
+                    action: telUrl.map { url in (url: url, systemImage: "phone.fill") }
+                ))
+            }
+        }
+
+        if let price = clean(presentation.price) {
+            items.append(DiscoverDetailEntry(emoji: "\u{1F4B5}", label: "\u{AC00}\u{ACA9}", value: price))
+        }
+        if let region = clean(presentation.region) {
+            items.append(DiscoverDetailEntry(emoji: "\u{1F9ED}", label: "\u{C9C0}\u{C5ED}", value: region))
+        }
+        items.append(DiscoverDetailEntry(emoji: "\u{1F517}", label: "\u{CD9C}\u{CC98}", value: presentation.source))
+        if let updatedAt = clean(presentation.updatedAt) {
+            items.append(DiscoverDetailEntry(emoji: "\u{1F551}", label: "\u{C5C5}\u{B370}\u{C774}\u{D2B8}", value: updatedAt))
+        }
+        return items
+    }
+
+    /// 구분선은 이모지 열을 비켜 값 텍스트 시작점에서 그어 목록이 한 줄로 정렬돼 보이게 한다.
+    private var rowSeparator: some View {
+        Rectangle()
+            .fill(FestivalDesign.creamDeep.opacity(0.45))
+            .frame(height: 1)
+            .padding(.leading, emojiColumn + 10)
     }
 
     private func clean(_ value: String?) -> String? {
@@ -401,12 +417,17 @@ private struct DiscoverDescriptionCard: View {
     }
 
     // 값 영역은 꾹 눌러 직접 선택·복사할 수 있고, 한 번 탭하면 그 항목 전체가 클립보드로 간다.
-    // 탭 제스처는 Text가 아니라 바깥 VStack에 건다 — Text에 걸면 선택 제스처와 충돌한다.
-    private func detailSection(label: String, value: String) -> some View {
+    // 탭 제스처는 Text가 아니라 바깥 스택에 건다 — Text에 걸면 선택 제스처와 충돌한다.
+    private func detailSection(emoji: String, label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.festival(.caption, weight: .semibold))
-                .foregroundStyle(FestivalDesign.secondaryText)
+            HStack(spacing: 6) {
+                Text(emoji)
+                    .font(.festival(.caption))
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
             Text(value)
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
@@ -418,20 +439,39 @@ private struct DiscoverDescriptionCard: View {
         .onTapGesture { copy(value) }
     }
 
-    private func detailRow(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.festival(.caption, weight: .semibold))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            Text(value)
-                .font(.festival(.subheadline, weight: .semibold))
-                .foregroundStyle(FestivalDesign.navy)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+    private func entryRow(_ entry: DiscoverDetailEntry) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(entry.emoji)
+                .font(.festival(.subheadline))
+                .frame(width: emojiColumn, alignment: .center)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.label)
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                Text(entry.value)
+                    .font(.festival(.subheadline, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            if let action = entry.action {
+                Image(systemName: action.systemImage)
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.navy)
+            }
         }
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture { copy(value) }
+        .onTapGesture {
+            if let action = entry.action {
+                openURL(action.url)
+            } else {
+                copy(entry.value)
+            }
+        }
     }
 
     private func copy(_ value: String) {
