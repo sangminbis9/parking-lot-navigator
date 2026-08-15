@@ -87,8 +87,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var stylesReady = false
         private var renderedCamera: MapCameraTarget?
         private var renderedPinSnapshot: [MapPinSnapshot] = []
+        /// 지도에 실제로 올라가 있는 POI. poiID → 스냅샷. 바뀐 핀만 교체해 깜빡임을 막는다.
+        private var renderedPins: [String: MapPinSnapshot] = [:]
         private var observers: [NSObjectProtocol] = []
-        private var poiTapHandlers: [DisposableEventHandler] = []
+        private var poiTapHandlers: [String: DisposableEventHandler] = [:]
         private var cameraStoppedEventHandler: DisposableEventHandler?
         private var cameraStartedEventHandler: DisposableEventHandler?
         private var registeredDynamicStyleIDs: Set<String> = []
@@ -221,7 +223,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 )
             }
             if renderedPinSnapshot != pinSnapshot {
-                renderPins(on: mapView)
+                renderPins(on: mapView, snapshots: pinSnapshot)
                 renderedPinSnapshot = pinSnapshot
             }
         }
@@ -353,18 +355,27 @@ struct KakaoParkingMapView: UIViewRepresentable {
             ])
         }
 
-        private func renderPins(on mapView: KakaoMap) {
+        /// 카메라 이동·데이터 재조회 때마다 전체를 지우고 다시 그리면 남아 있어야 할 핀까지 깜빡인다.
+        /// 그래서 사라졌거나 좌표·스타일이 달라진 POI만 지우고, 새로 생긴 것만 추가한다.
+        private func renderPins(on mapView: KakaoMap, snapshots: [MapPinSnapshot]) {
             let manager = mapView.getLabelManager()
             guard let layer = manager.getLabelLayer(layerID: "parking-pins") else { return }
-            poiTapHandlers = []
-            layer.clearAllItems()
 
-            for pin in latestPins {
-                let styleID = pin.styleID(
-                    showsDiscoverLabel: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels,
-                    isSelected: pin.id == selectedPinID
-                )
+            var desired: [String: (pin: MapPinItem, snapshot: MapPinSnapshot)] = [:]
+            for (pin, snapshot) in zip(latestPins, snapshots) {
+                desired[snapshot.poiID] = (pin, snapshot)
+            }
+
+            for (poiID, rendered) in renderedPins where desired[poiID]?.snapshot != rendered {
+                layer.removePoi(poiID: poiID)
+                // POI를 지우면 핸들러도 함께 무효화되므로 참조만 놓아준다(기존 동작과 동일).
+                poiTapHandlers.removeValue(forKey: poiID)
+                renderedPins.removeValue(forKey: poiID)
+            }
+
+            for (poiID, entry) in desired where renderedPins[poiID] == nil {
+                let pin = entry.pin
+                let styleID = entry.snapshot.styleID
                 if !registeredDynamicStyleIDs.contains(styleID),
                    let style = pin.dynamicDiscoverStyleIDAndImage(styleID: styleID) {
                     // 클러스터는 원형 버블 → 좌표에 중심을 맞춘다. 개별 핀은 물방울 tip(0.5,1.0).
@@ -375,7 +386,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                     manager.addPoiStyle(makeStyle(id: style.id, image: style.image, anchor: anchor))
                     registeredDynamicStyleIDs.insert(style.id)
                 }
-                let option = PoiOptions(styleID: styleID, poiID: pin.poiID)
+                let option = PoiOptions(styleID: styleID, poiID: poiID)
                 option.rank = rank(for: pin.kind)
                 // 내 위치 핀은 보여줄 정보가 없으므로 탭 대상에서 뺀다.
                 option.clickable = !pin.isCurrentLocation
@@ -386,9 +397,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
                        target: self,
                        handler: KakaoParkingMapView.Coordinator.poiTappedHandler
                    ) {
-                    poiTapHandlers.append(handler)
+                    poiTapHandlers[poiID] = handler
                 }
                 poi?.show()
+                renderedPins[poiID] = entry.snapshot
             }
         }
 
