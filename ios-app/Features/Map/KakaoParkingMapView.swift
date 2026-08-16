@@ -295,7 +295,13 @@ struct KakaoParkingMapView: UIViewRepresentable {
             // 현재 위치/목적지 핀은 기존 디자인을 유지하며 1회만 등록한다.
             // 카테고리(주차장/축제/이벤트)·클러스터 핀은 테마·선택 상태를 styleID에 담아
             // renderPins에서 on-demand 등록한다 (테마 변경 시 자동 갱신).
-            manager.addPoiStyle(makeStyle(id: "current-location", image: .currentLocationPin))
+            manager.addPoiStyle(
+                makeStyle(
+                    id: "current-location",
+                    image: .currentLocationPin,
+                    anchor: CGPoint(x: 0.5, y: 0.5)
+                )
+            )
             manager.addPoiStyle(makeStyle(id: "destination", image: .destinationPin))
             stylesReady = true
         }
@@ -681,8 +687,48 @@ private extension UIImage {
     static var pinShadowPadding: CGFloat { 6 }
     static var pinTailHeight: CGFloat { 7 }
 
+    /// 내 위치는 "어떤 장소"가 아니라 "지금 내가 있는 지점"이라, 꼬리 달린 마커 대신
+    /// 정확도 헤일로 + 링 + 코어 도트로 그린다. 앵커도 하단이 아니라 중앙이다.
     static var currentLocationPin: UIImage {
-        haloPin(core: FestivalDesign.uiParkingBlue, symbol: nil, size: 28, scale: mapPinScale, dotted: true)
+        let canvas: CGFloat = 44
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: canvas * mapPinScale, height: canvas * mapPinScale)
+        )
+        return renderer.image { context in
+            context.cgContext.scaleBy(x: mapPinScale, y: mapPinScale)
+            let core = FestivalDesign.uiParkingBlue
+            let center = CGPoint(x: canvas / 2, y: canvas / 2)
+
+            let haloDiameter: CGFloat = 40
+            let haloRect = CGRect(
+                x: center.x - haloDiameter / 2,
+                y: center.y - haloDiameter / 2,
+                width: haloDiameter,
+                height: haloDiameter
+            )
+            core.withAlphaComponent(0.13).setFill()
+            UIBezierPath(ovalIn: haloRect).fill()
+
+            let ringDiameter: CGFloat = 22
+            let ringRect = CGRect(
+                x: center.x - ringDiameter / 2,
+                y: center.y - ringDiameter / 2,
+                width: ringDiameter,
+                height: ringDiameter
+            )
+            context.cgContext.saveGState()
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1),
+                blur: 3,
+                color: FestivalDesign.uiNavy.withAlphaComponent(0.28).cgColor
+            )
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: ringRect).fill()
+            context.cgContext.restoreGState()
+
+            core.setFill()
+            UIBezierPath(ovalIn: ringRect.insetBy(dx: 3.5, dy: 3.5)).fill()
+        }
     }
 
     static var destinationPin: UIImage {
@@ -695,7 +741,6 @@ private extension UIImage {
         letter: String? = nil,
         size: CGFloat,
         scale: CGFloat,
-        dotted: Bool = false,
         ringColor: UIColor? = nil
     ) -> UIImage {
         let canvasWidth = size + pinShadowPadding * 2
@@ -707,7 +752,6 @@ private extension UIImage {
                 core: core,
                 symbol: symbol,
                 letter: letter,
-                dotted: dotted,
                 size: size,
                 origin: CGPoint(x: pinShadowPadding, y: pinShadowPadding),
                 context: context,
@@ -720,7 +764,6 @@ private extension UIImage {
         core coreColor: UIColor,
         symbol: String?,
         letter: String?,
-        dotted: Bool,
         size: CGFloat,
         origin: CGPoint,
         context: UIGraphicsImageRendererContext,
@@ -769,16 +812,8 @@ private extension UIImage {
         }
 
         // Core
-        if dotted {
-            coreColor.withAlphaComponent(0.22).setFill()
-            UIBezierPath(ovalIn: coreRect).fill()
-            let dotRect = coreRect.insetBy(dx: coreRect.width * 0.28, dy: coreRect.height * 0.28)
-            coreColor.setFill()
-            UIBezierPath(ovalIn: dotRect).fill()
-        } else {
-            coreColor.setFill()
-            UIBezierPath(ovalIn: coreRect).fill()
-        }
+        coreColor.setFill()
+        UIBezierPath(ovalIn: coreRect).fill()
 
         // Symbol or letter
         if let symbol, let image = UIImage(systemName: symbol) {
