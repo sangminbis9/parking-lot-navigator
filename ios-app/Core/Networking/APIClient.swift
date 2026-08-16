@@ -290,6 +290,7 @@ final class MockAPIClient: APIClientProtocol {
                     newLast7d: 48,
                     refreshedLast24h: 110,
                     staleOver7d: 4,
+                    staleEndedOver7d: 6,
                     missingCoordinates: 1,
                     latestFirstSeenAt: now,
                     latestSyncedAt: now,
