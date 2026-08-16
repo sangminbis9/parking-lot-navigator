@@ -2,6 +2,7 @@ import { TourApiDetailClient } from "../../backend/src/features/discover/festiva
 import { fetchWithTimeout } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { isRetryableBackfillError } from "./backfillRetry.js";
+import { toHttpsImageUrl } from "./imageUrl.js";
 
 // 목록 API는 대표 사진 한 장(TourAPI firstimage, KOPIS poster)만 준다. 갤러리
 // 전체는 항목별 detail 호출로만 얻을 수 있어 sync 중에 전부 부를 수 없다.
@@ -268,7 +269,7 @@ function cleanUrl(value: string | null | undefined): string | null {
   const text = value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .trim();
-  return /^https?:\/\/\S+$/i.test(text) ? text : null;
+  return /^https?:\/\/\S+$/i.test(text) ? toHttpsImageUrl(text) : null;
 }
 
 function parseImages(value: string | null): string[] {

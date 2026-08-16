@@ -2,6 +2,7 @@ import type { EventCategory, Festival, FreeEvent } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { REGION_FALLBACK_COORDINATES } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { toHttpsImageUrl } from "./imageUrl.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
@@ -1002,10 +1003,10 @@ export function discoveryRow(
     lowestPriceText: fee.feeText,
     lowestPricePlatform: null,
     sourceUrl: item.sourceUrl,
-    imageUrl: item.imageUrl,
+    imageUrl: toHttpsImageUrl(item.imageUrl),
     imagesJson:
       item.imageUrls && item.imageUrls.length > 0
-        ? JSON.stringify(item.imageUrls)
+        ? JSON.stringify(item.imageUrls.map(toHttpsImageUrl))
         : null,
     tagsJson: isEvent ? null : JSON.stringify(item.tags),
     amenitiesJson: null,
