@@ -71,9 +71,17 @@ export interface DiscoveryCluster {
   count: number;
 }
 
+interface ProviderErrorSource {
+  health?(): Array<{ name: string; lastError: string | null }>;
+}
+
 export interface DiscoverySyncRuntime {
-  festivalService: { nearby(query: SyncDiscoverQuery): Promise<Festival[]> };
-  eventService: { nearby(query: SyncDiscoverQuery): Promise<FreeEvent[]> };
+  festivalService: {
+    nearby(query: SyncDiscoverQuery): Promise<Festival[]>;
+  } & ProviderErrorSource;
+  eventService: {
+    nearby(query: SyncDiscoverQuery): Promise<FreeEvent[]>;
+  } & ProviderErrorSource;
 }
 
 export interface DiscoverySyncResult {
@@ -86,6 +94,9 @@ export interface DiscoverySyncResult {
   // 타임아웃된 center는 빈 배열을 돌려주므로 결과만 봐서는 성공과 구분되지 않는다.
   // 어느 center가 시간 안에 못 끝냈는지 sync_runs에 남기려고 함께 올린다.
   timedOutCenters: string[];
+  // provider는 실패를 빈 배열로 흡수하므로 결과에는 fetched=0만 남는다.
+  // 어느 provider가 왜 실패했는지 health의 lastError를 그대로 올린다.
+  providerErrors: string[];
   generatedAt: string;
 }
 
@@ -510,14 +521,43 @@ export async function queryDiscoveryClusters(
 /// 한 건도 못 가져온 회차는 'timeout'으로 남겨 대시보드 집계에 잡히게 하고,
 /// 일부만 실패한 회차는 성공으로 두되 message에 어느 center가 늦었는지 적는다.
 function syncRunOutcome(result: DiscoverySyncResult): {
-  status: "success" | "timeout";
+  status: "success" | "failed" | "timeout";
   message: string | null;
 } {
-  if (result.timedOutCenters.length === 0) {
+  const parts: string[] = [];
+  if (result.timedOutCenters.length > 0) {
+    parts.push(
+      `timed out ${result.timedOutCenters.length}/${NATIONAL_DISCOVERY_CENTERS.length} centers: ${result.timedOutCenters.join(",")}`,
+    );
+  }
+  if (result.providerErrors.length > 0) {
+    parts.push(result.providerErrors.join("; "));
+  }
+  if (parts.length === 0) {
     return { status: "success", message: null };
   }
-  const message = `timed out ${result.timedOutCenters.length}/${NATIONAL_DISCOVERY_CENTERS.length} centers: ${result.timedOutCenters.join(",")}`;
-  return { status: result.fetched > 0 ? "success" : "timeout", message };
+  const message = parts.join(" | ").slice(0, 300);
+  if (result.fetched > 0) return { status: "success", message };
+  return {
+    status: result.timedOutCenters.length > 0 ? "timeout" : "failed",
+    message,
+  };
+}
+
+/// 서비스 health는 isolate 안에서 누적되므로, 이번 회차가 실제로 돌린
+/// provider(allowlist)만 골라 남긴다.
+function collectProviderErrors(
+  runtime: DiscoverySyncRuntime,
+  kind: DiscoverySyncKind,
+  providerAllowlist?: ReadonlySet<string>,
+): string[] {
+  const service =
+    kind === "festivals" ? runtime.festivalService : runtime.eventService;
+  const entries = service.health?.() ?? [];
+  return entries
+    .filter((entry) => entry.lastError !== null)
+    .filter((entry) => !providerAllowlist || providerAllowlist.has(entry.name))
+    .map((entry) => `${entry.name}: ${entry.lastError}`);
 }
 
 export async function syncDiscoveryCache(
@@ -542,6 +582,7 @@ export async function syncDiscoveryCache(
         pruned: 0,
         sources: {},
         timedOutCenters: [],
+        providerErrors: [],
         generatedAt: new Date().toISOString(),
       };
       await finishSyncRun(
@@ -608,6 +649,7 @@ async function syncDiscoveryKind(
     pruned,
     sources,
     timedOutCenters,
+    providerErrors: collectProviderErrors(runtime, kind, providerAllowlist),
     generatedAt,
   };
 }
@@ -646,6 +688,7 @@ export async function syncDiscoveryChunk(
       pruned: 0,
       sources: {},
       timedOutCenters: [],
+      providerErrors: [],
       generatedAt: new Date().toISOString(),
     };
     await finishSyncRun(
