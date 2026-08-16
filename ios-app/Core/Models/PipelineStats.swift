@@ -83,6 +83,15 @@ struct PipelineStats: Codable, Hashable {
         let checkedLast24h: Int
     }
 
+    struct BackfillSection: Codable, Hashable {
+        let geocodePending: Int
+        let geocodeLastCheckedAt: String?
+        let geocodeCheckedLast24h: Int
+        let imagePending: Int
+        let imageLastCheckedAt: String?
+        let imageCheckedLast24h: Int
+    }
+
     struct DiscoveryItemsSection: Codable, Hashable {
         let total: Int
         let byType: [CountEntry]
@@ -94,6 +103,7 @@ struct PipelineStats: Codable, Hashable {
         let ingestion: DiscoveryIngestion
         let tagging: TaggingSection
         let fee: FeeSection
+        let backfill: BackfillSection
     }
 
     struct LocalEventIngestion: Codable, Hashable {

@@ -23,7 +23,7 @@ const RECHECK_AFTER_DAYS = 30;
 
 type ImageSourceKind = "kopis" | "tourapi";
 
-const IMAGE_SOURCE_KINDS: Record<string, ImageSourceKind> = {
+export const IMAGE_SOURCE_KINDS: Record<string, ImageSourceKind> = {
   kopis: "kopis",
   tourapi: "tourapi",
   "area-based-tour": "tourapi",

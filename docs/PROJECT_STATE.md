@@ -24,7 +24,7 @@
 - Worker D1 바인딩: `DB`
 - D1 데이터베이스: `parking-lot-navigator`
 - D1 데이터베이스 id: `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`
-- Worker cron: `* * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/20 * * * *` LLM 태깅.
+- Worker cron (2026-08-16 배포 기준 확인): `*/3 * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/20 * * * *` LLM 태깅 + backfill 로테이션. 슬롯 구조는 아래 "Cloudflare 리소스" 참고.
 
 ## 시크릿
 
@@ -154,7 +154,17 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 - D1 바인딩: `DB` (`parking-lot-navigator`, id `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`).
 - R2 바인딩: `MERCHANT_IMAGES` (버킷 `merchant-images`).
-- Worker 트리거: cron `* * * * *` (실시간 주차), `*/9 * * * *` (발견 청크), `15 * * * *` (로컬 이벤트 sync), `30 */3 * * *` (head agent 리뷰), `*/20 * * * *` (LLM 태깅).
+- Worker 트리거 (2026-08-16 배포 기준 확인). 계정당 cron trigger 5개 한도를 이미 다 쓰고 있어, **새 주기가 필요하면 새 cron을 만들지 말고 기존 cron에 시간/분 가드를 얹는다.**
+
+  | cron | 하는 일 |
+  | --- | --- |
+  | `*/3 * * * *` | 실시간 주차 sync |
+  | `*/9 * * * *` | 발견(discovery) provider 청크 로테이션. 시작 전 `reapStaleSyncRuns`로 무응답 sync run 마감 |
+  | `15 * * * *` | 로컬 이벤트 sync. + UTC 4시 가드 → city-festival 스크래핑, UTC 5시 가드 → AKEI 무역박람회 스크래핑 (각 하루 1회) |
+  | `30 */3 * * *` | head agent 리뷰 |
+  | `*/20 * * * *` | 매 회차 LLM 태깅. 추가로 분 슬롯(`floor(UTC분/20) % 3`)에 따라 backfill 하나를 함께 실행 — **:00 요금 / :20 지오코딩 / :40 사진** (각 하루 24회) |
+
+  `*/20`이 3분할인 이유는 요금(30건)·지오코딩(25건)·사진(30건)을 한 invocation에서 다 돌리면 subrequest 50건 한도를 넘기기 때문이다. 상세는 `docs/operations/worker-limits.md`.
 - Workers AI 바인딩: `AI` (`orion` head agent 및 LLM 태깅 사용).
 
 ## 현재 iOS UX/브랜드

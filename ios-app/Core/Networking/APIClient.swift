@@ -305,7 +305,15 @@ final class MockAPIClient: APIClientProtocol {
                     lastTaggedAt: now,
                     byModel: [.init(model: "mock-model", count: 100)]
                 ),
-                fee: .init(oldestUncheckedFirstSeenAt: now, lastCheckedAt: now, checkedLast24h: 60)
+                fee: .init(oldestUncheckedFirstSeenAt: now, lastCheckedAt: now, checkedLast24h: 60),
+                backfill: .init(
+                    geocodePending: 2600,
+                    geocodeLastCheckedAt: now,
+                    geocodeCheckedLast24h: 42,
+                    imagePending: 180,
+                    imageLastCheckedAt: now,
+                    imageCheckedLast24h: 30
+                )
             ),
             localEvents: .init(
                 total: 40,

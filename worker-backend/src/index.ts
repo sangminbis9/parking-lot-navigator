@@ -1200,7 +1200,7 @@ async function runImageBackfillScheduled(env: Env): Promise<void> {
 async function runGeocodeBackfillScheduled(env: Env): Promise<void> {
   try {
     const result = await runGeocodeBackfill(env.DB!, env);
-    if (result.scanned > 0) {
+    if (result.scanned + result.discovery.scanned > 0) {
       console.log("geocode backfill done", JSON.stringify(result));
     }
   } catch (error) {
@@ -1291,9 +1291,22 @@ async function syncDiscoveryChunkScheduled(
 ): Promise<void> {
   try {
     if (env.DB) {
-      await reapStaleSyncRuns(env.DB).catch((error) =>
-        console.error("reapStaleSyncRuns failed", error),
-      );
+      const reaped = await reapStaleSyncRuns(env.DB).catch((error) => {
+        console.error("reapStaleSyncRuns failed", error);
+        return 0;
+      });
+      // CPU 한도를 넘겨 isolate가 통째로 죽으면 예외가 잡히지 않아 실패 알림이
+      // 나가지 않는다. 시작 기록만 남고 끝나지 않은 sync run이 그 유일한 흔적이라
+      // 여기서 알려 조용한 죽음을 관측 가능하게 만든다.
+      if (reaped > 0) {
+        await notifyOpsFailure(
+          env,
+          "sync run 무응답",
+          new Error(
+            `${reaped}건이 종료 기록 없이 timeout 처리됨 (CPU/시간 한도 초과 의심)`,
+          ),
+        );
+      }
     }
     const runtime = await loadDiscoveryRuntime(env);
     await syncDiscoveryChunk(env.DB!, runtime, chunkIndex);
