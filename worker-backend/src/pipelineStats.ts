@@ -1,3 +1,6 @@
+import { REGION_FALLBACK_COORDINATES } from "../../backend/src/features/discover/events/eventProviderUtils.js";
+import { IMAGE_SOURCE_KINDS } from "./imageBackfill.js";
+
 // "개발자" 대시보드가 보여줄 수집 파이프라인 현황. 각 테이블의 현재 스냅샷과
 // 최근 유입·처리 큐 상태를 집계한다. 파이프라인별 실행 이력은 sync_runs
 // (discovery 청크 sync만 기록) 외에는 D1에 남아있지 않아 여기서도 만들어내지 않는다.
@@ -68,6 +71,17 @@ export interface PipelineStats {
       oldestUncheckedFirstSeenAt: string | null;
       lastCheckedAt: string | null;
       checkedLast24h: number;
+    };
+    // backfill 회차가 조용히 죽어도 남은 잔량은 계속 그대로다. 잔량과 마지막
+    // 실행 시각을 함께 내려, 대시보드에서 "며칠째 안 줄었다"가 바로 보이게 한다.
+    // 요금 잔량은 feeCoverage.unchecked / fee.lastCheckedAt이 이미 같은 역할을 한다.
+    backfill: {
+      geocodePending: number;
+      geocodeLastCheckedAt: string | null;
+      geocodeCheckedLast24h: number;
+      imagePending: number;
+      imageLastCheckedAt: string | null;
+      imageCheckedLast24h: number;
     };
   };
   localEvents: {
@@ -232,6 +246,7 @@ export async function queryPipelineStats(
     localTagged,
     localIngest,
     localDailyNew,
+    discoveryBackfill,
     cityStats,
     akeiStats,
     syncRunning,
@@ -261,6 +276,24 @@ export async function queryPipelineStats(
          FROM local_events
         WHERE created_at >= ${isoAgo("-7 days")}
         GROUP BY 1 ORDER BY 1`
+    ),
+    db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM discovery_items
+           WHERE geocode_checked_at IS NULL
+             AND COALESCE(venue_name, '') <> ''
+             AND end_date >= date('now')
+             AND (${discoveryFallbackCoordinateMatch()})) AS geocodePending,
+         (SELECT MAX(geocode_checked_at) FROM discovery_items) AS geocodeLastCheckedAt,
+         (SELECT COUNT(*) FROM discovery_items
+           WHERE geocode_checked_at >= ${isoAgo("-1 day")}) AS geocodeCheckedLast24h,
+         (SELECT COUNT(*) FROM discovery_items
+           WHERE images_checked_at IS NULL
+             AND source IN (${imageBackfillSourceList()})
+             AND (end_date IS NULL OR end_date >= date('now'))) AS imagePending,
+         (SELECT MAX(images_checked_at) FROM discovery_items) AS imageLastCheckedAt,
+         (SELECT COUNT(*) FROM discovery_items
+           WHERE images_checked_at >= ${isoAgo("-1 day")}) AS imageCheckedLast24h`
     ),
     db.prepare(
       `SELECT
@@ -373,6 +406,14 @@ export async function queryPipelineStats(
         lastCheckedAt: firstText(discoveryFeeAges, "lastCheckedAt"),
         checkedLast24h: firstNumber(discoveryFeeAges, "checkedLast24h"),
       },
+      backfill: {
+        geocodePending: firstNumber(discoveryBackfill, "geocodePending"),
+        geocodeLastCheckedAt: firstText(discoveryBackfill, "geocodeLastCheckedAt"),
+        geocodeCheckedLast24h: firstNumber(discoveryBackfill, "geocodeCheckedLast24h"),
+        imagePending: firstNumber(discoveryBackfill, "imagePending"),
+        imageLastCheckedAt: firstText(discoveryBackfill, "imageLastCheckedAt"),
+        imageCheckedLast24h: firstNumber(discoveryBackfill, "imageCheckedLast24h"),
+      },
     },
     localEvents: {
       total: firstCount(localTotal),
@@ -464,4 +505,22 @@ function toCountList(result: D1Result<Record<string, unknown>>): { type: string;
     type: row.key ?? "unknown",
     count: Number(row.count),
   }));
+}
+
+// 지역 대표 좌표(서울시청 등) 위에 얹힌 행을 세는 조건. geocodeBackfill이 대상을
+// 고르는 기준과 같아야 잔량이 실제 처리 대기열과 일치한다. 사용자 입력이 아니라
+// 상수 좌표라 바인딩 없이 리터럴로 박는다 (D1 바인딩 100개 한도도 아낀다).
+function discoveryFallbackCoordinateMatch(): string {
+  const epsilon = 1e-7;
+  return REGION_FALLBACK_COORDINATES.map(
+    (coordinate) =>
+      `(ABS(lat - ${coordinate.lat}) < ${epsilon} AND ABS(lng - ${coordinate.lng}) < ${epsilon})`
+  ).join(" OR ");
+}
+
+// imageBackfill이 실제로 훑는 source 목록과 같은 값을 쓴다.
+function imageBackfillSourceList(): string {
+  return Object.keys(IMAGE_SOURCE_KINDS)
+    .map((source) => `'${source}'`)
+    .join(", ");
 }

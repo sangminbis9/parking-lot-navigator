@@ -36,6 +36,7 @@ struct PipelineDashboardView: View {
                     discoveryIngestionCard(stats.discoveryItems)
                     taggingQueueCard(stats.discoveryItems)
                     feeQueueCard(stats.discoveryItems)
+                    backfillQueueCard(stats.discoveryItems)
                     discoveryInventoryCard(stats.discoveryItems)
                     localEventsCard(stats.localEvents)
                     scraperCard(stats)
@@ -172,12 +173,54 @@ struct PipelineDashboardView: View {
 
             statRow(title: "최근 24시간 확인", value: section.fee.checkedLast24h)
             if fee.unchecked > 0 {
-                statRow(title: "남은 큐 소진 예상", value: backfillHours(fee.unchecked), suffix: "시간")
+                statRow(title: "남은 큐 소진 예상", value: backfillHours(fee.unchecked, perRun: 30), suffix: "시간")
             }
             timeRow(title: "가장 오래된 미확인", iso: section.fee.oldestUncheckedFirstSeenAt)
             timeRow(title: "마지막 확인", iso: section.fee.lastCheckedAt)
 
-            Text("20분 주기로 30건씩 처리한다(subrequest 50건 한도).")
+            Text("매시 :00에 30건씩 처리한다(subrequest 50건 한도).")
+                .font(.festival(.caption))
+                .foregroundStyle(FestivalDesign.secondaryText)
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    // MARK: 좌표·사진 backfill 큐
+
+    private func backfillQueueCard(_ section: PipelineStats.DiscoveryItemsSection) -> some View {
+        let backfill = section.backfill
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("좌표·사진 backfill 큐")
+                .font(.festival(.headline))
+                .foregroundStyle(FestivalDesign.navy)
+
+            HStack(spacing: 8) {
+                statPill("좌표 남음", backfill.geocodePending, tint: FestivalDesign.coral)
+                statPill("사진 남음", backfill.imagePending, tint: FestivalDesign.teal)
+            }
+
+            statRow(title: "좌표 최근 24시간", value: backfill.geocodeCheckedLast24h)
+            if backfill.geocodePending > 0 {
+                statRow(
+                    title: "좌표 소진 예상",
+                    value: backfillHours(backfill.geocodePending, perRun: 25),
+                    suffix: "시간"
+                )
+            }
+            timeRow(title: "좌표 마지막 실행", iso: backfill.geocodeLastCheckedAt)
+
+            statRow(title: "사진 최근 24시간", value: backfill.imageCheckedLast24h)
+            if backfill.imagePending > 0 {
+                statRow(
+                    title: "사진 소진 예상",
+                    value: backfillHours(backfill.imagePending, perRun: 30),
+                    suffix: "시간"
+                )
+            }
+            timeRow(title: "사진 마지막 실행", iso: backfill.imageLastCheckedAt)
+
+            Text("좌표는 매시 :20, 사진은 매시 :40에 실행한다. 최근 24시간이 0인데 남은 건수가 그대로면 회차가 죽고 있다는 뜻이다.")
                 .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
         }
@@ -462,9 +505,11 @@ struct PipelineDashboardView: View {
         .clipShape(FestivalDesign.controlShape)
     }
 
-    /// 미확인 건수를 20분 주기 × 30건 처리량으로 나눈 예상 소진 시간(시).
-    private func backfillHours(_ unchecked: Int) -> Int {
-        Int((Double(unchecked) / 30.0 * 20.0 / 60.0).rounded(.up))
+    /// 남은 건수를 예상 소진 시간(시)으로 바꾼다. 요금·좌표·사진 backfill은
+    /// `*/20` cron의 분 슬롯을 나눠 쓰므로 각각 시간당 1회씩만 돈다.
+    private func backfillHours(_ pending: Int, perRun: Int) -> Int {
+        guard perRun > 0 else { return 0 }
+        return Int((Double(pending) / Double(perRun)).rounded(.up))
     }
 
     private static func runTimingText(_ run: PipelineStats.SyncRun) -> String {

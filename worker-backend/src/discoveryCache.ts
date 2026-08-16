@@ -772,6 +772,9 @@ async function queryDiscoveryRows(
 
 const DISCOVERY_UPSERT_BATCH_SIZE = 50;
 
+// lat/lng는 지오코딩 backfill이 채운 값을 지킨다. 원본이 늘 지역 대표 좌표만
+// 주는 소스(KOPIS 등)에서는 sync가 매번 fallback으로 되돌려 backfill이 무의미해진다.
+// 아직 시도하지 않은 행(geocode_checked_at IS NULL)은 그대로 원본 좌표를 따른다.
 const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         id, type, source, source_item_id, title, subtitle, category_text,
         start_date, end_date, status, is_free, venue_name, address, lat, lng,
@@ -792,8 +795,8 @@ const DISCOVERY_UPSERT_SQL = `INSERT INTO discovery_items (
         is_free = excluded.is_free,
         venue_name = excluded.venue_name,
         address = excluded.address,
-        lat = excluded.lat,
-        lng = excluded.lng,
+        lat = CASE WHEN geocode_checked_at IS NOT NULL THEN lat ELSE excluded.lat END,
+        lng = CASE WHEN geocode_checked_at IS NOT NULL THEN lng ELSE excluded.lng END,
         rating = excluded.rating,
         review_count = excluded.review_count,
         lowest_price_text = excluded.lowest_price_text,
