@@ -60,6 +60,7 @@ struct PipelineStats: Codable, Hashable {
         let newLast7d: Int
         let refreshedLast24h: Int
         let staleOver7d: Int
+        let staleEndedOver7d: Int
         let missingCoordinates: Int
         let latestFirstSeenAt: String?
         let latestSyncedAt: String?

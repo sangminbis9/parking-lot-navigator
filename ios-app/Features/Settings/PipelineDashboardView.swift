@@ -108,7 +108,8 @@ struct PipelineDashboardView: View {
             statRow(title: "최근 24시간 신규", value: ingestion.newLast24h)
             statRow(title: "최근 7일 신규", value: ingestion.newLast7d)
             statRow(title: "최근 24시간 갱신 확인", value: ingestion.refreshedLast24h, suffix: "/\(section.total)")
-            statRow(title: "7일 넘게 미갱신", value: ingestion.staleOver7d)
+            statRow(title: "7일 넘게 미갱신(진행·예정)", value: ingestion.staleOver7d)
+            statRow(title: "7일 넘게 미갱신(종료됨)", value: ingestion.staleEndedOver7d)
             statRow(title: "좌표 없음(0,0)", value: ingestion.missingCoordinates)
             timeRow(title: "마지막 sync 기록", iso: ingestion.latestSyncedAt)
 

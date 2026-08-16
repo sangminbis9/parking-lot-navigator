@@ -9,6 +9,7 @@ import {
   kopisDetailMaxItems,
   eventGeocodeMissBudget,
   kopisMaxPages,
+  kopisPageCycles,
 } from "./eventProviderConfig.js";
 import {
   EVENT_FEED_CACHE_TTL_MS,
@@ -47,6 +48,7 @@ export class KopisEventProvider
     private readonly resolver?: EventCoordinateResolver,
     private readonly maxPages: number = kopisMaxPages(),
     private readonly detailMaxItems: number = kopisDetailMaxItems(),
+    private readonly pageCycles: number = kopisPageCycles(),
   ) {
     super("kopis");
   }
@@ -81,12 +83,33 @@ export class KopisEventProvider
     return this.inFlightItems;
   }
 
-  private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
+  /// maxPages * EVENT_PAGE_SIZE가 전체 공연 수보다 작으면 항상 앞쪽 페이지만 읽게 되어
+  /// 뒤쪽 공연은 영원히 갱신되지 않는다. 회차마다 시작 페이지를 옮겨 전체를 순회한다.
+  private startPage(): number {
+    if (this.pageCycles <= 1) return 1;
+    const slot = Math.floor(Date.now() / 3_600_000) % this.pageCycles;
+    return slot * this.maxPages + 1;
+  }
+
+  private async fetchPageWindow(
+    startPage: number,
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>[]> {
     const rows: Record<string, unknown>[] = [];
-    for (let page = 1; page <= this.maxPages; page += 1) {
-      const pageRows = await this.fetchPage(page, signal);
+    for (let offset = 0; offset < this.maxPages; offset += 1) {
+      const pageRows = await this.fetchPage(startPage + offset, signal);
       rows.push(...pageRows);
       if (pageRows.length < EVENT_PAGE_SIZE) break;
+    }
+    return rows;
+  }
+
+  private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
+    const startPage = this.startPage();
+    let rows = await this.fetchPageWindow(startPage, signal);
+    if (rows.length === 0 && startPage > 1) {
+      // 회전 구간이 실제 페이지 수를 넘어섰다. 빈 페이지 한 장만 버리고 앞에서 다시 읽는다.
+      rows = await this.fetchPageWindow(1, signal);
     }
     this.resolver?.setMissBudget?.(eventGeocodeMissBudget());
     if (this.resolver?.warmup) {
