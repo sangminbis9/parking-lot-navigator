@@ -83,6 +83,9 @@ export interface DiscoverySyncResult {
   skipped: number;
   pruned: number;
   sources: Record<string, number>;
+  // 타임아웃된 center는 빈 배열을 돌려주므로 결과만 봐서는 성공과 구분되지 않는다.
+  // 어느 center가 시간 안에 못 끝냈는지 sync_runs에 남기려고 함께 올린다.
+  timedOutCenters: string[];
   generatedAt: string;
 }
 
@@ -503,6 +506,20 @@ export async function queryDiscoveryClusters(
   }));
 }
 
+/// center 타임아웃은 빈 배열로 흡수되므로 그대로 두면 전부 'success'로 기록된다.
+/// 한 건도 못 가져온 회차는 'timeout'으로 남겨 대시보드 집계에 잡히게 하고,
+/// 일부만 실패한 회차는 성공으로 두되 message에 어느 center가 늦었는지 적는다.
+function syncRunOutcome(result: DiscoverySyncResult): {
+  status: "success" | "timeout";
+  message: string | null;
+} {
+  if (result.timedOutCenters.length === 0) {
+    return { status: "success", message: null };
+  }
+  const message = `timed out ${result.timedOutCenters.length}/${NATIONAL_DISCOVERY_CENTERS.length} centers: ${result.timedOutCenters.join(",")}`;
+  return { status: result.fetched > 0 ? "success" : "timeout", message };
+}
+
 export async function syncDiscoveryCache(
   db: D1Database,
   runtime: DiscoverySyncRuntime,
@@ -513,7 +530,8 @@ export async function syncDiscoveryCache(
     const run = await startSyncRun(db, `discover:${kind}`);
     try {
       const result = await syncDiscoveryKind(db, runtime, kind);
-      await finishSyncRun(db, run.id, "success", result);
+      const outcome = syncRunOutcome(result);
+      await finishSyncRun(db, run.id, outcome.status, result, outcome.message);
       results.push(result);
     } catch (error) {
       const failed = {
@@ -523,6 +541,7 @@ export async function syncDiscoveryCache(
         skipped: 0,
         pruned: 0,
         sources: {},
+        timedOutCenters: [],
         generatedAt: new Date().toISOString(),
       };
       await finishSyncRun(
@@ -543,6 +562,7 @@ async function syncDiscoveryKind(
   runtime: DiscoverySyncRuntime,
   kind: DiscoverySyncKind,
   providerAllowlist?: ReadonlySet<string>,
+  fetchTimeoutMs?: number,
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
   const centers = centersForKind();
@@ -557,10 +577,20 @@ async function syncDiscoveryKind(
         upcomingWithinDays: 365,
         providerAllowlist,
       };
-      return fetchDiscoveryCenterWithTimeout(runtime, kind, center.id, query);
+      const outcome = await fetchDiscoveryCenterWithTimeout(
+        runtime,
+        kind,
+        center.id,
+        query,
+        fetchTimeoutMs,
+      );
+      return { centerId: center.id, ...outcome };
     },
   );
-  const items = dedupeItems(batches.flat());
+  const timedOutCenters = batches
+    .filter((batch) => batch.timedOut)
+    .map((batch) => batch.centerId);
+  const items = dedupeItems(batches.flatMap((batch) => batch.items));
   const sources = countSources(items);
   const validItems = items.filter(
     (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
@@ -577,6 +607,7 @@ async function syncDiscoveryKind(
     skipped,
     pruned,
     sources,
+    timedOutCenters,
     generatedAt,
   };
 }
@@ -600,9 +631,11 @@ export async function syncDiscoveryChunk(
       runtime,
       chunk.kind,
       providerSet,
+      chunk.fetchTimeoutMs,
     );
     const annotated = { ...result, syncType };
-    await finishSyncRun(db, run.id, "success", annotated);
+    const outcome = syncRunOutcome(annotated);
+    await finishSyncRun(db, run.id, outcome.status, annotated, outcome.message);
     return annotated;
   } catch (error) {
     const failed = {
@@ -612,6 +645,7 @@ export async function syncDiscoveryChunk(
       skipped: 0,
       pruned: 0,
       sources: {},
+      timedOutCenters: [],
       generatedAt: new Date().toISOString(),
     };
     await finishSyncRun(
@@ -1175,27 +1209,33 @@ async function fetchDiscoveryCenterWithTimeout(
   kind: DiscoverySyncKind,
   centerId: string,
   query: SyncDiscoverQuery,
-): Promise<DiscoveryItem[]> {
-  const timeoutMs = discoverySyncFetchTimeoutMs();
+  fetchTimeoutMs?: number,
+): Promise<{ items: DiscoveryItem[]; timedOut: boolean }> {
+  const timeoutMs = fetchTimeoutMs ?? discoverySyncFetchTimeoutMs();
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const work =
     kind === "festivals"
       ? runtime.festivalService.nearby({ ...query, signal: controller.signal })
       : runtime.eventService.nearby({ ...query, signal: controller.signal });
-  const guardedWork = work.catch((error) => {
-    if (controller.signal.aborted) return [];
-    throw error;
-  });
-  const timeout = new Promise<DiscoveryItem[]>((resolve) => {
-    timeoutId = setTimeout(() => {
-      controller.abort();
-      console.info(
-        `discovery sync ${kind} center=${centerId} timed out after ${timeoutMs}ms`,
-      );
-      resolve([]);
-    }, timeoutMs);
-  });
+  const guardedWork = work.then(
+    (items) => ({ items, timedOut: false }),
+    (error) => {
+      if (controller.signal.aborted) return { items: [], timedOut: true };
+      throw error;
+    },
+  );
+  const timeout = new Promise<{ items: DiscoveryItem[]; timedOut: boolean }>(
+    (resolve) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        console.info(
+          `discovery sync ${kind} center=${centerId} timed out after ${timeoutMs}ms`,
+        );
+        resolve({ items: [], timedOut: true });
+      }, timeoutMs);
+    },
+  );
   try {
     return await Promise.race([guardedWork, timeout]);
   } finally {
@@ -1227,7 +1267,7 @@ function positiveIntegerFromEnv(name: string, fallback: number): number {
 async function finishSyncRun(
   db: D1Database,
   id: string,
-  status: "success" | "failed",
+  status: "success" | "failed" | "timeout",
   result: DiscoverySyncResult,
   message: string | null = null,
 ): Promise<void> {

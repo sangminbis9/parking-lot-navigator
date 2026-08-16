@@ -46,7 +46,10 @@ export interface PipelineStats {
       newLast24h: number;
       newLast7d: number;
       refreshedLast24h: number;
+      // 이미 끝난 행사는 원본 API에서 사라져 last_seen_at이 영원히 안 오르므로
+      // staleOver7d(아직 안 끝난 것)와 staleEndedOver7d(끝난 것)를 나눠 센다.
       staleOver7d: number;
+      staleEndedOver7d: number;
       missingCoordinates: number;
       latestFirstSeenAt: string | null;
       latestSyncedAt: string | null;
@@ -171,7 +174,12 @@ export async function queryPipelineStats(
          SUM(CASE WHEN first_seen_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS newLast24h,
          SUM(CASE WHEN first_seen_at >= ${isoAgo("-7 days")} THEN 1 ELSE 0 END) AS newLast7d,
          SUM(CASE WHEN last_seen_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS refreshedLast24h,
-         SUM(CASE WHEN last_seen_at < ${isoAgo("-7 days")} THEN 1 ELSE 0 END) AS staleOver7d,
+         SUM(CASE WHEN last_seen_at < ${isoAgo("-7 days")}
+                   AND (end_date IS NULL OR end_date >= date('now'))
+                  THEN 1 ELSE 0 END) AS staleOver7d,
+         SUM(CASE WHEN last_seen_at < ${isoAgo("-7 days")}
+                   AND end_date < date('now')
+                  THEN 1 ELSE 0 END) AS staleEndedOver7d,
          SUM(CASE WHEN lat = 0 OR lng = 0 THEN 1 ELSE 0 END) AS missingCoordinates,
          MAX(first_seen_at) AS latestFirstSeenAt,
          MAX(synced_at) AS latestSyncedAt
@@ -342,6 +350,7 @@ export async function queryPipelineStats(
         newLast7d: firstNumber(discoveryIngest, "newLast7d"),
         refreshedLast24h: firstNumber(discoveryIngest, "refreshedLast24h"),
         staleOver7d: firstNumber(discoveryIngest, "staleOver7d"),
+        staleEndedOver7d: firstNumber(discoveryIngest, "staleEndedOver7d"),
         missingCoordinates: firstNumber(discoveryIngest, "missingCoordinates"),
         latestFirstSeenAt: firstText(discoveryIngest, "latestFirstSeenAt"),
         latestSyncedAt: firstText(discoveryIngest, "latestSyncedAt"),

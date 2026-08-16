@@ -24,6 +24,10 @@ export function kopisMaxPages(): number {
   return parsePositiveInt(process.env.KOPIS_MAX_PAGES, 100);
 }
 
+export function kopisPageCycles(): number {
+  return parsePositiveInt(process.env.KOPIS_PAGE_CYCLES, 3);
+}
+
 export function kopisDetailMaxItems(): number {
   return parseNonNegativeInt(process.env.KOPIS_DETAIL_MAX_ITEMS, 20);
 }

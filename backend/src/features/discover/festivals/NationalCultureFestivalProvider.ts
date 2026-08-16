@@ -18,6 +18,9 @@ const NATIONAL_CULTURE_FESTIVAL_PATH =
   "/openapi/tn_pubr_public_cltur_fstvl_api";
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+/// 공유 fetch 자체의 상한. 호출자 signal을 쓰면 먼저 포기한 center 하나가
+/// 나머지 center가 기다리던 공유 요청까지 abort시켜 전원이 빈손이 된다.
+const SHARED_FETCH_TIMEOUT_MS = 55_000;
 
 interface NationalCultureFestivalApiResponse {
   response?: {
@@ -101,7 +104,7 @@ export class NationalCultureFestivalProvider
 
   async festivals(query: DiscoverQuery): Promise<Festival[]> {
     try {
-      const items = await this.fetchCachedItems(query.signal);
+      const items = await this.fetchCachedItems();
       const normalized = items
         .map((item) => ({
           ...item,
@@ -132,16 +135,16 @@ export class NationalCultureFestivalProvider
     }
   }
 
-  private async fetchCachedItems(
-    signal?: AbortSignal,
-  ): Promise<CachedNationalFestival[]> {
+  private async fetchCachedItems(): Promise<CachedNationalFestival[]> {
     const now = Date.now();
     if (this.cachedItems && this.cachedItems.expiresAt > now) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
 
-    this.inFlightItems = this.fetchAllItems(signal)
+    this.inFlightItems = this.fetchAllItems(
+      AbortSignal.timeout(SHARED_FETCH_TIMEOUT_MS),
+    )
       .then((items) => {
         if (items.length > 0) {
           this.cachedItems = { expiresAt: now + CACHE_TTL_MS, items };
