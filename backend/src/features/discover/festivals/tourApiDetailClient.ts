@@ -57,6 +57,10 @@ const DETAIL_PAGE_SIZE = 20;
 // response's body. Fan-out across many URLs (area codes, cat3 codes, detail
 // lookups) must all be throttled through mapWithConcurrency at this cap.
 export const DETAIL_ENRICH_CONCURRENCY = 5;
+// 핵심 4필드가 다 차서 detail을 건너뛰던 항목 중 programInfo만 따로 채울 상한.
+// 항목당 detailIntro2 1건이므로, 목록 조회분을 뺀 남은 subrequest 예산 안에서
+// 안전한 값으로 잡는다(50건 한도, docs/operations/worker-limits.md).
+const PROGRAM_ENRICH_MAX_ITEMS = 8;
 let introErrorLogCount = 0;
 let introSubrequestLimitCount = 0;
 let introOtherErrorCount = 0;
@@ -159,6 +163,20 @@ export class TourApiDetailClient {
     // 실패한 행에 조회 완료 표식이 찍힌다. 예외는 그대로 올려보낸다.
     const intro = await this.fetchIntroItemCached(key, signal);
     return cleanHtml(intro?.usetimefestival);
+  }
+
+  // programInfo(공연시간/프로그램/부대행사)도 detailIntro2에만 있다. detail()은
+  // detailCommon2/detailImage2까지 부르므로, 나머지 필드가 이미 찬 항목에는
+  // intro 한 번만 쓰는 이 경로로 subrequest를 아낀다. introItemCache를 공유하니
+  // eventDates()가 이미 조회한 contentId면 추가 fetch가 아예 없다.
+  async programInfo(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const key = contentId.trim();
+    if (!key) return null;
+    const intro = await this.fetchIntroItemCached(key, signal).catch(() => null);
+    return combineProgramInfo(intro);
   }
 
   // 사진 backfill 전용 경로. detailImage2는 목록 응답의 firstimage와 달리
@@ -306,9 +324,28 @@ export async function enrichTourApiItems<
     maxItems !== undefined && items.length > maxItems
       ? selectSoonest(items, maxItems)
       : null;
+  // 아래 조기 return은 핵심 4필드가 다 찬 항목에서 detail 호출을 통째로 건너뛴다.
+  // programInfo는 목록 응답에 없으므로 그 항목들은 영영 못 받는다. 조건을 그냥
+  // 풀면 대부분의 항목이 detail을 부르게 되어 invocation당 50 subrequest 한도를
+  // 넘긴다. 시작일이 가까운 소수만 intro 한 번(=fetch 1건)씩 추가로 연다.
+  const programTargets = selectSoonest(
+    items.filter(
+      (item) =>
+        !item.programInfo &&
+        Boolean(
+          item.description && item.sourceUrl && item.imageUrl && item.venueName,
+        ),
+    ),
+    PROGRAM_ENRICH_MAX_ITEMS,
+  );
   return mapWithConcurrency(items, DETAIL_ENRICH_CONCURRENCY, async (item) => {
-    if (item.description && item.sourceUrl && item.imageUrl && item.venueName)
-      return item;
+    if (item.description && item.sourceUrl && item.imageUrl && item.venueName) {
+      if (!programTargets.has(item)) return item;
+      return {
+        ...item,
+        programInfo: await client.programInfo(item.contentId, signal),
+      };
+    }
     if (toEnrich && !toEnrich.has(item)) return item;
     const detail = await client.detail(
       item.contentId,

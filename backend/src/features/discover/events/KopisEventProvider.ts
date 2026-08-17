@@ -243,9 +243,26 @@ export class KopisEventProvider
         price: getString(row, ["pcseguidance", "price"]),
         region,
         venue,
+        programInfo: combineProgramInfo(row),
         raw: row,
       },
       resolveCoordinates ? this.resolver : undefined,
     );
   }
+}
+
+// 공연시간(dtguidance)·출연진(prfcast)·제작진(prfcrew)은 상세 API(pblprfr/{id})에만
+// 있고 목록에는 없다. mapRow는 이들을 description fallback으로만 썼는데 sty(줄거리)가
+// 먼저라 거의 항상 밀려 버려졌다. TourAPI의 combineProgramInfo와 같은 모양으로
+// programInfo에 담아 상세 화면의 "프로그램 상세"에 그대로 노출한다.
+function combineProgramInfo(row: Record<string, unknown>): string | null {
+  const guidance = getString(row, ["dtguidance"]);
+  const cast = getString(row, ["prfcast"]);
+  const crew = getString(row, ["prfcrew"]);
+  const parts = [
+    guidance ? `공연시간: ${guidance}` : null,
+    cast ? `출연: ${cast}` : null,
+    crew ? `제작진: ${crew}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join("\n") : null;
 }

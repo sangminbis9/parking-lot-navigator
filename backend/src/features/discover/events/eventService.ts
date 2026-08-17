@@ -145,6 +145,7 @@ function dedupeEvents(items: FreeEvent[]): FreeEvent[] {
       price: item.price ?? null,
       region: item.region ?? null,
       updatedAt: item.updatedAt ?? new Date().toISOString(),
+      programInfo: item.programInfo ?? null,
     })),
   );
   return selected.map((item) => ({
