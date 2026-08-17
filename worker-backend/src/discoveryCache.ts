@@ -876,8 +876,9 @@ const DISCOVERY_ENRICHMENT_FIELDS = [
 // raw_payload는 매 sync마다 통째로 덮어써지므로, 이번 사이클에 detail
 // enrichment 대상으로 선택되지 않아 값이 null인 필드는 D1에 이미 저장된
 // 이전 값으로 채워 넣는다. 새 값이 있으면 항상 새 값이 우선한다.
-// event 형태 item의 요금(price)도 같은 이유로 보존한다 — 요금 backfill이
-// 채워 넣은 값이 다음 sync에서 통째로 날아가면 backfill 자체가 무의미해진다.
+// event 형태 item의 요금(price)과 programInfo도 같은 이유로 보존한다 — 요금
+// backfill이나 직전 회차의 상세 조회가 채워 넣은 값이 다음 sync에서 통째로
+// 날아가면 그 조회 자체가 무의미해진다.
 async function mergeWithExistingEnrichment(
   db: D1Database,
   items: DiscoveryItem[],
@@ -913,14 +914,23 @@ async function mergeWithExistingEnrichment(
     const existing = existingById.get(discoveryItemId(item));
     if (!existing) return item;
     if ("eventType" in item) {
+      // KOPIS 상세(pblprfr/{id})는 회차당 KOPIS_DETAIL_MAX_ITEMS건만 연다.
+      // 이번 회차에 안 열린 항목의 programInfo는 null로 오므로, 요금과 같은
+      // 이유로 이전 값을 되살린다. 이게 없으면 회차마다 직전 회차가 채운
+      // 공연시간·출연진이 지워져 5건 이상 쌓이지 않는다.
+      const previousProgramInfo = stringFromRaw(existing.raw?.programInfo);
+      const restoredItem =
+        item.programInfo == null && previousProgramInfo
+          ? { ...item, programInfo: previousProgramInfo }
+          : item;
       const previousPrice =
         stringFromRaw(existing.raw?.price) ?? existing.priceText;
-      if (item.price != null || !previousPrice) return item;
+      if (restoredItem.price != null || !previousPrice) return restoredItem;
       const restored = normalizeFee(previousPrice);
       return {
-        ...item,
+        ...restoredItem,
         price: previousPrice,
-        isFree: item.isFree || restored.feeType === "free",
+        isFree: restoredItem.isFree || restored.feeType === "free",
       };
     }
     const raw = existing.raw;

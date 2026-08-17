@@ -111,6 +111,7 @@ export interface FreeEvent {
   updatedAt?: string;
   primaryCategory?: LocalEventPrimaryCategory | null;
   categoryTags?: string[];
+  programInfo?: string | null;
 }
 
 export interface LocalEvent {

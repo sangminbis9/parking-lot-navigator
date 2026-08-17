@@ -31,6 +31,7 @@ export interface NormalizedEventInput {
   venue?: string | null;
   updatedAt?: string | null;
   isFree?: boolean | null;
+  programInfo?: string | null;
   raw?: unknown;
 }
 
@@ -54,6 +55,7 @@ export interface CachedEvent {
   price: string | null;
   region: string | null;
   updatedAt: string;
+  programInfo: string | null;
 }
 
 export interface ResolverInput {
@@ -381,6 +383,7 @@ export async function normalizeEventForMap(
     price,
     region: clean(input.region) ?? regionFromAddress(address),
     updatedAt: clean(input.updatedAt) ?? new Date().toISOString(),
+    programInfo: clean(input.programInfo),
   };
 }
 
