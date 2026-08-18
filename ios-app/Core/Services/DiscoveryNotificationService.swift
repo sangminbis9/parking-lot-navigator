@@ -14,6 +14,14 @@ final class DiscoveryNotificationService: ObservableObject {
 
     private let defaultCoordinate: (lat: Double, lng: Double) = (lat: 37.5663, lng: 126.9779) // 서울시청
 
+    /// 지역 선택 시 조회 반경. 서버 D1에는 행정구역 컬럼이 없어 여전히 좌표 반경으로 조회한 뒤
+    /// matchesRegions(주소 문자열 포함 여부)로 최종 판정하므로, 반경은 선택한 행정구역 전체를
+    /// 확실히 덮을 만큼만 넓히면 된다. 경북(울릉군)·인천(옹진군 백령도) 같은 광역도 소속 원거리
+    /// 도서까지 province 중심좌표에서 커버하려면 200km 안팎이 필요해 여유를 두고 300km로 둔다.
+    /// 사용자가 설정한 radiusKm은 지역 선택 시 이 값에 관여하지 않는다 — 반경이 알림 대상 선정에
+    /// 영향을 주지 않아야 한다는 요구사항 그대로다.
+    private let regionCoverageRadiusMeters = 300_000
+
     init(apiClient: APIClientProtocol, appGroupID: String) {
         self.apiClient = apiClient
         self.appGroupID = appGroupID
@@ -150,16 +158,16 @@ final class DiscoveryNotificationService: ObservableObject {
     /// 관심 지역이 있으면 지역별 중심 좌표로 각각 조회해 합친다. 좌표 하나로 평균 내면 서로 먼 지역을
     /// 고를 때 검색 중심이 둘 중 어디에도 속하지 않는 엉뚱한 지점으로 뭉개지기 때문이다.
     private func fetchFestivals(regions: [String], radiusKm: Int) async -> [Festival] {
-        let radius = radiusKm * 1_000
         guard !regions.isEmpty else {
             let coord = fallbackCoordinate()
+            let radius = radiusKm * 1_000
             return (try? await apiClient.nearbyFestivals(lat: coord.lat, lng: coord.lng, radiusMeters: radius, upcomingWithinDays: 365)) ?? []
         }
         var seen = Set<String>()
         var result: [Festival] = []
         for region in regions {
             guard let centroid = NotificationPreferencesStore.regionCentroids[region] else { continue }
-            guard let festivals = try? await apiClient.nearbyFestivals(lat: centroid.lat, lng: centroid.lng, radiusMeters: radius, upcomingWithinDays: 365) else { continue }
+            guard let festivals = try? await apiClient.nearbyFestivals(lat: centroid.lat, lng: centroid.lng, radiusMeters: regionCoverageRadiusMeters, upcomingWithinDays: 365) else { continue }
             for festival in festivals where !seen.contains(festival.id) {
                 seen.insert(festival.id)
                 result.append(festival)
@@ -169,16 +177,16 @@ final class DiscoveryNotificationService: ObservableObject {
     }
 
     private func fetchLocalEvents(regions: [String], radiusKm: Int) async -> [FreeEvent] {
-        let radius = radiusKm * 1_000
         guard !regions.isEmpty else {
             let coord = fallbackCoordinate()
+            let radius = radiusKm * 1_000
             return (try? await apiClient.nearbyEvents(lat: coord.lat, lng: coord.lng, radiusMeters: radius)) ?? []
         }
         var seen = Set<String>()
         var result: [FreeEvent] = []
         for region in regions {
             guard let centroid = NotificationPreferencesStore.regionCentroids[region] else { continue }
-            guard let events = try? await apiClient.nearbyEvents(lat: centroid.lat, lng: centroid.lng, radiusMeters: radius) else { continue }
+            guard let events = try? await apiClient.nearbyEvents(lat: centroid.lat, lng: centroid.lng, radiusMeters: regionCoverageRadiusMeters) else { continue }
             for event in events where !seen.contains(event.id) {
                 seen.insert(event.id)
                 result.append(event)
