@@ -8,7 +8,7 @@
 | 한도 | 값 | 넘기면 벌어지는 일 | 이 한도에 묶인 코드 |
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts`(회차 30건), `geocodeBackfill.ts`(회차 45건), `imageBackfill.ts`(회차 45건), `localEventDiscovery.ts`(Naver/Kakao 호출) |
-| invocation당 CPU 시간 | 10ms | 예외 없이 isolate가 종료된다. `wrangler tail`에 `Exceeded CPU Limit`으로만 남고 `try/catch`도 `notifyOpsFailure`도 타지 않는다. 진행 중이던 D1 쓰기는 손실. | cron 핸들러 전부. 예전에는 태깅과 backfill이 `*/20` 한 invocation에 얹혀 있어 backfill이 회차당 4건 남짓만 처리하고 죽었다. 지금은 `*/5`에서 한 invocation에 한 작업만 둔다 |
+| invocation당 CPU 시간 | 10ms | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | cron 핸들러 전부. 예전에는 태깅과 backfill이 `*/20` 한 invocation에 얹혀 있어 backfill이 회차당 4건 남짓만 처리하고 죽었다. 지금은 `*/5`에서 한 invocation에 한 작업만 둔다. 실측 2026-08-18: 24시간 892회 invocation 중 524회(59%)가 `exceededResources`로 죽었다 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | `wrangler.toml`의 5개 스케줄. 새 주기가 필요하면 기존 cron에 시간/분 가드를 얹는다 |
 | D1 일일 행 읽기 | 5,000,000 | 문서상 초과하면 D1이 쿼리를 거부한다. 실측 2026-08-18에는 10배(5,049만/일)를 넘긴 상태에서도 거부가 없었다 — 강제가 느슨하거나 계정에 다른 조건이 붙어 있을 수 있다. 어느 쪽이든 설계 예산으로는 지킨다 | 상관 서브쿼리와 정렬 쿼리 전부. 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음. 실측 35만/일 | `realtimeParkingCache.ts`(3분마다 최대 1000행 upsert)가 대부분을 차지한다 |
