@@ -164,12 +164,16 @@ private struct DiscoverResultHeader: View {
     var onToggleFavorite: (() -> Void)? = nil
     var shareContent: DiscoverShareContent? = nil
 
+    private var tint: Color {
+        presentation.status == .ongoing ? FestivalDesign.coral : FestivalDesign.teal
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             DiscoverHeroImage(
                 imageUrl: presentation.imageUrl,
                 imageUrls: presentation.imageUrls,
-                tint: presentation.status == .ongoing ? FestivalDesign.coral : FestivalDesign.teal
+                tint: tint
             )
 
             HStack(spacing: 8) {
@@ -205,6 +209,21 @@ private struct DiscoverResultHeader: View {
                     .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // 첫 태그는 도메인이라 위 StatusBadge(typeText)와 같다. 나머지만 칩으로 보여준다.
+            let detailTags = Array(presentation.tags.dropFirst())
+            if !detailTags.isEmpty {
+                RegionFlowLayout(spacing: 6) {
+                    ForEach(detailTags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.festival(.caption, weight: .medium))
+                            .foregroundStyle(FestivalDesign.readable(tint))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
+                    }
+                }
             }
         }
         .padding(14)

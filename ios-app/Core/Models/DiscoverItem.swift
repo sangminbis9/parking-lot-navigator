@@ -178,13 +178,18 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let priorityScore: Int
     let primaryCategory: LocalEventPrimaryCategory?
     let categoryTags: [String]?
+    /// 공연(KOPIS) 행은 같은 primaryCategory 필드에 축제 카테고리(music_performance 등)를 담아 보낸다.
+    /// LocalEventPrimaryCategory로는 해석되지 않으므로 축제 카테고리로도 한 번 더 읽어 둔다.
+    let festivalCategory: FestivalPrimaryCategory?
+    let isFree: Bool?
+    let price: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, eventType, category, sourceId, startDate, endDate, status
         case storeName, venueName, address, lat, lng, distanceMeters, source, sourceUrl
         case imageUrl, imageUrls, benefit, shortDescription, region, updatedAt, confidenceScore
         case needsReview, isSponsored, sponsorTier, paidUntil, priorityScore
-        case primaryCategory, categoryTags
+        case primaryCategory, categoryTags, isFree, price
     }
 
     init(from decoder: Decoder) throws {
@@ -196,8 +201,16 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         sourceId = try c.decodeIfPresent(String.self, forKey: .sourceId)
         startDate = try c.decode(String.self, forKey: .startDate)
         endDate = try c.decodeIfPresent(String.self, forKey: .endDate)
-        status = try c.decode(LocalEventStatus.self, forKey: .status)
-        storeName = try c.decode(String.self, forKey: .storeName)
+        // /api/performances는 shared-types의 FreeEvent 형태로 응답한다 — storeName이 없고
+        // status는 ongoing/upcoming이다. 엄격하게 디코드하면 공연 배열 전체가 통째로 실패한다.
+        if let rawStatus = try c.decodeIfPresent(String.self, forKey: .status) {
+            status = LocalEventStatus(rawValue: rawStatus) ?? .approved
+        } else {
+            status = .approved
+        }
+        storeName = try c.decodeIfPresent(String.self, forKey: .storeName)
+            ?? c.decodeIfPresent(String.self, forKey: .venueName)
+            ?? title
         venueName = try c.decodeIfPresent(String.self, forKey: .venueName)
         address = try c.decode(String.self, forKey: .address)
         lat = try c.decode(Double.self, forKey: .lat)
@@ -219,10 +232,14 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         priorityScore = try c.decodeIfPresent(Int.self, forKey: .priorityScore) ?? 0
         if let raw = try c.decodeIfPresent(String.self, forKey: .primaryCategory) {
             primaryCategory = LocalEventPrimaryCategory(rawValue: raw)
+            festivalCategory = FestivalPrimaryCategory(rawValue: raw)
         } else {
             primaryCategory = nil
+            festivalCategory = nil
         }
         categoryTags = try c.decodeIfPresent([String].self, forKey: .categoryTags)
+        isFree = try c.decodeIfPresent(Bool.self, forKey: .isFree)
+        price = try c.decodeIfPresent(String.self, forKey: .price)
     }
 
     init(
@@ -255,7 +272,10 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         paidUntil: String?,
         priorityScore: Int,
         primaryCategory: LocalEventPrimaryCategory? = nil,
-        categoryTags: [String]? = nil
+        categoryTags: [String]? = nil,
+        festivalCategory: FestivalPrimaryCategory? = nil,
+        isFree: Bool? = nil,
+        price: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -287,6 +307,9 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         self.priorityScore = priorityScore
         self.primaryCategory = primaryCategory
         self.categoryTags = categoryTags
+        self.festivalCategory = festivalCategory
+        self.isFree = isFree
+        self.price = price
     }
 
     var timelineStatus: DiscoverStatus {
@@ -334,12 +357,19 @@ struct DiscoverPresentation: Hashable {
 }
 
 extension Festival {
+    var discoverDomain: DiscoverDomain {
+        if primaryCategory == .tradeExpo { return .tradeExpo }
+        if DiscoverDomain.performanceSources.contains(source) { return .performance }
+        return .festival
+    }
+
     var discoverTags: [String] {
         DiscoverTagBuilder.festivalTags(
+            domain: discoverDomain,
             primaryCategory: primaryCategory,
             categoryTags: categoryTags ?? [],
             address: address,
-            startDate: startDate,
+            admissionFee: admissionFee,
             rawTags: tags
         )
     }
@@ -366,7 +396,7 @@ extension Festival {
             venueName: venueName,
             address: address,
             status: status,
-            typeText: "\u{CD95}\u{C81C}",
+            typeText: discoverDomain.displayName,
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
@@ -401,13 +431,24 @@ extension FreeEvent {
         }
     }
 
+    var discoverDomain: DiscoverDomain {
+        if DiscoverDomain.performanceSources.contains(source) { return .performance }
+        if festivalCategory == .tradeExpo { return .tradeExpo }
+        return .localEvent
+    }
+
     var discoverTags: [String] {
-        DiscoverTagBuilder.eventTags(
+        let domain = discoverDomain
+        // 가게 이벤트의 benefit("아메리카노 1+1")은 입장료가 아니다. 요금 태그는 공연·박람회에만 단다.
+        return DiscoverTagBuilder.eventTags(
+            domain: domain,
             primaryCategory: primaryCategory,
+            festivalCategory: festivalCategory,
             categoryTags: categoryTags ?? [],
             eventType: eventType,
             address: address,
-            startDate: startDate
+            feeText: domain == .localEvent ? nil : price,
+            isFree: domain == .localEvent ? nil : isFree
         )
     }
 
@@ -433,12 +474,12 @@ extension FreeEvent {
             venueName: venueName ?? storeName,
             address: address,
             status: timelineStatus,
-            typeText: FreeEvent.koreanEventType(eventType),
+            typeText: discoverDomain.displayName,
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
             imageUrls: imageUrls,
-            price: benefit,
+            price: benefit ?? price,
             region: region,
             updatedAt: updatedAt,
             tags: discoverTags,
@@ -454,70 +495,148 @@ extension FreeEvent {
     }
 }
 
+/// 축제 / 공연 / 박람회 / 가게 이벤트를 가르는 단일 기준.
+/// 지도 홀로그램 카드와 상세 화면이 같은 태그를 쓰도록 도메인 판정을 여기 한 곳에 모은다.
+enum DiscoverDomain {
+    case festival
+    case performance
+    case tradeExpo
+    case localEvent
+
+    var displayName: String {
+        switch self {
+        case .festival: return "축제"
+        case .performance: return "공연"
+        case .tradeExpo: return "박람회"
+        case .localEvent: return "가게 이벤트"
+        }
+    }
+
+    /// Worker discoveryCache의 PERFORMANCE_EVENT_SOURCES와 같은 목록.
+    static let performanceSources: Set<String> = ["kopis"]
+
+    /// 즐겨찾기 저장 모델처럼 카테고리 정보가 없는 축소 모델용 판정. source만으로 가른다.
+    static func fromSource(_ source: String, isFestival: Bool) -> DiscoverDomain {
+        if performanceSources.contains(source) { return .performance }
+        if source == "akei-trade-expo" { return .tradeExpo }
+        return isFestival ? .festival : .localEvent
+    }
+}
+
 enum DiscoverTagBuilder {
+    /// 태그 순서는 한눈에 보고 싶은 순서다: 도메인 → 카테고리 → 요금 → 도시 → 세부.
+    /// 홀로그램 카드는 앞쪽 몇 개만, 상세 화면은 전부 노출한다.
     static func festivalTags(
+        domain: DiscoverDomain,
         primaryCategory: FestivalPrimaryCategory?,
         categoryTags: [String],
         address: String,
-        startDate: String,
+        admissionFee: String?,
         rawTags: [String]
     ) -> [String] {
-        var tags: [String] = []
-        if let primaryCategory {
-            appendUnique([primaryCategory.displayName], to: &tags)
-        }
-        appendUnique(categoryTags.compactMap { cleanTag($0) }, to: &tags)
-        appendUnique(rawTags.compactMap { cleanTag($0) }.filter { !isGenericTag($0) }, to: &tags)
-        appendUnique(regionTags(from: address), to: &tags)
-        appendUnique(timeTags(startDate: startDate), to: &tags)
-        return Array(tags.prefix(8))
+        var tags: [String] = [domain.displayName]
+        appendUnique(festivalCategoryTag(primaryCategory, domain: domain), to: &tags)
+        appendUnique(feeTag(feeText: admissionFee, isFree: nil), to: &tags)
+        appendUnique(cityTag(from: address), to: &tags)
+        appendUnique(detailTags(categoryTags + rawTags), to: &tags)
+        return Array(tags.prefix(6))
     }
 
     static func eventTags(
+        domain: DiscoverDomain,
         primaryCategory: LocalEventPrimaryCategory?,
+        festivalCategory: FestivalPrimaryCategory?,
         categoryTags: [String],
         eventType: String,
         address: String,
-        startDate: String
+        feeText: String?,
+        isFree: Bool?
     ) -> [String] {
-        var tags: [String] = []
-        if let primaryCategory {
-            appendUnique([primaryCategory.displayName], to: &tags)
+        var tags: [String] = [domain.displayName]
+        if domain == .localEvent {
+            appendUnique(localCategoryTag(primaryCategory, eventType: eventType), to: &tags)
+        } else {
+            appendUnique(festivalCategoryTag(festivalCategory, domain: domain), to: &tags)
         }
-        appendUnique(categoryTags.compactMap { cleanTag($0) }, to: &tags)
-        if let eventTag = cleanTag(eventType), !isGenericTag(eventTag) {
-            appendUnique([eventTag], to: &tags)
-        }
-        appendUnique(regionTags(from: address), to: &tags)
-        appendUnique(timeTags(startDate: startDate), to: &tags)
-        return Array(tags.prefix(8))
+        appendUnique(feeTag(feeText: feeText, isFree: isFree), to: &tags)
+        appendUnique(cityTag(from: address), to: &tags)
+        appendUnique(detailTags(categoryTags), to: &tags)
+        return Array(tags.prefix(6))
     }
 
-    private static func regionTags(from address: String) -> [String] {
+    /// 도메인 태그와 같은 말을 반복하는 카테고리는 버린다.
+    private static func festivalCategoryTag(
+        _ category: FestivalPrimaryCategory?,
+        domain: DiscoverDomain
+    ) -> [String] {
+        guard let category else { return [] }
+        switch category {
+        case .etc, .generalEvent, .tradeExpo:
+            return []
+        case .musicPerformance where domain == .performance:
+            return []
+        default:
+            return [category.displayName]
+        }
+    }
+
+    private static func localCategoryTag(
+        _ category: LocalEventPrimaryCategory?,
+        eventType: String
+    ) -> [String] {
+        if let category, category != .etc { return [category.displayName] }
+        let fallback = FreeEvent.koreanEventType(eventType)
+        return fallback == "이벤트" ? [] : [fallback]
+    }
+
+    /// 금액이 적혀 있으면 유료, 조건 없는 무료 문구만 있으면 무료, 판별 불가면 태그를 달지 않는다.
+    /// "65세 이상 무료"처럼 특정 대상만 무료인 문구는 무료로 치지 않는다 (Worker feeNormalize와 같은 기준).
+    private static func feeTag(feeText: String?, isFree: Bool?) -> [String] {
+        let raw = (feeText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty {
+            return isFree == true ? ["무료"] : []
+        }
+        let lowered = raw.lowercased()
+        if lowered.range(of: "[0-9][0-9,]*\\s*(원|won)", options: .regularExpression) != nil { return ["유료"] }
+        if lowered.contains("유료") { return ["유료"] }
+        let conditionalMarkers = ["이상", "이하", "미만", "초과", "어린이", "청소년", "경로", "장애", "군인", "학생", "유공자", "동반"]
+        let saysFree = lowered.contains("무료") || lowered.contains("free") || lowered.contains("없음")
+        if saysFree && !conditionalMarkers.contains(where: { lowered.contains($0) }) { return ["무료"] }
+        return []
+    }
+
+    /// 주소에서 도시 하나만 뽑는다. 광역시는 그 자체로, 도 단위 주소는 시·군까지 내려간다.
+    private static func cityTag(from address: String) -> [String] {
         let tokens = address
             .split(whereSeparator: { $0.isWhitespace || $0 == "," })
             .map(String.init)
             .map { $0.trimmingCharacters(in: .punctuationCharacters) }
 
-        var tags: [String] = []
+        var province: String? = nil
         for token in tokens {
-            let normalized = normalizedRegionToken(token)
-            guard let cleaned = cleanTag(normalized), !cleaned.isEmpty else { continue }
-            if isRegionTag(cleaned) {
-                appendUnique([cleaned], to: &tags)
-            }
-            if tags.count >= 2 { break }
+            guard let cleaned = cleanTag(normalizedRegionToken(token)) else { continue }
+            if metroCities.contains(cleaned) { return [cleaned] }
+            if cleaned.hasSuffix("시") || cleaned.hasSuffix("군") { return [cleaned] }
+            if cleaned.hasSuffix("도") && province == nil { province = cleaned }
         }
-        return tags
+        return province.map { [$0] } ?? []
     }
 
-    private static func timeTags(startDate: String) -> [String] {
-        var tags: [String] = []
-        if let month = month(from: startDate) {
-            appendUnique(["\(month)월", seasonTag(for: month)], to: &tags)
-        }
-        return tags
+    /// 서버가 주는 태그는 한글/영문이 섞여 있다. 사용자에게 보이는 태그는 한글만 남긴다.
+    private static func detailTags(_ values: [String]) -> [String] {
+        values
+            .flatMap { $0.split(whereSeparator: { $0 == "/" || $0 == "," || $0 == "|" }).map(String.init) }
+            .compactMap { cleanTag($0) }
+            .filter { containsHangul($0) && !isGenericTag($0) }
     }
+
+    private static func containsHangul(_ value: String) -> Bool {
+        value.unicodeScalars.contains { $0.value >= 0xAC00 && $0.value <= 0xD7A3 }
+    }
+
+    private static let metroCities: Set<String> = [
+        "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주"
+    ]
 
     private static func cleanTag(_ value: String) -> String? {
         let trimmed = value
@@ -555,29 +674,12 @@ enum DiscoverTagBuilder {
         }
     }
 
-    private static func isRegionTag(_ tag: String) -> Bool {
-        let shortCities = Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주"])
-        return shortCities.contains(tag) || tag.hasSuffix("도") || tag.hasSuffix("시") || tag.hasSuffix("구") || tag.hasSuffix("군")
-    }
-
-    private static func month(from date: String) -> Int? {
-        let parts = date.split(separator: "-")
-        guard parts.count >= 2 else { return nil }
-        return Int(parts[1])
-    }
-
-    private static func seasonTag(for month: Int) -> String {
-        switch month {
-        case 3...5: return "봄"
-        case 6...8: return "여름"
-        case 9...11: return "가을"
-        default: return "겨울"
-        }
-    }
-
     private static func isGenericTag(_ tag: String) -> Bool {
         let lowercased = tag.lowercased()
-        let genericTags = Set(["축제", "이벤트", "행사", "festival", "event", "events", "free", "무료", "문화행사"])
+        let genericTags = Set([
+            "축제", "이벤트", "행사", "문화행사", "기타", "무료", "유료",
+            "festival", "event", "events", "free", "etc", "other"
+        ])
         return genericTags.contains(lowercased)
     }
 

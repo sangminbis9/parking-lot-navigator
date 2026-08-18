@@ -5,7 +5,8 @@ struct MapHologramOverlay: View {
     let subtitle: String?
     let meta: String?
     let statusText: String?
-    let categoryText: String?
+    /// 상세 화면과 같은 DiscoverTagBuilder 결과를 그대로 받는다. 카드 폭에 맞춰 앞쪽 몇 개만 보인다.
+    let tags: [String]
     let imageUrl: String?
     let tint: Color
     let symbol: String
@@ -22,7 +23,7 @@ struct MapHologramOverlay: View {
 
     @ViewBuilder
     private var chipRow: some View {
-        HStack(spacing: 5) {
+        RegionFlowLayout(spacing: 5) {
             if let statusText, !statusText.isEmpty {
                 Text(statusText)
                     .font(.festival(size: 10, weight: .bold))
@@ -31,8 +32,8 @@ struct MapHologramOverlay: View {
                     .padding(.vertical, 2)
                     .background(FestivalDesign.chipShape.fill(tint))
             }
-            if let categoryText, !categoryText.isEmpty {
-                Text(categoryText)
+            ForEach(tags.prefix(3), id: \.self) { tag in
+                Text(tag)
                     .font(.festival(size: 10, weight: .medium))
                     .foregroundColor(FestivalDesign.readable(tint))
                     .padding(.horizontal, 6)
@@ -40,7 +41,6 @@ struct MapHologramOverlay: View {
                     .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
                     .lineLimit(1)
             }
-            Spacer(minLength: 0)
         }
     }
 

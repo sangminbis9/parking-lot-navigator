@@ -563,7 +563,7 @@ struct DiscoverTabItem: Identifiable {
             dateText: "\(festival.startDate) - \(festival.endDate)",
             startDate: festival.startDate,
             status: festival.status,
-            typeText: "축제",
+            typeText: festival.discoverDomain.displayName,
             source: festival.source,
             imageUrl: festival.imageUrl,
             searchText: [
@@ -575,32 +575,7 @@ struct DiscoverTabItem: Identifiable {
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: festival.discoverDestination,
-            presentation: DiscoverPresentation(
-                title: festival.title,
-                subtitle: festival.subtitle,
-                description: festival.description ?? festival.subtitle,
-                dateText: "\(festival.startDate) - \(festival.endDate)",
-                venueName: festival.venueName,
-                address: festival.address,
-                status: festival.status,
-                typeText: "축제",
-                source: festival.source,
-                sourceUrl: festival.sourceUrl,
-                imageUrl: festival.imageUrl,
-                imageUrls: festival.imageUrls,
-                price: nil,
-                region: nil,
-                updatedAt: nil,
-                tags: smartTags,
-                admissionFee: festival.admissionFee,
-                discountInfo: festival.discountInfo,
-                bookingInfo: festival.bookingInfo,
-                contactPhone: festival.contactPhone,
-                ageLimit: festival.ageLimit,
-                programInfo: festival.programInfo,
-                organizerName: festival.organizerName,
-                isFestivalSource: true
-            ),
+            presentation: festival.discoverPresentation,
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: festival.address),
             festivalCategory: festival.primaryCategory,
@@ -624,7 +599,7 @@ struct DiscoverTabItem: Identifiable {
             dateText: event.dateText,
             startDate: event.startDate,
             status: event.timelineStatus,
-            typeText: koreanEventType(event.eventType),
+            typeText: event.discoverDomain.displayName,
             source: event.source,
             imageUrl: event.imageUrl,
             searchText: [
@@ -638,32 +613,7 @@ struct DiscoverTabItem: Identifiable {
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: event.discoverDestination,
-            presentation: DiscoverPresentation(
-                title: event.title,
-                subtitle: event.benefit ?? event.storeName,
-                description: event.shortDescription,
-                dateText: event.dateText,
-                venueName: event.venueName ?? event.storeName,
-                address: event.address,
-                status: event.timelineStatus,
-                typeText: koreanEventType(event.eventType),
-                source: event.source,
-                sourceUrl: event.sourceUrl,
-                imageUrl: event.imageUrl,
-                imageUrls: event.imageUrls,
-                price: event.benefit,
-                region: event.region,
-                updatedAt: event.updatedAt,
-                tags: smartTags,
-                admissionFee: nil,
-                discountInfo: nil,
-                bookingInfo: nil,
-                contactPhone: nil,
-                ageLimit: nil,
-                programInfo: nil,
-                organizerName: nil,
-                isFestivalSource: false
-            ),
+            presentation: event.discoverPresentation,
             tags: smartTags,
             regionText: DiscoverTabItem.regionText(from: event.address),
             festivalCategory: nil,
@@ -1314,19 +1264,6 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
-}
-
-private func koreanEventType(_ raw: String) -> String {
-    switch raw {
-    case "discount": return "할인·세일"
-    case "freebie": return "무료 증정"
-    case "limited_menu", "new_limited": return "신메뉴·한정"
-    case "popup": return "팝업·이벤트"
-    case "opening", "opening_event": return "오픈 이벤트"
-    case "review_event": return "리뷰 이벤트"
-    case "seasonal": return "시즌·기념일"
-    default: return "이벤트"
-    }
 }
 
 struct DestinationRow: View {
