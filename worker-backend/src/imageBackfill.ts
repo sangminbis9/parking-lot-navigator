@@ -14,6 +14,11 @@ import { toHttpsImageUrl } from "./imageUrl.js";
 const DEFAULT_MAX_ITEMS = 30;
 // tourApiDetailClient의 DETAIL_ENRICH_CONCURRENCY와 같은 이유(동시 fetch 상한).
 const BACKFILL_CONCURRENCY = 5;
+// invocation당 CPU 10ms를 넘기면 isolate가 예외 없이 죽는다. 회차 전체를 다 받아온
+// 뒤 마지막에 한 번만 batch하면 그때까지 쓴 외부 호출이 통째로 날아간다 — 실측
+// 2026-08-18 기준 하루 24회 중 3회만 살아남아 90건/일에 그쳤다. 지오코딩 backfill과
+// 같은 방식으로 이만큼 처리할 때마다 나눠 쓴다.
+const IMAGE_FLUSH_SIZE = 5;
 // 갤러리가 수십 장인 항목도 있어 상한을 둔다. 앱 상세 화면은 페이징이라
 // 이보다 많으면 사실상 아무도 끝까지 넘기지 않는다.
 const MAX_IMAGES_PER_ITEM = 12;
@@ -124,78 +129,80 @@ export async function runImageBackfill(
       : null;
 
   const checkedAt = now.toISOString();
-  const statements: D1PreparedStatement[] = [];
-
-  const fetched = await mapWithConcurrency(
-    targets,
-    BACKFILL_CONCURRENCY,
-    async (row) => {
-      try {
-        const kind = IMAGE_SOURCE_KINDS[row.source];
-        const urls =
-          kind === "kopis"
-            ? await fetchKopisImages(env, row.source_item_id)
-            : tourClient
-              ? await tourClient.galleryImages(contentIdOf(row.source_item_id))
-              : [];
-        return { row, urls, failed: false, message: undefined };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        // 일시적 실패는 다음 회차에 재시도하고, 같은 id로는 계속 실패하는 오류만
-        // 확정해 예산을 갉아먹지 않게 한다.
-        const retryable = isRetryableBackfillError(message);
-        console.warn(
-          `image backfill ${retryable ? "failed" : "gave up"} id=${row.id}: ${message}`,
-        );
-        return { row, urls: [], failed: retryable, message };
-      }
-    },
-  );
-
   const errorSamples = new Set<string>();
-  for (const { row, urls, failed, message } of fetched) {
-    result.scanned += 1;
-    const bucket = (result.bySource[row.source] ??= { scanned: 0, filled: 0 });
-    bucket.scanned += 1;
-    if (failed) {
-      // 실패한 행은 images_checked_at을 남기지 않아 다음 회차에 다시 시도한다.
-      result.failed += 1;
-      if (message && errorSamples.size < 5) errorSamples.add(message);
-      continue;
-    }
-    if (message) {
-      // 영구 실패로 확정한 행. 사진이 원래 없는 행(empty)과 따로 센다.
-      result.permanentFailures += 1;
-      if (errorSamples.size < 5) errorSamples.add(message);
-      statements.push(markChecked(db, checkedAt, row.id));
-      continue;
-    }
-    const existing = mergeImages(parseImages(row.images_json), row.image_url);
-    const merged = mergeImages(existing, ...urls).slice(0, MAX_IMAGES_PER_ITEM);
-    if (merged.length <= existing.length) {
-      result.empty += 1;
-      statements.push(markChecked(db, checkedAt, row.id));
-      continue;
-    }
-    result.filled += 1;
-    result.addedImages += merged.length - existing.length;
-    bucket.filled += 1;
-    statements.push(
-      db
-        .prepare(
-          `UPDATE discovery_items
-              SET images_json = ?,
-                  image_url = COALESCE(NULLIF(image_url, ''), ?),
-                  images_checked_at = ?
-            WHERE id = ?`,
-        )
-        .bind(JSON.stringify(merged), merged[0], checkedAt, row.id),
+
+  for (let start = 0; start < targets.length; start += IMAGE_FLUSH_SIZE) {
+    const chunk = targets.slice(start, start + IMAGE_FLUSH_SIZE);
+    const statements: D1PreparedStatement[] = [];
+    const fetched = await mapWithConcurrency(
+      chunk,
+      BACKFILL_CONCURRENCY,
+      async (row) => {
+        try {
+          const kind = IMAGE_SOURCE_KINDS[row.source];
+          const urls =
+            kind === "kopis"
+              ? await fetchKopisImages(env, row.source_item_id)
+              : tourClient
+                ? await tourClient.galleryImages(contentIdOf(row.source_item_id))
+                : [];
+          return { row, urls, failed: false, message: undefined };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // 일시적 실패는 다음 회차에 재시도하고, 같은 id로는 계속 실패하는 오류만
+          // 확정해 예산을 갉아먹지 않게 한다.
+          const retryable = isRetryableBackfillError(message);
+          console.warn(
+            `image backfill ${retryable ? "failed" : "gave up"} id=${row.id}: ${message}`,
+          );
+          return { row, urls: [], failed: retryable, message };
+        }
+      },
     );
+
+    for (const { row, urls, failed, message } of fetched) {
+      result.scanned += 1;
+      const bucket = (result.bySource[row.source] ??= { scanned: 0, filled: 0 });
+      bucket.scanned += 1;
+      if (failed) {
+        // 실패한 행은 images_checked_at을 남기지 않아 다음 회차에 다시 시도한다.
+        result.failed += 1;
+        if (message && errorSamples.size < 5) errorSamples.add(message);
+        continue;
+      }
+      if (message) {
+        // 영구 실패로 확정한 행. 사진이 원래 없는 행(empty)과 따로 센다.
+        result.permanentFailures += 1;
+        if (errorSamples.size < 5) errorSamples.add(message);
+        statements.push(markChecked(db, checkedAt, row.id));
+        continue;
+      }
+      const existing = mergeImages(parseImages(row.images_json), row.image_url);
+      const merged = mergeImages(existing, ...urls).slice(0, MAX_IMAGES_PER_ITEM);
+      if (merged.length <= existing.length) {
+        result.empty += 1;
+        statements.push(markChecked(db, checkedAt, row.id));
+        continue;
+      }
+      result.filled += 1;
+      result.addedImages += merged.length - existing.length;
+      bucket.filled += 1;
+      statements.push(
+        db
+          .prepare(
+            `UPDATE discovery_items
+                SET images_json = ?,
+                    image_url = COALESCE(NULLIF(image_url, ''), ?),
+                    images_checked_at = ?
+              WHERE id = ?`,
+          )
+          .bind(JSON.stringify(merged), merged[0], checkedAt, row.id),
+      );
+    }
+
+    if (statements.length > 0) await db.batch(statements);
   }
 
-  for (let start = 0; start < statements.length; start += 50) {
-    await db.batch(statements.slice(start, start + 50));
-  }
   if (errorSamples.size > 0) result.errors = [...errorSamples];
   return result;
 }

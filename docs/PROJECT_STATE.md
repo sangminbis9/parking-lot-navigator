@@ -24,7 +24,7 @@
 - Worker D1 바인딩: `DB`
 - D1 데이터베이스: `parking-lot-navigator`
 - D1 데이터베이스 id: `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`
-- Worker cron (2026-08-16 배포 기준 확인): `*/3 * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/20 * * * *` LLM 태깅 + backfill 로테이션. 슬롯 구조는 아래 "Cloudflare 리소스" 참고.
+- Worker cron (2026-08-16 배포 기준 확인): `*/3 * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/5 * * * *` LLM 태깅·backfill 4분할 로테이션. 슬롯 구조는 아래 "Cloudflare 리소스" 참고.
 
 ## 시크릿
 
@@ -162,9 +162,9 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
   | `*/9 * * * *` | 발견(discovery) provider 청크 로테이션. 시작 전 `reapStaleSyncRuns`로 무응답 sync run 마감 |
   | `15 * * * *` | 로컬 이벤트 sync. + UTC 4시 가드 → city-festival 스크래핑, UTC 5시 가드 → AKEI 무역박람회 스크래핑 (각 하루 1회) |
   | `30 */3 * * *` | head agent 리뷰 |
-  | `*/20 * * * *` | 매 회차 LLM 태깅. 추가로 분 슬롯(`floor(UTC분/20) % 3`)에 따라 backfill 하나를 함께 실행 — **:00 요금 / :20 지오코딩 / :40 사진** (각 하루 24회) |
+  | `*/5 * * * *` | 분 슬롯(`floor(UTC분/5) % 4`)에 따라 **한 invocation에 한 작업만** 실행 — 0 태깅 / 1 요금 / 2 지오코딩 / 3 사진 (각 하루 72회) |
 
-  `*/20`이 3분할인 이유는 요금(30건)·지오코딩(25건)·사진(30건)을 한 invocation에서 다 돌리면 subrequest 50건 한도를 넘기기 때문이다. 상세는 `docs/operations/worker-limits.md`.
+  예전에는 `*/20`에서 태깅이 매 회차 돌고 backfill 하나가 같은 invocation에 얹혔다. CPU 10ms와 subrequest 50건을 둘이 나눠 써서 backfill이 회차당 4건 남짓만 처리하고 죽었다(실측 2026-08-18: 지오코딩 88건/일, 사진 90건/일 — 설계치의 12~15%). 지금은 한 invocation에 한 작업만 두고 주기를 5분으로 당겨, 각 작업이 예전과 같은 하루 72회를 돌되 매 회차 예산을 통째로 쓴다. cron trigger 개수는 그대로 5개다. 상세는 `docs/operations/worker-limits.md`.
 - Workers AI 바인딩: `AI` (`orion` head agent 및 LLM 태깅 사용).
 
 ## 현재 iOS UX/브랜드
