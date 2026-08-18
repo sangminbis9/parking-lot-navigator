@@ -392,9 +392,6 @@ private struct DiscoverDescriptionCard: View {
             if let ageLimit = clean(presentation.ageLimit) {
                 items.append(DiscoverDetailEntry(emoji: "\u{1F465}", label: "관람 가능 연령", value: ageLimit))
             }
-            if let programInfo = clean(presentation.programInfo) {
-                items.append(DiscoverDetailEntry(emoji: "\u{1F4CB}", label: "프로그램 상세", value: programInfo))
-            }
             if let organizerName = clean(presentation.organizerName) {
                 items.append(DiscoverDetailEntry(emoji: "\u{1F3DB}\u{FE0F}", label: "주최·주관", value: organizerName))
             }
@@ -409,6 +406,11 @@ private struct DiscoverDescriptionCard: View {
             }
         }
 
+        // 공연(KOPIS)은 축제 소스가 아니지만 출연진·공연시간을 programInfo로 받는다.
+        // 축제 전용 블록 밖에 두어 두 도메인 모두 노출한다.
+        if let programInfo = clean(presentation.programInfo) {
+            items.append(DiscoverDetailEntry(emoji: "\u{1F4CB}", label: "프로그램 상세", value: programInfo))
+        }
         if let price = clean(presentation.price) {
             items.append(DiscoverDetailEntry(emoji: "\u{1F4B5}", label: "\u{AC00}\u{ACA9}", value: price))
         }

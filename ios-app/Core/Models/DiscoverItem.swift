@@ -183,13 +183,14 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let festivalCategory: FestivalPrimaryCategory?
     let isFree: Bool?
     let price: String?
+    let programInfo: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, eventType, category, sourceId, startDate, endDate, status
         case storeName, venueName, address, lat, lng, distanceMeters, source, sourceUrl
         case imageUrl, imageUrls, benefit, shortDescription, region, updatedAt, confidenceScore
         case needsReview, isSponsored, sponsorTier, paidUntil, priorityScore
-        case primaryCategory, categoryTags, isFree, price
+        case primaryCategory, categoryTags, isFree, price, programInfo
     }
 
     init(from decoder: Decoder) throws {
@@ -240,6 +241,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         categoryTags = try c.decodeIfPresent([String].self, forKey: .categoryTags)
         isFree = try c.decodeIfPresent(Bool.self, forKey: .isFree)
         price = try c.decodeIfPresent(String.self, forKey: .price)
+        programInfo = try c.decodeIfPresent(String.self, forKey: .programInfo)
     }
 
     init(
@@ -275,7 +277,8 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         categoryTags: [String]? = nil,
         festivalCategory: FestivalPrimaryCategory? = nil,
         isFree: Bool? = nil,
-        price: String? = nil
+        price: String? = nil,
+        programInfo: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -310,6 +313,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         self.festivalCategory = festivalCategory
         self.isFree = isFree
         self.price = price
+        self.programInfo = programInfo
     }
 
     var timelineStatus: DiscoverStatus {
@@ -488,7 +492,7 @@ extension FreeEvent {
             bookingInfo: nil,
             contactPhone: nil,
             ageLimit: nil,
-            programInfo: nil,
+            programInfo: programInfo,
             organizerName: nil,
             isFestivalSource: false
         )

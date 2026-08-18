@@ -918,7 +918,8 @@ async function mergeWithExistingEnrichment(
       // 이번 회차에 안 열린 항목의 programInfo는 null로 오므로, 요금과 같은
       // 이유로 이전 값을 되살린다. 이게 없으면 회차마다 직전 회차가 채운
       // 공연시간·출연진이 지워져 5건 이상 쌓이지 않는다.
-      const previousProgramInfo = stringFromRaw(existing.raw?.programInfo);
+      // programInfo는 여러 줄로 미리 포맷된 텍스트다. stringFromRaw는 줄바꿈을 지운다.
+      const previousProgramInfo = textFromRaw(existing.raw?.programInfo);
       const restoredItem =
         item.programInfo == null && previousProgramInfo
           ? { ...item, programInfo: previousProgramInfo }
@@ -1136,6 +1137,7 @@ function mapEventRow(
   lat: number,
   lng: number,
 ): FreeEvent {
+  const raw = parseRawPayload(row.raw_payload);
   return {
     id: row.source_item_id,
     title: row.title,
@@ -1161,6 +1163,9 @@ function mapEventRow(
     primaryCategory:
       (row.primary_category as FreeEvent["primaryCategory"]) ?? null,
     categoryTags: parseJsonArray<string>(row.category_tags_json),
+    // KOPIS 출연진·공연시간은 raw_payload에만 있다. 축제 행과 달리 여기서 꺼내지 않으면
+    // /api/performances 응답에서 통째로 빠져 앱 상세에 영원히 안 보인다.
+    programInfo: textFromRaw(raw?.programInfo),
   };
 }
 
