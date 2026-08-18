@@ -26,39 +26,73 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertFalse(recommendations.first?.reasons.isEmpty ?? true)
     }
 
-    func testFestivalTagsUsePrimaryCategoryAndRegion() {
+    func testFestivalTagsLeadWithDomainThenCategoryFeeCity() {
         let tags = DiscoverTagBuilder.festivalTags(
+            domain: .festival,
             primaryCategory: .lightNight,
             categoryTags: ["야경"],
             address: "서울특별시 중구 세종대로 110",
-            startDate: "2026-05-12",
+            admissionFee: "무료",
             rawTags: ["festival", "축제"]
         )
 
+        XCTAssertEqual(tags.first, "축제")
         XCTAssertTrue(tags.contains(FestivalPrimaryCategory.lightNight.displayName))
-        XCTAssertTrue(tags.contains("야경"))
+        XCTAssertTrue(tags.contains("무료"))
         XCTAssertTrue(tags.contains("서울"))
-        XCTAssertTrue(tags.contains("중구"))
-        XCTAssertTrue(tags.contains("5월"))
-        XCTAssertTrue(tags.contains("봄"))
-        XCTAssertFalse(tags.contains("축제"))
+        XCTAssertTrue(tags.contains("야경"))
         XCTAssertFalse(tags.contains("festival"))
     }
 
-    func testEventTagsUsePrimaryCategory() {
-        let tags = DiscoverTagBuilder.eventTags(
+    func testFestivalTagsMarkPaidWhenFeeHasAmount() {
+        let tags = DiscoverTagBuilder.festivalTags(
+            domain: .tradeExpo,
+            primaryCategory: .tradeExpo,
+            categoryTags: [],
+            address: "경기도 고양시 킨텍스로 217",
+            admissionFee: "성인 5,000원 / 65세 이상 무료",
+            rawTags: []
+        )
+
+        XCTAssertEqual(tags.first, "박람회")
+        XCTAssertTrue(tags.contains("유료"))
+        XCTAssertFalse(tags.contains("무료"))
+        XCTAssertTrue(tags.contains("고양시"))
+        XCTAssertFalse(tags.contains(FestivalPrimaryCategory.tradeExpo.displayName))
+    }
+
+    func testEventTagsSeparatePerformanceFromLocalEvent() {
+        let localTags = DiscoverTagBuilder.eventTags(
+            domain: .localEvent,
             primaryCategory: .discount,
+            festivalCategory: nil,
             categoryTags: ["할인"],
             eventType: "discount",
             address: "서울특별시 중구 세종대로 110",
-            startDate: "2026-04-20"
+            feeText: nil,
+            isFree: nil
         )
 
-        XCTAssertTrue(tags.contains(LocalEventPrimaryCategory.discount.displayName))
-        XCTAssertTrue(tags.contains("서울"))
-        XCTAssertTrue(tags.contains("중구"))
-        XCTAssertTrue(tags.contains("4월"))
-        XCTAssertTrue(tags.contains("봄"))
+        XCTAssertEqual(localTags.first, "가게 이벤트")
+        XCTAssertTrue(localTags.contains(LocalEventPrimaryCategory.discount.displayName))
+        XCTAssertTrue(localTags.contains("서울"))
+
+        let performanceTags = DiscoverTagBuilder.eventTags(
+            domain: .performance,
+            primaryCategory: nil,
+            festivalCategory: .musicPerformance,
+            categoryTags: ["클래식"],
+            eventType: "performance",
+            address: "",
+            feeText: "전석 30,000원",
+            isFree: nil
+        )
+
+        XCTAssertEqual(performanceTags.first, "공연")
+        XCTAssertTrue(performanceTags.contains("유료"))
+        XCTAssertTrue(performanceTags.contains("클래식"))
+        // 도메인이 이미 "공연"이라 음악·공연 카테고리는 중복이라 빼야 한다.
+        XCTAssertFalse(performanceTags.contains(FestivalPrimaryCategory.musicPerformance.displayName))
     }
 
     func testFestivalDateRangeUpcomingWithinDays() {

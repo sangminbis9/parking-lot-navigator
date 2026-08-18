@@ -84,7 +84,17 @@ extension SavedFestival {
     }
 
     var presentation: DiscoverPresentation {
-        DiscoverPresentation(
+        // 저장 모델에는 카테고리·요금이 없다. 도메인과 도시만이라도 상세 화면과 같은 규칙으로 만든다.
+        let domain = DiscoverDomain.fromSource(source, isFestival: true)
+        let tags = DiscoverTagBuilder.festivalTags(
+            domain: domain,
+            primaryCategory: nil,
+            categoryTags: [],
+            address: address,
+            admissionFee: nil,
+            rawTags: []
+        )
+        return DiscoverPresentation(
             title: title,
             subtitle: venueName,
             description: nil,
@@ -92,7 +102,7 @@ extension SavedFestival {
             venueName: venueName,
             address: address,
             status: .upcoming,
-            typeText: "\u{CD95}\u{C81C}",
+            typeText: domain.displayName,
             source: source,
             sourceUrl: nil,
             imageUrl: imageUrl,
@@ -100,7 +110,7 @@ extension SavedFestival {
             price: nil,
             region: nil,
             updatedAt: nil,
-            tags: [],
+            tags: tags,
             admissionFee: nil,
             discountInfo: nil,
             bookingInfo: nil,
