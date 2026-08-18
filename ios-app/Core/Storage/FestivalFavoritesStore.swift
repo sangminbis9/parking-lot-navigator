@@ -128,12 +128,21 @@ final class FestivalFavoritesStore: ObservableObject {
     @Published private(set) var saved: [SavedFestival]
 
     private let appGroupID: String
-    private let reminderService: FestivalReminderService
     private static let key = "festivalFavorites"
 
-    init(appGroupID: String, reminderService: FestivalReminderService) {
+    // 이 파일은 공유 확장(Share/Widget) 타깃도 컴파일한다. 그쪽은 Core/Services를 안 보므로
+    // 알림 서비스를 직접 참조하지 않고, 앱 타깃에서만 실제 동작을 주입한다.
+    private let onSave: @MainActor (SavedFestival) -> Void
+    private let onRemove: @MainActor (String) -> Void
+
+    init(
+        appGroupID: String,
+        onSave: @escaping @MainActor (SavedFestival) -> Void = { _ in },
+        onRemove: @escaping @MainActor (String) -> Void = { _ in }
+    ) {
         self.appGroupID = appGroupID
-        self.reminderService = reminderService
+        self.onSave = onSave
+        self.onRemove = onRemove
         self.saved = Self.load(appGroupID: appGroupID)
     }
 
@@ -147,13 +156,13 @@ final class FestivalFavoritesStore: ObservableObject {
         if let idx = saved.firstIndex(where: { $0.id == festival.id }) {
             saved.remove(at: idx)
             persist()
-            reminderService.cancel(id: festival.id)
+            onRemove(festival.id)
             return false
         }
         let newSaved = SavedFestival(festival: festival)
         saved.append(newSaved)
         persist()
-        Task { await reminderService.schedule(for: newSaved) }
+        onSave(newSaved)
         return true
     }
 
@@ -162,12 +171,12 @@ final class FestivalFavoritesStore: ObservableObject {
         if let idx = saved.firstIndex(where: { $0.id == savedFestival.id }) {
             saved.remove(at: idx)
             persist()
-            reminderService.cancel(id: savedFestival.id)
+            onRemove(savedFestival.id)
             return false
         }
         saved.append(savedFestival)
         persist()
-        Task { await reminderService.schedule(for: savedFestival) }
+        onSave(savedFestival)
         return true
     }
 

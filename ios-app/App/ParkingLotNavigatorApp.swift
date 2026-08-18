@@ -35,7 +35,11 @@ struct ParkingLotNavigatorApp: App {
         ))
         let reminder = FestivalReminderService(appGroupID: appGroupID)
         _reminderService = StateObject(wrappedValue: reminder)
-        _festivalFavorites = StateObject(wrappedValue: FestivalFavoritesStore(appGroupID: appGroupID, reminderService: reminder))
+        _festivalFavorites = StateObject(wrappedValue: FestivalFavoritesStore(
+            appGroupID: appGroupID,
+            onSave: { saved in Task { await reminder.schedule(for: saved) } },
+            onRemove: { reminder.cancel(id: $0) }
+        ))
         _eventFavorites = StateObject(wrappedValue: LocalEventFavoritesStore(appGroupID: appGroupID))
     }
 
