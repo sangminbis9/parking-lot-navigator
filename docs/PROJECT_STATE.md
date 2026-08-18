@@ -160,11 +160,19 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
   | --- | --- |
   | `*/3 * * * *` | 실시간 주차 sync |
   | `*/9 * * * *` | 발견(discovery) provider 청크 로테이션. 시작 전 `reapStaleSyncRuns`로 무응답 sync run 마감 |
-  | `15 * * * *` | 로컬 이벤트 sync. + UTC 4시 가드 → city-festival 스크래핑, UTC 5시 가드 → AKEI 무역박람회 스크래핑 (각 하루 1회) |
+  | `15 * * * *` | 로컬 이벤트 sync. + UTC 4시 가드 → city-festival 스크래핑, UTC 5시 가드 → AKEI 무역박람회 스크래핑, UTC 6시 가드 → `pruneOldSyncRuns`(30일 초과 `sync_runs` 삭제) (각 하루 1회) |
   | `30 */3 * * *` | head agent 리뷰 |
   | `*/5 * * * *` | 분 슬롯(`floor(UTC분/5) % 4`)에 따라 **한 invocation에 한 작업만** 실행 — 0 태깅 / 1 요금 / 2 지오코딩 / 3 사진 (각 하루 72회) |
 
+  회차 상한은 요금 30건, 지오코딩 45건, 사진 45건이다(2026-08-18 상향). 항목당 외부
+  fetch 1건이므로 invocation당 subrequest 50건 안에 들어온다.
+
   예전에는 `*/20`에서 태깅이 매 회차 돌고 backfill 하나가 같은 invocation에 얹혔다. CPU 10ms와 subrequest 50건을 둘이 나눠 써서 backfill이 회차당 4건 남짓만 처리하고 죽었다(실측 2026-08-18: 지오코딩 88건/일, 사진 90건/일 — 설계치의 12~15%). 지금은 한 invocation에 한 작업만 두고 주기를 5분으로 당겨, 각 작업이 예전과 같은 하루 72회를 돌되 매 회차 예산을 통째로 쓴다. cron trigger 개수는 그대로 5개다. 상세는 `docs/operations/worker-limits.md`.
+- D1 행 읽기: 무료 한도는 하루 5,000,000행인데 2026-08-18 실측은 5,049만행이었다.
+  원인은 인덱스 없는 상관 서브쿼리와 정리되지 않은 `sync_runs`였고,
+  `migrations/0021_hot_query_indexes.sql`로 상위 4개 쿼리를 1,000분의 1 수준으로 줄였다.
+  나머지 미귀속분은 아직 한도를 넘는다. 상세는 `docs/operations/worker-limits.md`의
+  "D1 행 읽기 예산".
 - Workers AI 바인딩: `AI` (`orion` head agent 및 LLM 태깅 사용).
 
 ## 현재 iOS UX/브랜드

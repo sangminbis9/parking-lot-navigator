@@ -40,8 +40,10 @@ KOPIS_DETAIL_MAX_ITEMS = "5"
 # 10페이지(1000행)씩 3구간을 돌아가며 읽어 전체 공연을 순회한다
 KOPIS_PAGE_CYCLES = "3"
 FEE_BACKFILL_MAX_ITEMS = "30"
-IMAGE_BACKFILL_MAX_ITEMS = "30"
-GEOCODE_BACKFILL_MAX_LOOKUPS = "25"
+# backfill 세 종류가 `*/5` cron의 분 슬롯을 따로 쓰게 되면서 회차마다 subrequest
+# 50건 예산을 통째로 쓴다. 항목당 외부 fetch 1건이므로 45까지 올려도 여유가 남는다.
+IMAGE_BACKFILL_MAX_ITEMS = "45"
+GEOCODE_BACKFILL_MAX_LOOKUPS = "45"
 KCISA_BASE_URL = "https://api.kcisa.kr"
 KCISA_MAX_PAGES = "5"
 EVENT_GEOCODE_MISS_BUDGET = "20"

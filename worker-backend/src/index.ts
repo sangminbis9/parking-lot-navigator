@@ -10,6 +10,7 @@ import {
   queryDiscoveryClusters,
   queryFestivalsFromCache,
   queryPerformancesFromCache,
+  pruneOldSyncRuns,
   reapStaleSyncRuns,
   syncDiscoveryCache,
   syncDiscoveryChunk,
@@ -1103,6 +1104,16 @@ export default {
       // 같은 이유로 AKEI 무역박람회 스크래핑은 UTC 5시 가드로 하루 1회 실행한다.
       if (scheduledAt.getUTCHours() === 5) {
         ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
+      }
+      // sync_runs 보관 정리도 같은 이유로 UTC 6시 가드를 얹어 하루 1회만 돈다.
+      // 하루 269행씩 늘어나므로 이 주기로 충분하다.
+      if (scheduledAt.getUTCHours() === 6 && env.DB) {
+        ctx.waitUntil(
+          pruneOldSyncRuns(env.DB).catch((error) => {
+            console.error("pruneOldSyncRuns failed", error);
+            return 0;
+          }),
+        );
       }
       return;
     }
