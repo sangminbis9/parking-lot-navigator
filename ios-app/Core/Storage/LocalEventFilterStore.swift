@@ -41,8 +41,9 @@ struct LocalEventFilter: Codable, Hashable {
             let selectedCities = regions.filter { !FestivalFilter.koreanRegions.contains($0) }
             var matched = false
             if !selectedProvinces.isEmpty {
-                let tags = event.discoverTags.filter { FestivalFilter.koreanRegions.contains($0) }
-                if tags.contains(where: { selectedProvinces.contains($0) }) { matched = true }
+                let province = FestivalFilter.province(from: event.address)
+                    ?? FestivalFilter.province(from: event.region ?? "")
+                if let province, selectedProvinces.contains(province) { matched = true }
             }
             if !matched, !selectedCities.isEmpty {
                 if selectedCities.contains(where: { event.address.contains($0) }) { matched = true }

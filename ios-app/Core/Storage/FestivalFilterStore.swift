@@ -75,8 +75,7 @@ struct FestivalFilter: Codable, Hashable {
             let selectedCities = regions.filter { !Self.koreanRegions.contains($0) }
             var matched = false
             if !selectedProvinces.isEmpty {
-                let tags = festival.discoverTags.filter { Self.koreanRegions.contains($0) }
-                if tags.contains(where: { selectedProvinces.contains($0) }) { matched = true }
+                if let province = Self.province(from: festival.address), selectedProvinces.contains(province) { matched = true }
             }
             if !matched, !selectedCities.isEmpty {
                 if selectedCities.contains(where: { festival.address.contains($0) }) { matched = true }
@@ -93,6 +92,22 @@ struct FestivalFilter: Codable, Hashable {
     static let koreanRegions: Set<String> = [
         "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
         "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"
+    ]
+
+    // 태그에는 도시 하나("고양시")만 들어가 도 단위 선택과 맞지 않는다.
+    // 주소 앞머리에서 17개 광역시도 단축명을 직접 뽑는다. "경기도 고양시" → "경기".
+    static func province(from address: String) -> String? {
+        guard let head = address.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) else { return nil }
+        for (long, short) in provinceAliases where head.hasPrefix(long) { return short }
+        return koreanRegions.first { head.hasPrefix($0) }
+    }
+
+    // 단축명이 앞머리에 없는 옛 표기만 따로 매핑한다.
+    // 서울특별시·경기도·강원특별자치도·제주특별자치도 등은 hasPrefix로 이미 잡힌다.
+    private static let provinceAliases: [(String, String)] = [
+        ("충청북도", "충북"), ("충청남도", "충남"),
+        ("전라북도", "전북"), ("전라남도", "전남"),
+        ("경상북도", "경북"), ("경상남도", "경남")
     ]
 
     // 광역시도 → 하위 도시/구 계층. 키는 address.contains() 매칭에 사용.

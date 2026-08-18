@@ -132,6 +132,25 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertFalse(filter.matches(before))
     }
 
+    func testProvinceFromAddressStripsSuffixes() {
+        XCTAssertEqual(FestivalFilter.province(from: "경기도 고양시 킨텍스로 217"), "경기")
+        XCTAssertEqual(FestivalFilter.province(from: "충청남도 천안시 동남구"), "충남")
+        XCTAssertEqual(FestivalFilter.province(from: "전라남도 여수시"), "전남")
+        XCTAssertEqual(FestivalFilter.province(from: "서울특별시 중구 세종대로 110"), "서울")
+        XCTAssertEqual(FestivalFilter.province(from: "강원특별자치도 춘천시"), "강원")
+        XCTAssertEqual(FestivalFilter.province(from: "제주특별자치도 제주시"), "제주")
+        XCTAssertNil(FestivalFilter.province(from: "킨텍스로 217"))
+    }
+
+    func testFestivalFilterMatchesProvinceByAddressSuffix() {
+        let filter = FestivalFilter(
+            regions: ["경기"], radiusKm: nil, primaryCategories: [],
+            dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
+        )
+        XCTAssertTrue(filter.matches(Festival.mock(status: .ongoing, address: "경기도 고양시 킨텍스로 217")))
+        XCTAssertFalse(filter.matches(Festival.mock(status: .ongoing, address: "서울특별시 중구 세종대로 110")))
+    }
+
     func testPerformanceItemFestivalId() {
         let festival = Festival.mock(status: .ongoing)
         let item = PerformanceItem.festival(festival)
@@ -250,7 +269,8 @@ private extension Festival {
     static func mock(
         status: DiscoverStatus,
         startDate: String = "2026-06-01",
-        endDate: String = "2026-06-30"
+        endDate: String = "2026-06-30",
+        address: String = "서울"
     ) -> Festival {
         Festival(
             id: UUID().uuidString,
@@ -261,7 +281,7 @@ private extension Festival {
             endDate: endDate,
             status: status,
             venueName: nil,
-            address: "서울",
+            address: address,
             lat: 37.5,
             lng: 126.9,
             distanceMeters: 100,

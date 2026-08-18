@@ -104,6 +104,22 @@ export class KopisEventProvider
     return rows;
   }
 
+  /// detail은 subrequest 예산 때문에 회차당 detailMaxItems건만 부를 수 있다. 늘 창의
+  /// 앞머리만 집으면 같은 공연만 계속 다시 채워지고 나머지는 영원히 programInfo가 빈다.
+  /// 페이지 창과 같은 시간 슬롯으로 창 안의 시작 지점도 함께 옮긴다.
+  private rowsForDetail(
+    rows: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    const count = Math.min(this.detailMaxItems, rows.length);
+    if (count <= 0) return [];
+    const slot = Math.floor(Date.now() / 3_600_000);
+    const start = (slot * this.detailMaxItems) % rows.length;
+    return Array.from(
+      { length: count },
+      (_, index) => rows[(start + index) % rows.length],
+    );
+  }
+
   private async fetchAllItems(signal?: AbortSignal): Promise<CachedEvent[]> {
     const startPage = this.startPage();
     let rows = await this.fetchPageWindow(startPage, signal);
@@ -118,7 +134,7 @@ export class KopisEventProvider
         .filter((input): input is ResolverInput => Boolean(input));
       await this.resolver.warmup(inputs);
     }
-    const rowsForDetail = rows.slice(0, this.detailMaxItems);
+    const rowsForDetail = this.rowsForDetail(rows);
     const detailById = new Map<string, Record<string, unknown>>();
     const details = await mapWithConcurrency(rowsForDetail, 3, async (row) => {
       const id = getString(row, ["mt20id", "id"]);
