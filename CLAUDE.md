@@ -160,6 +160,22 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - 수동 실행: `POST /admin/backfill-fees?maxItems=<1..45>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다.
 
+## D1 인덱스와 행 읽기 예산
+
+D1 무료 한도는 하루 5,000,000행 읽기다. subrequest·CPU와 달리 **행 읽기 초과는 예외를
+던지지 않아서**, 인덱스가 빠진 쿼리 하나가 조용히 예산을 통째로 먹는다. 2026-08-18 실측
+5,049만행/일이 그 상태였다.
+
+- 상관 서브쿼리(`NOT EXISTS (... WHERE aa.target_id = X)`)를 새로 쓰면 그 join 컬럼에
+  인덱스가 있는지 먼저 확인한다. 없으면 후보 행마다 상대 테이블 전체를 훑는다.
+  agent 쿼리는 `idx_agent_activity_target(target_id, agent_id, action)`이 받치고 있다.
+- `ORDER BY`/`WHERE`에 쓰는 컬럼이 기존 복합 인덱스의 **선두**인지 본다.
+  `(sync_type, started_at)`은 `sync_type` 없는 `started_at` 정렬을 못 받는다.
+- 로그성 테이블(`sync_runs`, `agent_activity`)은 보관 정리를 같이 넣는다.
+  `pruneOldSyncRuns`가 `15 * * * *` cron의 UTC 6시 가드에서 30일치만 남긴다.
+- 무엇이 얼마나 읽는지는 `pnpm -C worker-backend exec wrangler d1 insights parking-lot-navigator --remote`로
+  본다(상위 5개만 나온다). 인덱스 전후 실측은 `docs/operations/worker-limits.md` 참고.
+
 ## 자주 쓰는 명령
 
 루트에서 실행:

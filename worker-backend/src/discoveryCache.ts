@@ -1266,6 +1266,28 @@ export async function reapStaleSyncRuns(
   return changes;
 }
 
+export async function pruneOldSyncRuns(
+  db: D1Database,
+  retentionDays: number = 30,
+): Promise<number> {
+  // sync_runs는 지금까지 정리 없이 쌓여 100일치 16,093행이 됐고, started_at 정렬과
+  // status 필터 쿼리가 그걸 통째로 훑어 하루 360만 행 읽기를 냈다. 조회는 최근
+  // 24시간 집계와 최근 15건만 쓰므로 오래된 행은 남길 이유가 없다.
+  const cutoff = new Date(
+    Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = await db
+    .prepare(`DELETE FROM sync_runs WHERE started_at < ?`)
+    .bind(cutoff)
+    .run();
+  const changes =
+    (result.meta as { changes?: number } | undefined)?.changes ?? 0;
+  if (changes > 0) {
+    console.info(`pruneOldSyncRuns deleted ${changes} rows older than ${retentionDays}d`);
+  }
+  return changes;
+}
+
 async function fetchDiscoveryCenterWithTimeout(
   runtime: DiscoverySyncRuntime,
   kind: DiscoverySyncKind,
