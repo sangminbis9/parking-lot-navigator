@@ -9,7 +9,7 @@ struct CalendarTabView: View {
     @StateObject private var viewModel: CalendarViewModel
     @EnvironmentObject private var filterModel: FestivalFilterModel
     @EnvironmentObject private var favoritesStore: FestivalFavoritesStore
-    @StateObject private var reminderService = FestivalReminderService(appGroupID: AppConfiguration.current.appGroupID)
+    @EnvironmentObject private var reminderService: FestivalReminderService
     @StateObject private var performanceViewModel: PerformanceViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
 
@@ -545,10 +545,7 @@ struct CalendarTabView: View {
     }
 
     private func toggleSave(_ festival: Festival) {
-        let nowSaved = favoritesStore.toggle(festival)
-        if !nowSaved {
-            reminderService.cancel(id: festival.id)
-        }
+        favoritesStore.toggle(festival)
         haptic()
     }
 

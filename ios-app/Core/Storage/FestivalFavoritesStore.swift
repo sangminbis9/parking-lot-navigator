@@ -128,10 +128,12 @@ final class FestivalFavoritesStore: ObservableObject {
     @Published private(set) var saved: [SavedFestival]
 
     private let appGroupID: String
+    private let reminderService: FestivalReminderService
     private static let key = "festivalFavorites"
 
-    init(appGroupID: String) {
+    init(appGroupID: String, reminderService: FestivalReminderService) {
         self.appGroupID = appGroupID
+        self.reminderService = reminderService
         self.saved = Self.load(appGroupID: appGroupID)
     }
 
@@ -145,10 +147,13 @@ final class FestivalFavoritesStore: ObservableObject {
         if let idx = saved.firstIndex(where: { $0.id == festival.id }) {
             saved.remove(at: idx)
             persist()
+            reminderService.cancel(id: festival.id)
             return false
         }
-        saved.append(SavedFestival(festival: festival))
+        let newSaved = SavedFestival(festival: festival)
+        saved.append(newSaved)
         persist()
+        Task { await reminderService.schedule(for: newSaved) }
         return true
     }
 
@@ -157,10 +162,12 @@ final class FestivalFavoritesStore: ObservableObject {
         if let idx = saved.firstIndex(where: { $0.id == savedFestival.id }) {
             saved.remove(at: idx)
             persist()
+            reminderService.cancel(id: savedFestival.id)
             return false
         }
         saved.append(savedFestival)
         persist()
+        Task { await reminderService.schedule(for: savedFestival) }
         return true
     }
 

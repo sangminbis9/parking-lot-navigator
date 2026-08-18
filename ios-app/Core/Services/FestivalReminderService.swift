@@ -22,7 +22,27 @@ final class FestivalReminderService: ObservableObject {
         return formatter
     }()
 
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M월 d일"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter
+    }()
+
     private static func identifier(for id: String) -> String { "festival-reminder-\(id)" }
+
+    /// leadDays에 대응하는 알림 문구. 설정 화면의 옵션(0/1/3/7)에 맞춘다.
+    private static func leadPhrase(for leadDays: Int) -> String {
+        switch leadDays {
+        case 0: return "오늘 시작해요"
+        case 1: return "내일 시작해요"
+        case 3: return "3일 뒤 시작해요"
+        case 7: return "다음 주 시작해요"
+        default: return leadDays <= 0 ? "오늘 시작해요" : "\(leadDays)일 뒤 시작해요"
+        }
+    }
 
     /// 앱 시작 시 한 번 호출해 이미 예약된 알림으로 상태를 동기화한다.
     func refreshScheduled() async {
@@ -62,9 +82,17 @@ final class FestivalReminderService: ObservableObject {
             return false
         }
 
+        var bodyParts = [Self.leadPhrase(for: prefs.leadDays)]
+        if let start = Self.dayFormatter.date(from: festival.startDate) {
+            bodyParts.append(Self.displayDateFormatter.string(from: start))
+        }
+        if let venue = festival.venueName, !venue.isEmpty {
+            bodyParts.append(venue)
+        }
+
         let content = UNMutableNotificationContent()
         content.title = festival.title
-        content.body = "\u{B0B4}\u{C77C} \u{C2DC}\u{C791}\u{D574}\u{C694}. \u{C77C}\u{C815}\u{C744} \u{D655}\u{C778}\u{D574} \u{BCF4}\u{C138}\u{C694}." // 내일 시작해요. 일정을 확인해 보세요.
+        content.body = bodyParts.joined(separator: " · ")
         content.sound = .default
 
         var components = Calendar(identifier: .gregorian)

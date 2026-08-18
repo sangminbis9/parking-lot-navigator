@@ -10,6 +10,7 @@ struct ParkingLotNavigatorApp: App {
     @StateObject private var festivalSync: FestivalSyncService
     @StateObject private var notificationPrefs: NotificationPreferencesModel
     @StateObject private var discoveryService: DiscoveryNotificationService
+    @StateObject private var reminderService: FestivalReminderService
     @StateObject private var festivalFavorites: FestivalFavoritesStore
     @StateObject private var eventFavorites: LocalEventFavoritesStore
     private let apiClient: APIClientProtocol = APIClient()
@@ -32,7 +33,9 @@ struct ParkingLotNavigatorApp: App {
             apiClient: client,
             appGroupID: appGroupID
         ))
-        _festivalFavorites = StateObject(wrappedValue: FestivalFavoritesStore(appGroupID: appGroupID))
+        let reminder = FestivalReminderService(appGroupID: appGroupID)
+        _reminderService = StateObject(wrappedValue: reminder)
+        _festivalFavorites = StateObject(wrappedValue: FestivalFavoritesStore(appGroupID: appGroupID, reminderService: reminder))
         _eventFavorites = StateObject(wrappedValue: LocalEventFavoritesStore(appGroupID: appGroupID))
     }
 
@@ -44,6 +47,7 @@ struct ParkingLotNavigatorApp: App {
                 .environmentObject(festivalSync)
                 .environmentObject(notificationPrefs)
                 .environmentObject(discoveryService)
+                .environmentObject(reminderService)
                 .environmentObject(festivalFavorites)
                 .environmentObject(eventFavorites)
                 .onOpenURL { url in
