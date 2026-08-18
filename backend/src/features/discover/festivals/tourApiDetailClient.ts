@@ -322,13 +322,14 @@ export async function enrichTourApiItems<
 ): Promise<T[]> {
   const toEnrich =
     maxItems !== undefined && items.length > maxItems
-      ? selectSoonest(items, maxItems)
+      ? selectRotating(items, maxItems)
       : null;
   // 아래 조기 return은 핵심 4필드가 다 찬 항목에서 detail 호출을 통째로 건너뛴다.
   // programInfo는 목록 응답에 없으므로 그 항목들은 영영 못 받는다. 조건을 그냥
   // 풀면 대부분의 항목이 detail을 부르게 되어 invocation당 50 subrequest 한도를
-  // 넘긴다. 시작일이 가까운 소수만 intro 한 번(=fetch 1건)씩 추가로 연다.
-  const programTargets = selectSoonest(
+  // 넘긴다. 시작일 순으로 줄 세운 뒤 회차마다 옮겨가는 창 안의 소수만
+  // intro 한 번(=fetch 1건)씩 추가로 연다.
+  const programTargets = selectRotating(
     items.filter(
       (item) =>
         !item.programInfo &&
@@ -405,14 +406,25 @@ function combineOrganizerName(
   return sponsor1 ?? sponsor2 ?? null;
 }
 
-function selectSoonest<T extends { startDate: string }>(
+// 시작일이 가까운 순으로 줄을 세운 뒤, 회차마다 그 줄 안에서 창을 옮긴다.
+// 늘 앞머리만 집으면 같은 항목만 계속 다시 열게 된다. 특히 intro에 프로그램
+// 정보가 없는 항목은 열어도 계속 null이라 영원히 줄 앞을 막고, 뒷줄은 한 번도
+// 안 열린다. KOPIS detail 회전과 같은 시간 슬롯을 쓴다.
+function selectRotating<T extends { startDate: string }>(
   items: T[],
   maxItems: number,
 ): Set<T> {
+  const sorted = [...items].sort((a, b) =>
+    a.startDate.localeCompare(b.startDate),
+  );
+  const count = Math.min(maxItems, sorted.length);
+  if (count <= 0) return new Set();
+  const start = (Math.floor(Date.now() / 3_600_000) * maxItems) % sorted.length;
   return new Set(
-    [...items]
-      .sort((a, b) => a.startDate.localeCompare(b.startDate))
-      .slice(0, maxItems),
+    Array.from(
+      { length: count },
+      (_, index) => sorted[(start + index) % sorted.length],
+    ),
   );
 }
 
