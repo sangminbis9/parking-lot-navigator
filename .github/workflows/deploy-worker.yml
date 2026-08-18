@@ -76,4 +76,5 @@ jobs:
         run: |
           curl -fsS -X POST \
             -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
-            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events"
+            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events" \
+            || echo "sync-local-events failed, continuing (hourly cron retries anyway)"
