@@ -4,28 +4,40 @@ import SwiftUI
 struct UpcomingFestivalsEntry: TimelineEntry {
     let date: Date
     let items: [Festival]
+    /// 캐시가 만들어진 시각. `nil`이면 앱이 아직 한 번도 동기화하지 않은 상태다.
+    let generatedAt: Date?
 }
 
 struct UpcomingFestivalsProvider: TimelineProvider {
     func placeholder(in context: Context) -> UpcomingFestivalsEntry {
-        UpcomingFestivalsEntry(date: Date(), items: WidgetSampleData.items)
+        UpcomingFestivalsEntry(date: Date(), items: WidgetSampleData.items, generatedAt: Date())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (UpcomingFestivalsEntry) -> Void) {
-        let items = loadCachedItems()
-        completion(UpcomingFestivalsEntry(date: Date(), items: items.isEmpty ? WidgetSampleData.items : items))
+        let snapshot = loadSnapshot()
+        // 샘플은 위젯 갤러리 미리보기 전용이다. 실제 홈 화면에 넣으면 가짜 축제가 진짜처럼 보인다.
+        if snapshot == nil, context.isPreview {
+            completion(UpcomingFestivalsEntry(date: Date(), items: WidgetSampleData.items, generatedAt: Date()))
+            return
+        }
+        completion(UpcomingFestivalsEntry(date: Date(), items: snapshot?.items ?? [], generatedAt: snapshot?.generatedAt))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UpcomingFestivalsEntry>) -> Void) {
-        let entry = UpcomingFestivalsEntry(date: Date(), items: loadCachedItems())
+        let snapshot = loadSnapshot()
+        let entry = UpcomingFestivalsEntry(
+            date: Date(),
+            items: snapshot?.items ?? [],
+            generatedAt: snapshot?.generatedAt
+        )
         let next = Date().addingTimeInterval(30 * 60)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
-    private func loadCachedItems() -> [Festival] {
+    private func loadSnapshot() -> WidgetSnapshot? {
         let appGroupID = (Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_ID") as? String)
             ?? "group.com.example.ParkingLotNavigator"
-        return SharedFestivalCache.load(appGroupID: appGroupID)?.items ?? []
+        return SharedFestivalCache.load(appGroupID: appGroupID)
     }
 }
 
@@ -37,7 +49,7 @@ struct UpcomingFestivalsWidget: Widget {
             UpcomingFestivalsEntryView(entry: entry)
         }
         .configurationDisplayName("다가오는 축제")
-        .description("이벤트다에서 가까운 축제 3개를 빠르게 확인하세요.")
+        .description("이벤트다에서 주변과 관심 지역의 다가오는 축제를 빠르게 확인하세요.")
         .supportedFamilies([.systemMedium])
     }
 }

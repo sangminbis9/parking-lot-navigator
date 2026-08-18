@@ -56,6 +56,9 @@ struct ParkingLotNavigatorApp: App {
         }
         .backgroundTask(.appRefresh(DiscoveryNotificationService.refreshTaskID)) {
             await discoveryService.runDiscovery()
+            // 위젯 timeline은 30분마다 깨어나지만 캐시 파일만 다시 읽는다. 앱을 오래 열지 않아도
+            // 위젯이 오래된 축제를 붙들고 있지 않도록 이 백그라운드 회차에서 캐시를 갱신한다.
+            await festivalSync.syncNow(coordinate: nil)
             await discoveryService.scheduleNextRefresh()
         }
     }

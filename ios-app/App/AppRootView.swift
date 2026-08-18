@@ -122,10 +122,28 @@ struct AppRootView: View {
         .onReceive(DeepLinkRouter.shared.$pendingFestival) { festival in
             guard let festival else { return }
             DeepLinkRouter.shared.pendingFestival = nil
-            tabRouter.selectedTab = .discover
-            router.path.removeAll()
-            router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
+            openDiscover(festival)
         }
+        .onReceive(DeepLinkRouter.shared.$pendingFestivalId) { id in
+            guard let id else { return }
+            DeepLinkRouter.shared.pendingFestivalId = nil
+            // 위젯이 보여준 축제는 위젯 캐시에 그대로 있다. 못 찾으면 축제 탭까지만 열어 준다.
+            let cached = SharedFestivalCache.load(appGroupID: AppConfiguration.current.appGroupID)?
+                .items
+                .first(where: { $0.id == id })
+            if let cached {
+                openDiscover(cached)
+            } else {
+                tabRouter.selectedTab = .discover
+                router.path.removeAll()
+            }
+        }
+    }
+
+    private func openDiscover(_ festival: Festival) {
+        tabRouter.selectedTab = .discover
+        router.path.removeAll()
+        router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
     }
 
     private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
