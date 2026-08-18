@@ -156,7 +156,7 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 
 - 마이그레이션: `migrations/0017_discovery_fee_checked_at.sql` (`fee_checked_at` 컬럼 + `(source, fee_checked_at)` 인덱스).
 - **subrequest 예산이 이 파이프라인의 상한이다.** 이 계정의 Worker는 invocation 하나당 외부 fetch 50건까지만 가능하고(51번째부터 `Too many subrequests by single Worker invocation`), backfill은 항목당 fetch 1건을 쓴다. D1 쿼리는 이 한도에 포함되지 않는다. 그래서 한 회차 상한은 30건이고 `POST /admin/backfill-fees`의 `maxItems`도 45로 제한한다. 이 값을 올리면 초과분이 통째로 실패한다.
-- cron: `"*/20 * * * *"`(태깅)에 얹어 실행하되, 요금·좌표·사진 backfill이 분 슬롯을 나눠 쓴다 — 요금은 매시 `:00`, 하루 24회 × 30건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
+- cron: `"*/5 * * * *"`의 분 슬롯(`floor(UTC분/5) % 4`)이 태깅·요금·좌표·사진을 나눠 갖는다. 한 invocation에 한 작업만 둬서 CPU 10ms와 subrequest 50건을 통째로 쓴다 — 요금은 슬롯 1, 하루 72회 × 30건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
 - 수동 실행: `POST /admin/backfill-fees?maxItems=<1..45>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다.
 

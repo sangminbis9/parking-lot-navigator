@@ -506,10 +506,11 @@ struct PipelineDashboardView: View {
     }
 
     /// 남은 건수를 예상 소진 시간(시)으로 바꾼다. 요금·좌표·사진 backfill은
-    /// `*/20` cron의 분 슬롯을 나눠 쓰므로 각각 시간당 1회씩만 돈다.
+    /// `*/5` cron의 분 슬롯을 나눠 쓰므로 각각 시간당 3회씩 돈다.
     private func backfillHours(_ pending: Int, perRun: Int) -> Int {
-        guard perRun > 0 else { return 0 }
-        return Int((Double(pending) / Double(perRun)).rounded(.up))
+        let perHour = perRun * 3
+        guard perHour > 0 else { return 0 }
+        return Int((Double(pending) / Double(perHour)).rounded(.up))
     }
 
     private static func runTimingText(_ run: PipelineStats.SyncRun) -> String {

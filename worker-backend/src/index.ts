@@ -1110,20 +1110,21 @@ export default {
       ctx.waitUntil(runAgentOfficeScheduled(env));
       return;
     }
-    if (controller.cron === "*/20 * * * *") {
-      ctx.waitUntil(runTaggingScheduled(env));
-      // 요금 backfill은 항목별 detail 호출이라 한 번에 다 못 돈다. invocation당
-      // subrequest 예산이 50이므로, 외부 호출이 많은 로컬 이벤트/스크래핑 cron
-      // 대신 호출이 가벼운 태깅 cron에 얹어 조금씩 나눠 돈다.
-      // 요금(30건)·지오코딩(25건)·사진(30건) backfill을 한 invocation에서 함께
-      // 돌리면 50건 예산을 넘긴다. 새 cron 슬롯을 쓸 수 없어(계정당 5개 한도)
-      // 이 cron이 도는 :00/:20/:40 분에 하나씩 번갈아 실행한다 — 각각 하루
-      // 24회씩 돈다.
+    if (controller.cron === "*/5 * * * *") {
+      // 태깅과 backfill은 예전에 한 invocation에서 같이 돌았다. invocation당
+      // CPU 10ms·subrequest 50건을 둘이 나눠 쓰는 구조라, 앞서 도는 태깅이
+      // 예산을 대부분 먹고 backfill은 회차당 4건 남짓만 처리하다 죽었다
+      // (실측 2026-08-18: 지오코딩 88건/일, 사진 90건/일 — 설계치의 12~15%).
+      // 지금은 한 invocation에 한 작업만 둔다. 대신 cron 주기를 5분으로 당겨
+      // 각 작업이 예전과 같은 하루 72회를 유지하되, 매 회차 CPU·subrequest
+      // 예산을 통째로 쓴다. cron trigger 개수는 그대로 5개다.
       const scheduledAt = new Date(controller.scheduledTime);
-      const slot = Math.floor(scheduledAt.getUTCMinutes() / 20) % 3;
+      const slot = Math.floor(scheduledAt.getUTCMinutes() / 5) % 4;
       if (slot === 0) {
-        ctx.waitUntil(runFeeBackfillScheduled(env));
+        ctx.waitUntil(runTaggingScheduled(env));
       } else if (slot === 1) {
+        ctx.waitUntil(runFeeBackfillScheduled(env));
+      } else if (slot === 2) {
         ctx.waitUntil(runGeocodeBackfillScheduled(env));
       } else {
         ctx.waitUntil(runImageBackfillScheduled(env));
