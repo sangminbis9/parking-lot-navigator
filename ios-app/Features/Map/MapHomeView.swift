@@ -397,31 +397,33 @@ struct MapHomeView: View {
 
     private var discoverSources: [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
-        var seenFestivalIds: Set<String> = []
-        var seenEventIds: Set<String> = []
+        // KOPIS 행은 /api/festivals에서 Festival로, /api/performances에서 FreeEvent로 같은 id를 달고 두 번 온다.
+        // 타입별로 따로 세면 핀이 두 개 찍히므로 id 하나로 합쳐 센다(id는 source 접두어가 있어 충돌하지 않는다).
+        var seenIds: Set<String> = []
 
-        // 축제 응답에는 산업·박람회(trade_expo)가 섞여 오므로 토글별로 갈라 담는다.
-        for f in viewModel.festivals {
-            let isTradeExpo = f.primaryCategory == .tradeExpo
-            guard isTradeExpo ? viewModel.showsTradeExpoLayer : viewModel.showsFestivalLayer else { continue }
-            guard seenFestivalIds.insert(f.id).inserted else { continue }
-            sources.append(.festival(f, layerTint: isTradeExpo ? Self.tradeExpoTint : FestivalDesign.uiCoral))
-        }
-        if viewModel.showsLocalEventLayer {
-            for e in viewModel.events where seenEventIds.insert(e.id).inserted {
-                sources.append(.event(e, layerTint: FestivalDesign.uiTeal))
-            }
-        }
+        // 공연을 먼저 담아, 공연으로도 축제로도 오는 항목이 공연 색을 갖게 한다.
         if viewModel.showsPerformanceLayer {
             for item in viewModel.performances {
                 switch item {
-                case .festival(let f) where festivalFilterModel.filter.matches(f) && seenFestivalIds.insert(f.id).inserted:
+                case .festival(let f) where festivalFilterModel.filter.matches(f) && seenIds.insert(f.id).inserted:
                     sources.append(.festival(f, layerTint: Self.performanceTint))
-                case .event(let e) where seenEventIds.insert(e.id).inserted:
+                case .event(let e) where seenIds.insert(e.id).inserted:
                     sources.append(.event(e, layerTint: Self.performanceTint))
                 default:
                     break
                 }
+            }
+        }
+        // 축제 응답에는 산업·박람회(trade_expo)가 섞여 오므로 토글별로 갈라 담는다.
+        for f in viewModel.festivals {
+            let isTradeExpo = f.primaryCategory == .tradeExpo
+            guard isTradeExpo ? viewModel.showsTradeExpoLayer : viewModel.showsFestivalLayer else { continue }
+            guard seenIds.insert(f.id).inserted else { continue }
+            sources.append(.festival(f, layerTint: isTradeExpo ? Self.tradeExpoTint : FestivalDesign.uiCoral))
+        }
+        if viewModel.showsLocalEventLayer {
+            for e in viewModel.events where seenIds.insert(e.id).inserted {
+                sources.append(.event(e, layerTint: FestivalDesign.uiTeal))
             }
         }
         return sources
