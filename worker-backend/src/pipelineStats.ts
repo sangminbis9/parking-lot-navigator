@@ -146,7 +146,27 @@ export interface PipelineStatsOptions {
   includeRunMessages?: boolean;
 }
 
+// 대시보드가 짧은 간격으로 pull-to-refresh/폴링하면 매번 discovery_items/
+// local_events/sync_runs를 훑는 이 함수가 그대로 곱해진다. isolate 수명 동안만
+// 유지되는 캐시라 정확한 TTL 보장은 아니지만, 반복 호출 비용을 크게 줄인다.
+const STATS_CACHE_TTL_MS = 60_000;
+let statsCache: { includeRunMessages: boolean; expiresAt: number; stats: PipelineStats } | null = null;
+
 export async function queryPipelineStats(
+  db: D1Database,
+  options: PipelineStatsOptions = {},
+): Promise<PipelineStats> {
+  const includeRunMessages = options.includeRunMessages === true;
+  const now = Date.now();
+  if (statsCache && statsCache.includeRunMessages === includeRunMessages && statsCache.expiresAt > now) {
+    return statsCache.stats;
+  }
+  const stats = await computePipelineStats(db, options);
+  statsCache = { includeRunMessages, expiresAt: now + STATS_CACHE_TTL_MS, stats };
+  return stats;
+}
+
+async function computePipelineStats(
   db: D1Database,
   options: PipelineStatsOptions = {},
 ): Promise<PipelineStats> {
