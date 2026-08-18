@@ -14,15 +14,16 @@ struct UpcomingFestivalsEntryView: View {
         }
     }
 
+    /// 결과가 없는 이유를 구분한다. 캐시 자체가 없으면 필터 문제가 아니라 아직 동기화를 못 한 것이다.
     private var emptyState: some View {
         VStack(spacing: 6) {
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 22))
                 .foregroundStyle(FestivalDesign.coralText)
-            Text("다가오는 축제가 없어요")
+            Text(entry.generatedAt == nil ? "아직 축제를 받아오지 못했어요" : "다가오는 축제가 없어요")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(FestivalDesign.navy)
-            Text("앱에서 필터를 조정해보세요")
+            Text(entry.generatedAt == nil ? "앱을 한 번 열어 주세요" : "앱에서 필터를 조정해보세요")
                 .font(.system(size: 11))
                 .foregroundStyle(FestivalDesign.secondaryText)
         }
@@ -33,18 +34,43 @@ struct UpcomingFestivalsEntryView: View {
         let visible = Array(entry.items.prefix(3))
         return HStack(alignment: .top, spacing: 10) {
             if let hero = visible.first {
-                heroCard(hero)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Link(destination: Self.deepLink(hero)) {
+                    heroCard(hero)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(visible.dropFirst().prefix(2).enumerated()), id: \.offset) { _, festival in
-                    rowCard(festival)
+                    Link(destination: Self.deepLink(festival)) {
+                        rowCard(festival)
+                    }
                 }
                 Spacer(minLength: 0)
+                if let staleText = staleText {
+                    Text(staleText)
+                        .font(.system(size: 9))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(10)
+    }
+
+    private static func deepLink(_ festival: Festival) -> URL {
+        DeepLinkRouter.shared.urlForDestination(id: festival.id)
+    }
+
+    /// 캐시가 3시간 넘게 묵었을 때만 표시한다. 갓 받아온 데이터에 시각을 붙이면 잡음이다.
+    private var staleText: String? {
+        guard let generatedAt = entry.generatedAt else { return nil }
+        let elapsed = entry.date.timeIntervalSince(generatedAt)
+        guard elapsed >= 3 * 3600 else { return nil }
+        let hours = Int(elapsed / 3600)
+        if hours >= 24 {
+            return "\(hours / 24)일 전 업데이트"
+        }
+        return "\(hours)시간 전 업데이트"
     }
 
     private func heroCard(_ festival: Festival) -> some View {
