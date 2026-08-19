@@ -37,7 +37,9 @@ struct MapHomeView: View {
     @State private var discoverListQuery = ""
     @State private var hologramPin: MapPinItem?
     @State private var eventStackCluster: MapPinCluster?
-    @State private var hologramAnchor: CGPoint = .zero
+    /// 30Hz로 갱신되는 값이라 `@State`로 두면 초당 30번 지도 body 전체가 다시 평가된다.
+    /// 홀로그램 카드와 커넥터만 구독하도록 별도 객체에 담는다.
+    @State private var hologramAnchorModel = HologramAnchorModel()
     @State private var hologramOverlayHeight: CGFloat = 130
     /// 지도 뷰의 화면상 프레임(global). 상·하단 오버레이가 가리는 영역을 계산하는 기준.
     @State private var mapFrame: CGRect = .zero
@@ -45,6 +47,8 @@ struct MapHomeView: View {
     @State private var bottomOverlayMinY: CGFloat = .greatestFiniteMagnitude
     @State private var hologramAnchorTimer: Timer?
     @State private var mapProjector = MapProjector()
+    /// 핀 파이프라인 결과 캐시. 입력이 그대로면 다시 계산하지 않는다.
+    @State private var pinCache = MapPinCache()
     @FocusState private var isSearchFocused: Bool
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
@@ -229,11 +233,32 @@ struct MapHomeView: View {
         }
     }
 
+    /// 현재 위치 핀만 GPS 갱신마다 바뀐다. 나머지는 입력이 그대로면 캐시에서 그대로 꺼내 쓴다.
     private var pins: [MapPinItem] {
         var items: [MapPinItem] = []
         if let coordinate = locationProvider.coordinate {
             items.append(MapPinItem(id: "current-location", coordinate: coordinate, kind: .currentLocation))
         }
+        items.append(contentsOf: cachedPins)
+        return items
+    }
+
+    private var cachedPins: [MapPinItem] {
+        let key = MapPinCache.PinKey(
+            discover: discoverCacheKey,
+            zoomLevel: mapZoomLevel,
+            selectedDiscoverPinID: selectedDiscoverPinID,
+            showsRealtimeParking: viewModel.showsRealtimeParkingLayer,
+            showsFreeParking: viewModel.showsFreeParkingLayer,
+            discoverParkingContext: viewModel.selectedDiscoverParkingContext,
+            destinationID: viewModel.selectedDestination?.id,
+            photoGeneration: pinPhotos.loadedGeneration
+        )
+        return pinCache.pins(key) { buildPins() }
+    }
+
+    private func buildPins() -> [MapPinItem] {
+        var items: [MapPinItem] = []
         if let destination = viewModel.selectedDestination {
             items.append(MapPinItem(
                 id: "destination-\(destination.id)",
@@ -328,13 +353,20 @@ struct MapHomeView: View {
         }
     }
 
+    /// 그룹 키를 문자열로 만들면 소스 하나마다 문자열이 하나씩 생긴다. 핀이 수백 개면 그 할당 자체가
+    /// 프레임을 잡아먹으므로 셀 좌표와 분류를 정수 키로 묶는다. 정렬에 쓰는 `id`도 소스당 한 번만 만든다.
     private func overlayGroups<Source: OverlayPinSource>(_ sources: [Source]) -> [[Source]] {
-        let groups = Dictionary(grouping: sources) { source in
-            "\(overlayKey(for: source.coordinate, zoomLevel: mapZoomLevel))|\(source.clusterGroupKey)"
+        var groups: [OverlayGroupKey: [(id: String, source: Source)]] = [:]
+        groups.reserveCapacity(sources.count)
+        for source in sources {
+            let cell = overlayCell(for: source.coordinate, zoomLevel: mapZoomLevel)
+            let key = OverlayGroupKey(x: cell.x, y: cell.y, group: source.clusterGroupKey)
+            groups[key, default: []].append((source.id, source))
         }
         return groups.values
             .map { $0.sorted { $0.id < $1.id } }
             .sorted { ($0.first?.id ?? "") < ($1.first?.id ?? "") }
+            .map { $0.map { $0.source } }
     }
 
     /// 줌아웃해도 클러스터에 흡수되지 않고 개별로 유지할 선택된 핀의 id (festival/event만).
@@ -397,7 +429,26 @@ struct MapHomeView: View {
     private static var tradeExpoTint: UIColor { FestivalDesign.ui(FestivalPrimaryCategory.tradeExpo.tint) }
     private static var performanceTint: UIColor { FestivalDesign.ui(FestivalPrimaryCategory.musicPerformance.tint) }
 
+    /// discover 핀 소스를 만드는 입력들. 이게 그대로면 소스를 다시 만들 필요가 없다.
+    private var discoverCacheKey: MapPinCache.DiscoverKey {
+        MapPinCache.DiscoverKey(
+            revision: viewModel.pinDataRevision,
+            showsFestival: viewModel.showsFestivalLayer,
+            showsTradeExpo: viewModel.showsTradeExpoLayer,
+            showsLocalEvent: viewModel.showsLocalEventLayer,
+            showsPerformance: viewModel.showsPerformanceLayer,
+            filter: festivalFilterModel.filter,
+            theme: themeStore.selectedTheme,
+            isDarkMode: themeStore.isDarkMode
+        )
+    }
+
+    /// 한 번의 body 평가 안에서도 핀 파이프라인과 하단 패널이 각각 부른다. 캐시로 한 번만 만든다.
     private var discoverSources: [DiscoverPinSource] {
+        pinCache.discoverSources(discoverCacheKey) { buildDiscoverSources() }
+    }
+
+    private func buildDiscoverSources() -> [DiscoverPinSource] {
         var sources: [DiscoverPinSource] = []
         // KOPIS 행은 /api/festivals에서 Festival로, /api/performances에서 FreeEvent로 같은 id를 달고 두 번 온다.
         // 타입별로 따로 세면 핀이 두 개 찍히므로 id 하나로 합쳐 센다(id는 source 접두어가 있어 충돌하지 않는다).
@@ -432,19 +483,27 @@ struct MapHomeView: View {
     }
 
     private var visibleDiscoverSources: [DiscoverPinSource] {
-        let sources = discoverSources
-        guard !sources.isEmpty else { return [] }
-        let center = CLLocation(
-            latitude: mapViewport.center.latitude,
-            longitude: mapViewport.center.longitude
+        let key = MapPinCache.ViewportKey(
+            discover: discoverCacheKey,
+            centerLat: mapViewport.center.latitude,
+            centerLng: mapViewport.center.longitude,
+            radiusMeters: mapViewport.radiusMeters
         )
-        let radius = Double(mapViewport.radiusMeters)
-        return sources.filter { source in
-            let point = CLLocation(
-                latitude: source.coordinate.latitude,
-                longitude: source.coordinate.longitude
+        return pinCache.visibleDiscoverSources(key) {
+            let sources = discoverSources
+            guard !sources.isEmpty else { return [] }
+            let center = CLLocation(
+                latitude: mapViewport.center.latitude,
+                longitude: mapViewport.center.longitude
             )
-            return center.distance(from: point) <= radius
+            let radius = Double(mapViewport.radiusMeters)
+            return sources.filter { source in
+                let point = CLLocation(
+                    latitude: source.coordinate.latitude,
+                    longitude: source.coordinate.longitude
+                )
+                return center.distance(from: point) <= radius
+            }
         }
     }
 
@@ -489,9 +548,9 @@ struct MapHomeView: View {
         let coordinates = group.map(\.coordinate)
         let center = clusterCenter(for: coordinates)
         // 같은 셀에 분류가 여럿이면 overlayKey와 count가 겹쳐 id가 충돌한다. 분류 키를 섞어 가른다.
-        let groupKey = group.first?.clusterGroupKey ?? ""
+        let groupKey = group.first?.clusterGroupKey ?? 0
         let cluster = MapPinCluster(
-            id: "\(idPrefix)-\(overlayKey(for: center, zoomLevel: mapZoomLevel))\(groupKey.isEmpty ? "" : "-\(groupKey)")-\(group.count)",
+            id: "\(idPrefix)-\(overlayKey(for: center, zoomLevel: mapZoomLevel))\(groupKey == 0 ? "" : "-\(groupKey)")-\(group.count)",
             coordinate: center,
             count: group.count,
             memberCoordinates: coordinates,
@@ -516,10 +575,15 @@ struct MapHomeView: View {
         return coordinate.offsetByMeters(east: cos(angle) * radius, north: sin(angle) * radius)
     }
 
-    private func overlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
+    private func overlayCell(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> (x: Int, y: Int) {
         let point = mercatorPoint(for: coordinate, zoomLevel: zoomLevel)
         let cellSize = zoomLevel < overlayReleaseZoomLevel ? 30.0 : 14.0
-        return "\(Int((point.x / cellSize).rounded())):\(Int((point.y / cellSize).rounded()))"
+        return (Int((point.x / cellSize).rounded()), Int((point.y / cellSize).rounded()))
+    }
+
+    private func overlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
+        let cell = overlayCell(for: coordinate, zoomLevel: zoomLevel)
+        return "\(cell.x):\(cell.y)"
     }
 
     private func mercatorPoint(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> CGPoint {
@@ -767,6 +831,17 @@ struct MapHomeView: View {
         let keyword = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard keyword.count >= 2 else { return [] }
         let ref = locationProvider.coordinate
+        let key = MapPinCache.SearchKey(
+            revision: viewModel.pinDataRevision,
+            keyword: keyword,
+            referenceLat: ref?.latitude,
+            referenceLng: ref?.longitude
+        )
+        // 한 번의 body 평가에서 조건·헤더·목록이 각각 부른다. 검색어가 그대로면 다시 훑지 않는다.
+        return pinCache.searchMatches(key) { buildSearchEventMatches(keyword: keyword, reference: ref) }
+    }
+
+    private func buildSearchEventMatches(keyword: String, reference ref: CLLocationCoordinate2D?) -> [DiscoverListItem] {
         var seen = Set<String>()
         var matches: [DiscoverListItem] = []
 
@@ -1258,7 +1333,7 @@ struct MapHomeView: View {
             let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
             focusMapBelowCenter(to: pin.coordinate, zoomLevel: targetZoom)
             withAnimation(FestivalDesign.Motion.spring) {
-                hologramAnchor = anchor
+                hologramAnchorModel.point = anchor
                 hologramPin = pin
             }
         case .parking(let parkingLot):
@@ -1347,7 +1422,10 @@ struct MapHomeView: View {
     private func updateHologramAnchorFromProjector() {
         guard let pin = hologramPin else { return }
         guard let point = mapProjector.screenPoint(for: pin.coordinate) else { return }
-        hologramAnchor = CGPoint(x: point.x, y: point.y - hologramPinTopOffset)
+        let anchor = CGPoint(x: point.x, y: point.y - hologramPinTopOffset)
+        // 지도가 멈춰 있으면 값이 같다. 같은 값을 다시 쓰면 카드가 헛되이 다시 그려진다.
+        guard anchor != hologramAnchorModel.point else { return }
+        hologramAnchorModel.point = anchor
     }
 
     private func openHologramDetail(_ pin: MapPinItem) {
@@ -1366,88 +1444,75 @@ struct MapHomeView: View {
 
     @ViewBuilder
     private func hologramOverlay(for pin: MapPinItem) -> some View {
-        let cardWidth = hologramCardWidth
-        let containerWidth = max(mapContainerSize.width, cardWidth)
-        let totalHeight = hologramOverlayHeight + hologramConnectorTotalHeight
-        let containerHeight = max(mapContainerSize.height, totalHeight)
-        let halfWidth = cardWidth / 2
-        let minX = halfWidth + 8
-        let maxX = containerWidth - halfWidth - 8
-        let clampedX = min(max(hologramAnchor.x, minX), maxX)
-        // card는 connector 위 → bottom이 hologramAnchor.y - connectorHeight에 위치
-        let preferredY = hologramAnchor.y - hologramConnectorTotalHeight - hologramOverlayHeight / 2
-        let minY = hologramOverlayHeight / 2 + 60
-        let maxY = containerHeight - totalHeight / 2 - 12
-        let clampedY = min(max(preferredY, minY), maxY)
-
-        Group {
-            switch pin.kind {
-            case .festival(let festival):
-                MapHologramOverlay(
-                    title: festival.title,
-                    subtitle: festival.subtitle ?? festival.venueName,
-                    meta: "\(festival.startDate) ~ \(festival.endDate)",
-                    statusText: festival.status.displayText,
-                    tags: festival.discoverTags,
-                    imageUrl: festival.imageUrl,
-                    tint: FestivalDesign.coral,
-                    symbol: "sparkles",
-                    isFavorite: festivalFavorites.contains(id: festival.id),
-                    onToggleFavorite: { festivalFavorites.toggle(festival) },
-                    shareContent: festival.shareContent,
-                    onDetails: { openHologramDetail(pin) },
-                    onClose: {
-                        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
-                            hologramPin = nil
+        // 위치 계산만 앵커를 구독하는 자식으로 내린다. 카드 내용은 지도 body가 바뀔 때만 다시 만든다.
+        HologramAnchoredCard(
+            anchor: hologramAnchorModel,
+            cardWidth: hologramCardWidth,
+            containerSize: mapContainerSize,
+            connectorHeight: hologramConnectorTotalHeight,
+            overlayHeight: hologramOverlayHeight
+        ) {
+            Group {
+                switch pin.kind {
+                case .festival(let festival):
+                    MapHologramOverlay(
+                        title: festival.title,
+                        subtitle: festival.subtitle ?? festival.venueName,
+                        meta: "\(festival.startDate) ~ \(festival.endDate)",
+                        statusText: festival.status.displayText,
+                        tags: festival.discoverTags,
+                        imageUrl: festival.imageUrl,
+                        tint: FestivalDesign.coral,
+                        symbol: "sparkles",
+                        isFavorite: festivalFavorites.contains(id: festival.id),
+                        onToggleFavorite: { festivalFavorites.toggle(festival) },
+                        shareContent: festival.shareContent,
+                        onDetails: { openHologramDetail(pin) },
+                        onClose: {
+                            withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
+                                hologramPin = nil
+                            }
+                            clearMapFocus()
                         }
-                        clearMapFocus()
-                    }
-                )
-            case .event(let event):
-                MapHologramOverlay(
-                    title: event.title,
-                    subtitle: event.benefit ?? event.shortDescription ?? event.storeName,
-                    meta: event.dateText,
-                    statusText: event.timelineStatus.displayText,
-                    tags: event.discoverTags,
-                    imageUrl: event.imageUrl,
-                    tint: FestivalDesign.teal,
-                    symbol: "calendar",
-                    isFavorite: eventFavorites.contains(id: event.id),
-                    onToggleFavorite: { eventFavorites.toggle(event) },
-                    shareContent: event.shareContent,
-                    isSponsored: event.isSponsored,
-                    onDetails: { openHologramDetail(pin) },
-                    onClose: {
-                        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
-                            hologramPin = nil
+                    )
+                case .event(let event):
+                    MapHologramOverlay(
+                        title: event.title,
+                        subtitle: event.benefit ?? event.shortDescription ?? event.storeName,
+                        meta: event.dateText,
+                        statusText: event.timelineStatus.displayText,
+                        tags: event.discoverTags,
+                        imageUrl: event.imageUrl,
+                        tint: FestivalDesign.teal,
+                        symbol: "calendar",
+                        isFavorite: eventFavorites.contains(id: event.id),
+                        onToggleFavorite: { eventFavorites.toggle(event) },
+                        shareContent: event.shareContent,
+                        isSponsored: event.isSponsored,
+                        onDetails: { openHologramDetail(pin) },
+                        onClose: {
+                            withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
+                                hologramPin = nil
+                            }
+                            clearMapFocus()
                         }
-                        clearMapFocus()
-                    }
-                )
-            default:
-                EmptyView()
+                    )
+                default:
+                    EmptyView()
+                }
             }
+            .frame(width: hologramCardWidth)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { hologramOverlayHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { hologramOverlayHeight = $0 }
+                }
+            )
         }
-        .frame(width: cardWidth)
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { hologramOverlayHeight = geo.size.height }
-                    .onChange(of: geo.size.height) { hologramOverlayHeight = $0 }
-            }
-        )
-        .position(x: clampedX, y: clampedY)
     }
 
-    @ViewBuilder
     private func hologramConnectorLayer() -> some View {
-        let cardWidth = hologramCardWidth
-        let containerWidth = max(mapContainerSize.width, cardWidth)
-        let halfWidth = cardWidth / 2
-        let clampedX = min(max(hologramAnchor.x, halfWidth + 8), containerWidth - halfWidth - 8)
-        let connectorCenterY = hologramAnchor.y - hologramConnectorTotalHeight / 2
-
         let tint: Color = {
             switch hologramPin?.kind {
             case .festival: return FestivalDesign.coral
@@ -1456,20 +1521,13 @@ struct MapHomeView: View {
             }
         }()
 
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(LinearGradient(
-                    colors: [tint.opacity(0.35), tint.opacity(0.7)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ))
-                .frame(width: 2, height: 10)
-            Circle()
-                .fill(tint)
-                .frame(width: 6, height: 6)
-        }
-        .allowsHitTesting(false)
-        .position(x: clampedX, y: connectorCenterY)
+        return HologramConnectorLayer(
+            anchor: hologramAnchorModel,
+            cardWidth: hologramCardWidth,
+            containerWidth: mapContainerSize.width,
+            connectorHeight: hologramConnectorTotalHeight,
+            tint: tint
+        )
     }
 
     private func centerOnInitialDiscoverPinIfNeeded() {
@@ -1821,12 +1879,19 @@ private struct HomeMapPillButtonStyle: ButtonStyle {
 private protocol OverlayPinSource {
     var id: String { get }
     var coordinate: CLLocationCoordinate2D { get }
-    /// 같은 셀 안이라도 이 값이 다르면 서로 다른 클러스터로 갈린다. 분류 구분이 없는 핀은 빈 문자열.
-    var clusterGroupKey: String { get }
+    /// 같은 셀 안이라도 이 값이 다르면 서로 다른 클러스터로 갈린다. 분류 구분이 없는 핀은 0.
+    var clusterGroupKey: Int { get }
 }
 
 private extension OverlayPinSource {
-    var clusterGroupKey: String { "" }
+    var clusterGroupKey: Int { 0 }
+}
+
+/// 오버레이 그룹 키. 문자열 보간 대신 정수 세 개로 묶어 핀마다 생기던 문자열 할당을 없앤다.
+private struct OverlayGroupKey: Hashable {
+    let x: Int
+    let y: Int
+    let group: Int
 }
 
 private struct RealtimeParkingPinSource: OverlayPinSource {
@@ -1886,11 +1951,14 @@ private enum DiscoverPinSource: OverlayPinSource {
     }
 
     /// 레이어 토글 색이 곧 이 핀의 분류다(축제·공연·박람회·가게 이벤트가 각기 다른 색).
-    /// 색을 RGB 문자열로 굳혀 클러스터 그룹 키로 쓴다.
-    var clusterGroupKey: String {
+    /// 색을 RGB 정수 하나로 굳혀 클러스터 그룹 키로 쓴다.
+    var clusterGroupKey: Int {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         layerTint.getRed(&r, green: &g, blue: &b, alpha: &a)
-        return [r, g, b].map { String(Int(($0 * 255).rounded())) }.joined(separator: "_")
+        let red = Int((r * 255).rounded())
+        let green = Int((g * 255).rounded())
+        let blue = Int((b * 255).rounded())
+        return (red << 16) | (green << 8) | blue
     }
 }
 
@@ -2237,3 +2305,160 @@ private struct EventStackSheet: View {
     }
 }
 
+
+/// 홀로그램 카드가 붙는 화면 좌표. 지도 카메라를 따라 30Hz로 갱신되므로 지도 body가 아니라
+/// 카드·커넥터만 구독하게 해서, 갱신이 핀 파이프라인 재계산으로 번지지 않게 한다.
+private final class HologramAnchorModel: ObservableObject {
+    @Published var point: CGPoint = .zero
+}
+
+/// 카드 내용은 부모가 만들어 넘기고, 앵커에 따라 달라지는 위치 계산만 여기서 한다.
+private struct HologramAnchoredCard<Content: View>: View {
+    @ObservedObject var anchor: HologramAnchorModel
+    let cardWidth: CGFloat
+    let containerSize: CGSize
+    let connectorHeight: CGFloat
+    let overlayHeight: CGFloat
+    private let content: Content
+
+    init(
+        anchor: HologramAnchorModel,
+        cardWidth: CGFloat,
+        containerSize: CGSize,
+        connectorHeight: CGFloat,
+        overlayHeight: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.anchor = anchor
+        self.cardWidth = cardWidth
+        self.containerSize = containerSize
+        self.connectorHeight = connectorHeight
+        self.overlayHeight = overlayHeight
+        self.content = content()
+    }
+
+    var body: some View {
+        let containerWidth = max(containerSize.width, cardWidth)
+        let totalHeight = overlayHeight + connectorHeight
+        let containerHeight = max(containerSize.height, totalHeight)
+        let halfWidth = cardWidth / 2
+        let clampedX = min(max(anchor.point.x, halfWidth + 8), containerWidth - halfWidth - 8)
+        // card는 connector 위 → bottom이 anchor.y - connectorHeight에 위치
+        let preferredY = anchor.point.y - connectorHeight - overlayHeight / 2
+        let minY = overlayHeight / 2 + 60
+        let maxY = containerHeight - totalHeight / 2 - 12
+        content.position(x: clampedX, y: min(max(preferredY, minY), maxY))
+    }
+}
+
+private struct HologramConnectorLayer: View {
+    @ObservedObject var anchor: HologramAnchorModel
+    let cardWidth: CGFloat
+    let containerWidth: CGFloat
+    let connectorHeight: CGFloat
+    let tint: Color
+
+    var body: some View {
+        let halfWidth = cardWidth / 2
+        let clampedX = min(
+            max(anchor.point.x, halfWidth + 8),
+            max(containerWidth, cardWidth) - halfWidth - 8
+        )
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [tint.opacity(0.35), tint.opacity(0.7)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(width: 2, height: 10)
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
+        }
+        .allowsHitTesting(false)
+        .position(x: clampedX, y: anchor.point.y - connectorHeight / 2)
+    }
+}
+
+/// 지도 body는 위치 갱신·레이아웃 변화·검색어 입력마다 다시 평가된다. 그때마다 수백 개 핀을
+/// 다시 묶고 정렬하면 그대로 렉이 되므로, 입력이 그대로면 지난 결과를 돌려준다.
+/// 키에 빠진 입력이 있으면 화면이 낡은 채로 남으므로, 파이프라인이 읽는 값은 모두 키에 넣는다.
+private final class MapPinCache {
+    struct DiscoverKey: Equatable {
+        let revision: Int
+        let showsFestival: Bool
+        let showsTradeExpo: Bool
+        let showsLocalEvent: Bool
+        let showsPerformance: Bool
+        let filter: FestivalFilter
+        let theme: FestivalTheme
+        let isDarkMode: Bool
+    }
+
+    struct PinKey: Equatable {
+        let discover: DiscoverKey
+        let zoomLevel: Int
+        let selectedDiscoverPinID: String?
+        let showsRealtimeParking: Bool
+        let showsFreeParking: Bool
+        let discoverParkingContext: Bool
+        let destinationID: String?
+        let photoGeneration: Int
+    }
+
+    struct ViewportKey: Equatable {
+        let discover: DiscoverKey
+        let centerLat: Double
+        let centerLng: Double
+        let radiusMeters: Int
+    }
+
+    struct SearchKey: Equatable {
+        let revision: Int
+        let keyword: String
+        let referenceLat: Double?
+        let referenceLng: Double?
+    }
+
+    private var discoverKey: DiscoverKey?
+    private var discoverValue: [DiscoverPinSource] = []
+    private var pinKey: PinKey?
+    private var pinValue: [MapPinItem] = []
+    private var viewportKey: ViewportKey?
+    private var viewportValue: [DiscoverPinSource] = []
+    private var searchKey: SearchKey?
+    private var searchValue: [DiscoverListItem] = []
+
+    func discoverSources(_ key: DiscoverKey, build: () -> [DiscoverPinSource]) -> [DiscoverPinSource] {
+        if discoverKey == key { return discoverValue }
+        let value = build()
+        discoverKey = key
+        discoverValue = value
+        return value
+    }
+
+    func pins(_ key: PinKey, build: () -> [MapPinItem]) -> [MapPinItem] {
+        if pinKey == key { return pinValue }
+        let value = build()
+        pinKey = key
+        pinValue = value
+        return value
+    }
+
+    func visibleDiscoverSources(_ key: ViewportKey, build: () -> [DiscoverPinSource]) -> [DiscoverPinSource] {
+        if viewportKey == key { return viewportValue }
+        let value = build()
+        viewportKey = key
+        viewportValue = value
+        return value
+    }
+
+    func searchMatches(_ key: SearchKey, build: () -> [DiscoverListItem]) -> [DiscoverListItem] {
+        if searchKey == key { return searchValue }
+        let value = build()
+        searchKey = key
+        searchValue = value
+        return value
+    }
+}
