@@ -16,6 +16,8 @@ struct MapHomeView: View {
     @EnvironmentObject private var themeStore: FestivalThemeStore
     @StateObject private var viewModel: MapHomeViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
+    /// 진행 중 행사 핀에 넣을 대표 이미지 공급자. 로드가 끝나면 지도를 다시 그린다.
+    @StateObject private var pinPhotos = MapPinPhotoStore()
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     @State private var mapViewport = MapViewport(
         center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
@@ -452,20 +454,27 @@ struct MapHomeView: View {
     private func mapPinItem(for source: DiscoverPinSource, coordinate: CLLocationCoordinate2D) -> MapPinItem {
         switch source {
         case .festival(let festival, let tint):
+            let live = festival.status == .ongoing
             return MapPinItem(
                 id: "festival-\(festival.id)",
                 coordinate: coordinate,
                 kind: .festival(festival),
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
-                layerTint: tint
+                layerTint: tint,
+                isLive: live,
+                // 대표 이미지는 진행 중 행사만 붙인다. 이미지 유무와 LIVE 라벨이 함께 "지금 하는 행사"를 알린다.
+                photo: live ? pinPhotos.photo(for: festival.imageUrl) : nil
             )
         case .event(let event, let tint):
+            let live = event.timelineStatus == .ongoing
             return MapPinItem(
                 id: "event-\(event.id)",
                 coordinate: coordinate,
                 kind: .event(event),
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
-                layerTint: tint
+                layerTint: tint,
+                isLive: live,
+                photo: live ? pinPhotos.photo(for: event.imageUrl) : nil
             )
         }
     }

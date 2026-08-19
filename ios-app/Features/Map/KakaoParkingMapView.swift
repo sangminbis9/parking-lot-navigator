@@ -592,8 +592,13 @@ private extension MapPinItem {
         layerTint.map { "-t\($0.stableStyleKey)" } ?? ""
     }
 
+    /// LIVE 라벨과 대표 이미지도 그림이 달라지는 요소라 styleID에 들어가야 한다.
+    /// 이미지는 캐시에 들어온 뒤에야 붙으므로, 이 키가 바뀌면서 카카오맵이 새 스타일로 다시 등록한다.
+    private var liveStyleKey: String { isLive ? "-live" : "" }
+    private var photoStyleKey: String { photo.map { "-p\($0.key)" } ?? "" }
+
     private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool, neon: Bool = false) -> String {
-        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")-\(theme)"
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")\(liveStyleKey)\(photoStyleKey)-\(theme)"
         if isSelected { return "\(base)-sel" }
         guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return base }
         return "\(base)-label-\(title.stableStyleKey)"
@@ -627,15 +632,15 @@ private extension MapPinItem {
     }
 
     private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme, neon: Bool = false) -> (id: String, image: UIImage)? {
-        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")-\(pinStyleThemeKey)"
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")\(liveStyleKey)\(photoStyleKey)-\(pinStyleThemeKey)"
         if styleID == "\(base)-sel" {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true, border: layerTint, neon: neon))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true, border: layerTint, neon: neon, photo: photo, live: isLive))
         }
         if styleID == base {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false, border: layerTint, neon: neon))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false, border: layerTint, neon: neon, photo: photo, live: isLive))
         }
         if styleID == "\(base)-label-\(title.stableStyleKey)" {
-            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel, border: layerTint, neon: neon))
+            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel, border: layerTint, neon: neon, photo: photo, live: isLive))
         }
         return nil
     }

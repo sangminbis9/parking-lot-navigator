@@ -432,6 +432,10 @@ struct MapPinItem: Identifiable {
     /// 이 핀이 속한 지도 상단 토글의 색. 배지 테두리를 이 색으로 그려 토글과 핀을 눈으로 잇는다.
     /// nil이면 카테고리 색을 그대로 쓴다.
     var layerTint: UIColor?
+    /// 진행 중인 행사. 배지 우측 상단에 LIVE 라벨을 얹는다(테두리 색은 건드리지 않는다).
+    var isLive = false
+    /// 진행 중 행사의 대표 이미지. 배지 테두리 안쪽을 채운다. 이미 캐시에 있는 것만 들어온다.
+    var photo: MapPinPhoto?
 }
 
 struct MapPinCluster: Identifiable {
