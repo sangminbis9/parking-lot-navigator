@@ -2,16 +2,63 @@ import SwiftUI
 import WidgetKit
 
 struct UpcomingFestivalsEntryView: View {
+    @Environment(\.widgetFamily) private var family
     let entry: UpcomingFestivalsEntry
 
     var body: some View {
+        layout
+            .containerBackgroundIfAvailable(FestivalDesign.background)
+    }
+
+    @ViewBuilder
+    private var layout: some View {
         if entry.items.isEmpty {
             emptyState
-                .containerBackgroundIfAvailable(FestivalDesign.background)
         } else {
-            mediumLayout
-                .containerBackgroundIfAvailable(FestivalDesign.background)
+            switch family {
+            case .systemSmall:
+                smallLayout
+            case .systemLarge:
+                largeLayout
+            default:
+                mediumLayout
+            }
         }
+    }
+
+    /// 작은 위젯은 탭 영역이 하나뿐이라 카드별 Link 대신 widgetURL로 축제 하나만 연결한다.
+    @ViewBuilder
+    private var smallLayout: some View {
+        if let hero = entry.items.first {
+            heroCard(hero)
+                .padding(10)
+                .widgetURL(Self.deepLink(hero))
+        }
+    }
+
+    private var largeLayout: some View {
+        let visible = Array(entry.items.prefix(5))
+        return VStack(alignment: .leading, spacing: 8) {
+            if let hero = visible.first {
+                Link(destination: Self.deepLink(hero)) {
+                    heroCard(hero)
+                }
+                .frame(height: 108)
+            }
+            ForEach(Array(visible.dropFirst().enumerated()), id: \.offset) { _, festival in
+                Link(destination: Self.deepLink(festival)) {
+                    rowCard(festival)
+                }
+            }
+            Spacer(minLength: 0)
+            if let staleText = staleText {
+                Text(staleText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(12)
     }
 
     /// 결과가 없는 이유를 구분한다. 캐시 자체가 없으면 필터 문제가 아니라 아직 동기화를 못 한 것이다.
