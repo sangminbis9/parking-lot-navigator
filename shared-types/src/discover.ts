@@ -154,6 +154,8 @@ export interface LocalEventDraft {
   endDate?: string | null;
   storeName?: string;
   address?: string;
+  /** 좌표 없이 등록할 때 상호명 지오코딩에 붙이는 지역 힌트 ("서울 성수동" 등). */
+  region?: string | null;
   lat?: number | null;
   lng?: number | null;
   source: LocalEventSource;
