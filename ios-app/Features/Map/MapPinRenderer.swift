@@ -147,6 +147,9 @@ enum MapPinRenderer {
     static let shadowPadding: CGFloat = 5
     static let selectedScaleFactor: CGFloat = 1.2
     static let cornerRatio: CGFloat = 0.30       // 배지 모서리 둥글기(앱 카드 언어)
+    /// 사장님이 직접 등록한 매장 이벤트 전용 네온색. 지도 타일 위에서 항상 튀어야 하므로 테마를 따르지 않는다.
+    static let merchantNeon = UIColor(red: 1.0, green: 0.20, blue: 0.55, alpha: 1)
+    static let neonGlowPadding: CGFloat = 12     // glow가 캔버스에서 잘리지 않도록 shadowPadding 대신 쓰는 여백
     static let floatGapRatio: CGFloat = 0.06     // 배지와 지면 그림자 사이 간격
     static let groundShadowRatio: CGFloat = 0.16 // 지면 그림자 타원 높이
 
@@ -165,6 +168,7 @@ enum MapPinRenderer {
         let selected: Bool
         let scaleKey: Int
         let borderKey: String
+        let neon: Bool
     }
 
     private static var cache: [Key: UIImage] = [:]
@@ -176,6 +180,7 @@ enum MapPinRenderer {
         theme: FestivalTheme,
         selected: Bool,
         border: UIColor? = nil,
+        neon: Bool = false,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
         let key = Key(
@@ -184,10 +189,11 @@ enum MapPinRenderer {
             styleKey: FestivalAppearance.styleKey,
             selected: selected,
             scaleKey: Int((scale * 100).rounded()),
-            borderKey: border?.pinColorKey ?? "-"
+            borderKey: border?.pinColorKey ?? "-",
+            neon: neon
         )
         if let cached = cache[key] { return cached }
-        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border)
+        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border, neon: neon)
         cache[key] = image
         return image
     }
@@ -198,9 +204,10 @@ enum MapPinRenderer {
         theme: FestivalTheme,
         label: String,
         border: UIColor? = nil,
+        neon: Bool = false,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
-        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border)
+        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon)
     }
 
     private static var parkingCache: [String: UIImage] = [:]
@@ -272,7 +279,8 @@ enum MapPinRenderer {
         label: String?,
         scale: CGFloat,
         fillOverride: UIColor? = nil,
-        border: UIColor? = nil
+        border: UIColor? = nil,
+        neon: Bool = false
     ) -> UIImage {
         let handDrawn = theme.isHandDrawn
         let badge = baseDiameter * (selected ? selectedScaleFactor : 1)
@@ -299,9 +307,11 @@ enum MapPinRenderer {
 
         // 손그림 테마는 오프셋 스티커 그림자 때문에 우/하단 여유가 더 필요하다.
         let stickerInset: CGFloat = handDrawn ? 4 : 0
-        let pinCanvasW = badge + shadowPadding * 2 + stickerInset
-        let canvasW = max(pinCanvasW, bubbleWidth + shadowPadding * 2)
-        let badgeTop = shadowPadding + sparkleZone + labelZone
+        // 네온 glow는 배지 밖으로 번지므로 기본 그림자보다 넓은 여백이 필요하다.
+        let pad = neon ? neonGlowPadding : shadowPadding
+        let pinCanvasW = badge + pad * 2 + stickerInset
+        let canvasW = max(pinCanvasW, bubbleWidth + pad * 2)
+        let badgeTop = pad + sparkleZone + labelZone
         let canvasH = badgeTop + badge + floatGap + groundH
         let cx = canvasW / 2
 
@@ -310,7 +320,7 @@ enum MapPinRenderer {
             ctx.cgContext.scaleBy(x: scale, y: scale)
 
             if bubbleWidth > 0, let label {
-                drawLabelBubble(label, font: labelFont, fill: border ?? accent, centerX: cx, top: shadowPadding + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
+                drawLabelBubble(label, font: labelFont, fill: neon ? merchantNeon : (border ?? accent), centerX: cx, top: pad + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
             }
 
             let badgeRect = CGRect(x: cx - badge / 2, y: badgeTop, width: badge, height: badge)
@@ -326,7 +336,7 @@ enum MapPinRenderer {
 
             drawStickerBadge(
                 rect: badgeRect, corner: corner, accent: accent, surface: surface,
-                handDrawn: handDrawn, selected: selected, borderOverride: border, context: ctx
+                handDrawn: handDrawn, selected: selected, borderOverride: border, neon: neon, context: ctx
             )
 
             // 카테고리 글리프 (현행 유지)
@@ -347,10 +357,38 @@ enum MapPinRenderer {
         handDrawn: Bool,
         selected: Bool,
         borderOverride: UIColor? = nil,
+        neon: Bool = false,
         context: UIGraphicsImageRendererContext
     ) {
         let cg = context.cgContext
         let body = UIBezierPath(roundedRect: rect, cornerRadius: corner)
+
+        if neon {
+            // 사장님 등록 이벤트: 바깥 glow → 굵은 네온 스트로크 → 밝은 코어 순으로 네온 튜브를 만든다.
+            // 선택 시에도 코랄로 덮지 않는다. 확대와 스파크만으로 선택을 표현해도 충분하다.
+            if handDrawn {
+                let outline = UIColor(red: 0.176, green: 0.161, blue: 0.145, alpha: 1)
+                outline.withAlphaComponent(0.85).setFill()
+                UIBezierPath(roundedRect: rect.offsetBy(dx: 2.5, dy: 3.5), cornerRadius: corner).fill()
+            }
+            cg.saveGState()
+            cg.setShadow(offset: .zero, blur: 7, color: merchantNeon.withAlphaComponent(0.9).cgColor)
+            surface.setFill()
+            body.fill()
+            cg.restoreGState()
+
+            cg.saveGState()
+            cg.setShadow(offset: .zero, blur: 3.5, color: merchantNeon.withAlphaComponent(0.95).cgColor)
+            merchantNeon.setStroke()
+            body.lineWidth = selected ? 3.6 : 3.0
+            body.stroke()
+            cg.restoreGState()
+
+            merchantNeon.pinMixedWithWhite(0.55).setStroke()
+            body.lineWidth = selected ? 1.5 : 1.2
+            body.stroke()
+            return
+        }
 
         if handDrawn {
             // 핀은 밝은 지도 타일 위에 놓이므로, 다크모드에서도 외곽선은 차콜을 유지해야 실루엣이 남는다.
@@ -507,4 +545,10 @@ private extension UIColor {
         }
         return self
     }
+}
+
+extension FreeEvent {
+    /// 사장님이 직접 등록한 매장 이벤트. 지도에서 네온 테두리로 강조한다.
+    /// `createMerchantEvent`가 source를 "merchant"로 고정 저장한다.
+    var usesMerchantNeonPin: Bool { source == "merchant" }
 }

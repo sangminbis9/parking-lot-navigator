@@ -26,6 +26,8 @@ import {
   getMerchantEventById,
   listMerchantEvents,
   markEventApproved,
+  parseNaverCouponLink,
+  couponSourceItemId,
   uploadEventImage,
   type MerchantEventType,
 } from "./events.js";
@@ -300,6 +302,7 @@ export function createMerchantApp() {
       eventType: parseEventType(String(form.get("event_type") ?? "")),
       storeName: String(form.get("store_name") ?? "").trim(),
       address: String(form.get("address") ?? "").trim(),
+      couponUrl: String(form.get("coupon_url") ?? "").trim(),
       startDate: String(form.get("start_date") ?? "").trim(),
       endDate: String(form.get("end_date") ?? "").trim(),
     };
@@ -313,6 +316,19 @@ export function createMerchantApp() {
         renderEventForm({
           values,
           error: "필수 항목을 모두 입력해 주세요.",
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+
+    const couponLink = parseNaverCouponLink(values.couponUrl);
+    if (couponLink === undefined) {
+      return c.html(
+        renderEventForm({
+          values,
+          error:
+            "네이버 쿠폰 링크는 네이버 예약·플레이스 주소만 등록할 수 있습니다. 쿠폰 페이지의 https 주소를 그대로 붙여넣어 주세요.",
           launchPromoFree: promoFree,
         }),
         400,
@@ -388,7 +404,25 @@ export function createMerchantApp() {
       startDate: normalizeDate(values.startDate),
       endDate: normalizeDate(values.endDate),
       imageUrl,
+      couponUrl: couponLink?.url ?? null,
+      sourceItemId: couponSourceItemId(couponLink),
+    }).catch((error: unknown) => {
+      // local_events의 UNIQUE(source, source_item_id)에 걸린 경우다.
+      // 같은 쿠폰이 이미 등록돼 있다는 뜻이므로 500 대신 폼으로 돌려보낸다.
+      if (String(error).includes("UNIQUE")) return null;
+      throw error;
     });
+    if (!event) {
+      return c.html(
+        renderEventForm({
+          values,
+          error:
+            "이미 등록된 네이버 쿠폰 링크입니다. 등록한 이벤트 목록을 확인해 주세요.",
+          launchPromoFree: promoFree,
+        }),
+        409,
+      );
+    }
 
     return c.redirect(`/merchant/event/${event.id}/pay`);
   });

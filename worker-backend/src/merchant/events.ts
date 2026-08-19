@@ -89,6 +89,10 @@ export type CreateMerchantEventInput = {
   startDate: string | null;
   endDate: string | null;
   imageUrl: string | null;
+  /** 사장님이 연결한 네이버 쿠폰 링크. 앱에서 쿠폰 페이지로 바로 보낸다. */
+  couponUrl: string | null;
+  /** 쿠폰 중복 등록 방지 키. 쿠폰 링크가 없거나 id를 못 뽑으면 null. */
+  sourceItemId: string | null;
 };
 
 export async function createMerchantEvent(
@@ -102,11 +106,11 @@ export async function createMerchantEvent(
     .prepare(
       `INSERT INTO local_events (
         id, title, description, benefit, event_type, status, source,
-        image_url, store_name, address, lat, lng, start_date, end_date,
+        source_url, source_item_id, image_url, store_name, address, lat, lng, start_date, end_date,
         needs_review, is_sponsored, priority_score, duplicate_key,
         merchant_id, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'merchant',
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?, ?,
         0, 1, 100, ?,
         ?, ?, ?)`,
     )
@@ -116,6 +120,8 @@ export async function createMerchantEvent(
       input.description,
       input.benefit,
       input.eventType,
+      input.couponUrl,
+      input.sourceItemId,
       input.imageUrl,
       input.storeName,
       input.address,
@@ -279,4 +285,56 @@ async function geocodeKeyword(
     lng,
     refinedAddress: doc.road_address_name ?? doc.address_name ?? query,
   };
+}
+
+// 사장님이 넣은 링크는 앱에서 그대로 열리는 외부 링크다. 아무 URL이나 받으면
+// 피싱 경유지로 쓰일 수 있으므로 네이버 예약/플레이스 도메인만 통과시킨다.
+const NAVER_COUPON_HOSTS = new Set([
+  "booking.naver.com",
+  "m.booking.naver.com",
+  "place.naver.com",
+  "m.place.naver.com",
+  "naver.me",
+]);
+
+export type NaverCouponLink = {
+  url: string;
+  /** 쿠폰 URL 경로에서 뽑은 네이버 place 식별자. 단축 링크에는 없다. */
+  placeId: string | null;
+  promotionId: string | null;
+};
+
+// https://m.booking.naver.com/coupon/placeId/2030839239/promotion/1199003?...
+const COUPON_PATH_PATTERN = /coupon\/placeId\/(\d+)\/promotion\/(\d+)/;
+
+/** 빈 문자열이면 null, 허용 도메인의 https 링크면 파싱 결과, 그 외에는 undefined. */
+export function parseNaverCouponLink(
+  raw: string,
+): NaverCouponLink | null | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:") return undefined;
+  if (!NAVER_COUPON_HOSTS.has(url.hostname.toLowerCase())) return undefined;
+  const match = COUPON_PATH_PATTERN.exec(url.pathname);
+  return {
+    url: url.toString(),
+    placeId: match?.[1] ?? null,
+    promotionId: match?.[2] ?? null,
+  };
+}
+
+/**
+ * 같은 네이버 쿠폰이 두 번 등록되는 것을 막는 키. local_events의
+ * UNIQUE(source, source_item_id)가 받아 준다. 남의 쿠폰 링크를 가져다
+ * 자기 이벤트로 올리는 것도 이 제약에 걸린다.
+ */
+export function couponSourceItemId(link: NaverCouponLink | null): string | null {
+  if (!link?.placeId || !link.promotionId) return null;
+  return `naver-coupon:${link.placeId}:${link.promotionId}`;
 }

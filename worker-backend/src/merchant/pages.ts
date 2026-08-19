@@ -254,6 +254,7 @@ export type EventFormValues = {
   eventType: MerchantEventType;
   storeName: string;
   address: string;
+  couponUrl: string;
   startDate: string;
   endDate: string;
 };
@@ -265,6 +266,7 @@ export const EMPTY_FORM: EventFormValues = {
   eventType: "discount",
   storeName: "",
   address: "",
+  couponUrl: "",
   startDate: "",
   endDate: "",
 };
@@ -317,6 +319,10 @@ export function renderEventForm(opts: {
       <label>매장 주소 *</label>
       <input name="address" required maxlength="120" value="${htmlEscape(v.address)}" placeholder="도로명 또는 지번 주소" />
       <div class="field-help">주소로 지도 위치가 자동 설정됩니다.</div>
+
+      <label>네이버 쿠폰 링크</label>
+      <input name="coupon_url" type="url" maxlength="500" value="${htmlEscape(v.couponUrl)}" placeholder="https://m.booking.naver.com/coupon/..." />
+      <div class="field-help">이미 네이버에서 쿠폰을 운영하고 계신가요? 링크를 연결하면 이벤트다에서도 홍보하고, 손님이 앱에서 바로 쿠폰 페이지로 이동합니다. 선택 사항.</div>
 
       <label>시작일</label>
       <input name="start_date" type="date" value="${htmlEscape(v.startDate)}" />
