@@ -224,6 +224,9 @@ const adminLocalEventSchema = z.object({
   endDate: z.string().nullable().optional(),
   storeName: z.string().min(1).max(200).optional(),
   address: z.string().max(500).optional(),
+  // 좌표를 직접 주지 않을 때 상호명만으로는 동명 매장이 엉뚱하게 잡힌다.
+  // Kakao 조회에 붙일 지역 힌트("서울 성수동" 등)로만 쓴다.
+  region: z.string().max(80).nullable().optional(),
   lat: z.number().nullable().optional(),
   lng: z.number().nullable().optional(),
   source: eventSourceSchema,
@@ -600,14 +603,53 @@ app.post("/api/local-events/report", async (c) => {
   return c.json({ item, generatedAt: new Date().toISOString() }, 202);
 });
 
+// 수동 등록은 가게 이름만 주는 경우가 대부분이다. 좌표가 없으면 lat/lng이 0으로
+// 저장돼 지도에서 영영 안 보이므로, 여기서 Kakao Local로 한 번 찾아 채운다.
+// 끝내 못 찾으면 0,0으로 묻지 말고 422로 돌려보내 등록자가 좌표를 직접 주게 한다.
+async function resolveAdminLocalEventCoordinates(
+  env: Env,
+  input: z.infer<typeof adminLocalEventSchema>,
+): Promise<z.infer<typeof adminLocalEventSchema>> {
+  if (input.lat != null && input.lng != null) return input;
+  const storeName = input.storeName?.trim();
+  if (!storeName) return input;
+  if (!env.KAKAO_REST_API_KEY || env.PARKING_PROVIDER_MODE === "mock") return input;
+
+  const { KakaoEventCoordinateResolver, setGeocodeStore } = await import(
+    "../../backend/src/features/discover/events/eventProviderUtils.js"
+  );
+  if (env.DB) setGeocodeStore(createD1GeocodeStore(env.DB));
+  // 후보 질의(주소 / 지역+상호 / 상호)를 몇 번 시도할 수 있게만 열어 둔다.
+  const resolver = new KakaoEventCoordinateResolver(env, { missBudget: 3 });
+  const resolved = await resolver.resolve({
+    title: input.title ?? storeName,
+    venue: storeName,
+    address: input.address ?? null,
+    region: input.region ?? null,
+  });
+  await resolver.flush();
+  if (!resolved) return input;
+  return {
+    ...input,
+    lat: resolved.lat,
+    lng: resolved.lng,
+    address: input.address ?? resolved.address ?? undefined,
+  };
+}
+
 app.post("/api/admin/local-events", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-  const item = await createAdminLocalEvent(
-    c.env.DB,
-    adminLocalEventSchema.parse(await c.req.json()),
-  );
+  const parsed = adminLocalEventSchema.parse(await c.req.json());
+  const input = await resolveAdminLocalEventCoordinates(c.env, parsed);
+  if (input.lat == null || input.lng == null) {
+    return c.json(
+      { error: "coordinates_unresolved", storeName: input.storeName ?? null },
+      422,
+    );
+  }
+  const item = await createAdminLocalEvent(c.env.DB, input);
   return c.json({ item, generatedAt: new Date().toISOString() }, 201);
 });
 
