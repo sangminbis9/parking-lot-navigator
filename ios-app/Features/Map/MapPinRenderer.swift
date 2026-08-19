@@ -138,6 +138,12 @@ extension MapPinCategory {
 
 // MARK: - 렌더러
 
+/// 핀 배지 안을 채울 행사 대표 이미지. `key`는 styleID에 넣는 이미지 URL 지문이다.
+struct MapPinPhoto {
+    let key: String
+    let image: UIImage
+}
+
 /// 카테고리/테마/선택여부/scale 조합으로 깨끗한 핀 이미지를 생성하고 캐시한다.
 /// PNG를 crop하지 않고 UIGraphicsImageRenderer로 직접 그린다.
 enum MapPinRenderer {
@@ -150,6 +156,9 @@ enum MapPinRenderer {
     /// 사장님이 직접 등록한 매장 이벤트 전용 네온색. 지도 타일 위에서 항상 튀어야 하므로 테마를 따르지 않는다.
     static let merchantNeon = UIColor(red: 1.0, green: 0.20, blue: 0.55, alpha: 1)
     static let neonGlowPadding: CGFloat = 12     // glow가 캔버스에서 잘리지 않도록 shadowPadding 대신 쓰는 여백
+    /// 진행 중 행사 표시색. 테두리 색을 건드리지 않고 상태만 알리는 라벨이라 테마를 따르지 않는다.
+    static let liveRed = UIColor(red: 0.92, green: 0.16, blue: 0.22, alpha: 1)
+    static let livePadding: CGFloat = 10         // LIVE 라벨이 배지 우상단 밖으로 걸치므로 넓히는 여백
     static let floatGapRatio: CGFloat = 0.06     // 배지와 지면 그림자 사이 간격
     static let groundShadowRatio: CGFloat = 0.16 // 지면 그림자 타원 높이
 
@@ -169,6 +178,7 @@ enum MapPinRenderer {
         let scaleKey: Int
         let borderKey: String
         let neon: Bool
+        let live: Bool
     }
 
     private static var cache: [Key: UIImage] = [:]
@@ -181,8 +191,15 @@ enum MapPinRenderer {
         selected: Bool,
         border: UIColor? = nil,
         neon: Bool = false,
+        photo: MapPinPhoto? = nil,
+        live: Bool = false,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
+        // 대표 이미지가 붙은 핀은 행사마다 그림이 달라 캐시가 계속 자란다.
+        // 카카오맵이 styleID 단위로 한 번만 등록하므로 여기서는 캐시하지 않는다.
+        if let photo {
+            return draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border, neon: neon, photo: photo, live: live)
+        }
         let key = Key(
             category: category,
             themeID: theme.rawValue,
@@ -190,10 +207,11 @@ enum MapPinRenderer {
             selected: selected,
             scaleKey: Int((scale * 100).rounded()),
             borderKey: border?.pinColorKey ?? "-",
-            neon: neon
+            neon: neon,
+            live: live
         )
         if let cached = cache[key] { return cached }
-        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border, neon: neon)
+        let image = draw(category: category, theme: theme, selected: selected, label: nil, scale: scale, border: border, neon: neon, live: live)
         cache[key] = image
         return image
     }
@@ -205,9 +223,11 @@ enum MapPinRenderer {
         label: String,
         border: UIColor? = nil,
         neon: Bool = false,
+        photo: MapPinPhoto? = nil,
+        live: Bool = false,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
-        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon)
+        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon, photo: photo, live: live)
     }
 
     private static var parkingCache: [String: UIImage] = [:]
@@ -280,7 +300,9 @@ enum MapPinRenderer {
         scale: CGFloat,
         fillOverride: UIColor? = nil,
         border: UIColor? = nil,
-        neon: Bool = false
+        neon: Bool = false,
+        photo: MapPinPhoto? = nil,
+        live: Bool = false
     ) -> UIImage {
         let handDrawn = theme.isHandDrawn
         let badge = baseDiameter * (selected ? selectedScaleFactor : 1)
@@ -307,8 +329,8 @@ enum MapPinRenderer {
 
         // 손그림 테마는 오프셋 스티커 그림자 때문에 우/하단 여유가 더 필요하다.
         let stickerInset: CGFloat = handDrawn ? 4 : 0
-        // 네온 glow는 배지 밖으로 번지므로 기본 그림자보다 넓은 여백이 필요하다.
-        let pad = neon ? neonGlowPadding : shadowPadding
+        // 네온 glow는 배지 밖으로 번지고 LIVE 라벨은 배지 우상단 밖으로 걸친다. 둘 다 기본 그림자보다 여백이 넓어야 잘리지 않는다.
+        let pad = neon ? neonGlowPadding : (live ? livePadding : shadowPadding)
         let pinCanvasW = badge + pad * 2 + stickerInset
         let canvasW = max(pinCanvasW, bubbleWidth + pad * 2)
         let badgeTop = pad + sparkleZone + labelZone
@@ -339,10 +361,76 @@ enum MapPinRenderer {
                 handDrawn: handDrawn, selected: selected, borderOverride: border, neon: neon, context: ctx
             )
 
-            // 카테고리 글리프 (현행 유지)
-            let inner = badgeRect.insetBy(dx: badge * 0.20, dy: badge * 0.20)
-            drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: badge, context: ctx)
+            if let photo {
+                // 대표 이미지가 있으면 글리프 대신 테두리 안쪽을 이미지로 꽉 채운다.
+                drawPhoto(photo.image, in: badgeRect, corner: corner, inset: badge * 0.055, context: ctx)
+            } else {
+                // 카테고리 글리프 (현행 유지)
+                let inner = badgeRect.insetBy(dx: badge * 0.20, dy: badge * 0.20)
+                drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: badge, context: ctx)
+            }
+
+            if live {
+                drawLiveChip(atTopRightOf: badgeRect, badge: badge, context: ctx)
+            }
         }
+    }
+
+    /// 배지 테두리 안쪽을 대표 이미지로 채운다. 비율은 유지하고 넘치는 쪽을 잘라낸다(aspect fill).
+    private static func drawPhoto(
+        _ image: UIImage,
+        in badgeRect: CGRect,
+        corner: CGFloat,
+        inset: CGFloat,
+        context: UIGraphicsImageRendererContext
+    ) {
+        let rect = badgeRect.insetBy(dx: inset, dy: inset)
+        let cg = context.cgContext
+        cg.saveGState()
+        UIBezierPath(roundedRect: rect, cornerRadius: max(corner - inset, 2)).addClip()
+        image.draw(in: aspectFill(imageSize: image.size, in: rect))
+        cg.restoreGState()
+    }
+
+    /// 진행 중 행사 표시. 배지 우측 상단 테두리 위에 얹으므로 테두리 색은 그대로 둔다.
+    private static func drawLiveChip(
+        atTopRightOf badgeRect: CGRect,
+        badge: CGFloat,
+        context: UIGraphicsImageRendererContext
+    ) {
+        let font = FestivalDesign.uiFont(size: badge * 0.17, weight: .heavy)
+        let text = "LIVE" as NSString
+        let textSize = text.size(withAttributes: [.font: font])
+        let height = badge * 0.26
+        let width = textSize.width + height * 0.55
+        let rect = CGRect(
+            x: badgeRect.maxX - width + badge * 0.10,
+            y: badgeRect.minY - height * 0.45,
+            width: width,
+            height: height
+        )
+        let chip = UIBezierPath(roundedRect: rect, cornerRadius: height / 2)
+        let cg = context.cgContext
+        cg.saveGState()
+        cg.setShadow(offset: CGSize(width: 0, height: 0.8), blur: 2, color: UIColor.black.withAlphaComponent(0.35).cgColor)
+        liveRed.setFill()
+        chip.fill()
+        cg.restoreGState()
+        UIColor.white.setStroke()
+        chip.lineWidth = max(1, badge * 0.03)
+        chip.stroke()
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: UIColor.white,
+            .paragraphStyle: paragraph
+        ]
+        text.draw(
+            in: CGRect(x: rect.midX - textSize.width / 2, y: rect.midY - textSize.height / 2, width: textSize.width, height: textSize.height),
+            withAttributes: attributes
+        )
     }
 
     /// 앱 카드 언어의 둥근 사각 "스티커 배지" 본체.
@@ -507,6 +595,14 @@ enum MapPinRenderer {
         UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1).setFill()
         let dot = headRect.width * 0.06
         UIBezierPath(ovalIn: CGRect(x: cx - dot / 2, y: topY - outer - dot, width: dot, height: dot)).fill()
+    }
+
+    private static func aspectFill(imageSize: CGSize, in rect: CGRect) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return rect }
+        let scale = max(rect.width / imageSize.width, rect.height / imageSize.height)
+        let w = imageSize.width * scale
+        let h = imageSize.height * scale
+        return CGRect(x: rect.midX - w / 2, y: rect.midY - h / 2, width: w, height: h)
     }
 
     private static func aspectFit(imageSize: CGSize, in rect: CGRect) -> CGRect {
