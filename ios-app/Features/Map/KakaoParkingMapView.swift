@@ -581,7 +581,7 @@ private extension MapPinItem {
         case .festival(let festival):
             return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
         case .event(let event):
-            return discoverStyleID(category: MapPinCategory.forEvent(event), title: event.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
+            return discoverStyleID(category: MapPinCategory.forEvent(event), title: event.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected, neon: event.usesMerchantNeonPin)
         case .cluster(let cluster):
             return "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(theme)"
         }
@@ -592,8 +592,8 @@ private extension MapPinItem {
         layerTint.map { "-t\($0.stableStyleKey)" } ?? ""
     }
 
-    private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) -> String {
-        let base = "disc-\(category.rawValue)\(layerTintStyleKey)-\(theme)"
+    private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool, neon: Bool = false) -> String {
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")-\(theme)"
         if isSelected { return "\(base)-sel" }
         guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return base }
         return "\(base)-label-\(title.stableStyleKey)"
@@ -617,7 +617,7 @@ private extension MapPinItem {
         case .festival(let festival):
             return discoverImage(styleID: styleID, category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme)
         case .event(let event):
-            return discoverImage(styleID: styleID, category: MapPinCategory.forEvent(event), title: event.title, theme: theme)
+            return discoverImage(styleID: styleID, category: MapPinCategory.forEvent(event), title: event.title, theme: theme, neon: event.usesMerchantNeonPin)
         case .cluster(let cluster):
             guard styleID == "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(themeKey)" else { return nil }
             return (styleID, MapPinRenderer.clusterImage(tint: cluster.tint, count: cluster.count, isParking: cluster.isParking, theme: theme))
@@ -626,16 +626,16 @@ private extension MapPinItem {
         }
     }
 
-    private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme) -> (id: String, image: UIImage)? {
-        let base = "disc-\(category.rawValue)\(layerTintStyleKey)-\(pinStyleThemeKey)"
+    private func discoverImage(styleID: String, category: MapPinCategory, title: String, theme: FestivalTheme, neon: Bool = false) -> (id: String, image: UIImage)? {
+        let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")-\(pinStyleThemeKey)"
         if styleID == "\(base)-sel" {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true, border: layerTint))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: true, border: layerTint, neon: neon))
         }
         if styleID == base {
-            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false, border: layerTint))
+            return (styleID, MapPinRenderer.image(category: category, theme: theme, selected: false, border: layerTint, neon: neon))
         }
         if styleID == "\(base)-label-\(title.stableStyleKey)" {
-            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel, border: layerTint))
+            return (styleID, MapPinRenderer.labeledImage(category: category, theme: theme, label: title.shortMapLabel, border: layerTint, neon: neon))
         }
         return nil
     }
