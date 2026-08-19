@@ -328,7 +328,7 @@ struct MapHomeView: View {
 
     private func overlayGroups<Source: OverlayPinSource>(_ sources: [Source]) -> [[Source]] {
         let groups = Dictionary(grouping: sources) { source in
-            overlayKey(for: source.coordinate, zoomLevel: mapZoomLevel)
+            "\(overlayKey(for: source.coordinate, zoomLevel: mapZoomLevel))|\(source.clusterGroupKey)"
         }
         return groups.values
             .map { $0.sorted { $0.id < $1.id } }
@@ -355,7 +355,7 @@ struct MapHomeView: View {
                 // 선택된 핀은 클러스터에서 빼고 항상 개별 핀으로 남긴다 (구글 표준 동작).
                 let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
                 var pins: [MapPinItem] = []
-                if let cluster = clusterPin(for: clusterable, idPrefix: "discover-cluster", tint: FestivalDesign.uiTeal, isParking: false) {
+                if let cluster = clusterPin(for: clusterable, idPrefix: "discover-cluster", tint: clusterable.first?.layerTint ?? FestivalDesign.uiTeal, isParking: false) {
                     pins.append(cluster)
                 } else if let only = clusterable.first {
                     pins.append(mapPinItem(for: only, coordinate: only.coordinate))
@@ -374,7 +374,7 @@ struct MapHomeView: View {
             let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
             var pins: [MapPinItem] = []
             if clusterable.count >= placeStackThreshold,
-               let cluster = clusterPin(for: clusterable, idPrefix: "discover-stack", tint: FestivalDesign.uiTeal, isParking: false) {
+               let cluster = clusterPin(for: clusterable, idPrefix: "discover-stack", tint: clusterable.first?.layerTint ?? FestivalDesign.uiTeal, isParking: false) {
                 pins.append(cluster)
             } else {
                 for (index, source) in clusterable.enumerated() {
@@ -479,8 +479,10 @@ struct MapHomeView: View {
         guard group.count > 1 else { return nil }
         let coordinates = group.map(\.coordinate)
         let center = clusterCenter(for: coordinates)
+        // 같은 셀에 분류가 여럿이면 overlayKey와 count가 겹쳐 id가 충돌한다. 분류 키를 섞어 가른다.
+        let groupKey = group.first?.clusterGroupKey ?? ""
         let cluster = MapPinCluster(
-            id: "\(idPrefix)-\(overlayKey(for: center, zoomLevel: mapZoomLevel))-\(group.count)",
+            id: "\(idPrefix)-\(overlayKey(for: center, zoomLevel: mapZoomLevel))\(groupKey.isEmpty ? "" : "-\(groupKey)")-\(group.count)",
             coordinate: center,
             count: group.count,
             memberCoordinates: coordinates,
@@ -1671,6 +1673,12 @@ private struct HomeMapPillButtonStyle: ButtonStyle {
 private protocol OverlayPinSource {
     var id: String { get }
     var coordinate: CLLocationCoordinate2D { get }
+    /// 같은 셀 안이라도 이 값이 다르면 서로 다른 클러스터로 갈린다. 분류 구분이 없는 핀은 빈 문자열.
+    var clusterGroupKey: String { get }
+}
+
+private extension OverlayPinSource {
+    var clusterGroupKey: String { "" }
 }
 
 private struct RealtimeParkingPinSource: OverlayPinSource {
@@ -1727,6 +1735,14 @@ private enum DiscoverPinSource: OverlayPinSource {
         case .festival(_, let tint), .event(_, let tint):
             return tint
         }
+    }
+
+    /// 레이어 토글 색이 곧 이 핀의 분류다(축제·공연·박람회·가게 이벤트가 각기 다른 색).
+    /// 색을 RGB 문자열로 굳혀 클러스터 그룹 키로 쓴다.
+    var clusterGroupKey: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        layerTint.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return [r, g, b].map { String(Int(($0 * 255).rounded())) }.joined(separator: "_")
     }
 }
 
