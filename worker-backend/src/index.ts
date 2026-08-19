@@ -344,6 +344,11 @@ app.onError((error, c) => {
   if (error instanceof ZodError) {
     return c.json({ error: "bad_request", issues: error.issues }, 400);
   }
+  // 목적지 검색은 실패를 mock 좌표로 감추지 않는다. 앱이 구분할 수 있게 503으로 내려보낸다.
+  if ((error as { code?: string }).code === "destination_search_unavailable") {
+    console.error(error);
+    return c.json({ error: "destination_search_unavailable" }, 503);
+  }
   console.error(error);
   return c.json({ error: "internal_error" }, 500);
 });

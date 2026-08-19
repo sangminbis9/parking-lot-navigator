@@ -143,8 +143,8 @@ struct MapHomeView: View {
                         }
                     )
                 VStack(spacing: 10) {
-                    if !viewModel.destinations.isEmpty {
-                        destinationResults
+                    if !viewModel.destinations.isEmpty || !searchEventMatches.isEmpty {
+                        searchResults
                     }
                     if let errorMessage = viewModel.errorMessage {
                         inlineError(errorMessage)
@@ -534,6 +534,7 @@ struct MapHomeView: View {
         VStack(alignment: .leading, spacing: 9) {
             searchPanel
             discoverLayerToggles
+            locationPermissionNotice
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -547,6 +548,42 @@ struct MapHomeView: View {
         .festivalShadow(.medium)
     }
 
+    private var isLocationDenied: Bool {
+        locationProvider.authorizationStatus == .denied || locationProvider.authorizationStatus == .restricted
+    }
+
+    private func openLocationSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    /// 권한이 없으면 지도는 서울에서 시작한다. 그 사실을 감추지 않고 해결 경로를 같이 준다.
+    @ViewBuilder
+    private var locationPermissionNotice: some View {
+        if isLocationDenied {
+            HStack(spacing: 8) {
+                Image(systemName: "location.slash")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.coralText)
+                Text("위치 권한이 꺼져 있어 서울 기준으로 보고 있어요")
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+                Button("설정 열기") {
+                    openLocationSettings()
+                }
+                .font(.festival(.caption, weight: .bold))
+                .buttonStyle(.plain)
+                .foregroundStyle(FestivalDesign.tealText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(FestivalDesign.cream.opacity(0.7))
+            .clipShape(FestivalDesign.controlShape)
+        }
+    }
+
     private var searchPanel: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
@@ -555,7 +592,7 @@ struct MapHomeView: View {
             TextField(
                 "",
                 text: $viewModel.query,
-                prompt: Text("축제, 장소, 주소 검색")
+                prompt: Text("행사, 장소, 주소 검색")
                     .foregroundColor(FestivalDesign.secondaryText)
             )
                 .font(.festival(.subheadline))
@@ -724,39 +761,54 @@ struct MapHomeView: View {
         .buttonStyle(.plain)
         .accessibilityValue(isOn ? "\u{CF1C}\u{C9D0}" : "\u{AEBC}\u{C9D0}")
     }
-    private var destinationResults: some View {
+    /// 지도 검색은 장소만 찾던 시절의 이름을 버리고, 이미 불러온 행사 데이터도 함께 훑는다.
+    /// 별도 API 없이 레이어에 올라온 축제·공연·가게 이벤트의 검색 텍스트를 그대로 쓴다.
+    private var searchEventMatches: [DiscoverListItem] {
+        let keyword = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard keyword.count >= 2 else { return [] }
+        let ref = locationProvider.coordinate
+        var seen = Set<String>()
+        var matches: [DiscoverListItem] = []
+
+        func append(_ item: DiscoverListItem) {
+            guard item.searchText.contains(keyword), seen.insert(item.id).inserted else { return }
+            matches.append(item)
+        }
+
+        for festival in viewModel.festivals {
+            append(.festival(festival, referenceCoordinate: ref))
+        }
+        for performance in viewModel.performances {
+            switch performance {
+            case .festival(let festival): append(.festival(festival, referenceCoordinate: ref))
+            case .event(let event): append(.event(event, referenceCoordinate: ref))
+            }
+        }
+        for event in viewModel.events {
+            append(.event(event, referenceCoordinate: ref))
+        }
+
+        return Array(matches.sorted { $0.distanceMeters < $1.distanceMeters }.prefix(8))
+    }
+
+    private var searchResults: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(viewModel.destinations) { destination in
-                    Button {
-                        isSearchFocused = false
-                        destinationStore.addRecent(destination)
-                        focusMap(
-                            to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
-                            zoomLevel: 16
-                        )
-                        Task { await viewModel.select(destination) }
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "mappin.circle.fill")
-                                .foregroundStyle(FestivalDesign.coralText)
-                                .padding(.top, 2)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(destination.name)
-                                    .font(.festival(.headline))
-                                    .foregroundStyle(FestivalDesign.navy)
-                                Text(destination.address)
-                                    .font(.festival(.subheadline))
-                                    .foregroundStyle(FestivalDesign.secondaryText)
-                                    .lineLimit(2)
-                            }
-                            Spacer()
-                        }
-                        .padding(12)
+                if !searchEventMatches.isEmpty {
+                    searchSectionHeader("행사")
+                    ForEach(searchEventMatches) { item in
+                        eventResultRow(item)
+                        Divider()
+                            .padding(.leading, 40)
                     }
-                    .buttonStyle(.plain)
-                    Divider()
-                        .padding(.leading, 40)
+                }
+                if !viewModel.destinations.isEmpty {
+                    searchSectionHeader("장소")
+                    ForEach(viewModel.destinations) { destination in
+                        destinationResultRow(destination)
+                        Divider()
+                            .padding(.leading, 40)
+                    }
                 }
             }
         }
@@ -764,7 +816,7 @@ struct MapHomeView: View {
         .simultaneousGesture(TapGesture().onEnded {
             isSearchFocused = false
         })
-        .frame(maxHeight: 230)
+        .frame(maxHeight: 280)
         .background(FestivalDesign.surface.opacity(0.96))
         .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
         .overlay(
@@ -772,6 +824,90 @@ struct MapHomeView: View {
                 .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
         )
         .festivalShadow(.medium)
+    }
+
+    private func searchSectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.festival(.caption, weight: .bold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+
+    private func eventResultRow(_ item: DiscoverListItem) -> some View {
+        Button {
+            isSearchFocused = false
+            if let coordinate = coordinate(of: item.kind) {
+                focusMap(to: coordinate, zoomLevel: 15)
+            }
+            openDiscoverResults(item.kind)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: item.symbol)
+                    .foregroundStyle(item.tint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.festival(.headline))
+                        .foregroundStyle(FestivalDesign.navy)
+                        .lineLimit(1)
+                    Text("\(item.typeText) · \(item.statusText) · \(item.dateText)")
+                        .font(.festival(.caption))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.festival(.subheadline))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func coordinate(of kind: DiscoverListItem.Kind) -> CLLocationCoordinate2D? {
+        switch kind {
+        case .festival(let festival):
+            return CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
+        case .event(let event):
+            return CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
+        }
+    }
+
+    private func destinationResultRow(_ destination: Destination) -> some View {
+        Button {
+            isSearchFocused = false
+            destinationStore.addRecent(destination)
+            focusMap(
+                to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
+                zoomLevel: 16
+            )
+            Task { await viewModel.select(destination) }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "mappin.circle.fill")
+                    .foregroundStyle(FestivalDesign.coralText)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(destination.name)
+                        .font(.festival(.headline))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(destination.address)
+                        .font(.festival(.subheadline))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .lineLimit(2)
+                }
+                Spacer()
+            }
+            .padding(12)
+        }
+        .buttonStyle(.plain)
     }
 
     private var mapControls: some View {
@@ -789,6 +925,9 @@ struct MapHomeView: View {
                 Button {
                     if let coordinate = locationProvider.coordinate {
                         moveMap(to: coordinate, zoomLevel: 15)
+                    } else if isLocationDenied {
+                        // 권한이 막힌 상태에서 request()는 아무 일도 하지 않아 버튼이 고장난 것처럼 보인다.
+                        openLocationSettings()
                     } else {
                         shouldCenterOnNextLocation = true
                         locationProvider.request()

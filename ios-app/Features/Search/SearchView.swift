@@ -1,5 +1,6 @@
 import CoreLocation
 import SwiftUI
+import UIKit
 
 struct SearchView: View {
     let apiClient: APIClientProtocol
@@ -11,15 +12,18 @@ struct SearchView: View {
     @State private var query = ""
     @State private var debouncedQuery = ""
     @State private var isLoading = false
+    /// 마지막 성공 시각. 탭을 다시 열어도 이만큼 지나기 전에는 다시 부르지 않는다.
+    @State private var lastLoadedAt: Date?
     @State private var errorMessage: String?
     @State private var selectedKind: DiscoverTabKind = .all
-    @State private var sort: DiscoverTabSort = .distance
+    // 위치를 아직 모를 때 거리순은 사용자와의 거리가 아니라 전국 중심 기준 거리라 의미가 없다.
+    @State private var sort: DiscoverTabSort = .ongoing
+    @State private var hasChosenSort = false
     @StateObject private var locationProvider = UserLocationProvider()
     @State private var filters = DiscoverTabFilters()
     @State private var showsFilters = false
     @State private var visibleItemCount = 20
     @State private var loadTask: Task<Void, Never>?
-    @State private var cleanupTask: Task<Void, Never>?
     @State private var queryDebounceTask: Task<Void, Never>?
     @State private var allItems: [DiscoverTabItem] = []
     @State private var filteredItems: [DiscoverTabItem] = []
@@ -34,7 +38,8 @@ struct SearchView: View {
     private let koreaCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
     private let discoverRadiusMeters = 460_000
     private let pageSize = 20
-    private let cleanupDelayNanoseconds: UInt64 = 500_000_000
+    /// 이 시간이 지나야 다시 조회한다. 탭 전환마다 전국 데이터를 다시 받지 않기 위한 값.
+    private let staleInterval: TimeInterval = 600
     private let queryDebounceNanoseconds: UInt64 = 250_000_000
 
     var body: some View {
@@ -47,6 +52,7 @@ struct SearchView: View {
                     VStack(spacing: 10) {
                         searchField
                         discoverControls
+                        locationNotice
                     }
                     .padding(12)
                     .festivalCard()
@@ -148,24 +154,21 @@ struct SearchView: View {
                 applyPendingDiscoverFilter()
                 startDiscoverLoad()
             }
-            .onDisappear {
-                if tabRouter.selectedTab != .discover {
-                    scheduleDiscoverUnload()
-                }
-            }
             .onChange(of: tabRouter.selectedTab) { selectedTab in
-                if selectedTab == .discover {
-                    applyPendingDiscoverFilter()
-                    startDiscoverLoad()
-                } else {
-                    scheduleDiscoverUnload()
-                }
+                guard selectedTab == .discover else { return }
+                applyPendingDiscoverFilter()
+                startDiscoverLoad()
             }
             .onChange(of: tabRouter.discoverFilterQuery) { _ in
                 applyPendingDiscoverFilter()
             }
-            .onChange(of: locationProvider.coordinate?.latitude) { _ in
-                if sort == .distance { recomputeFilteredItems() }
+            .onChange(of: locationProvider.coordinate?.latitude) { latitude in
+                // 좌표가 들어오면 그때 거리순으로 올린다. 사용자가 정렬을 직접 고른 뒤에는 건드리지 않는다.
+                if latitude != nil, !hasChosenSort, sort != .distance {
+                    sort = .distance
+                } else if sort == .distance {
+                    recomputeFilteredItems()
+                }
             }
             .onChange(of: query) { newValue in
                 scheduleQueryDebounce(newValue)
@@ -188,7 +191,7 @@ struct SearchView: View {
             }
             .sheet(isPresented: $showsFilters) {
                 DiscoverTabFilterSheet(
-                    filters: $filters,
+                    applied: $filters,
                     kind: selectedKind,
                     sources: availableSources,
                     festivalCategories: availableFestivalCategories,
@@ -275,7 +278,10 @@ struct SearchView: View {
 
             HStack(spacing: 8) {
                 Menu {
-                    Picker("정렬", selection: $sort) {
+                    Picker("정렬", selection: Binding(get: { sort }, set: { newValue in
+                        sort = newValue
+                        hasChosenSort = true
+                    })) {
                         ForEach(DiscoverTabSort.allCases) { option in
                             Text(option.title).tag(option)
                         }
@@ -296,6 +302,38 @@ struct SearchView: View {
                 }
                 .buttonStyle(DiscoverControlButtonStyle(tint: FestivalDesign.coral, isActive: filters.hasFilters))
             }
+        }
+    }
+
+    /// 위치 권한이 없으면 거리순이 실제 거리가 아니게 된다. 그 사실과 해결 경로를 같이 알린다.
+    @ViewBuilder
+    private var locationNotice: some View {
+        if locationProvider.authorizationStatus == .denied || locationProvider.authorizationStatus == .restricted {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "location.slash")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.coralText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("위치 권한이 꺼져 있어요")
+                        .font(.festival(.caption, weight: .bold))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text("거리순 대신 진행중 우선으로 보여 주고 있어요. 필터에서 지역을 골라 주세요.")
+                        .font(.festival(.caption2))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button("설정 열기") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(.festival(.caption, weight: .bold))
+                .buttonStyle(.plain)
+                .foregroundStyle(FestivalDesign.tealText)
+            }
+            .padding(10)
+            .background(FestivalDesign.cream.opacity(0.6))
+            .clipShape(FestivalDesign.controlShape)
         }
     }
 
@@ -411,29 +449,13 @@ struct SearchView: View {
 
     private func startDiscoverLoad(force: Bool = false) {
         guard tabRouter.selectedTab == .discover else { return }
-        cleanupTask?.cancel()
-        cleanupTask = nil
-        guard force || (festivals.isEmpty && events.isEmpty) else { return }
+        let hasItems = !(festivals.isEmpty && events.isEmpty)
+        let isStale = lastLoadedAt.map { Date().timeIntervalSince($0) > staleInterval } ?? true
+        guard force || !hasItems || isStale else { return }
         loadTask?.cancel()
         loadTask = Task { @MainActor in
-            await loadDiscoverItems()
-        }
-    }
-
-    private func scheduleDiscoverUnload() {
-        loadTask?.cancel()
-        loadTask = nil
-        cleanupTask?.cancel()
-        cleanupTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: cleanupDelayNanoseconds)
-            guard !Task.isCancelled, tabRouter.selectedTab != .discover else { return }
-            festivals = []
-            events = []
-            errorMessage = nil
-            isLoading = false
-            resetVisibleItems()
-            rebuildAllItems()
-            cleanupTask = nil
+            // 이미 목록이 있으면 화면을 비우지 않고 뒤에서만 갱신한다.
+            await loadDiscoverItems(showsSpinner: force || !hasItems)
         }
     }
 
@@ -446,8 +468,8 @@ struct SearchView: View {
         visibleItemCount = min(visibleItemCount + pageSize, filteredItems.count)
     }
 
-    private func loadDiscoverItems() async {
-        isLoading = true
+    private func loadDiscoverItems(showsSpinner: Bool) async {
+        if showsSpinner { isLoading = true }
         errorMessage = nil
         do {
             async let festivalItems = apiClient.nearbyFestivals(
@@ -483,11 +505,15 @@ struct SearchView: View {
                 }
             }
             events = mergedEvents
+            lastLoadedAt = Date()
             resetVisibleItems()
             rebuildAllItems()
         } catch {
             guard !Task.isCancelled else { return }
-            errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
+            // 뒤에서 갱신하다 실패한 경우에는 이미 보여 주던 목록을 에러 카드로 덮지 않는다.
+            if festivals.isEmpty && events.isEmpty {
+                errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
+            }
         }
         guard !Task.isCancelled else { return }
         isLoading = false
@@ -808,12 +834,31 @@ private struct DiscoverTabFilters: Equatable {
 
 private struct DiscoverTabFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Binding var filters: DiscoverTabFilters
+    // 캘린더 필터와 동작을 맞춘다. 시트를 밀어 닫으면 변경이 버려지고, "적용"을 눌러야 반영된다.
+    @Binding var applied: DiscoverTabFilters
+    @State private var filters: DiscoverTabFilters
     let kind: DiscoverTabKind
     let sources: [String]
     let festivalCategories: [FestivalPrimaryCategory]
     let eventCategories: [LocalEventPrimaryCategory]
     let regions: [String]
+
+    init(
+        applied: Binding<DiscoverTabFilters>,
+        kind: DiscoverTabKind,
+        sources: [String],
+        festivalCategories: [FestivalPrimaryCategory],
+        eventCategories: [LocalEventPrimaryCategory],
+        regions: [String]
+    ) {
+        _applied = applied
+        _filters = State(initialValue: applied.wrappedValue)
+        self.kind = kind
+        self.sources = sources
+        self.festivalCategories = festivalCategories
+        self.eventCategories = eventCategories
+        self.regions = regions
+    }
 
     var body: some View {
         NavigationStack {
@@ -841,7 +886,8 @@ private struct DiscoverTabFilterSheet: View {
                     .foregroundStyle(FestivalDesign.coralText)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("완료") {
+                    Button("적용") {
+                        applied = filters
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1237,6 +1283,7 @@ struct DiscoverTabThumbnail: View {
 @MainActor
 private final class UserLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var coordinate: CLLocationCoordinate2D?
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     private let manager = CLLocationManager()
 
     override init() {
@@ -1244,6 +1291,7 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         let status = manager.authorizationStatus
+        authorizationStatus = status
         if status == .authorizedWhenInUse || status == .authorizedAlways {
             manager.requestLocation()
         } else if status == .notDetermined {
@@ -1258,6 +1306,7 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
+        Task { @MainActor in self.authorizationStatus = status }
         if status == .authorizedWhenInUse || status == .authorizedAlways {
             Task { @MainActor in manager.requestLocation() }
         }

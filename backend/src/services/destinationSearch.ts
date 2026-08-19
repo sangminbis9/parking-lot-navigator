@@ -3,8 +3,13 @@ import { config } from "../config/env.js";
 import { normalizePlaceCategory } from "../features/analytics/categoryNormalization.js";
 
 export async function searchDestination(query: string): Promise<DestinationCandidate[]> {
-  if (!config.KAKAO_REST_API_KEY || config.PARKING_PROVIDER_MODE === "mock") {
+  if (config.PARKING_PROVIDER_MODE === "mock") {
     return mockDestinations(query);
+  }
+
+  // 운영 모드에서 mock으로 내려가면 "검색 실패"가 "엉뚱한 서울 좌표"로 둔갑한다.
+  if (!config.KAKAO_REST_API_KEY) {
+    throw new DestinationSearchUnavailableError("KAKAO_REST_API_KEY가 설정되지 않았습니다.");
   }
 
   const url = new URL("/v2/local/search/keyword.json", config.KAKAO_LOCAL_BASE_URL);
@@ -19,8 +24,8 @@ export async function searchDestination(query: string): Promise<DestinationCandi
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.warn("Kakao Local API 호출 실패, mock 목적지로 fallback합니다.", { status: response.status, errorText });
-    return mockDestinations(query);
+    console.warn("Kakao Local API 호출 실패", { status: response.status, errorText });
+    throw new DestinationSearchUnavailableError(`Kakao Local API 호출 실패 (status ${response.status})`);
   }
 
   const body = (await response.json()) as {
@@ -46,6 +51,15 @@ export async function searchDestination(query: string): Promise<DestinationCandi
     rawCategory: doc.category_name || doc.category_group_name || null,
     normalizedCategory: normalizePlaceCategory(doc.category_name || doc.category_group_name, doc.place_name)
   }));
+}
+
+export class DestinationSearchUnavailableError extends Error {
+  readonly code = "destination_search_unavailable";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "DestinationSearchUnavailableError";
+  }
 }
 
 function mockDestinations(query: string): DestinationCandidate[] {

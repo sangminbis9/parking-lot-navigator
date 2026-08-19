@@ -11,6 +11,7 @@ struct CalendarTabView: View {
     @EnvironmentObject private var favoritesStore: FestivalFavoritesStore
     @EnvironmentObject private var reminderService: FestivalReminderService
     @StateObject private var performanceViewModel: PerformanceViewModel
+    @StateObject private var storeEventViewModel: StoreEventViewModel
     @StateObject private var locationProvider = CurrentLocationProvider()
 
     @State private var monthAnchor: Date = Date()
@@ -29,6 +30,7 @@ struct CalendarTabView: View {
         self.apiClient = apiClient
         _viewModel = StateObject(wrappedValue: CalendarViewModel(apiClient: apiClient))
         _performanceViewModel = StateObject(wrappedValue: PerformanceViewModel(apiClient: apiClient))
+        _storeEventViewModel = StateObject(wrappedValue: StoreEventViewModel(apiClient: apiClient))
     }
 
     var body: some View {
@@ -57,6 +59,7 @@ struct CalendarTabView: View {
             await reload()
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
             await performanceViewModel.load(coordinate: coord)
+            await storeEventViewModel.load(coordinate: coord)
             await reminderService.refreshScheduled()
         }
         .onChange(of: filterModel.filter) { _ in
@@ -67,6 +70,7 @@ struct CalendarTabView: View {
         .onChange(of: locationProvider.coordinate?.latitude) { _ in
             Task { await reload() }
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
+            Task { await storeEventViewModel.load(coordinate: coord) }
             festivalSync.sync(coordinate: coord)
         }
         .sheet(isPresented: $presentingFilter) {
@@ -243,6 +247,7 @@ struct CalendarTabView: View {
                         }
                     }
                     performanceSection
+                    storeEventSection
                 }
                 .padding(.top, 14)
             }
@@ -353,6 +358,52 @@ struct CalendarTabView: View {
                 ForEach(items) { item in
                     PerformanceRow(item: item) {
                         router.showResults(for: item.discoverDestination, presentation: item.presentation)
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .padding(.bottom, 14)
+    }
+
+    /// 축제·공연과 같은 날짜 기준으로 로컬 매장 이벤트도 함께 보여 준다.
+    private var storeEventSection: some View {
+        let dayFormatter = CalendarViewModel.dayFormatter
+        let items: [FreeEvent] = {
+            guard let day = selectedDay else { return [] }
+            return storeEventViewModel.eventsForDay(day, formatter: dayFormatter)
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Divider()
+                .overlay(FestivalDesign.creamDeep.opacity(0.4))
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+            HStack(spacing: 6) {
+                Image(systemName: "bag.fill")
+                    .font(.festival(size: 12, weight: .bold))
+                    .foregroundStyle(FestivalDesign.readable(FestivalDesign.coral))
+                Text("\(selectedDayTitle) 근처 가게 이벤트 · \(items.count)개")
+                    .font(.festival(size: 14, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+                if storeEventViewModel.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if items.isEmpty && !storeEventViewModel.isLoading {
+                Text("선택한 날짜에 근처 가게 이벤트가 없습니다")
+                    .font(.festival(size: 12))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .padding(.horizontal, 16)
+            } else {
+                ForEach(items) { event in
+                    StoreEventRow(event: event) {
+                        router.showResults(for: event.discoverDestination, presentation: event.discoverPresentation)
                     }
                     .padding(.horizontal, 16)
                 }
@@ -743,6 +794,56 @@ private struct PerformanceRow: View {
             Spacer(minLength: 0)
             DiscoverShareButton(
                 content: p.shareContent(destinationId: item.discoverDestination.id),
+                iconSize: 15,
+                tapSize: 40
+            )
+        }
+        .padding(12)
+        .festivalCard()
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+}
+
+private struct StoreEventRow: View {
+    let event: FreeEvent
+    let onSelect: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(FestivalDesign.coral)
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(event.timelineStatus.displayText)
+                        .font(.festival(size: 10, weight: .bold))
+                        .foregroundStyle(FestivalDesign.readable(FestivalDesign.coral))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(FestivalDesign.coral.opacity(0.12))
+                        .clipShape(FestivalDesign.chipShape)
+                    Text(event.dateText)
+                        .font(.festival(size: 11, weight: .medium))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                Text(event.title)
+                    .font(.festival(size: 15, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .multilineTextAlignment(.leading)
+                if let benefit = event.benefit, !benefit.isEmpty {
+                    Text(benefit)
+                        .font(.festival(size: 12))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                }
+                Text(event.storeName)
+                    .font(.festival(size: 11))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            DiscoverShareButton(
+                content: event.shareContent,
                 iconSize: 15,
                 tapSize: 40
             )
