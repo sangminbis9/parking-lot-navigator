@@ -10,7 +10,7 @@ final class MapPinPhotoStore: ObservableObject {
     private static let maxPixel: CGFloat = 128
 
     /// 로드가 끝났음을 알리는 신호. 값 자체는 쓰지 않고 재렌더 트리거로만 쓴다.
-    @Published private var loadedGeneration = 0
+    @Published private(set) var loadedGeneration = 0
     private var inFlight: Set<String> = []
     /// 실패한 URL. 그냥 두면 실패 → 재렌더 → 재시도가 무한히 돈다.
     private var failed: Set<String> = []

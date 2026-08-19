@@ -8,11 +8,11 @@ final class MapHomeViewModel: ObservableObject {
     @Published var query = ""
     @Published var destinations: [Destination] = []
     @Published var selectedDestination: Destination?
-    @Published var parkingLots: [ParkingLot] = []
-    @Published var realtimeParkingLots: [ParkingLot] = []
-    @Published var staticFreeParkingLots: [ParkingLot] = []
-    @Published var festivals: [Festival] = []
-    @Published var events: [FreeEvent] = []
+    @Published var parkingLots: [ParkingLot] = [] { didSet { pinDataRevision &+= 1 } }
+    @Published var realtimeParkingLots: [ParkingLot] = [] { didSet { pinDataRevision &+= 1 } }
+    @Published var staticFreeParkingLots: [ParkingLot] = [] { didSet { pinDataRevision &+= 1 } }
+    @Published var festivals: [Festival] = [] { didSet { pinDataRevision &+= 1 } }
+    @Published var events: [FreeEvent] = [] { didSet { pinDataRevision &+= 1 } }
     @Published var selectedParkingLot: ParkingLot?
     @Published var selectedDiscoverParkingContext = false
     @Published var showsFestivalLayer = true
@@ -21,7 +21,7 @@ final class MapHomeViewModel: ObservableObject {
     /// 산업·박람회(`primary_category == .tradeExpo`)는 축제와 같은 `/api/festivals` 응답으로 오지만
     /// 지도에서는 별도 토글로 켜고 끈다. 두 토글 중 하나라도 켜져 있으면 축제 레이어를 불러온다.
     @Published var showsTradeExpoLayer = true
-    @Published var performances: [PerformanceItem] = []
+    @Published var performances: [PerformanceItem] = [] { didSet { pinDataRevision &+= 1 } }
     @Published var showsRealtimeParkingLayer = false
     @Published var showsFreeParkingLayer = false
     @Published var exploreMode: MapExploreMode = .parking
@@ -30,6 +30,10 @@ final class MapHomeViewModel: ObservableObject {
     @Published var isLoadingDiscover = false
     @Published var isLoadingRealtimeParking = false
     @Published var errorMessage: String?
+
+    /// 지도 핀 파이프라인 memoization 키. 배열을 통째로 비교하는 건 비싸서 "몇 번째 대입인지"만 센다.
+    /// 핀 소스가 되는 배열이 새로 대입될 때마다 올라간다.
+    private(set) var pinDataRevision = 0
 
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
