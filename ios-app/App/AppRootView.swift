@@ -48,8 +48,10 @@ struct AppRootView: View {
     @EnvironmentObject private var themeStore: FestivalThemeStore
     @EnvironmentObject private var festivalSync: FestivalSyncService
     @EnvironmentObject private var discoveryService: DiscoveryNotificationService
-    @StateObject private var router = Router()
+    @StateObject private var routers = TabRouters()
     @StateObject private var tabRouter = AppTabRouter()
+    // 아직 한 번도 열지 않은 탭은 만들지 않는다. 앱 실행 직후 다섯 탭이 동시에 로딩되면 안 된다.
+    @State private var visitedTabs: Set<AppTab> = [.map]
     @StateObject private var festivalFilterModel = FestivalFilterModel(
         scope: "shared",
         appGroupID: AppConfiguration.current.appGroupID
@@ -64,21 +66,23 @@ struct AppRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            routedStack {
-                switch tabRouter.selectedTab {
-                case .map:
-                    MapHomeView(apiClient: apiClient)
-                case .discover:
-                    SearchView(apiClient: apiClient)
-                case .favorites:
-                    FavoritesView()
-                case .calendar:
-                    CalendarTabView(apiClient: apiClient)
-                case .settings:
-                    SettingsView(apiClient: apiClient)
+            ZStack {
+                // 탭은 처음 열 때 한 번만 만들고 이후에는 숨긴 채 살려 둔다. 탭을 오갔다고
+                // 화면 스택·지도 위치·불러온 목록이 사라지면 안 되기 때문이다.
+                ForEach(AppTab.visibleTabs, id: \.self) { tab in
+                    if visitedTabs.contains(tab) {
+                        TabNavigationStack(
+                            router: routers.router(for: tab),
+                            tab: tab,
+                            apiClient: apiClient
+                        )
+                        .opacity(tab == tabRouter.selectedTab ? 1 : 0)
+                        .allowsHitTesting(tab == tabRouter.selectedTab)
+                        .accessibilityHidden(tab != tabRouter.selectedTab)
+                        .zIndex(tab == tabRouter.selectedTab ? 1 : 0)
+                    }
                 }
             }
-            .id(tabRouter.selectedTab)
             .animation(.easeInOut(duration: FestivalDesign.Motion.quick), value: tabRouter.selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -109,8 +113,8 @@ struct AppRootView: View {
         .onChange(of: themeStore.isDarkMode) { _ in
             Self.configureTabBarAppearance()
         }
-        .onChange(of: tabRouter.selectedTab) { _ in
-            router.path.removeAll()
+        .onChange(of: tabRouter.selectedTab) { tab in
+            visitedTabs.insert(tab)
         }
         // 필터가 바뀌면 위젯이 보고 있는 캐시도 같은 기준으로 다시 채운다.
         .onChange(of: festivalFilterModel.filter) { _ in
@@ -126,8 +130,7 @@ struct AppRootView: View {
         .onReceive(DeepLinkRouter.shared.$pendingCalendarAt) { at in
             guard at != nil else { return }
             DeepLinkRouter.shared.pendingCalendarAt = nil
-            tabRouter.selectedTab = .calendar
-            router.path.removeAll()
+            openTab(.calendar).path.removeAll()
         }
         .onReceive(DeepLinkRouter.shared.$pendingFestival) { festival in
             guard let festival else { return }
@@ -144,40 +147,23 @@ struct AppRootView: View {
             if let cached {
                 openDiscover(cached)
             } else {
-                tabRouter.selectedTab = .discover
-                router.path.removeAll()
+                openTab(.discover).path.removeAll()
             }
         }
     }
 
     private func openDiscover(_ festival: Festival) {
-        tabRouter.selectedTab = .discover
+        let router = openTab(.discover)
         router.path.removeAll()
         router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
     }
 
-    private func routedStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack(path: $router.path) {
-            content()
-                .navigationDestination(for: AppRoute.self) { route in
-                    routeDestination(for: route)
-                }
-        }
-        .environmentObject(router)
-    }
-
-    @ViewBuilder
-    private func routeDestination(for route: AppRoute) -> some View {
-        switch route {
-        case .parkingResults(let destination, let presentation):
-            ParkingResultsView(destination: destination, apiClient: apiClient, presentation: presentation)
-        case .nearbyParkingMap(let destination, let recommendations):
-            NearbyParkingMapView(destination: destination, recommendations: recommendations)
-        case .parkingDetail(let destination, let parkingLot):
-            ParkingDetailView(destination: destination, parkingLot: parkingLot)
-        case .navigation(let destination, let parkingLot):
-            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
-        }
+    /// 딥링크로 탭을 전환한다. 아직 만들지 않은 탭이면 이번에 만들도록 표시하고, 그 탭의 라우터를 돌려준다.
+    @discardableResult
+    private func openTab(_ tab: AppTab) -> Router {
+        tabRouter.selectedTab = tab
+        visitedTabs.insert(tab)
+        return routers.router(for: tab)
     }
 
     private static func configureTabBarAppearance() {
@@ -223,6 +209,71 @@ struct AppRootView: View {
         UINavigationBar.appearance().compactAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().tintColor = titleColor
+    }
+}
+
+/// 탭마다 독립된 NavigationStack 경로를 갖도록 라우터를 탭 수만큼 들고 있는다.
+final class TabRouters: ObservableObject {
+    let map = Router()
+    let discover = Router()
+    let favorites = Router()
+    let calendar = Router()
+    let settings = Router()
+
+    func router(for tab: AppTab) -> Router {
+        switch tab {
+        case .map: return map
+        case .discover: return discover
+        case .favorites: return favorites
+        case .calendar: return calendar
+        case .settings: return settings
+        }
+    }
+}
+
+private struct TabNavigationStack: View {
+    @ObservedObject var router: Router
+    let tab: AppTab
+    let apiClient: APIClientProtocol
+
+    var body: some View {
+        NavigationStack(path: $router.path) {
+            rootView
+                .navigationDestination(for: AppRoute.self) { route in
+                    routeDestination(for: route)
+                }
+        }
+        .environmentObject(router)
+    }
+
+    @ViewBuilder
+    private var rootView: some View {
+        switch tab {
+        case .map:
+            MapHomeView(apiClient: apiClient)
+        case .discover:
+            SearchView(apiClient: apiClient)
+        case .favorites:
+            FavoritesView()
+        case .calendar:
+            CalendarTabView(apiClient: apiClient)
+        case .settings:
+            SettingsView(apiClient: apiClient)
+        }
+    }
+
+    @ViewBuilder
+    private func routeDestination(for route: AppRoute) -> some View {
+        switch route {
+        case .parkingResults(let destination, let presentation):
+            ParkingResultsView(destination: destination, apiClient: apiClient, presentation: presentation)
+        case .nearbyParkingMap(let destination, let recommendations):
+            NearbyParkingMapView(destination: destination, recommendations: recommendations)
+        case .parkingDetail(let destination, let parkingLot):
+            ParkingDetailView(destination: destination, parkingLot: parkingLot)
+        case .navigation(let destination, let parkingLot):
+            NavigationLaunchView(destination: destination, parkingLot: parkingLot)
+        }
     }
 }
 
