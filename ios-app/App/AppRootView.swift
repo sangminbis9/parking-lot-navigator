@@ -112,12 +112,22 @@ struct AppRootView: View {
         .onChange(of: tabRouter.selectedTab) { _ in
             router.path.removeAll()
         }
+        // 필터가 바뀌면 위젯이 보고 있는 캐시도 같은 기준으로 다시 채운다.
+        .onChange(of: festivalFilterModel.filter) { _ in
+            festivalSync.sync(coordinate: nil)
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 festivalSync.syncIfStale(coordinate: nil)
             } else if phase == .background {
                 discoveryService.scheduleNextRefresh()
             }
+        }
+        .onReceive(DeepLinkRouter.shared.$pendingCalendarAt) { at in
+            guard at != nil else { return }
+            DeepLinkRouter.shared.pendingCalendarAt = nil
+            tabRouter.selectedTab = .calendar
+            router.path.removeAll()
         }
         .onReceive(DeepLinkRouter.shared.$pendingFestival) { festival in
             guard let festival else { return }

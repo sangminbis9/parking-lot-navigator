@@ -1,6 +1,7 @@
 import SwiftUI
 import WidgetKit
 
+/// 크기별 위젯의 진입점. 실제 레이아웃은 크기마다 다른 파일이 갖고 있고 여기서는 고르기만 한다.
 struct UpcomingFestivalsEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: UpcomingFestivalsEntry
@@ -13,193 +14,57 @@ struct UpcomingFestivalsEntryView: View {
     @ViewBuilder
     private var layout: some View {
         if entry.items.isEmpty {
-            emptyState
+            WidgetEmptyState(entry: entry, compact: family == .systemSmall)
         } else {
             switch family {
             case .systemSmall:
-                smallLayout
+                if let hero = entry.items.first {
+                    SmallFestivalWidgetView(entry: entry, festival: hero)
+                }
             case .systemLarge:
-                largeLayout
+                LargeFestivalWidgetView(entry: entry)
             default:
-                mediumLayout
+                MediumFestivalWidgetView(entry: entry)
             }
         }
-    }
-
-    /// 작은 위젯은 탭 영역이 하나뿐이라 카드별 Link 대신 widgetURL로 축제 하나만 연결한다.
-    @ViewBuilder
-    private var smallLayout: some View {
-        if let hero = entry.items.first {
-            heroCard(hero)
-                .padding(10)
-                .widgetURL(Self.deepLink(hero))
-        }
-    }
-
-    private var largeLayout: some View {
-        let visible = Array(entry.items.prefix(5))
-        return VStack(alignment: .leading, spacing: 8) {
-            if let hero = visible.first {
-                Link(destination: Self.deepLink(hero)) {
-                    heroCard(hero)
-                }
-                .frame(height: 108)
-            }
-            ForEach(Array(visible.dropFirst().enumerated()), id: \.offset) { _, festival in
-                Link(destination: Self.deepLink(festival)) {
-                    rowCard(festival)
-                }
-            }
-            Spacer(minLength: 0)
-            if let staleText = staleText {
-                Text(staleText)
-                    .font(.system(size: 9))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(12)
-    }
-
-    /// 결과가 없는 이유를 구분한다. 캐시 자체가 없으면 필터 문제가 아니라 아직 동기화를 못 한 것이다.
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 22))
-                .foregroundStyle(FestivalDesign.coralText)
-            Text(entry.generatedAt == nil ? "아직 축제를 받아오지 못했어요" : "다가오는 축제가 없어요")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(FestivalDesign.navy)
-            Text(entry.generatedAt == nil ? "앱을 한 번 열어 주세요" : "앱에서 필터를 조정해보세요")
-                .font(.system(size: 11))
-                .foregroundStyle(FestivalDesign.secondaryText)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var mediumLayout: some View {
-        let visible = Array(entry.items.prefix(3))
-        return HStack(alignment: .top, spacing: 10) {
-            if let hero = visible.first {
-                Link(destination: Self.deepLink(hero)) {
-                    heroCard(hero)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(visible.dropFirst().prefix(2).enumerated()), id: \.offset) { _, festival in
-                    Link(destination: Self.deepLink(festival)) {
-                        rowCard(festival)
-                    }
-                }
-                Spacer(minLength: 0)
-                if let staleText = staleText {
-                    Text(staleText)
-                        .font(.system(size: 9))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding(10)
-    }
-
-    private static func deepLink(_ festival: Festival) -> URL {
-        DeepLinkRouter.shared.urlForDestination(id: festival.id)
-    }
-
-    /// 캐시가 3시간 넘게 묵었을 때만 표시한다. 갓 받아온 데이터에 시각을 붙이면 잡음이다.
-    private var staleText: String? {
-        guard let generatedAt = entry.generatedAt else { return nil }
-        let elapsed = entry.date.timeIntervalSince(generatedAt)
-        guard elapsed >= 3 * 3600 else { return nil }
-        let hours = Int(elapsed / 3600)
-        if hours >= 24 {
-            return "\(hours / 24)일 전 업데이트"
-        }
-        return "\(hours)시간 전 업데이트"
-    }
-
-    private func heroCard(_ festival: Festival) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern)
-                    .frame(width: 5, height: 5)
-                Text(festival.status.displayText)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(festival.status == .ongoing ? FestivalDesign.tealText : FestivalDesign.lanternText)
-            }
-            Text(festival.title)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(FestivalDesign.navy)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: 2)
-            Text(formattedRange(festival))
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            if let venue = festival.venueName, !venue.isEmpty {
-                Text(venue)
-                    .font(.system(size: 10))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .lineLimit(1)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(FestivalDesign.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(FestivalDesign.creamDeep.opacity(0.5), lineWidth: 1)
-        )
-    }
-
-    private func rowCard(_ festival: Festival) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern)
-                    .frame(width: 4, height: 4)
-                Text(festival.title)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(FestivalDesign.navy)
-                    .lineLimit(1)
-            }
-            Text(formattedRange(festival))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(FestivalDesign.secondaryText)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(FestivalDesign.cream.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func formattedRange(_ festival: Festival) -> String {
-        if festival.startDate == festival.endDate {
-            return shortDate(festival.startDate)
-        }
-        return "\(shortDate(festival.startDate)) – \(shortDate(festival.endDate))"
-    }
-
-    private func shortDate(_ raw: String) -> String {
-        let parts = raw.split(separator: "-")
-        guard parts.count == 3 else { return raw }
-        return "\(parts[1]).\(parts[2])"
     }
 }
 
-private extension View {
-    @ViewBuilder
-    func containerBackgroundIfAvailable(_ color: Color) -> some View {
-        if #available(iOS 17.0, *) {
-            self.containerBackground(color, for: .widget)
-        } else {
-            self.background(color)
+#if DEBUG
+struct UpcomingFestivalsEntryView_Previews: PreviewProvider {
+    private static let sample = UpcomingFestivalsEntry(
+        date: Date(),
+        items: WidgetSampleData.items,
+        generatedAt: Date(),
+        basisKind: .location,
+        basisLabel: "내 주변",
+        hasActiveFilter: false
+    )
+
+    private static let emptyRegion = UpcomingFestivalsEntry(
+        date: Date(),
+        items: [],
+        generatedAt: Date().addingTimeInterval(-5 * 3600),
+        basisKind: .region,
+        basisLabel: "부산",
+        hasActiveFilter: true
+    )
+
+    static var previews: some View {
+        Group {
+            UpcomingFestivalsEntryView(entry: sample)
+                .previewContext(WidgetPreviewContext(family: .systemSmall))
+                .previewDisplayName("Small")
+            UpcomingFestivalsEntryView(entry: sample)
+                .previewContext(WidgetPreviewContext(family: .systemMedium))
+                .previewDisplayName("Medium")
+            UpcomingFestivalsEntryView(entry: sample)
+                .previewContext(WidgetPreviewContext(family: .systemLarge))
+                .previewDisplayName("Large")
+            UpcomingFestivalsEntryView(entry: emptyRegion)
+                .previewContext(WidgetPreviewContext(family: .systemMedium))
+                .previewDisplayName("Empty (region filter)")
         }
     }
 }
+#endif
