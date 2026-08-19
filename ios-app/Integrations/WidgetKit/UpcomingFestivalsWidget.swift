@@ -50,7 +50,7 @@ struct UpcomingFestivalsWidget: Widget {
         }
         .configurationDisplayName("다가오는 축제")
         .description("이벤트다에서 주변과 관심 지역의 다가오는 축제를 빠르게 확인하세요.")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
