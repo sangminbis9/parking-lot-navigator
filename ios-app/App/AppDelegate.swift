@@ -31,6 +31,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async {
                 DeepLinkRouter.shared.pendingFestival = festival
             }
+        } else if let jsonString = userInfo["eventJSON"] as? String,
+                  let data = jsonString.data(using: .utf8),
+                  let event = try? JSONDecoder().decode(FreeEvent.self, from: data) {
+            DispatchQueue.main.async {
+                DeepLinkRouter.shared.pendingEvent = event
+            }
         }
         completionHandler()
     }
