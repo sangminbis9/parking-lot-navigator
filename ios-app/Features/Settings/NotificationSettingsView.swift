@@ -48,7 +48,7 @@ struct NotificationSettingsView: View {
                 Text("관심 알림 받기")
                     .font(.festival(.headline))
                     .foregroundStyle(FestivalDesign.navy)
-                Text("관심 지역·카테고리에 새 축제나 로컬 이벤트가 생기면 알려드려요. 기기 상태에 따라 알림 시점은 다소 늦어질 수 있습니다.")
+                Text("관심 지역의 축제가 다가오거나 새 로컬 이벤트가 생기면 알려드려요. 기기 상태에 따라 알림 시점은 다소 늦어질 수 있습니다.")
                     .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -104,7 +104,7 @@ struct NotificationSettingsView: View {
             sectionTitle("축제 알림", systemImage: "ticket.fill")
 
             Toggle(isOn: boolBinding(\.festival.discoveryEnabled)) {
-                toggleLabel("새 축제 발견 알림", "관심 조건에 맞는 새 축제를 알려드려요")
+                toggleLabel("다가오는 축제 알림", "관심 조건에 맞는 축제·공연·박람회를 30일·7일·1일 전에 알려드려요")
             }
             .tint(FestivalDesign.coral)
 
@@ -173,7 +173,7 @@ struct NotificationSettingsView: View {
             sectionTitle("로컬 이벤트 알림", systemImage: "storefront.fill")
 
             Toggle(isOn: boolBinding(\.localEvent.discoveryEnabled)) {
-                toggleLabel("새 이벤트 발견 알림", "관심 조건에 맞는 새 로컬 이벤트를 알려드려요")
+                toggleLabel("새 이벤트 알림", "관심 조건에 새로 등록된 로컬 이벤트를 알려드려요")
             }
             .tint(FestivalDesign.coral)
 

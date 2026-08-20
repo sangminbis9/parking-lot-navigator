@@ -61,7 +61,7 @@ final class DiscoveryNotificationService: ObservableObject {
 
     // MARK: - 발견 실행
 
-    /// 백그라운드 태스크 핸들러에서 호출. 각 도메인의 신규 항목을 찾아 요약 알림을 예약한다.
+    /// 백그라운드 태스크 핸들러에서 호출. 다가오는 축제와 새로 등록된 로컬 이벤트를 알린다.
     func runDiscovery() async {
         let prefs = NotificationPreferencesStore.load(appGroupID: appGroupID)
         guard prefs.anyDiscoveryEnabled else { return }
@@ -71,56 +71,111 @@ final class DiscoveryNotificationService: ObservableObject {
         guard !prefs.isWithinQuietHours(hour: currentHour) else { return }
 
         if prefs.festival.discoveryEnabled {
-            await discoverFestivals(prefs.festival)
+            await notifyUpcomingFestivals(prefs.festival)
         }
         if prefs.localEvent.discoveryEnabled {
-            await discoverLocalEvents(prefs.localEvent)
+            await notifyNewLocalEvents(prefs.localEvent)
         }
     }
 
-    /// 신규 축제를 1건씩 개별 알림으로 보낸다. 최초 실행(known이 비어있음)에는 기존 매칭 항목을
-    /// 알림 없이 시드만 하여, 이미 지도에 있던 축제 전체가 "신규"로 오인되지 않게 한다.
-    private func discoverFestivals(_ prefs: FestivalNotificationPrefs) async {
+    // MARK: - 다가오는 축제/공연/박람회
+
+    /// 시작까지 남은 일수를 알리는 기준. `/api/festivals`가 축제·공연(KOPIS)·박람회(AKEI)를
+    /// 한꺼번에 돌려주므로 세 도메인 모두 이 경로 하나로 알린다.
+    private static let upcomingThresholds = [30, 7, 1]
+
+    /// 한 회차 알림 상한. BGAppRefreshTask에 주어지는 실행 시간이 수십 초뿐인데 항목마다
+    /// 이미지 다운로드가 한 번씩 붙는다. 상한에 걸린 항목은 표시를 남기지 않아 다음 회차에
+    /// 다시 후보로 올라온다.
+    private static let maxNotificationsPerRun = 3
+
+    /// 하루 알림 상한. 지역 전체가 대상이라 하루에 수십 건이 잡힐 수 있어 알림 피로를 막는다.
+    private static let maxNotificationsPerDay = 10
+
+    /// 선택한 지역의 다가오는 축제를 D-30 / D-7 / D-1 구간마다 한 번씩 알린다.
+    /// 최초 실행에서는 현재 구간을 알림 없이 표시만 해 둔다 — 그러지 않으면 이미 지도에 있던
+    /// 축제 전체가 한꺼번에 밀려 나온다. 표시하지 않은 더 가까운 구간(D-7·D-1)은 그대로 남으므로
+    /// 최초 실행 이후에도 알림은 계속 온다.
+    private func notifyUpcomingFestivals(_ prefs: FestivalNotificationPrefs) async {
         let festivals = await fetchFestivals(regions: prefs.regions, radiusKm: prefs.radiusKm)
         let matched = festivals.filter { festival in
             let categoryMatch = prefs.categories.isEmpty || festival.primaryCategory.map { prefs.categories.contains($0) } ?? false
             let regionMatch = prefs.regions.isEmpty || matchesRegions(address: festival.address, regions: prefs.regions)
             return categoryMatch && regionMatch
         }
-        let key = "discovery.notifiedIDs.festival"
-        let known = notifiedIDs(key: key)
-        let isFirstRun = known.isEmpty
-        let newItems = isFirstRun ? [] : matched.filter { !known.contains($0.id) }
 
-        for festival in newItems {
-            await scheduleIndividualFestivalNotification(festival)
+        let key = "discovery.notifiedThresholds.festival"
+        var marks = notifiedIDs(key: key)
+        let isFirstRun = !hasSeeded(key: "discovery.seeded.festival")
+        let today = Calendar.seoul.startOfDay(for: Date())
+
+        var candidates: [(festival: Festival, daysLeft: Int, threshold: Int)] = []
+        for festival in matched {
+            guard let daysLeft = Self.daysUntil(festival.startDate, from: today) else { continue }
+            guard let threshold = Self.thresholdBucket(daysLeft: daysLeft) else {
+                // 이미 시작했거나 끝난 축제는 "다가오는" 알림 대상이 아니다.
+                continue
+            }
+            let mark = Self.markKey(festival.id, threshold)
+            guard !marks.contains(mark) else { continue }
+            if isFirstRun {
+                marks.insert(mark)
+            } else {
+                candidates.append((festival, daysLeft, threshold))
+            }
         }
-        syncNotifiedIDs(matched: matched.map(\.id), key: key)
+
+        // 시작이 임박한 순서로 보내, 상한에 걸리더라도 가장 급한 것부터 나간다.
+        candidates.sort { $0.daysLeft < $1.daysLeft }
+        var budget = min(Self.maxNotificationsPerRun, remainingDailyBudget())
+        for candidate in candidates {
+            guard budget > 0 else { break }
+            await scheduleUpcomingFestivalNotification(candidate.festival, daysLeft: candidate.daysLeft, threshold: candidate.threshold)
+            marks.insert(Self.markKey(candidate.festival.id, candidate.threshold))
+            budget -= 1
+            bumpDailyCount()
+        }
+
+        defaults()?.set(Array(marks), forKey: key)
+        // 조회 자체가 실패해 빈 결과가 온 회차를 "시드 완료"로 남기면, 다음 회차에 기존 축제 전체가
+        // 신규로 오인돼 쏟아진다. 실제로 뭔가 조회된 회차만 시드로 인정한다.
+        if !matched.isEmpty { markSeeded(key: "discovery.seeded.festival") }
     }
 
-    private func scheduleIndividualFestivalNotification(_ festival: Festival) async {
+    private func scheduleUpcomingFestivalNotification(_ festival: Festival, daysLeft: Int, threshold: Int) async {
         let emoji = festival.primaryCategory?.emoji ?? "🎪"
         let content = UNMutableNotificationContent()
         content.title = "\(emoji) \(festival.title)"
-        let venue = festival.venueName ?? festival.address
-        content.body = "\(venue) · \(festival.startDate) ~ \(festival.endDate)"
+
+        var parts = [Self.remainingPhrase(daysLeft: daysLeft)]
+        let place = festival.venueName ?? festival.address
+        if !place.isEmpty { parts.append(place) }
+        if let start = Self.dayFormatter.date(from: festival.startDate) {
+            parts.append("\(Self.displayDateFormatter.string(from: start)) 시작")
+        }
+        content.body = parts.joined(separator: " · ")
         content.sound = .default
 
         if let data = try? JSONEncoder().encode(festival),
            let jsonString = String(data: data, encoding: .utf8) {
             content.userInfo = ["festivalJSON": jsonString]
         }
+        if let attachment = await imageAttachment(urlString: festival.imageUrl ?? festival.imageUrls.first) {
+            content.attachments = [attachment]
+        }
 
         let request = UNNotificationRequest(
-            identifier: "discovery-festival-\(festival.id)-\(Int(Date().timeIntervalSince1970))",
+            identifier: "upcoming-festival-\(festival.id)-\(threshold)",
             content: content,
             trigger: nil
         )
         try? await center.add(request)
     }
 
-    /// 신규 로컬 이벤트가 있으면 요약 알림을 보낸다.
-    private func discoverLocalEvents(_ prefs: LocalEventNotificationPrefs) async {
+    // MARK: - 새로 등록된 로컬 이벤트
+
+    /// 새로 등록된 가게 이벤트를 축제 알림과 같은 형식(대표 이미지 + 상세 이동)으로 1건씩 보낸다.
+    private func notifyNewLocalEvents(_ prefs: LocalEventNotificationPrefs) async {
         let events = await fetchLocalEvents(regions: prefs.regions, radiusKm: prefs.radiusKm)
         let matched = events.filter { event in
             let categoryMatch = prefs.categories.isEmpty || event.primaryCategory.map { prefs.categories.contains($0) } ?? false
@@ -129,28 +184,119 @@ final class DiscoveryNotificationService: ObservableObject {
         }
         let key = "discovery.notifiedIDs.localEvent"
         let known = notifiedIDs(key: key)
-        let isFirstRun = known.isEmpty
+        let isFirstRun = !hasSeeded(key: "discovery.seeded.localEvent")
         let newItems = isFirstRun ? [] : matched.filter { !known.contains($0.id) }
 
-        if !newItems.isEmpty {
-            let title = "\u{ADFC}\u{CC98} \u{C0C8} \u{C774}\u{BCA4}\u{D2B8}" // 근처 새 이벤트
-            let body = "\u{AD00}\u{C2EC} \u{C9C0}\u{C5ED}\u{C5D0} \u{C0C8}\u{B85C} \u{CD94}\u{AC00}\u{B41C} \u{B85C}\u{CEEC} \u{C774}\u{BCA4}\u{D2B8} \(newItems.count)\u{AC74}\u{C774} \u{C788}\u{C5B4}\u{C694}." // 관심 지역에 새로 추가된 로컬 이벤트 N건이 있어요.
-            await scheduleSummary(idPrefix: "discovery-localEvent", title: title, body: body)
+        var budget = min(Self.maxNotificationsPerRun, remainingDailyBudget())
+        var notified: [String] = []
+        for event in newItems {
+            guard budget > 0 else { break }
+            await scheduleNewLocalEventNotification(event)
+            notified.append(event.id)
+            budget -= 1
+            bumpDailyCount()
         }
-        syncNotifiedIDs(matched: matched.map(\.id), key: key)
+
+        // 상한에 걸려 아직 보내지 못한 항목은 표시하지 않아야 다음 회차에 다시 후보가 된다.
+        // 최초 실행에서는 기존 항목 전체를 알림 없이 시드한다.
+        syncNotifiedIDs(matched: isFirstRun ? matched.map(\.id) : notified, key: key)
+        if !matched.isEmpty { markSeeded(key: "discovery.seeded.localEvent") }
     }
 
-    private func scheduleSummary(idPrefix: String, title: String, body: String) async {
+    private func scheduleNewLocalEventNotification(_ event: FreeEvent) async {
         let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
+        content.title = "🏪 \(event.title)"
+
+        var parts = ["새로 등록된 이벤트"]
+        if !event.storeName.isEmpty { parts.append(event.storeName) }
+        if let benefit = event.benefit, !benefit.isEmpty { parts.append(benefit) }
+        content.body = parts.joined(separator: " · ")
         content.sound = .default
+
+        if let data = try? JSONEncoder().encode(event),
+           let jsonString = String(data: data, encoding: .utf8) {
+            content.userInfo = ["eventJSON": jsonString]
+        }
+        if let attachment = await imageAttachment(urlString: event.imageUrl ?? event.imageUrls.first) {
+            content.attachments = [attachment]
+        }
+
         let request = UNNotificationRequest(
-            identifier: "\(idPrefix)-\(Int(Date().timeIntervalSince1970))",
+            identifier: "new-local-event-\(event.id)",
             content: content,
-            trigger: nil // 즉시 전달
+            trigger: nil
         )
         try? await center.add(request)
+    }
+
+    // MARK: - 알림 내용 헬퍼
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M월 d일"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter
+    }()
+
+    /// "yyyy-MM-dd"와 오늘(Asia/Seoul 자정) 사이의 일수. 이미 지난 날짜면 음수.
+    private static func daysUntil(_ dayString: String, from today: Date) -> Int? {
+        guard let target = dayFormatter.date(from: dayString) else { return nil }
+        let targetDay = Calendar.seoul.startOfDay(for: target)
+        return Calendar.seoul.dateComponents([.day], from: today, to: targetDay).day
+    }
+
+    /// 남은 일수가 속한 알림 구간. 30일 구간은 8–30일, 7일 구간은 2–7일, 1일 구간은 0–1일이다.
+    /// 백그라운드 실행이 하루를 건너뛰어도 구간 안이면 늦게라도 한 번은 나간다.
+    /// 이미 시작한(음수) 축제는 어느 구간에도 들지 않는다.
+    private static func thresholdBucket(daysLeft: Int) -> Int? {
+        guard daysLeft >= 0 else { return nil }
+        return upcomingThresholds.last { daysLeft <= $0 }
+    }
+
+    private static func markKey(_ id: String, _ threshold: Int) -> String { "\(id)#\(threshold)" }
+
+    private static func remainingPhrase(daysLeft: Int) -> String {
+        switch daysLeft {
+        case 0: return "오늘 시작해요!"
+        case 1: return "내일 시작해요!"
+        default: return "\(daysLeft)일 남았어요!"
+        }
+    }
+
+    /// 대표 사진을 내려받아 알림 첨부로 만든다. `UNNotificationAttachment`는 로컬 파일만 받는다.
+    /// 백그라운드 실행 시간이 짧아 실패·지연은 그냥 포기하고 사진 없는 알림으로 내보낸다.
+    private func imageAttachment(urlString: String?) async -> UNNotificationAttachment? {
+        guard let urlString, let url = URL(string: urlString) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        guard let result = try? await URLSession.shared.data(for: request) else { return nil }
+        let (data, response) = result
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              !data.isEmpty, data.count <= 10 * 1024 * 1024 else {
+            return nil
+        }
+        // 확장자로 형식을 판별하므로, 원본 URL에 확장자가 없으면 jpg로 둔다.
+        let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notification-\(UUID().uuidString).\(ext)")
+        guard (try? data.write(to: fileURL)) != nil else { return nil }
+        // 첨부에 성공하면 iOS가 파일을 자기 저장소로 옮겨 간다. 실패한 경우에만 직접 지운다.
+        guard let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: fileURL) else {
+            try? FileManager.default.removeItem(at: fileURL)
+            return nil
+        }
+        return attachment
     }
 
     // MARK: - 지역 기반 조회
@@ -229,6 +375,35 @@ final class DiscoveryNotificationService: ObservableObject {
         let known = notifiedIDs(key: key)
         let updated = known.union(matched)
         defaults.set(Array(updated), forKey: key)
+    }
+
+    /// 최초 실행 여부. 저장된 집합이 비었는지로 판정하면 매칭 결과가 0건인 날마다 다시 "최초"가 되어
+    /// 시드가 반복되므로, 별도 플래그로 남긴다.
+    private func hasSeeded(key: String) -> Bool {
+        defaults()?.bool(forKey: key) ?? false
+    }
+
+    private func markSeeded(key: String) {
+        defaults()?.set(true, forKey: key)
+    }
+
+    private static let dailyCountKey = "discovery.dailyCount"
+    private static let dailyCountDateKey = "discovery.dailyCountDate"
+
+    /// 오늘 남은 알림 개수. 날짜(Asia/Seoul)가 바뀌면 카운트를 0부터 다시 센다.
+    private func remainingDailyBudget() -> Int {
+        guard let defaults = defaults() else { return 0 }
+        let today = Self.dayFormatter.string(from: Date())
+        guard defaults.string(forKey: Self.dailyCountDateKey) == today else { return Self.maxNotificationsPerDay }
+        return max(0, Self.maxNotificationsPerDay - defaults.integer(forKey: Self.dailyCountKey))
+    }
+
+    private func bumpDailyCount() {
+        guard let defaults = defaults() else { return }
+        let today = Self.dayFormatter.string(from: Date())
+        let current = defaults.string(forKey: Self.dailyCountDateKey) == today ? defaults.integer(forKey: Self.dailyCountKey) : 0
+        defaults.set(today, forKey: Self.dailyCountDateKey)
+        defaults.set(current + 1, forKey: Self.dailyCountKey)
     }
 
 }

@@ -137,6 +137,11 @@ struct AppRootView: View {
             DeepLinkRouter.shared.pendingFestival = nil
             openDiscover(festival)
         }
+        .onReceive(DeepLinkRouter.shared.$pendingEvent) { event in
+            guard let event else { return }
+            DeepLinkRouter.shared.pendingEvent = nil
+            openDiscover(event)
+        }
         .onReceive(DeepLinkRouter.shared.$pendingFestivalId) { id in
             guard let id else { return }
             DeepLinkRouter.shared.pendingFestivalId = nil
@@ -156,6 +161,12 @@ struct AppRootView: View {
         let router = openTab(.discover)
         router.path.removeAll()
         router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
+    }
+
+    private func openDiscover(_ event: FreeEvent) {
+        let router = openTab(.discover)
+        router.path.removeAll()
+        router.showResults(for: event.discoverDestination, presentation: event.discoverPresentation)
     }
 
     /// 딥링크로 탭을 전환한다. 아직 만들지 않은 탭이면 이번에 만들도록 표시하고, 그 탭의 라우터를 돌려준다.
