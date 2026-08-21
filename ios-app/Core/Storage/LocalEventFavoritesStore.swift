@@ -26,7 +26,7 @@ struct SavedEvent: Codable, Hashable, Identifiable {
         self.lat = event.lat
         self.lng = event.lng
         self.source = event.source
-        self.imageUrl = event.imageUrl
+        self.imageUrl = event.primaryImageUrl
     }
 
     init(destination: Destination, presentation: DiscoverPresentation) {
@@ -41,7 +41,7 @@ struct SavedEvent: Codable, Hashable, Identifiable {
         self.lat = destination.lat
         self.lng = destination.lng
         self.source = presentation.source
-        self.imageUrl = presentation.imageUrl
+        self.imageUrl = presentation.primaryImageUrl
     }
 }
 

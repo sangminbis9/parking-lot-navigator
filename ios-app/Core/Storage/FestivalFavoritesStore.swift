@@ -25,7 +25,7 @@ struct SavedFestival: Codable, Hashable, Identifiable {
         self.lat = festival.lat
         self.lng = festival.lng
         self.source = festival.source
-        self.imageUrl = festival.imageUrl
+        self.imageUrl = festival.primaryImageUrl
     }
 
     init(destination: Destination, presentation: DiscoverPresentation) {
@@ -40,7 +40,7 @@ struct SavedFestival: Codable, Hashable, Identifiable {
         self.lat = destination.lat
         self.lng = destination.lng
         self.source = presentation.source
-        self.imageUrl = presentation.imageUrl
+        self.imageUrl = presentation.primaryImageUrl
     }
 }
 

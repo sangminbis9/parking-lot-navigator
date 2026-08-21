@@ -640,7 +640,7 @@ private struct AgendaRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            DiscoverTabThumbnail(imageUrl: festival.imageUrl, isFestival: true, size: 68)
+            DiscoverTabThumbnail(imageUrl: festival.primaryImageUrl, isFestival: true, size: 68)
                 .overlay(alignment: .topLeading) {
                     if isSaved {
                         Image(systemName: "star.fill")

@@ -362,9 +362,18 @@ struct DiscoverPresentation: Hashable {
     let programInfo: String?
     let organizerName: String?
     let isFestivalSource: Bool
+
+    /// 목록 썸네일용 대표 이미지. 소스에 따라 `imageUrl`이 비고 `imageUrls`에만 이미지가 오는 행이 있어
+    /// 상세 화면(`DiscoverHeroImage`)과 같은 순서로 고른다.
+    var primaryImageUrl: String? { imageUrl ?? imageUrls.first }
+
 }
 
 extension Festival {
+    /// 목록 썸네일용 대표 이미지. 소스에 따라 `imageUrl`이 비고 `imageUrls`에만 이미지가 오는 행이 있어
+    /// 상세 화면(`DiscoverHeroImage`)과 같은 순서로 고른다.
+    var primaryImageUrl: String? { imageUrl ?? imageUrls.first }
+
     var discoverDomain: DiscoverDomain {
         if primaryCategory == .tradeExpo { return .tradeExpo }
         if DiscoverDomain.performanceSources.contains(source) { return .performance }
@@ -426,6 +435,10 @@ extension Festival {
 }
 
 extension FreeEvent {
+    /// 목록 썸네일용 대표 이미지. 소스에 따라 `imageUrl`이 비고 `imageUrls`에만 이미지가 오는 행이 있어
+    /// 상세 화면(`DiscoverHeroImage`)과 같은 순서로 고른다.
+    var primaryImageUrl: String? { imageUrl ?? imageUrls.first }
+
     static func koreanEventType(_ raw: String) -> String {
         switch raw {
         case "discount": return "할인·세일"
