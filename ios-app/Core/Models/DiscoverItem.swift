@@ -316,13 +316,17 @@ struct FreeEvent: Codable, Hashable, Identifiable {
         self.programInfo = programInfo
     }
 
+    /// 스크랩 이벤트는 본문에서 기간을 못 뽑으면 종료일이 없고 시작일이 수집한 날로 박힌다.
+    /// 종료일 대신 시작일로 끝을 판정하면 수집 다음 날부터 전부 "예정"이 되므로 그렇게 하지 않는다.
+    /// 서버가 이미 끝난 이벤트(`end_date < 어제`, 종료일 없으면 `start_date < 14일 전`)를 걸러 주므로,
+    /// 앱에 온 이벤트는 시작 전인 것만 예정이고 나머지는 진행 중이다.
     var timelineStatus: DiscoverStatus {
         guard status != .expired else { return .upcoming }
         let today = String(Date().formatted(.iso8601.year().month().day()).prefix(10))
-        if startDate <= today && (endDate ?? startDate) >= today {
-            return .ongoing
+        if !startDate.isEmpty && startDate > today {
+            return .upcoming
         }
-        return .upcoming
+        return .ongoing
     }
 
     var dateText: String {
