@@ -156,8 +156,6 @@ enum MapPinRenderer {
     /// 사장님이 직접 등록한 매장 이벤트 전용 네온색. 지도 타일 위에서 항상 튀어야 하므로 테마를 따르지 않는다.
     static let merchantNeon = UIColor(red: 1.0, green: 0.20, blue: 0.55, alpha: 1)
     static let neonGlowPadding: CGFloat = 12     // glow가 캔버스에서 잘리지 않도록 shadowPadding 대신 쓰는 여백
-    /// 진행 중 행사 표시색. 테두리 색을 건드리지 않고 상태만 알리는 라벨이라 테마를 따르지 않는다.
-    static let liveRed = UIColor(red: 0.92, green: 0.16, blue: 0.22, alpha: 1)
     static let livePadding: CGFloat = 10         // LIVE 라벨이 배지 우상단 밖으로 걸치므로 넓히는 여백
     static let floatGapRatio: CGFloat = 0.06     // 배지와 지면 그림자 사이 간격
     static let groundShadowRatio: CGFloat = 0.16 // 지면 그림자 타원 높이
@@ -371,7 +369,7 @@ enum MapPinRenderer {
             }
 
             if live {
-                drawLiveChip(atTopRightOf: badgeRect, badge: badge, context: ctx)
+                drawLiveChip(atTopRightOf: badgeRect, badge: badge, fill: neon ? merchantNeon : (border ?? accent), context: ctx)
             }
         }
     }
@@ -393,9 +391,11 @@ enum MapPinRenderer {
     }
 
     /// 진행 중 행사 표시. 배지 우측 상단 테두리 위에 얹으므로 테두리 색은 그대로 둔다.
+    /// 칩 배경은 레이어 토글 색(테두리와 같은 색)을 따라간다.
     private static func drawLiveChip(
         atTopRightOf badgeRect: CGRect,
         badge: CGFloat,
+        fill: UIColor,
         context: UIGraphicsImageRendererContext
     ) {
         let font = FestivalDesign.uiFont(size: badge * 0.17, weight: .heavy)
@@ -413,7 +413,7 @@ enum MapPinRenderer {
         let cg = context.cgContext
         cg.saveGState()
         cg.setShadow(offset: CGSize(width: 0, height: 0.8), blur: 2, color: UIColor.black.withAlphaComponent(0.35).cgColor)
-        liveRed.setFill()
+        fill.setFill()
         chip.fill()
         cg.restoreGState()
         UIColor.white.setStroke()
@@ -424,7 +424,7 @@ enum MapPinRenderer {
         paragraph.alignment = .center
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: UIColor.white,
+            .foregroundColor: FestivalDesign.uiOnPinFill(fill),
             .paragraphStyle: paragraph
         ]
         text.draw(
