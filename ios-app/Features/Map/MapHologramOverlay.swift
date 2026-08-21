@@ -32,13 +32,14 @@ struct MapHologramOverlay: View {
                     .padding(.vertical, 2)
                     .background(FestivalDesign.chipShape.fill(status.chipFill))
             }
-            ForEach(tags.prefix(3), id: \.self) { tag in
+            // 맨 앞 태그는 분류라 토글 색을 그대로 채우고, 뒤 태그는 같은 색을 옅게 깔아 한 계열로 묶는다.
+            ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { index, tag in
                 Text(tag)
-                    .font(.festival(size: 10, weight: .medium))
-                    .foregroundColor(FestivalDesign.readable(tint))
+                    .font(.festival(size: 10, weight: index == 0 ? .bold : .medium))
+                    .foregroundColor(index == 0 ? FestivalDesign.onFill(tint) : FestivalDesign.readable(tint))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
+                    .background(FestivalDesign.chipShape.fill(index == 0 ? tint : tint.opacity(0.12)))
                     .lineLimit(1)
             }
         }
