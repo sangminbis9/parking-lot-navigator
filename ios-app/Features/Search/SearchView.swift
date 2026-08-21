@@ -591,7 +591,7 @@ struct DiscoverTabItem: Identifiable {
             status: festival.status,
             typeText: festival.discoverDomain.displayName,
             source: festival.source,
-            imageUrl: festival.imageUrl,
+            imageUrl: festival.primaryImageUrl,
             searchText: [
                 festival.title,
                 festival.subtitle,
@@ -627,7 +627,7 @@ struct DiscoverTabItem: Identifiable {
             status: event.timelineStatus,
             typeText: event.discoverDomain.displayName,
             source: event.source,
-            imageUrl: event.imageUrl,
+            imageUrl: event.primaryImageUrl,
             searchText: [
                 event.title,
                 event.eventType,
