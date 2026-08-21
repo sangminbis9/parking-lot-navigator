@@ -351,7 +351,7 @@ enum MapPinRenderer {
             UIBezierPath(ovalIn: groundRect).fill()
 
             if selected {
-                drawSparkles(aboveTopOf: badgeRect, context: ctx)
+                drawSparkles(aboveTopOf: badgeRect, tint: neon ? merchantNeon : (border ?? accent), context: ctx)
             }
 
             drawStickerBadge(
@@ -574,13 +574,15 @@ enum MapPinRenderer {
         (label as NSString).draw(in: rect.insetBy(dx: 9, dy: 3), withAttributes: attributes)
     }
 
+    /// 선택 표시용 스파크. 테두리와 같은 색을 써서 핀 하나가 한 색으로 읽히게 한다.
     private static func drawSparkles(
         aboveTopOf headRect: CGRect,
+        tint: UIColor,
         context: UIGraphicsImageRendererContext
     ) {
         let cx = headRect.midX
         let topY = headRect.minY
-        FestivalDesign.uiCoral.setStroke()
+        tint.setStroke()
         // 원 상단 위로 부채꼴로 퍼지는 4개의 짧은 방사형 선 (무한 애니메이션 없음 — 정적 이미지)
         let angles: [CGFloat] = [1.30, 1.42, 1.58, 1.70].map { $0 * .pi }
         let inner = headRect.width * 0.08
@@ -593,10 +595,6 @@ enum MapPinRenderer {
             path.lineCapStyle = .round
             path.stroke()
         }
-        // 중앙 위 작은 반짝임
-        UIColor(red: 1.0, green: 0.83, blue: 0.25, alpha: 1).setFill()
-        let dot = headRect.width * 0.06
-        UIBezierPath(ovalIn: CGRect(x: cx - dot / 2, y: topY - outer - dot, width: dot, height: dot)).fill()
     }
 
     private static func aspectFill(imageSize: CGSize, in rect: CGRect) -> CGRect {
