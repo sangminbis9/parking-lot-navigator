@@ -1459,7 +1459,7 @@ struct MapHomeView: View {
                         title: festival.title,
                         subtitle: festival.subtitle ?? festival.venueName,
                         meta: "\(festival.startDate) ~ \(festival.endDate)",
-                        statusText: festival.status.displayText,
+                        status: festival.status,
                         tags: festival.discoverTags,
                         imageUrl: festival.imageUrl,
                         tint: FestivalDesign.coral,
@@ -1480,7 +1480,7 @@ struct MapHomeView: View {
                         title: event.title,
                         subtitle: event.benefit ?? event.shortDescription ?? event.storeName,
                         meta: event.dateText,
-                        statusText: event.timelineStatus.displayText,
+                        status: event.timelineStatus,
                         tags: event.discoverTags,
                         imageUrl: event.imageUrl,
                         tint: FestivalDesign.teal,
@@ -2292,7 +2292,7 @@ private struct EventStackSheet: View {
                     .lineLimit(1)
                 Text(item.statusText)
                     .font(.festival(.caption2, weight: .bold))
-                    .foregroundStyle(FestivalDesign.readable(item.tint))
+                    .foregroundStyle(item.status.chipText)
             }
             Spacer(minLength: 4)
             Image(systemName: "chevron.right")

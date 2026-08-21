@@ -43,6 +43,14 @@ struct StatusBadge: View {
     }
 }
 
+extension DiscoverStatus {
+    /// 진행 상태 색은 화면마다 카테고리 tint를 따라가서 예정이 빨강·보라·회색으로 제각각이었다.
+    /// 상태 색은 여기 한 곳에서만 정한다. 진행 중은 코랄, 예정은 중립 회색.
+    var badgeKind: StatusBadge.Kind { self == .ongoing ? .warning : .neutral }
+    var chipFill: Color { self == .ongoing ? FestivalDesign.coral.opacity(0.14) : FestivalDesign.cream.opacity(0.45) }
+    var chipText: Color { self == .ongoing ? FestivalDesign.coralText : FestivalDesign.secondaryText }
+}
+
 struct LoadingStateView: View {
     let text: String
 

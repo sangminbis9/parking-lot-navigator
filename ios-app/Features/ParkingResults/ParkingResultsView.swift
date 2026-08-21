@@ -178,7 +178,7 @@ private struct DiscoverResultHeader: View {
 
             HStack(spacing: 8) {
                 StatusBadge(text: presentation.typeText, kind: .source)
-                StatusBadge(text: presentation.status.displayText, kind: presentation.status == .ongoing ? .realtime : .neutral)
+                StatusBadge(text: presentation.status.displayText, kind: presentation.status.badgeKind)
                 Spacer(minLength: 0)
                 if let onToggleFavorite {
                     Button(action: onToggleFavorite) {
