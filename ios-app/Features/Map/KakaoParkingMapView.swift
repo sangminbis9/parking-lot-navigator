@@ -96,6 +96,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var registeredDynamicStyleIDs: Set<String> = []
         private var suppressDiscoverLabelsAfterGesture = false
         private var showAllDiscoverLabelsAfterZoomIn = false
+        /// 이번 패스에서 못 올린 핀이 남았는지. 남으면 다음 런루프에 이어서 올린다.
+        private var pendingPinChunk = false
+        private var pinChunkScheduled = false
+
+        /// 한 번의 render에서 새로 그리고 등록할 핀 개수 상한.
+        /// 콜드 스타트에는 수백 개가 한꺼번에 들어오는데, 핀 하나마다 비트맵 드로잉과
+        /// addPoiStyle(텍스처 등록)이 메인 스레드에서 일어나 그 사이 제스처가 통째로 밀린다.
+        /// 프레임 하나 분량씩 끊어 올려 지도를 붙잡지 않는다.
+        private static let maxPinsPerRenderPass = 40
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -222,7 +231,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                     isSelected: $0.id == selectedPinID
                 )
             }
-            if renderedPinSnapshot != pinSnapshot {
+            if renderedPinSnapshot != pinSnapshot || pendingPinChunk {
                 renderPins(on: mapView, snapshots: pinSnapshot)
                 renderedPinSnapshot = pinSnapshot
             }
@@ -389,7 +398,12 @@ struct KakaoParkingMapView: UIViewRepresentable {
             var positions: [MapPoint] = []
             var addedIDs: [String] = []
             var clickableIDs: Set<String> = []
+            var deferredCount = 0
             for (poiID, entry) in desired where renderedPins[poiID] == nil {
+                guard options.count < Coordinator.maxPinsPerRenderPass else {
+                    deferredCount += 1
+                    continue
+                }
                 let pin = entry.pin
                 let styleID = entry.snapshot.styleID
                 if !registeredDynamicStyleIDs.contains(styleID),
@@ -412,6 +426,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 if !pin.isCurrentLocation { clickableIDs.insert(poiID) }
                 renderedPins[poiID] = entry.snapshot
             }
+            pendingPinChunk = deferredCount > 0
+            scheduleNextPinChunkIfNeeded()
             guard !options.isEmpty else { return }
 
             // 앱을 새로 열면 수십~수백 개가 한 번에 들어온다. 카카오맵 문서가 권장하는 대로
@@ -424,6 +440,18 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 )
             }
             layer.showPois(poiIDs: addedIDs)
+        }
+
+        /// 남은 핀은 다음 프레임에 올린다. asyncAfter로 한 프레임을 비워 줘야
+        /// 그 사이 터치/카메라 이벤트가 처리된다.
+        private func scheduleNextPinChunkIfNeeded() {
+            guard pendingPinChunk, !pinChunkScheduled else { return }
+            pinChunkScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
+                guard let self else { return }
+                self.pinChunkScheduled = false
+                self.render()
+            }
         }
 
         func poiTappedHandler(_ param: PoiInteractionEventParam) {
