@@ -24,22 +24,23 @@ struct MapHologramOverlay: View {
     @ViewBuilder
     private var chipRow: some View {
         RegionFlowLayout(spacing: 5) {
+            // 맨 앞 시기 태그만 토글 색을 그대로 채워 강조하고,
+            // 뒤따르는 분류 태그들은 같은 색을 옅게 깔아 한 계열로 묶는다.
             if let status {
                 Text(status.displayText)
                     .font(.festival(size: 10, weight: .bold))
-                    .foregroundColor(status.chipText)
+                    .foregroundColor(FestivalDesign.onFill(tint))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(status.chipFill))
+                    .background(FestivalDesign.chipShape.fill(tint))
             }
-            // 맨 앞 태그는 분류라 토글 색을 그대로 채우고, 뒤 태그는 같은 색을 옅게 깔아 한 계열로 묶는다.
-            ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { index, tag in
+            ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { _, tag in
                 Text(tag)
-                    .font(.festival(size: 10, weight: index == 0 ? .bold : .medium))
-                    .foregroundColor(index == 0 ? FestivalDesign.onFill(tint) : FestivalDesign.readable(tint))
+                    .font(.festival(size: 10, weight: .medium))
+                    .foregroundColor(FestivalDesign.readable(tint))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(index == 0 ? tint : tint.opacity(0.12)))
+                    .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
                     .lineLimit(1)
             }
         }
