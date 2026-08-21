@@ -522,7 +522,8 @@ struct MapHomeView: View {
                 layerTint: tint,
                 isLive: live,
                 // 대표 이미지는 진행 중 행사만 붙인다. 이미지 유무와 LIVE 라벨이 함께 "지금 하는 행사"를 알린다.
-                photo: live ? pinPhotos.photo(for: festival.imageUrl) : nil
+                // imageUrl이 비고 imageUrls에만 이미지가 있는 행이 있어 상세 화면과 같은 순서로 fallback한다.
+                photo: live ? pinPhotos.photo(for: festival.imageUrl ?? festival.imageUrls.first) : nil
             )
         case .event(let event, let tint):
             let live = event.timelineStatus == .ongoing
@@ -533,7 +534,7 @@ struct MapHomeView: View {
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
                 layerTint: tint,
                 isLive: live,
-                photo: live ? pinPhotos.photo(for: event.imageUrl) : nil
+                photo: live ? pinPhotos.photo(for: event.imageUrl ?? event.imageUrls.first) : nil
             )
         }
     }
