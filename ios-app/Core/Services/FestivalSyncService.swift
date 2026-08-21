@@ -179,7 +179,9 @@ final class FestivalSyncService: ObservableObject {
         WidgetThumbnailStore.prune(keeping: items.map(\.id), appGroupID: appGroupID)
     }
 
-    private static func downloadThumbnail(_ url: URL) async -> Data? {
+    /// 디코드·재인코드가 무거워 메인 액터(클래스 전체가 @MainActor)에 두면 앱 진입 직후 UI가 멈춘다.
+    /// `nonisolated`로 두어 백그라운드 실행자에서 돌린다.
+    private nonisolated static func downloadThumbnail(_ url: URL) async -> Data? {
         guard let (data, response) = try? await URLSession.shared.data(from: url) else { return nil }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
