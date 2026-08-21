@@ -14,6 +14,8 @@ final class MapPinPhotoStore: ObservableObject {
     private var inFlight: Set<String> = []
     /// 실패한 URL. 그냥 두면 실패 → 재렌더 → 재시도가 무한히 돈다.
     private var failed: Set<String> = []
+    /// 도착 알림을 묶는 타이머. 한 장마다 알리면 그때마다 지도 핀 파이프라인이 통째로 다시 계산된다.
+    private var bumpTask: Task<Void, Never>?
 
     func photo(for urlString: String?) -> MapPinPhoto? {
         guard let urlString, !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
@@ -27,10 +29,22 @@ final class MapPinPhotoStore: ObservableObject {
             if image == nil {
                 failed.insert(urlString)
             } else {
-                loadedGeneration += 1
+                scheduleGenerationBump()
             }
         }
         return nil
+    }
+
+    /// 앱을 새로 열거나 다른 앱에서 돌아오면 메모리 캐시가 비어 수십 장이 한꺼번에 도착한다.
+    /// 한 장마다 재계산하면 그 동안 지도가 멈춘 것처럼 보이므로 0.3초 단위로 묶어 알린다.
+    private func scheduleGenerationBump() {
+        guard bumpTask == nil else { return }
+        bumpTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let self else { return }
+            self.bumpTask = nil
+            self.loadedGeneration += 1
+        }
     }
 
     /// styleID에 넣을 URL 지문. 실행 간 안정성은 필요 없고 한 세션 안에서 일관되기만 하면 된다.
