@@ -372,13 +372,23 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 desired[snapshot.poiID] = (pin, snapshot)
             }
 
+            var staleIDs: [String] = []
             for (poiID, rendered) in renderedPins where desired[poiID]?.snapshot != rendered {
-                layer.removePoi(poiID: poiID)
-                // POI를 지우면 핸들러도 함께 무효화되므로 참조만 놓아준다(기존 동작과 동일).
-                poiTapHandlers.removeValue(forKey: poiID)
-                renderedPins.removeValue(forKey: poiID)
+                staleIDs.append(poiID)
+            }
+            if !staleIDs.isEmpty {
+                layer.removePois(poiIDs: staleIDs)
+                for poiID in staleIDs {
+                    // POI를 지우면 핸들러도 함께 무효화되므로 참조만 놓아준다(기존 동작과 동일).
+                    poiTapHandlers.removeValue(forKey: poiID)
+                    renderedPins.removeValue(forKey: poiID)
+                }
             }
 
+            var options: [PoiOptions] = []
+            var positions: [MapPoint] = []
+            var addedIDs: [String] = []
+            var clickableIDs: Set<String> = []
             for (poiID, entry) in desired where renderedPins[poiID] == nil {
                 let pin = entry.pin
                 let styleID = entry.snapshot.styleID
@@ -396,18 +406,24 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 option.rank = rank(for: pin.kind)
                 // 내 위치 핀은 보여줄 정보가 없으므로 탭 대상에서 뺀다.
                 option.clickable = !pin.isCurrentLocation
-                let point = MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude)
-                let poi = layer.addPoi(option: option, at: point)
-                if !pin.isCurrentLocation,
-                   let handler = poi?.addPoiTappedEventHandler(
-                       target: self,
-                       handler: KakaoParkingMapView.Coordinator.poiTappedHandler
-                   ) {
-                    poiTapHandlers[poiID] = handler
-                }
-                poi?.show()
+                options.append(option)
+                positions.append(MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude))
+                addedIDs.append(poiID)
+                if !pin.isCurrentLocation { clickableIDs.insert(poiID) }
                 renderedPins[poiID] = entry.snapshot
             }
+            guard !options.isEmpty else { return }
+
+            // 앱을 새로 열면 수십~수백 개가 한 번에 들어온다. 카카오맵 문서가 권장하는 대로
+            // addPoi/show를 개수만큼 반복하지 않고 addPois·showPois로 한 번에 넘긴다.
+            let added = layer.addPois(options: options, at: positions) ?? []
+            for poi in added where clickableIDs.contains(poi.itemID) {
+                poiTapHandlers[poi.itemID] = poi.addPoiTappedEventHandler(
+                    target: self,
+                    handler: KakaoParkingMapView.Coordinator.poiTappedHandler
+                )
+            }
+            layer.showPois(poiIDs: addedIDs)
         }
 
         func poiTappedHandler(_ param: PoiInteractionEventParam) {
