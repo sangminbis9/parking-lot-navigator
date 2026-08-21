@@ -64,11 +64,11 @@ enum WidgetFormat {
     }
 
     static func statusColor(_ festival: Festival) -> Color {
-        festival.status == .ongoing ? FestivalDesign.tealText : FestivalDesign.lanternText
+        festival.status.chipText
     }
 
     static func statusDotColor(_ festival: Festival) -> Color {
-        festival.status == .ongoing ? FestivalDesign.teal : FestivalDesign.lantern
+        festival.status == .ongoing ? FestivalDesign.coral : FestivalDesign.secondaryText
     }
 
     static func deepLink(_ festival: Festival) -> URL {
