@@ -656,7 +656,7 @@ private struct AgendaRow: View {
                 HStack(spacing: 5) {
                     StatusBadge(
                         text: festival.status.displayText,
-                        kind: festival.status == .ongoing ? .realtime : .sponsor
+                        kind: festival.status.badgeKind
                     )
                     if let category = festival.primaryCategory {
                         Text(category.displayName)
@@ -768,10 +768,10 @@ private struct PerformanceRow: View {
                 HStack(spacing: 6) {
                     Text(p.status.displayText)
                         .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(FestivalDesign.readable(FestivalPrimaryCategory.musicPerformance.tint))
+                        .foregroundStyle(p.status.chipText)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(FestivalPrimaryCategory.musicPerformance.tint.opacity(0.12))
+                        .background(p.status.chipFill)
                         .clipShape(FestivalDesign.chipShape)
                     Text(item.startDate == item.endDate ? item.startDate : "\(item.startDate) ~ \(item.endDate)")
                         .font(.festival(size: 11, weight: .medium))
@@ -818,10 +818,10 @@ private struct StoreEventRow: View {
                 HStack(spacing: 6) {
                     Text(event.timelineStatus.displayText)
                         .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(FestivalDesign.readable(FestivalDesign.coral))
+                        .foregroundStyle(event.timelineStatus.chipText)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(FestivalDesign.coral.opacity(0.12))
+                        .background(event.timelineStatus.chipFill)
                         .clipShape(FestivalDesign.chipShape)
                     Text(event.dateText)
                         .font(.festival(size: 11, weight: .medium))

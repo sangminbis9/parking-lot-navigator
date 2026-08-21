@@ -4,7 +4,7 @@ struct MapHologramOverlay: View {
     let title: String
     let subtitle: String?
     let meta: String?
-    let statusText: String?
+    let status: DiscoverStatus?
     /// 상세 화면과 같은 DiscoverTagBuilder 결과를 그대로 받는다. 카드 폭에 맞춰 앞쪽 몇 개만 보인다.
     let tags: [String]
     let imageUrl: String?
@@ -24,13 +24,13 @@ struct MapHologramOverlay: View {
     @ViewBuilder
     private var chipRow: some View {
         RegionFlowLayout(spacing: 5) {
-            if let statusText, !statusText.isEmpty {
-                Text(statusText)
+            if let status {
+                Text(status.displayText)
                     .font(.festival(size: 10, weight: .bold))
-                    .foregroundColor(FestivalDesign.onFill(tint))
+                    .foregroundColor(status.chipText)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(tint))
+                    .background(FestivalDesign.chipShape.fill(status.chipFill))
             }
             ForEach(tags.prefix(3), id: \.self) { tag in
                 Text(tag)

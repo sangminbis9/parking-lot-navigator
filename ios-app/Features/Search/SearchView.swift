@@ -1196,7 +1196,7 @@ struct DiscoverTabRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     StatusBadge(text: item.typeText, kind: .source)
-                    StatusBadge(text: item.status.displayText, kind: item.status == .ongoing ? .realtime : .neutral)
+                    StatusBadge(text: item.status.displayText, kind: item.status.badgeKind)
                     if item.isSponsored {
                         StatusBadge(text: "스폰서", kind: .sponsor)
                     }
