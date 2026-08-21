@@ -131,6 +131,12 @@ struct MapHomeView: View {
                 }
             }
 
+            if isInitialDiscoverLoading {
+                discoverLoadingBadge
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            }
+
             VStack(spacing: 10) {
                 homeMapHeader
                 festivalFilterButton
@@ -246,6 +252,7 @@ struct MapHomeView: View {
     private var cachedPins: [MapPinItem] {
         let key = MapPinCache.PinKey(
             discover: discoverCacheKey,
+            clip: discoverClipKey,
             zoomLevel: mapZoomLevel,
             selectedDiscoverPinID: selectedDiscoverPinID,
             showsRealtimeParking: viewModel.showsRealtimeParkingLayer,
@@ -378,8 +385,41 @@ struct MapHomeView: View {
         }
     }
 
+    /// 첫 탐색 데이터가 아직 없는 동안만 띄운다. 두 번째 이후 새로고침은 지도에 이미 핀이 있어 가리지 않는다.
+    private var isInitialDiscoverLoading: Bool {
+        viewModel.isLoadingDiscover
+            && viewModel.festivals.isEmpty
+            && viewModel.events.isEmpty
+            && viewModel.performances.isEmpty
+    }
+
+    /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면
+    /// 멈춘 것처럼 보이므로 마스코트와 함께 진행 중임을 알린다.
+    private var discoverLoadingBadge: some View {
+        VStack(spacing: 10) {
+            Image("FestivalMascotIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .accessibilityHidden(true)
+            ProgressView()
+                .tint(FestivalDesign.coral)
+            Text("이벤트를 불러오는 중이에요")
+                .font(.festival(.caption, weight: .semibold))
+                .foregroundStyle(FestivalDesign.navy)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(FestivalDesign.surface)
+        )
+        .festivalShadow(.high)
+        .allowsHitTesting(false)
+    }
+
     private var discoverPins: [MapPinItem] {
-        let sources = discoverSources
+        let sources = clippedDiscoverSources
         guard !sources.isEmpty else { return [] }
 
         let groups = overlayGroups(sources)
@@ -480,6 +520,61 @@ struct MapHomeView: View {
             }
         }
         return sources
+    }
+
+    /// 핀 파이프라인에 넣을 소스의 상한. 지도가 처음 뜰 때는 아직 카메라 이벤트가 없어
+    /// 뷰포트 반경이 초기값(20km)이라 반경 컷만으로는 콜드 스타트 부하가 줄지 않는다.
+    /// 가까운 순으로 이만큼만 남겨 어떤 상황에서도 한 번에 그리는 양을 묶어 둔다.
+    private static let maxPinSourceCount = 600
+
+    /// 핀으로 만들 소스를 화면 주변으로 잘라내는 반경. 살짝 밀어도 핀이 비지 않도록 여유를 준다.
+    private var pinClipRadiusMeters: Int {
+        max(Int(Double(mapViewport.radiusMeters) * 1.35), 3_000)
+    }
+
+    private var discoverClipKey: MapPinCache.ClipKey {
+        MapPinCache.ClipKey(
+            discover: discoverCacheKey,
+            centerLat: mapViewport.center.latitude,
+            centerLng: mapViewport.center.longitude,
+            radiusMeters: pinClipRadiusMeters,
+            selectedDiscoverPinID: selectedDiscoverPinID
+        )
+    }
+
+    /// 핀 파이프라인에 넣을 소스. 20km 반경 응답은 서울 기준 3,000건이 넘어서,
+    /// 화면 밖까지 전부 클러스터링하고 핀 사진까지 받으면 콜드 스타트에 지도가 몇 초씩 멈춘다.
+    /// 보이는 영역(+여유)만 남긴다. 선택된 핀은 화면 밖으로 밀려도 유지한다.
+    private var clippedDiscoverSources: [DiscoverPinSource] {
+        pinCache.clippedDiscoverSources(discoverClipKey) {
+            let sources = discoverSources
+            guard !sources.isEmpty else { return [] }
+            let selectedID = selectedDiscoverPinID
+            let centerLat = mapViewport.center.latitude
+            let centerLng = mapViewport.center.longitude
+            let radius = Double(pinClipRadiusMeters)
+            // 수천 건에 CLLocation.distance를 쓰면 객체 할당만으로 프레임을 넘긴다.
+            // 이 규모에서는 평면 근사로 충분하다.
+            let metersPerLat = 111_320.0
+            let metersPerLng = 111_320.0 * cos(centerLat * .pi / 180)
+            let limit = radius * radius
+            var scored: [(source: DiscoverPinSource, distanceSquared: Double)] = []
+            scored.reserveCapacity(min(sources.count, Self.maxPinSourceCount))
+            for source in sources {
+                if let selectedID, source.id == selectedID {
+                    scored.append((source, -1))
+                    continue
+                }
+                let dy = (source.coordinate.latitude - centerLat) * metersPerLat
+                let dx = (source.coordinate.longitude - centerLng) * metersPerLng
+                let distanceSquared = dx * dx + dy * dy
+                if distanceSquared <= limit { scored.append((source, distanceSquared)) }
+            }
+            guard scored.count > Self.maxPinSourceCount else { return scored.map(\.source) }
+            return scored.sorted { $0.distanceSquared < $1.distanceSquared }
+                .prefix(Self.maxPinSourceCount)
+                .map(\.source)
+        }
     }
 
     private var visibleDiscoverSources: [DiscoverPinSource] {
@@ -2399,6 +2494,7 @@ private final class MapPinCache {
 
     struct PinKey: Equatable {
         let discover: DiscoverKey
+        let clip: ClipKey
         let zoomLevel: Int
         let selectedDiscoverPinID: String?
         let showsRealtimeParking: Bool
@@ -2415,6 +2511,15 @@ private final class MapPinCache {
         let radiusMeters: Int
     }
 
+    /// 핀 파이프라인에 넣을 소스를 화면 주변으로 잘라내는 기준.
+    struct ClipKey: Equatable {
+        let discover: DiscoverKey
+        let centerLat: Double
+        let centerLng: Double
+        let radiusMeters: Int
+        let selectedDiscoverPinID: String?
+    }
+
     struct SearchKey: Equatable {
         let revision: Int
         let keyword: String
@@ -2428,6 +2533,8 @@ private final class MapPinCache {
     private var pinValue: [MapPinItem] = []
     private var viewportKey: ViewportKey?
     private var viewportValue: [DiscoverPinSource] = []
+    private var clipKey: ClipKey?
+    private var clipValue: [DiscoverPinSource] = []
     private var searchKey: SearchKey?
     private var searchValue: [DiscoverListItem] = []
 
@@ -2436,6 +2543,14 @@ private final class MapPinCache {
         let value = build()
         discoverKey = key
         discoverValue = value
+        return value
+    }
+
+    func clippedDiscoverSources(_ key: ClipKey, build: () -> [DiscoverPinSource]) -> [DiscoverPinSource] {
+        if clipKey == key { return clipValue }
+        let value = build()
+        clipKey = key
+        clipValue = value
         return value
     }
 

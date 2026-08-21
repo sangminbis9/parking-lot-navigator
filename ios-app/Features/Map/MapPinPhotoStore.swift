@@ -62,11 +62,12 @@ final class MapPinPhotoStore: ObservableObject {
     }
 
     /// 앱을 새로 열거나 다른 앱에서 돌아오면 메모리 캐시가 비어 수십 장이 한꺼번에 도착한다.
-    /// 한 장마다 재계산하면 그 동안 지도가 멈춘 것처럼 보이므로 0.3초 단위로 묶어 알린다.
+    /// 한 장마다 재계산하면 그 동안 지도가 멈춘 것처럼 보이므로 묶어서 알린다.
+    /// 알림 한 번이 핀 파이프라인 전체 재계산이라, 콜드 스타트에는 간격이 넓을수록 이득이 크다.
     private func scheduleGenerationBump() {
         guard bumpTask == nil else { return }
         bumpTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self else { return }
             self.bumpTask = nil
             self.loadedGeneration += 1
