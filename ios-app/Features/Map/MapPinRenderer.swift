@@ -486,7 +486,9 @@ enum MapPinRenderer {
             shadow.fill()
             surface.setFill()
             body.fill()
-            (selected ? FestivalDesign.uiCoral : (borderOverride ?? outline)).setStroke()
+            // 선택 시에도 테두리 색은 그 핀 원래 색(레이어 토글 색/카테고리 색)을 유지하고,
+            // 굵기와 확대·스파크로만 선택을 표현한다.
+            (borderOverride ?? outline).setStroke()
             body.lineWidth = selected ? 2.8 : 2.4
             body.stroke()
         } else {
@@ -499,7 +501,7 @@ enum MapPinRenderer {
             surface.setFill()
             body.fill()
             cg.restoreGState()
-            (selected ? FestivalDesign.uiCoral : (borderOverride ?? accent)).setStroke()
+            (borderOverride ?? accent).setStroke()
             body.lineWidth = selected ? 2.8 : 2.2
             body.stroke()
         }
