@@ -68,72 +68,116 @@ private struct ZoomableImagePage: View {
 }
 
 /// UIScrollView 기반 네이티브 핀치 줌 + 더블탭 줌 뷰.
+/// 이미지 전체가 화면에 들어오는 배율에서 시작하고, 확대는 자유롭게 할 수 있다.
 private struct ZoomableScrollView: UIViewRepresentable {
     let image: UIImage
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
-        scrollView.delegate = context.coordinator
-        scrollView.minimumZoomScale = 1
-        scrollView.maximumZoomScale = 4
-        scrollView.bouncesZoom = true
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.backgroundColor = .clear
-        scrollView.contentInsetAdjustmentBehavior = .never
-
-        let imageView = UIImageView(image: image)
-        imageView.contentMode = .scaleAspectFit
-        imageView.isUserInteractionEnabled = true
-        scrollView.addSubview(imageView)
-        context.coordinator.imageView = imageView
-
-        let doubleTap = UITapGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleDoubleTap(_:))
-        )
-        doubleTap.numberOfTapsRequired = 2
-        imageView.addGestureRecognizer(doubleTap)
-
+    func makeUIView(context: Context) -> ZoomableImageScrollView {
+        let scrollView = ZoomableImageScrollView()
+        scrollView.displayImage = image
         return scrollView
     }
 
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        context.coordinator.imageView?.image = image
-        context.coordinator.layout(in: scrollView)
+    func updateUIView(_ scrollView: ZoomableImageScrollView, context: Context) {
+        if scrollView.displayImage !== image {
+            scrollView.displayImage = image
+        }
+    }
+}
+
+/// 배율 계산을 `layoutSubviews`에서 하는 게 핵심이다. UIViewRepresentable의 `updateUIView`는
+/// 스크롤뷰 bounds가 아직 0인 시점에 불려서, 거기서 프레임을 잡으면 원본 크기 그대로 남아
+/// 확대된 상태로 열린다.
+private final class ZoomableImageScrollView: UIScrollView, UIScrollViewDelegate {
+    private let imageView = UIImageView()
+    private var fittedFor: CGSize = .zero
+
+    var displayImage: UIImage? {
+        didSet {
+            imageView.image = displayImage
+            fittedFor = .zero
+            setNeedsLayout()
+        }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    init() {
+        super.init(frame: .zero)
+        delegate = self
+        bouncesZoom = true
+        showsVerticalScrollIndicator = false
+        showsHorizontalScrollIndicator = false
+        backgroundColor = .clear
+        contentInsetAdjustmentBehavior = .never
 
-    final class Coordinator: NSObject, UIScrollViewDelegate {
-        weak var imageView: UIImageView?
+        imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = true
+        addSubview(imageView)
 
-        func layout(in scrollView: UIScrollView) {
-            guard let imageView else { return }
-            let size = scrollView.bounds.size
-            guard size.width > 0, size.height > 0 else { return }
-            if imageView.frame.size != size {
-                imageView.frame = CGRect(origin: .zero, size: size)
-                scrollView.contentSize = size
-            }
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        imageView.addGestureRecognizer(doubleTap)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        fitImageIfNeeded()
+        centerContent()
+    }
+
+    /// 화면 크기나 이미지가 바뀐 순간에만 배율을 다시 잡는다. 여기서 zoomScale을 건드리면
+    /// layoutSubviews가 다시 도니, 같은 조건에서는 재실행되지 않게 fittedFor로 막는다.
+    private func fitImageIfNeeded() {
+        guard let image = displayImage,
+              image.size.width > 0, image.size.height > 0,
+              bounds.width > 0, bounds.height > 0,
+              fittedFor != bounds.size else { return }
+        fittedFor = bounds.size
+
+        // 원본 픽셀 좌표계로 되돌린 뒤 다시 계산한다(이전 배율이 남아 있으면 프레임이 어긋난다).
+        minimumZoomScale = 0.01
+        maximumZoomScale = 100
+        zoomScale = 1
+        imageView.frame = CGRect(origin: .zero, size: image.size)
+        contentSize = image.size
+
+        let fitScale = min(bounds.width / image.size.width, bounds.height / image.size.height)
+        minimumZoomScale = fitScale
+        // 가로/세로 꽉 찬 상태의 3배까지. 작은 이미지도 최소 2배는 확대할 수 있게 둔다.
+        maximumZoomScale = max(fitScale * 3, 2)
+        zoomScale = fitScale
+    }
+
+    /// 확대/축소 시 이미지를 화면 중앙에 유지한다.
+    private func centerContent() {
+        let offsetX = max((bounds.width - contentSize.width) / 2, 0)
+        let offsetY = max((bounds.height - contentSize.height) / 2, 0)
+        contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: offsetY, right: offsetX)
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { centerContent() }
+
+    @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        if zoomScale > minimumZoomScale {
+            setZoomScale(minimumZoomScale, animated: true)
+            return
         }
-
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
-
-        func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            // 확대/축소 시 이미지를 화면 중앙에 유지한다.
-            let offsetX = max((scrollView.bounds.width - scrollView.contentSize.width) / 2, 0)
-            let offsetY = max((scrollView.bounds.height - scrollView.contentSize.height) / 2, 0)
-            scrollView.contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: 0, right: 0)
-        }
-
-        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            guard let scrollView = imageView?.superview as? UIScrollView else { return }
-            if scrollView.zoomScale > scrollView.minimumZoomScale {
-                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
-            } else {
-                scrollView.setZoomScale(scrollView.maximumZoomScale, animated: true)
-            }
-        }
+        // 탭한 지점을 중심으로 확대한다.
+        let target = min(minimumZoomScale * 3, maximumZoomScale)
+        let point = gesture.location(in: imageView)
+        let size = CGSize(width: bounds.width / target, height: bounds.height / target)
+        zoom(
+            to: CGRect(
+                x: point.x - size.width / 2,
+                y: point.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            ),
+            animated: true
+        )
     }
 }
