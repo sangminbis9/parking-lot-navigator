@@ -19,6 +19,11 @@ struct CalendarTabView: View {
     @State private var presentingFilter = false
     @State private var presentingSaved = false
     @State private var showNotificationDeniedAlert = false
+    /// 하단 어젠다 패널을 드래그로 얼마나 더 끌어올렸는지(pt). 0이면 달력 바로 아래에서 시작한다.
+    @State private var agendaExtraHeight: CGFloat = 0
+    /// 달력 영역(헤더+월간+빠른 이동)의 실제 높이. 패널 기본 높이와 최대 확장량을 여기서 뽑는다.
+    @State private var topBlockHeight: CGFloat = 380
+    @GestureState private var agendaDragTranslation: CGFloat = 0
 
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -36,22 +41,51 @@ struct CalendarTabView: View {
     var body: some View {
         let byDay = festivalsByDay
         let sections = daySections(from: byDay)
-        VStack(spacing: 0) {
-            header
-            CalendarMonthView(
-                monthAnchor: monthAnchor,
-                festivalsByDay: byDay,
-                selectedDay: selectedDay,
-                savedDayKeys: savedDayKeys,
-                onSelectDay: handleSelectDay,
-                onSwipeMonth: { shiftMonth(by: $0) }
-            )
-            .padding(.top, 12)
-            quickJumpRow
-                .padding(.vertical, 10)
-            Divider()
-                .overlay(FestivalDesign.creamDeep.opacity(0.4))
-            agendaScroll(sections: sections)
+        // 하단 어젠다는 달력을 줄이지 않고 그 위로 덮으며 커진다. 달력 높이는 그대로 두고
+        // 패널 높이만 드래그로 늘린다.
+        GeometryReader { geo in
+            let base = max(geo.size.height - topBlockHeight, 0)
+            let extra = min(max(agendaExtraHeight - agendaDragTranslation, 0), topBlockHeight)
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        header
+                        CalendarMonthView(
+                            monthAnchor: monthAnchor,
+                            festivalsByDay: byDay,
+                            selectedDay: selectedDay,
+                            savedDayKeys: savedDayKeys,
+                            onSelectDay: handleSelectDay,
+                            onSwipeMonth: { shiftMonth(by: $0) }
+                        )
+                        .padding(.top, 12)
+                        quickJumpRow
+                            .padding(.vertical, 10)
+                    }
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: CalendarTopHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                    Spacer(minLength: 0)
+                }
+                VStack(spacing: 0) {
+                    agendaHandle
+                    Divider()
+                        .overlay(FestivalDesign.creamDeep.opacity(0.4))
+                    agendaScroll(sections: sections)
+                }
+                .frame(height: base + extra, alignment: .top)
+                .background(FestivalDesign.background)
+                .overlay(
+                    Rectangle()
+                        .fill(FestivalDesign.barBorder)
+                        .frame(height: 1),
+                    alignment: .top
+                )
+            }
+            .onPreferenceChange(CalendarTopHeightKey.self) { topBlockHeight = $0 }
         }
         .background(FestivalDesign.background)
         .task {
@@ -151,19 +185,7 @@ struct CalendarTabView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("\u{C800}\u{C7A5}\u{D55C} \u{CD95}\u{C81C}") // 저장한 축제
-            Button {
-                presentingFilter = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.festival(size: 14, weight: .bold))
-                    .foregroundStyle(FestivalDesign.coralText)
-                    .frame(width: 32, height: 32)
-                    .background(FestivalDesign.cream.opacity(0.6))
-                    .clipShape(Circle())
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("\u{D544}\u{D130}") // 필터
+            filterButton
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -175,6 +197,52 @@ struct CalendarTabView: View {
             alignment: .bottom
         )
         .festivalShadow(.low)
+    }
+
+    /// 상단 헤더와 하단 어젠다 패널이 같은 필터 시트를 연다.
+    private var filterButton: some View {
+        Button {
+            presentingFilter = true
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.festival(size: 14, weight: .bold))
+                .foregroundStyle(FestivalDesign.coralText)
+                .frame(width: 32, height: 32)
+                .background(FestivalDesign.cream.opacity(0.6))
+                .clipShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("\u{D544}\u{D130}") // 필터
+    }
+
+    /// 어젠다 패널 상단의 드래그 손잡이. 드래그 영역은 필터 버튼 아래에 깔아 탭을 가로채지 않는다.
+    private var agendaHandle: some View {
+        ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(agendaDragGesture)
+            Capsule()
+                .fill(FestivalDesign.creamDeep)
+                .frame(width: 40, height: 4)
+                .allowsHitTesting(false)
+            HStack(spacing: 0) {
+                Spacer()
+                filterButton
+            }
+        }
+        .frame(height: 40)
+        .padding(.horizontal, 12)
+    }
+
+    private var agendaDragGesture: some Gesture {
+        DragGesture()
+            .updating($agendaDragTranslation) { value, state, _ in
+                state = value.translation.height
+            }
+            .onEnded { value in
+                agendaExtraHeight = min(max(agendaExtraHeight - value.translation.height, 0), topBlockHeight)
+            }
     }
 
     private var quickJumpRow: some View {
@@ -963,5 +1031,13 @@ private extension CalendarViewModel.LoadState {
     var isLoading: Bool {
         if case .loading = self { return true }
         return false
+    }
+}
+
+/// 달력 영역의 실제 높이를 하단 어젠다 패널에 전달한다.
+private struct CalendarTopHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
