@@ -10,6 +10,8 @@ struct StatusBadge: View {
         case neutral
         case source
         case sponsor
+        /// 종류 배지처럼 분류 색을 그대로 따라가야 하는 경우.
+        case tinted(Color)
     }
 
     var body: some View {
@@ -29,6 +31,7 @@ struct StatusBadge: View {
         case .neutral: return FestivalDesign.cream.opacity(0.45)
         case .source: return FestivalDesign.parkingSoft
         case .sponsor: return FestivalDesign.lantern.opacity(0.18)
+        case .tinted(let color): return color.opacity(0.16)
         }
     }
 
@@ -39,6 +42,19 @@ struct StatusBadge: View {
         case .neutral: return FestivalDesign.secondaryText
         case .source: return FestivalDesign.parkingBlueText
         case .sponsor: return FestivalDesign.lanternText
+        case .tinted(let color): return FestivalDesign.readable(color)
+        }
+    }
+}
+
+extension DiscoverDomain {
+    /// 이벤트 탭 종류 토글과 지도 레이어가 쓰는 색. 카드의 종류 태그도 같은 색을 따라간다.
+    var tint: Color {
+        switch self {
+        case .festival: return FestivalDesign.coral
+        case .performance: return FestivalPrimaryCategory.musicPerformance.tint
+        case .tradeExpo: return FestivalPrimaryCategory.tradeExpo.tint
+        case .localEvent: return FestivalDesign.teal
         }
     }
 }

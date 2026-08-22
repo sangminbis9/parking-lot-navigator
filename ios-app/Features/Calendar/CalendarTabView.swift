@@ -659,12 +659,14 @@ private struct AgendaRow: View {
                         kind: festival.status.badgeKind
                     )
                     if let category = festival.primaryCategory {
+                        // 태그 색은 카테고리별 색이 아니라 이벤트 탭 토글과 같은 종류 색을 따라간다.
+                        let tint = festival.discoverDomain.tint
                         Text(category.displayName)
                             .font(.festival(size: 10, weight: .semibold))
-                            .foregroundStyle(FestivalDesign.readable(category.tint))
+                            .foregroundStyle(FestivalDesign.readable(tint))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(category.tint.opacity(0.16))
+                            .background(tint.opacity(0.16))
                             .clipShape(FestivalDesign.chipShape)
                     }
                 }
@@ -762,7 +764,7 @@ private struct PerformanceRow: View {
         let p = item.presentation
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 6)
-                .fill(FestivalPrimaryCategory.musicPerformance.tint)
+                .fill(DiscoverDomain.performance.tint)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -812,7 +814,7 @@ private struct StoreEventRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 6)
-                .fill(FestivalDesign.coral)
+                .fill(DiscoverDomain.localEvent.tint)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
