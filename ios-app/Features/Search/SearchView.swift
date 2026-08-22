@@ -391,7 +391,11 @@ struct SearchView: View {
     }
 
     private func rebuildAllItems() {
-        let items = festivals.map(DiscoverTabItem.festival) + events.map(DiscoverTabItem.event)
+        // KOPIS 공연은 /api/festivals와 /api/performances에 같은 id로 함께 들어온다.
+        // 그대로 합치면 목록에 같은 공연이 두 번 나오므로 공연 응답 쪽만 남긴다.
+        let eventIds = Set(events.map(\.id))
+        let items = festivals.filter { !eventIds.contains($0.id) }.map(DiscoverTabItem.festival)
+            + events.map(DiscoverTabItem.event)
         allItems = items
         availableSources = uniqueValues(items.map(\.source))
         availableFestivalCategories = FestivalPrimaryCategory.allCases.filter { category in
@@ -562,7 +566,8 @@ struct DiscoverTabItem: Identifiable {
     let dateText: String
     let startDate: String
     let status: DiscoverStatus
-    let typeText: String
+    /// 축제·공연·박람회·가게 이벤트를 가르는 단일 기준. 종류 배지 문구·색과 토글 분류가 모두 여기서 나온다.
+    let domain: DiscoverDomain
     let source: String
     let imageUrl: String?
     let searchText: String
@@ -589,7 +594,7 @@ struct DiscoverTabItem: Identifiable {
             dateText: "\(festival.startDate) - \(festival.endDate)",
             startDate: festival.startDate,
             status: festival.status,
-            typeText: festival.discoverDomain.displayName,
+            domain: festival.discoverDomain,
             source: festival.source,
             imageUrl: festival.primaryImageUrl,
             searchText: [
@@ -625,7 +630,7 @@ struct DiscoverTabItem: Identifiable {
             dateText: event.dateText,
             startDate: event.startDate,
             status: event.timelineStatus,
-            typeText: event.discoverDomain.displayName,
+            domain: event.discoverDomain,
             source: event.source,
             imageUrl: event.primaryImageUrl,
             searchText: [
@@ -658,6 +663,8 @@ struct DiscoverTabItem: Identifiable {
         return userLoc.distance(from: itemLoc)
     }
 
+    var typeText: String { domain.displayName }
+
     var isFestival: Bool {
         if case .festival = kind { return true }
         return false
@@ -666,12 +673,6 @@ struct DiscoverTabItem: Identifiable {
     var isEvent: Bool {
         if case .event = kind { return true }
         return false
-    }
-
-    /// 지도 공연 레이어와 같은 기준. 음악·공연 축제와 KOPIS 공연 이벤트를 함께 본다.
-    var isPerformance: Bool {
-        if festivalCategory == .musicPerformance { return true }
-        return isEvent && source == "kopis"
     }
 
     private static func regionText(from address: String) -> String {
@@ -734,22 +735,22 @@ private enum DiscoverTabKind: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .all: return FestivalDesign.coral
-        case .festivals: return FestivalDesign.coral
-        case .localEvents: return FestivalDesign.teal
-        case .performances: return FestivalPrimaryCategory.musicPerformance.tint
-        case .tradeExpos: return FestivalPrimaryCategory.tradeExpo.tint
+        case .festivals: return DiscoverDomain.festival.tint
+        case .localEvents: return DiscoverDomain.localEvent.tint
+        case .performances: return DiscoverDomain.performance.tint
+        case .tradeExpos: return DiscoverDomain.tradeExpo.tint
         }
     }
 
+    /// 카드에 붙는 종류 배지와 같은 기준으로 가른다. 예전에는 토글마다 조건을 따로 써서
+    /// "공연" 배지가 붙은 항목이 축제 토글에도 나왔다.
     func includes(_ item: DiscoverTabItem) -> Bool {
         switch self {
-        // 지도와 같은 기준: 축제 레이어는 박람회만 빼고 담고, 공연은 음악·공연 축제와
-        // KOPIS 공연을 함께 담는다(둘 다에 들어가는 항목이 있어도 지도와 같다).
         case .all: return true
-        case .festivals: return item.isFestival && item.festivalCategory != .tradeExpo
-        case .localEvents: return item.isEvent && !item.isPerformance
-        case .performances: return item.isPerformance
-        case .tradeExpos: return item.isFestival && item.festivalCategory == .tradeExpo
+        case .festivals: return item.domain == .festival
+        case .localEvents: return item.domain == .localEvent
+        case .performances: return item.domain == .performance
+        case .tradeExpos: return item.domain == .tradeExpo
         }
     }
 }
@@ -1191,11 +1192,11 @@ struct DiscoverTabRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            DiscoverTabThumbnail(imageUrl: item.imageUrl, isFestival: item.typeText == "축제")
+            DiscoverTabThumbnail(imageUrl: item.imageUrl, isFestival: item.domain == .festival)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    StatusBadge(text: item.typeText, kind: .source)
+                    StatusBadge(text: item.typeText, kind: .tinted(item.domain.tint))
                     StatusBadge(text: item.status.displayText, kind: item.status.badgeKind)
                     if item.isSponsored {
                         StatusBadge(text: "스폰서", kind: .sponsor)

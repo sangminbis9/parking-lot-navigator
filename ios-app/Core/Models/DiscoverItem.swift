@@ -377,6 +377,9 @@ extension Festival {
     var discoverDomain: DiscoverDomain {
         if primaryCategory == .tradeExpo { return .tradeExpo }
         if DiscoverDomain.performanceSources.contains(source) { return .performance }
+        // 음악·공연 축제는 지도 공연 레이어에도 들어가는 항목이라 종류도 공연으로 본다.
+        // 축제로 두면 이벤트 탭 축제 토글에 공연이 섞여 나온다.
+        if primaryCategory == .musicPerformance { return .performance }
         return .festival
     }
 
