@@ -49,7 +49,9 @@ struct MapHomeView: View {
     @State private var mapProjector = MapProjector()
     /// 핀 파이프라인 결과 캐시. 입력이 그대로면 다시 계산하지 않는다.
     @State private var pinCache = MapPinCache()
-    @FocusState private var isSearchFocused: Bool
+    @State private var isSearchOverlayPresented = false
+    /// 지도에서 열어본 행사 기록. 검색 화면이 검색어 없이 보여 주는 카드 목록이다.
+    @StateObject private var recentDiscover = RecentDiscoverStore()
     private let overlayReleaseZoomLevel = 15
     private let discoverNameLabelZoomLevel = 17
     /// 같은 지점에 이만큼 이상 몰리면 부채꼴 분산 대신 "장소 스택" 클러스터로 묶는다.
@@ -103,7 +105,6 @@ struct MapHomeView: View {
                 pins: pins,
                 selectedPinID: hologramPin?.id,
                 onTap: {
-                    isSearchFocused = false
                     handleMapBackgroundTap()
                 },
                 onPinTap: { pin, tapPoint in
@@ -153,9 +154,6 @@ struct MapHomeView: View {
                         }
                     )
                 VStack(spacing: 10) {
-                    if !viewModel.destinations.isEmpty || !searchEventMatches.isEmpty {
-                        searchResults
-                    }
                     if let errorMessage = viewModel.errorMessage {
                         inlineError(errorMessage)
                     }
@@ -180,6 +178,29 @@ struct MapHomeView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
+
+            if isSearchOverlayPresented {
+                MapSearchOverlay(
+                    festivals: viewModel.festivals,
+                    performances: viewModel.performances,
+                    events: viewModel.events,
+                    dataRevision: viewModel.pinDataRevision,
+                    recents: recentDiscover.entries,
+                    referenceCoordinate: locationProvider.coordinate,
+                    onSelect: { item in
+                        closeSearchOverlay()
+                        focusMap(
+                            to: CLLocationCoordinate2D(latitude: item.lat, longitude: item.lng),
+                            zoomLevel: 15
+                        )
+                        openDiscoverResults(item)
+                    },
+                    onClearRecents: { recentDiscover.clear() },
+                    onClose: { closeSearchOverlay() }
+                )
+                .transition(.opacity)
+                .zIndex(2)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
@@ -744,57 +765,41 @@ struct MapHomeView: View {
         }
     }
 
+    /// 검색 바는 자리만 지키고, 실제 입력은 같은 위치에서 열리는 검색 화면이 받는다.
     private var searchPanel: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.festival(.subheadline, weight: .semibold))
-                .foregroundStyle(FestivalDesign.tealText)
-            TextField(
-                "",
-                text: $viewModel.query,
-                prompt: Text("행사, 장소, 주소 검색")
-                    .foregroundColor(FestivalDesign.secondaryText)
-            )
-                .font(.festival(.subheadline))
-                .focused($isSearchFocused)
-                .textInputAutocapitalization(.never)
-                .submitLabel(.search)
-                .onSubmit {
-                    isSearchFocused = false
-                    Task { await viewModel.search() }
-                }
-
-            Button {
-                isSearchFocused = false
-                Task { await viewModel.search() }
-            } label: {
-                Group {
-                    if viewModel.isSearching {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.right")
-                            .font(.festival(.subheadline, weight: .bold))
-                    }
-                }
-                .frame(width: 34, height: 34)
-                .background(FestivalDesign.teal)
-                .foregroundStyle(FestivalDesign.onFill(FestivalDesign.teal))
-                .clipShape(Circle())
+        Button {
+            withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
+                isSearchOverlayPresented = true
             }
-            .buttonStyle(.plain)
-            .disabled(viewModel.isSearching)
-            .accessibilityLabel("검색")
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.festival(.subheadline, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.tealText)
+                Text("행사, 가게 이벤트 검색")
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                Spacer(minLength: 0)
+            }
+            .frame(height: 34)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(FestivalDesign.surface)
+            .clipShape(FestivalDesign.controlShape)
+            .overlay(
+                FestivalDesign.controlShape
+                    .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
+            )
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .background(FestivalDesign.surface)
-        .clipShape(FestivalDesign.controlShape)
-        .overlay(
-            FestivalDesign.controlShape
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel("검색")
+    }
+
+    private func closeSearchOverlay() {
+        withAnimation(.easeOut(duration: FestivalDesign.Motion.standard)) {
+            isSearchOverlayPresented = false
+        }
     }
 
     private var discoverLayerToggles: some View {
@@ -921,166 +926,6 @@ struct MapHomeView: View {
         .buttonStyle(.plain)
         .accessibilityValue(isOn ? "\u{CF1C}\u{C9D0}" : "\u{AEBC}\u{C9D0}")
     }
-    /// 지도 검색은 장소만 찾던 시절의 이름을 버리고, 이미 불러온 행사 데이터도 함께 훑는다.
-    /// 별도 API 없이 레이어에 올라온 축제·공연·가게 이벤트의 검색 텍스트를 그대로 쓴다.
-    private var searchEventMatches: [DiscoverListItem] {
-        let keyword = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard keyword.count >= 2 else { return [] }
-        let ref = locationProvider.coordinate
-        let key = MapPinCache.SearchKey(
-            revision: viewModel.pinDataRevision,
-            keyword: keyword,
-            referenceLat: ref?.latitude,
-            referenceLng: ref?.longitude
-        )
-        // 한 번의 body 평가에서 조건·헤더·목록이 각각 부른다. 검색어가 그대로면 다시 훑지 않는다.
-        return pinCache.searchMatches(key) { buildSearchEventMatches(keyword: keyword, reference: ref) }
-    }
-
-    private func buildSearchEventMatches(keyword: String, reference ref: CLLocationCoordinate2D?) -> [DiscoverListItem] {
-        var seen = Set<String>()
-        var matches: [DiscoverListItem] = []
-
-        func append(_ item: DiscoverListItem) {
-            guard item.searchText.contains(keyword), seen.insert(item.id).inserted else { return }
-            matches.append(item)
-        }
-
-        for festival in viewModel.festivals {
-            append(.festival(festival, referenceCoordinate: ref))
-        }
-        for performance in viewModel.performances {
-            switch performance {
-            case .festival(let festival): append(.festival(festival, referenceCoordinate: ref))
-            case .event(let event): append(.event(event, referenceCoordinate: ref))
-            }
-        }
-        for event in viewModel.events {
-            append(.event(event, referenceCoordinate: ref))
-        }
-
-        return Array(matches.sorted { $0.distanceMeters < $1.distanceMeters }.prefix(8))
-    }
-
-    private var searchResults: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if !searchEventMatches.isEmpty {
-                    searchSectionHeader("행사")
-                    ForEach(searchEventMatches) { item in
-                        eventResultRow(item)
-                        Divider()
-                            .padding(.leading, 40)
-                    }
-                }
-                if !viewModel.destinations.isEmpty {
-                    searchSectionHeader("장소")
-                    ForEach(viewModel.destinations) { destination in
-                        destinationResultRow(destination)
-                        Divider()
-                            .padding(.leading, 40)
-                    }
-                }
-            }
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .simultaneousGesture(TapGesture().onEnded {
-            isSearchFocused = false
-        })
-        .frame(maxHeight: 280)
-        .background(FestivalDesign.surface.opacity(0.96))
-        .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                .stroke(FestivalDesign.creamDeep.opacity(0.45), lineWidth: 1)
-        )
-        .festivalShadow(.medium)
-    }
-
-    private func searchSectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.festival(.caption, weight: .bold))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
-    }
-
-    private func eventResultRow(_ item: DiscoverListItem) -> some View {
-        Button {
-            isSearchFocused = false
-            if let coordinate = coordinate(of: item.kind) {
-                focusMap(to: coordinate, zoomLevel: 15)
-            }
-            openDiscoverResults(item.kind)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: item.symbol)
-                    .foregroundStyle(item.tint)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
-                        .font(.festival(.headline))
-                        .foregroundStyle(FestivalDesign.navy)
-                        .lineLimit(1)
-                    Text("\(item.typeText) · \(item.statusText) · \(item.dateText)")
-                        .font(.festival(.caption))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                        .lineLimit(1)
-                    Text(item.subtitle)
-                        .font(.festival(.subheadline))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                        .lineLimit(1)
-                }
-                Spacer()
-            }
-            .padding(12)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func coordinate(of kind: DiscoverListItem.Kind) -> CLLocationCoordinate2D? {
-        switch kind {
-        case .festival(let festival):
-            return CLLocationCoordinate2D(latitude: festival.lat, longitude: festival.lng)
-        case .event(let event):
-            return CLLocationCoordinate2D(latitude: event.lat, longitude: event.lng)
-        }
-    }
-
-    private func destinationResultRow(_ destination: Destination) -> some View {
-        Button {
-            isSearchFocused = false
-            destinationStore.addRecent(destination)
-            focusMap(
-                to: CLLocationCoordinate2D(latitude: destination.lat, longitude: destination.lng),
-                zoomLevel: 16
-            )
-            Task { await viewModel.select(destination) }
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "mappin.circle.fill")
-                    .foregroundStyle(FestivalDesign.coralText)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(destination.name)
-                        .font(.festival(.headline))
-                        .foregroundStyle(FestivalDesign.navy)
-                    Text(destination.address)
-                        .font(.festival(.subheadline))
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                        .lineLimit(2)
-                }
-                Spacer()
-            }
-            .padding(12)
-        }
-        .buttonStyle(.plain)
-    }
-
     private var mapControls: some View {
         HStack(alignment: .bottom) {
             Spacer()
@@ -1390,11 +1235,20 @@ struct MapHomeView: View {
     private func openDiscoverResults(_ kind: DiscoverListItem.Kind) {
         switch kind {
         case .festival(let festival):
+            recentDiscover.add(.festival(festival))
             destinationStore.addRecent(festival.discoverDestination)
             router.showResults(for: festival.discoverDestination, presentation: festival.discoverPresentation)
         case .event(let event):
+            recentDiscover.add(.event(event))
             destinationStore.addRecent(event.discoverDestination)
             router.showResults(for: event.discoverDestination, presentation: event.discoverPresentation)
+        }
+    }
+
+    private func openDiscoverResults(_ item: DiscoverTabItem) {
+        switch item.kind {
+        case .festival(let festival): openDiscoverResults(.festival(festival))
+        case .event(let event): openDiscoverResults(.event(event))
         }
     }
 
@@ -2520,13 +2374,6 @@ private final class MapPinCache {
         let selectedDiscoverPinID: String?
     }
 
-    struct SearchKey: Equatable {
-        let revision: Int
-        let keyword: String
-        let referenceLat: Double?
-        let referenceLng: Double?
-    }
-
     private var discoverKey: DiscoverKey?
     private var discoverValue: [DiscoverPinSource] = []
     private var pinKey: PinKey?
@@ -2535,8 +2382,6 @@ private final class MapPinCache {
     private var viewportValue: [DiscoverPinSource] = []
     private var clipKey: ClipKey?
     private var clipValue: [DiscoverPinSource] = []
-    private var searchKey: SearchKey?
-    private var searchValue: [DiscoverListItem] = []
 
     func discoverSources(_ key: DiscoverKey, build: () -> [DiscoverPinSource]) -> [DiscoverPinSource] {
         if discoverKey == key { return discoverValue }
@@ -2567,14 +2412,6 @@ private final class MapPinCache {
         let value = build()
         viewportKey = key
         viewportValue = value
-        return value
-    }
-
-    func searchMatches(_ key: SearchKey, build: () -> [DiscoverListItem]) -> [DiscoverListItem] {
-        if searchKey == key { return searchValue }
-        let value = build()
-        searchKey = key
-        searchValue = value
         return value
     }
 }
