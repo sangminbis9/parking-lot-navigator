@@ -7,6 +7,7 @@ import UIKit
 
 struct MapHomeView: View {
     let apiClient: APIClientProtocol
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var tabRouter: AppTabRouter
     @EnvironmentObject private var destinationStore: DestinationStore
@@ -31,6 +32,10 @@ struct MapHomeView: View {
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
     @State private var isHomeDiscoveryPanelDismissed = false
+    /// 핀을 여러 프레임에 걸쳐 올리는 중인지. 이 동안 지도가 굳은 것처럼 보인다.
+    @State private var isPlacingPins = false
+    /// 다른 앱에 갔다 돌아온 직후인지. 지도 엔진이 되살아나는 동안 화면이 멈춘다.
+    @State private var isResumingMap = false
     @State private var presentingFestivalFilter = false
     /// 레이어 토글 높이. SF Symbol마다 높이가 달라 토글이 들쭉날쭉해 보이는 걸 막는다.
     @ScaledMetric(relativeTo: .caption) private var layerToggleHeight: CGFloat = 32
@@ -112,6 +117,9 @@ struct MapHomeView: View {
                 },
                 onCameraIdle: { viewport in
                     handleCameraIdle(viewport)
+                },
+                onPinRenderPending: { pending in
+                    isPlacingPins = pending
                 },
                 projector: mapProjector
             )
@@ -208,6 +216,15 @@ struct MapHomeView: View {
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
+        }
+        .onChange(of: scenePhase) { phase in
+            // 백그라운드로 나갈 때 미리 켜 둔다. 복귀 직후엔 메인 스레드가 밀려 이때 켜면 그려지지 않는다.
+            if phase == .background {
+                isResumingMap = true
+            } else if phase == .active, isResumingMap {
+                // 엔진이 되살아나는 데 걸리는 시간은 알 수 없어, 지도가 다시 응답할 만큼 여유를 두고 내린다.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { isResumingMap = false }
+            }
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
@@ -406,9 +423,12 @@ struct MapHomeView: View {
         }
     }
 
-    /// 첫 탐색 데이터가 아직 없는 동안만 띄운다. 두 번째 이후 새로고침은 지도에 이미 핀이 있어 가리지 않는다.
+    /// 지도가 굳어 있는 구간 전체를 덮는다. 응답이 도착해도 핀은 프레임당 몇십 개씩 올라가므로
+    /// 데이터가 채워진 시점이 아니라 핀 렌더가 끝나는 시점까지 유지한다.
+    /// 첫 조회 조건은 그대로 둬서, 지도에 이미 핀이 있는 재조회는 화면을 가리지 않는다.
     private var isInitialDiscoverLoading: Bool {
-        viewModel.isLoadingDiscover
+        if isPlacingPins || isResumingMap { return true }
+        return viewModel.isLoadingDiscover
             && viewModel.festivals.isEmpty
             && viewModel.events.isEmpty
             && viewModel.performances.isEmpty
