@@ -753,21 +753,17 @@ private struct AgendaRow: View {
                     }
                 }
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    StatusBadge(
+                // 태그 색은 카테고리별 색이 아니라 이벤트 탭 토글과 같은 종류 색을 따라간다.
+                let tint = festival.discoverDomain.tint
+                HStack(spacing: DiscoverTagStyle.Size.compact.spacing) {
+                    DiscoverTagChip(
                         text: festival.status.displayText,
-                        kind: festival.status.badgeKind
+                        tint: tint,
+                        isLead: true,
+                        size: .compact
                     )
                     if let category = festival.primaryCategory {
-                        // 태그 색은 카테고리별 색이 아니라 이벤트 탭 토글과 같은 종류 색을 따라간다.
-                        let tint = festival.discoverDomain.tint
-                        Text(category.displayName)
-                            .font(.festival(size: 10, weight: .semibold))
-                            .foregroundStyle(FestivalDesign.readable(tint))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(tint.opacity(0.16))
-                            .clipShape(FestivalDesign.chipShape)
+                        DiscoverTagChip(text: category.displayName, tint: tint, size: .compact)
                     }
                 }
                 Text(festival.title)
@@ -867,14 +863,13 @@ private struct PerformanceRow: View {
                 .fill(DiscoverDomain.performance.tint)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(p.status.displayText)
-                        .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(p.status.chipText)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(p.status.chipFill)
-                        .clipShape(FestivalDesign.chipShape)
+                HStack(spacing: DiscoverTagStyle.Size.compact.spacing) {
+                    DiscoverTagChip(
+                        text: p.status.displayText,
+                        tint: p.domain.tint,
+                        isLead: true,
+                        size: .compact
+                    )
                     Text(item.startDate == item.endDate ? item.startDate : "\(item.startDate) ~ \(item.endDate)")
                         .font(.festival(size: 11, weight: .medium))
                         .foregroundStyle(FestivalDesign.secondaryText)
@@ -917,14 +912,13 @@ private struct StoreEventRow: View {
                 .fill(DiscoverDomain.localEvent.tint)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(event.timelineStatus.displayText)
-                        .font(.festival(size: 10, weight: .bold))
-                        .foregroundStyle(event.timelineStatus.chipText)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(event.timelineStatus.chipFill)
-                        .clipShape(FestivalDesign.chipShape)
+                HStack(spacing: DiscoverTagStyle.Size.compact.spacing) {
+                    DiscoverTagChip(
+                        text: event.timelineStatus.displayText,
+                        tint: event.discoverDomain.tint,
+                        isLead: true,
+                        size: .compact
+                    )
                     Text(event.dateText)
                         .font(.festival(size: 11, weight: .medium))
                         .foregroundStyle(FestivalDesign.secondaryText)

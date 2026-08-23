@@ -9,9 +9,6 @@ struct StatusBadge: View {
         case warning
         case neutral
         case source
-        case sponsor
-        /// 종류 배지처럼 분류 색을 그대로 따라가야 하는 경우.
-        case tinted(Color)
     }
 
     var body: some View {
@@ -30,8 +27,6 @@ struct StatusBadge: View {
         case .warning: return FestivalDesign.coral.opacity(0.14)
         case .neutral: return FestivalDesign.cream.opacity(0.45)
         case .source: return FestivalDesign.parkingSoft
-        case .sponsor: return FestivalDesign.lantern.opacity(0.18)
-        case .tinted(let color): return color.opacity(0.16)
         }
     }
 
@@ -41,8 +36,6 @@ struct StatusBadge: View {
         case .warning: return FestivalDesign.coralText
         case .neutral: return FestivalDesign.secondaryText
         case .source: return FestivalDesign.parkingBlueText
-        case .sponsor: return FestivalDesign.lanternText
-        case .tinted(let color): return FestivalDesign.readable(color)
         }
     }
 }
@@ -60,10 +53,8 @@ extension DiscoverDomain {
 }
 
 extension DiscoverStatus {
-    /// 진행 상태 색은 화면마다 카테고리 tint를 따라가서 예정이 빨강·보라·회색으로 제각각이었다.
-    /// 상태 색은 여기 한 곳에서만 정한다. 진행 중은 코랄, 예정은 중립 회색.
-    var badgeKind: StatusBadge.Kind { self == .ongoing ? .warning : .neutral }
-    var chipFill: Color { self == .ongoing ? FestivalDesign.coral.opacity(0.14) : FestivalDesign.cream.opacity(0.45) }
+    /// 앱 화면의 상태 태그는 이제 분류 토글 색을 따라간다(`DiscoverTagStyle`).
+    /// 여기 남은 색은 그 규칙을 쓸 수 없는 위젯·지도 목록의 글자색용이다.
     var chipText: Color { self == .ongoing ? FestivalDesign.coralText : FestivalDesign.secondaryText }
 }
 
