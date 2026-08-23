@@ -35,27 +35,22 @@ enum FestivalDateRange: String, Codable, CaseIterable {
 
 struct FestivalFilter: Codable, Hashable {
     var regions: [String]
-    var radiusKm: Int?
     var primaryCategories: Set<FestivalPrimaryCategory>
     var dateRange: FestivalDateRange
     var customFromDate: String?
     var customToDate: String?
 
-    static let allRadiusOptions: [Int] = [10, 20, 50]
     static let `default` = FestivalFilter(
-        regions: [], radiusKm: 50, primaryCategories: [],
+        regions: [], primaryCategories: [],
         dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
     )
 
-    var radiusMeters: Int {
-        guard let radiusKm else { return 200_000 }
-        return radiusKm * 1_000
-    }
+    /// 거리 반경은 더 이상 사용자가 고르지 않는다. 예전 "전국" 선택과 같은 값으로 항상 조회한다.
+    var radiusMeters: Int { 200_000 }
 
     var isEmpty: Bool {
         regions.isEmpty && primaryCategories.isEmpty
             && dateRange == .ongoingOnly
-            && radiusKm == FestivalFilter.default.radiusKm
     }
 
     func matches(_ festival: Festival) -> Bool {
@@ -165,13 +160,12 @@ struct FestivalFilter: Codable, Hashable {
     static let allCityNames: Set<String> = Set(regionHierarchy.flatMap(\.cities))
 
     enum CodingKeys: String, CodingKey {
-        case regions, radiusKm, primaryCategories, dateRange, customFromDate, customToDate
+        case regions, primaryCategories, dateRange, customFromDate, customToDate
     }
 
-    init(regions: [String], radiusKm: Int?, primaryCategories: Set<FestivalPrimaryCategory>,
+    init(regions: [String], primaryCategories: Set<FestivalPrimaryCategory>,
          dateRange: FestivalDateRange, customFromDate: String?, customToDate: String?) {
         self.regions = regions
-        self.radiusKm = radiusKm
         self.primaryCategories = primaryCategories
         self.dateRange = dateRange
         self.customFromDate = customFromDate
@@ -181,7 +175,6 @@ struct FestivalFilter: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? []
-        radiusKm = try c.decodeIfPresent(Int.self, forKey: .radiusKm)
         primaryCategories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .primaryCategories) ?? []
         dateRange = try c.decodeIfPresent(FestivalDateRange.self, forKey: .dateRange) ?? .ongoingOnly
         customFromDate = try c.decodeIfPresent(String.self, forKey: .customFromDate)

@@ -349,10 +349,7 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     private func discoverFestivals(viewport: MapViewport, filter: FestivalFilter) async throws -> [Festival] {
-        var radiusMeters = viewportDiscoverRadiusMeters(for: viewport)
-        if filter.radiusKm != nil {
-            radiusMeters = min(radiusMeters, filter.radiusMeters)
-        }
+        let radiusMeters = viewportDiscoverRadiusMeters(for: viewport)
         let raw = try await apiClient.nearbyFestivals(
             lat: viewport.center.latitude,
             lng: viewport.center.longitude,

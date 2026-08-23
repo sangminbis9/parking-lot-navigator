@@ -107,7 +107,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
     func testFestivalFilterMatchesOngoingOnly() {
         let filter = FestivalFilter(
-            regions: [], radiusKm: nil, primaryCategories: [],
+            regions: [], primaryCategories: [],
             dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
         )
         let ongoing = Festival.mock(status: .ongoing)
@@ -118,7 +118,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
     func testFestivalFilterMatchesCustomDateRange() {
         let filter = FestivalFilter(
-            regions: [], radiusKm: nil, primaryCategories: [],
+            regions: [], primaryCategories: [],
             dateRange: .custom, customFromDate: "2026-07-10", customToDate: "2026-07-20"
         )
         // 겹치는 축제: 7/5~7/12
@@ -144,7 +144,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
     func testFestivalFilterMatchesProvinceByAddressSuffix() {
         let filter = FestivalFilter(
-            regions: ["경기"], radiusKm: nil, primaryCategories: [],
+            regions: ["경기"], primaryCategories: [],
             dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
         )
         XCTAssertTrue(filter.matches(Festival.mock(status: .ongoing, address: "경기도 고양시 킨텍스로 217")))

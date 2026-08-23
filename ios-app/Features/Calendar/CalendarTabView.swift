@@ -505,17 +505,14 @@ struct CalendarTabView: View {
     private var filterDescription: String {
         let f = filterModel.filter
         var parts: [String] = []
-        if let radius = f.radiusKm {
-            parts.append("\(radius)km")
-        } else {
-            parts.append("\u{C804}\u{AD6D}") // 전국
-        }
         if !f.regions.isEmpty {
             parts.append("\(f.regions.count)\u{AC1C} \u{C9C0}\u{C5ED}") // N개 지역
         }
         if !f.primaryCategories.isEmpty {
             parts.append("\u{CE74}\u{D14C}\u{ACE0}\u{B9AC} \(f.primaryCategories.count)") // 카테고리 N
         }
+        // 거리 반경이 빠지면서 아무 조건도 없을 수 있다. 그때는 "필터 전체"로 보인다.
+        if parts.isEmpty { return "\u{C804}\u{CCB4}" } // 전체
         return parts.joined(separator: " \u{00B7} ")
     }
 

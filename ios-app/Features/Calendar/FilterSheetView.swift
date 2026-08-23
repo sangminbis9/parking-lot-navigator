@@ -49,7 +49,6 @@ struct FilterSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     dateRangeSection
-                    radiusSection
                     regionSection
                     categorySection
                 }
@@ -72,21 +71,6 @@ struct FilterSheetView: View {
                     }
                     .font(.festival(size: 15, weight: .bold))
                     .foregroundStyle(FestivalDesign.coralText)
-                }
-            }
-        }
-    }
-
-    private var radiusSection: some View {
-        sectionWrapper(title: "거리 반경", subtitle: "현재 위치 기준") {
-            HStack(spacing: 8) {
-                ForEach([10, 20, 50] as [Int], id: \.self) { km in
-                    chip(label: "\(km)km", isOn: draft.radiusKm == km) {
-                        draft.radiusKm = km
-                    }
-                }
-                chip(label: "전국", isOn: draft.radiusKm == nil) {
-                    draft.radiusKm = nil
                 }
             }
         }
