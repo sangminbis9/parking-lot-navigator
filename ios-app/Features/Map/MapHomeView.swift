@@ -36,6 +36,8 @@ struct MapHomeView: View {
     @State private var isPlacingPins = false
     /// 다른 앱에 갔다 돌아온 직후인지. 지도 엔진이 되살아나는 동안 화면이 멈춘다.
     @State private var isResumingMap = false
+    /// 첫 조회 응답과 그 핀이 다 자리 잡았는지. 그 전까지는 로딩 표시를 내리지 않는다.
+    @State private var hasSettledAfterInitialLoad = false
     @State private var presentingFestivalFilter = false
     /// 레이어 토글 높이. SF Symbol마다 높이가 달라 토글이 들쭉날쭉해 보이는 걸 막는다.
     @ScaledMetric(relativeTo: .caption) private var layerToggleHeight: CGFloat = 32
@@ -216,6 +218,9 @@ struct MapHomeView: View {
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
+            // 응답이 끝난 시점부터 핀이 올라가기 시작한다. 렌더 신호가 켜질 틈을 주고 넘긴다.
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            hasSettledAfterInitialLoad = true
         }
         .onChange(of: scenePhase) { phase in
             // 백그라운드로 나갈 때 미리 켜 둔다. 복귀 직후엔 메인 스레드가 밀려 이때 켜면 그려지지 않는다.
@@ -427,11 +432,7 @@ struct MapHomeView: View {
     /// 데이터가 채워진 시점이 아니라 핀 렌더가 끝나는 시점까지 유지한다.
     /// 첫 조회 조건은 그대로 둬서, 지도에 이미 핀이 있는 재조회는 화면을 가리지 않는다.
     private var isInitialDiscoverLoading: Bool {
-        if isPlacingPins || isResumingMap { return true }
-        return viewModel.isLoadingDiscover
-            && viewModel.festivals.isEmpty
-            && viewModel.events.isEmpty
-            && viewModel.performances.isEmpty
+        !hasSettledAfterInitialLoad || isPlacingPins || isResumingMap
     }
 
     /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면

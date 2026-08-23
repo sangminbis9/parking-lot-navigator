@@ -105,6 +105,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var pinChunkScheduled = false
         var onPinRenderPending: ((Bool) -> Void)?
         private var lastReportedPinPending = false
+        private var pinPendingResetWork: DispatchWorkItem?
 
         /// 한 번의 render에서 새로 그리고 등록할 핀 개수 상한.
         /// 콜드 스타트에는 수백 개가 한꺼번에 들어오는데, 핀 하나마다 비트맵 드로잉과
@@ -433,7 +434,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 renderedPins[poiID] = entry.snapshot
             }
             pendingPinChunk = deferredCount > 0
-            reportPinPending(deferredCount > Coordinator.maxPinsPerRenderPass)
+            reportPinPending(deferredCount > 0)
             scheduleNextPinChunkIfNeeded()
             guard !options.isEmpty else { return }
 
@@ -449,14 +450,28 @@ struct KakaoParkingMapView: UIViewRepresentable {
             layer.showPois(poiIDs: addedIDs)
         }
 
-        /// 렌더가 몇 프레임 더 이어질 때만 알린다. 한 패스로 끝나는 소량 갱신까지 알리면
-        /// 로딩 표시가 한 프레임 깜빡인다.
+        /// 핀 렌더가 진행 중인지 알린다. 켜는 건 즉시, 끄는 건 잠시 조용한 걸 확인한 뒤다.
+        /// 한 패스에서 남은 핀이 없다고 끝난 게 아니라 다음 데이터가 이어 들어오는 경우가 많아,
+        /// 바로 끄면 지도가 아직 굳어 있는데 표시만 먼저 사라진다.
         private func reportPinPending(_ pending: Bool) {
-            guard pending != lastReportedPinPending else { return }
-            lastReportedPinPending = pending
+            pinPendingResetWork?.cancel()
+            pinPendingResetWork = nil
             // updateUIView 안에서 불릴 수 있어, 뷰 갱신 도중 상태를 바꾸지 않도록 다음 런루프로 미룬다.
-            let notify = onPinRenderPending
-            DispatchQueue.main.async { notify?(pending) }
+            if pending {
+                guard !lastReportedPinPending else { return }
+                lastReportedPinPending = true
+                let notify = onPinRenderPending
+                DispatchQueue.main.async { notify?(true) }
+                return
+            }
+            guard lastReportedPinPending else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.lastReportedPinPending = false
+                self.onPinRenderPending?(false)
+            }
+            pinPendingResetWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
         }
 
         /// 남은 핀은 다음 프레임에 올린다. asyncAfter로 한 프레임을 비워 줘야
