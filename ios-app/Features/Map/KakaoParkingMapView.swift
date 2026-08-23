@@ -12,6 +12,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
     let onPinTap: (MapPinItem, CGPoint?) -> Void
     let onCameraIdle: (MapViewport) -> Void
     var onCameraWillMove: (() -> Void)? = nil
+    /// 아직 올려야 할 핀이 여러 프레임 분량 남았는지. 그동안은 지도가 제스처를 제대로 못 받는다.
+    var onPinRenderPending: ((Bool) -> Void)? = nil
     var projector: MapProjector? = nil
 
     func makeUIView(context: Context) -> KMViewContainer {
@@ -34,6 +36,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
         context.coordinator.onCameraWillMove = onCameraWillMove
+        context.coordinator.onPinRenderPending = onPinRenderPending
         projector?.coordinator = context.coordinator
         view.addGestureRecognizer(tap)
         view.addGestureRecognizer(pinch)
@@ -51,6 +54,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onPinTap = onPinTap
         context.coordinator.onCameraIdle = onCameraIdle
         context.coordinator.onCameraWillMove = onCameraWillMove
+        context.coordinator.onPinRenderPending = onPinRenderPending
         projector?.coordinator = context.coordinator
         context.coordinator.activateEngineIfNeeded()
         context.coordinator.render()
@@ -99,6 +103,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
         /// 이번 패스에서 못 올린 핀이 남았는지. 남으면 다음 런루프에 이어서 올린다.
         private var pendingPinChunk = false
         private var pinChunkScheduled = false
+        var onPinRenderPending: ((Bool) -> Void)?
+        private var lastReportedPinPending = false
 
         /// 한 번의 render에서 새로 그리고 등록할 핀 개수 상한.
         /// 콜드 스타트에는 수백 개가 한꺼번에 들어오는데, 핀 하나마다 비트맵 드로잉과
@@ -427,6 +433,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 renderedPins[poiID] = entry.snapshot
             }
             pendingPinChunk = deferredCount > 0
+            reportPinPending(deferredCount > Coordinator.maxPinsPerRenderPass)
             scheduleNextPinChunkIfNeeded()
             guard !options.isEmpty else { return }
 
@@ -440,6 +447,16 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 )
             }
             layer.showPois(poiIDs: addedIDs)
+        }
+
+        /// 렌더가 몇 프레임 더 이어질 때만 알린다. 한 패스로 끝나는 소량 갱신까지 알리면
+        /// 로딩 표시가 한 프레임 깜빡인다.
+        private func reportPinPending(_ pending: Bool) {
+            guard pending != lastReportedPinPending else { return }
+            lastReportedPinPending = pending
+            // updateUIView 안에서 불릴 수 있어, 뷰 갱신 도중 상태를 바꾸지 않도록 다음 런루프로 미룬다.
+            let notify = onPinRenderPending
+            DispatchQueue.main.async { notify?(pending) }
         }
 
         /// 남은 핀은 다음 프레임에 올린다. asyncAfter로 한 프레임을 비워 줘야
