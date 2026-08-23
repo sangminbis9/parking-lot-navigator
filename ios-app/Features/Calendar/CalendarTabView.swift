@@ -37,7 +37,6 @@ struct CalendarTabView: View {
 
     var body: some View {
         let byDay = festivalsByDay
-        let sections = daySections(from: byDay)
         // 하단 어젠다는 달력을 줄이지 않고 그 위로 덮으며 커진다. 달력 높이는 그대로 두고
         // 패널 높이만 드래그로 늘린다.
         GeometryReader { geo in
@@ -71,7 +70,7 @@ struct CalendarTabView: View {
                     maxExtraHeight: topBlockHeight,
                     filterButton: { self.filterButton }
                 ) {
-                    agendaScroll(sections: sections)
+                    agendaScroll(byDay: byDay)
                 }
             }
             .onPreferenceChange(CalendarTopHeightKey.self) { topBlockHeight = $0 }
@@ -225,74 +224,87 @@ struct CalendarTabView: View {
         .padding(.horizontal, 16)
     }
 
-    private func presetLabel(_ text: String, filled: Bool = false) -> some View {
+    private func presetLabel(_ text: String) -> some View {
         Text(text)
             .font(.festival(size: 12, weight: .semibold))
-            .foregroundStyle(filled ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.coralText)
+            .foregroundStyle(FestivalDesign.coralText)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(filled ? FestivalDesign.coral : FestivalDesign.cream.opacity(0.55))
+            .background(FestivalDesign.cream.opacity(0.55))
             .clipShape(FestivalDesign.chipShape)
     }
 
     // MARK: - Agenda
 
-    /// 달 전체의 축제를 날짜 구획으로 이어서 보여준다. 날짜를 눌러야 목록이 생기는
-    /// 예전 방식은 빈 날짜를 고르면 화면이 통째로 비어 무엇이 있는지 알 수 없었다.
-    /// 이제 날짜 선택은 필터가 아니라 스크롤 이동이다.
-    private func agendaScroll(sections: [DaySection]) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    monthSummary(sections: sections)
-                    if case .failed(let message) = viewModel.state {
-                        Text(message)
-                            .font(.festival(size: 12))
-                            .foregroundStyle(FestivalDesign.coralText)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 12)
-                    } else if sections.isEmpty {
-                        emptyAgenda
-                    } else {
-                        ForEach(sections) { section in
-                            Section {
-                                ForEach(section.festivals) { festival in
-                                    AgendaRow(
-                                        festival: festival,
-                                        isSaved: favoritesStore.contains(id: festival.id),
-                                        isReminderOn: reminderService.isScheduled(id: festival.id),
-                                        onSelect: { handleSelectFestival(festival) },
-                                        onToggleSave: { toggleSave(festival) },
-                                        onToggleReminder: { toggleReminderForFestival(festival) }
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .padding(.bottom, 10)
-                                }
-                            } header: {
-                                daySectionHeader(section)
-                                    .id(section.id)
-                            }
-                        }
-                    }
-                    performanceSection
-                    storeEventSection
+    /// 하단 목록은 달력에서 고른 하루만 보여 준다. 축제·공연·가게 이벤트 세 섹션이
+    /// 모두 같은 `selectedDay`를 기준으로 하므로, 스크롤로 다른 날짜가 딸려 나오지 않는다.
+    private func agendaScroll(byDay: [String: [Festival]]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                monthSummary(byDay: byDay)
+                if case .failed(let message) = viewModel.state {
+                    Text(message)
+                        .font(.festival(size: 12))
+                        .foregroundStyle(FestivalDesign.coralText)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                } else {
+                    festivalSection(byDay: byDay)
                 }
-                .padding(.top, 14)
+                performanceSection
+                storeEventSection
             }
-            .onChange(of: selectedDay) { day in
-                guard let target = scrollTarget(for: day, in: sections) else { return }
-                withAnimation(.easeOut(duration: 0.25)) {
-                    proxy.scrollTo(target, anchor: .top)
-                }
-            }
+            .padding(.top, 14)
         }
     }
 
-    private func monthSummary(sections: [DaySection]) -> some View {
+    private func festivalSection(byDay: [String: [Festival]]) -> some View {
+        let items: [Festival] = {
+            guard let day = selectedDay else { return [] }
+            return sortedForAgenda(byDay[CalendarViewModel.dayFormatter.string(from: day)] ?? [])
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.festival(size: 12, weight: .bold))
+                    .foregroundStyle(FestivalDesign.readable(DiscoverDomain.festival.tint))
+                Text("\(selectedDayTitle) 축제 · \(items.count)개")
+                    .font(.festival(size: 14, weight: .bold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+
+            if items.isEmpty {
+                Text("선택한 날짜에 조건에 맞는 축제가 없습니다")
+                    .font(.festival(size: 12))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+                    .padding(.horizontal, 16)
+            } else {
+                ForEach(items) { festival in
+                    AgendaRow(
+                        festival: festival,
+                        isSaved: favoritesStore.contains(id: festival.id),
+                        isReminderOn: reminderService.isScheduled(id: festival.id),
+                        onSelect: { handleSelectFestival(festival) },
+                        onToggleSave: { toggleSave(festival) },
+                        onToggleReminder: { toggleReminderForFestival(festival) }
+                    )
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .padding(.bottom, 14)
+    }
+
+    /// 하단 목록은 하루치만 보여 주므로, 달 전체에 무엇이 얼마나 있는지는 이 줄이 알려 준다.
+    private func monthSummary(byDay: [String: [Festival]]) -> some View {
+        let monthKey = String(CalendarViewModel.dayFormatter.string(from: monthAnchor).prefix(7))
         var ids = Set<String>()
         var savedCount = 0
-        for section in sections {
-            for festival in section.festivals where ids.insert(festival.id).inserted {
+        for (key, items) in byDay where key.hasPrefix(monthKey) {
+            for festival in items where ids.insert(festival.id).inserted {
                 if favoritesStore.contains(id: festival.id) { savedCount += 1 }
             }
         }
@@ -321,32 +333,6 @@ struct CalendarTabView: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
-    }
-
-    private func daySectionHeader(_ section: DaySection) -> some View {
-        let isSelected = selectedDay.map { calendar.isDate($0, inSameDayAs: section.date) } ?? false
-        let isToday = calendar.isDateInToday(section.date)
-        return HStack(spacing: 6) {
-            Text(Self.agendaDayFormatter.string(from: section.date))
-                .font(.festival(size: 13, weight: .bold))
-                .foregroundStyle(isSelected ? FestivalDesign.coralText : FestivalDesign.navy)
-            if isToday {
-                Text("\u{C624}\u{B298}") // 오늘
-                    .font(.festival(size: 10, weight: .bold))
-                    .foregroundStyle(FestivalDesign.onFill(FestivalDesign.coral))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(FestivalDesign.coral)
-                    .clipShape(FestivalDesign.chipShape)
-            }
-            Text("\(section.festivals.count)")
-                .font(.festival(size: 11, weight: .bold))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(FestivalDesign.background)
     }
 
     private var performanceSection: some View {
@@ -440,38 +426,7 @@ struct CalendarTabView: View {
         .padding(.bottom, 14)
     }
 
-    private var emptyAgenda: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.festival(size: 30))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            Text("\u{C774} \u{B2EC}\u{C5D0}\u{B294} \u{C870}\u{AC74}\u{C5D0} \u{B9DE}\u{B294} \u{CD95}\u{C81C}\u{AC00} \u{C5C6}\u{C5B4}\u{C694}") // 이 달에는 조건에 맞는 축제가 없어요
-                .font(.festival(size: 14, weight: .semibold))
-                .foregroundStyle(FestivalDesign.secondaryText)
-            Text("\u{BC18}\u{ACBD}\u{C774}\u{B098} \u{C870}\u{D68C} \u{AE30}\u{AC04}\u{C744} \u{B113}\u{D788}\u{AC70}\u{B098} \u{B2E4}\u{B978} \u{B2EC}\u{C744} \u{BCF4}\u{C138}\u{C694}") // 반경이나 조회 기간을 넓히거나 다른 달을 보세요
-                .font(.festival(size: 12))
-                .foregroundStyle(FestivalDesign.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button {
-                presentingFilter = true
-            } label: {
-                presetLabel("\u{D544}\u{D130} \u{C5F4}\u{AE30}", filled: true) // 필터 열기
-            }
-            .padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 32)
-        .padding(.bottom, 24)
-    }
-
     // MARK: - Derived
-
-    struct DaySection: Identifiable {
-        let id: String
-        let date: Date
-        let festivals: [Festival]
-    }
 
     /// 필터를 통과한 근처 축제 전체. 반경·기간 밖이라 목록에 없는 즐겨찾기는
     /// 캐시된 SavedFestival로 채워 넣어, 저장해 둔 축제가 달력에서 사라지지 않게 한다.
@@ -497,24 +452,6 @@ struct CalendarTabView: View {
         }
     }
 
-    /// 보고 있는 달에서 축제가 있는 날만 구획으로 만든다. 이번 달을 볼 때는
-    /// 이미 지난 날짜를 건너뛴다.
-    private func daySections(from byDay: [String: [Festival]]) -> [DaySection] {
-        guard let interval = calendar.dateInterval(of: .month, for: monthAnchor) else { return [] }
-        let isCurrentMonth = calendar.isDate(monthAnchor, equalTo: Date(), toGranularity: .month)
-        var cursor = isCurrentMonth ? max(interval.start, calendar.startOfDay(for: Date())) : interval.start
-        var sections: [DaySection] = []
-        while cursor < interval.end {
-            let key = CalendarViewModel.dayFormatter.string(from: cursor)
-            if let items = byDay[key], !items.isEmpty {
-                sections.append(DaySection(id: key, date: cursor, festivals: sortedForAgenda(items)))
-            }
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
-            cursor = next
-        }
-        return sections
-    }
-
     /// 즐겨찾기를 맨 위로 올리고, 그다음은 가까운 순.
     private func sortedForAgenda(_ items: [Festival]) -> [Festival] {
         items.sorted { lhs, rhs in
@@ -524,13 +461,6 @@ struct CalendarTabView: View {
             if lhs.distanceMeters != rhs.distanceMeters { return lhs.distanceMeters < rhs.distanceMeters }
             return lhs.title < rhs.title
         }
-    }
-
-    /// 고른 날에 축제가 없으면 그 뒤로 가장 가까운 날의 구획으로 보낸다.
-    private func scrollTarget(for day: Date?, in sections: [DaySection]) -> String? {
-        guard let day else { return nil }
-        let key = CalendarViewModel.dayFormatter.string(from: day)
-        return sections.first { $0.id >= key }?.id ?? sections.last?.id
     }
 
     private static let monthTitleFormatter: DateFormatter = {
@@ -592,10 +522,19 @@ struct CalendarTabView: View {
     // MARK: - Actions
 
     private func shiftMonth(by delta: Int) {
-        if let next = calendar.date(byAdding: .month, value: delta, to: monthAnchor) {
-            monthAnchor = next
-            haptic()
+        guard let next = calendar.date(byAdding: .month, value: delta, to: monthAnchor) else { return }
+        monthAnchor = next
+        // 하단 목록은 고른 하루만 보여 주므로, 달을 넘기면 선택도 그 달 안으로 옮긴다.
+        selectedDay = defaultDay(in: next)
+        haptic()
+    }
+
+    /// 그 달에서 기본으로 고를 날. 이번 달이면 오늘, 아니면 1일.
+    private func defaultDay(in month: Date) -> Date? {
+        if calendar.isDate(month, equalTo: Date(), toGranularity: .month) {
+            return calendar.startOfDay(for: Date())
         }
+        return calendar.dateInterval(of: .month, for: month)?.start
     }
 
     private func jumpToWeekend() {
