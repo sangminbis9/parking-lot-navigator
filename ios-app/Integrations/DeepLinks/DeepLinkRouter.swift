@@ -11,6 +11,8 @@ final class DeepLinkRouter: ObservableObject {
     @Published var pendingFestivalId: String?
     /// 로컬 이벤트 알림에서 실어 보내는 항목. 축제와 달리 공유 캐시가 없어 전체를 담는다.
     @Published var pendingEvent: FreeEvent?
+    /// 서버 푸시가 실어 보내는 로컬 이벤트 id. 상세는 앱이 API로 받아 온다.
+    @Published var pendingLocalEventId: String?
     /// 캘린더 탭으로만 보내는 진입점(위젯 "전체 보기"). 값이 바뀌는 것 자체가 신호다.
     @Published var pendingCalendarAt: Date?
 

@@ -25,7 +25,18 @@ pnpm exec wrangler secret put KOPIS_API_KEY
 pnpm exec wrangler secret put KCISA_428_API_KEY
 pnpm exec wrangler secret put KCISA_196_API_KEY
 pnpm exec wrangler secret put SYNC_ADMIN_TOKEN
+pnpm exec wrangler secret put APNS_KEY_ID
+pnpm exec wrangler secret put APNS_TEAM_ID
+pnpm exec wrangler secret put APNS_PRIVATE_KEY
 ```
+
+The three `APNS_*` secrets drive the upcoming-event push notifications
+(D-30 / D-7 / D-1). `APNS_PRIVATE_KEY` is the full contents of the `.p8`
+key downloaded from the Apple Developer portal, including the
+`-----BEGIN PRIVATE KEY-----` header. `APNS_BUNDLE_ID` is a plain var in
+`wrangler.toml`, not a secret. When any of the three secrets is missing the
+notification cron plans rows but sends nothing, so the feature stays inert
+instead of failing the whole scheduled run.
 
 `CULTURE_PORTAL_API_KEY` can be omitted when the Culture Portal API is approved for the same data.go.kr key stored in `PUBLIC_DATA_SERVICE_KEY`.
 

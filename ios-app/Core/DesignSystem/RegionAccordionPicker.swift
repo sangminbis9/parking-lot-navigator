@@ -2,9 +2,18 @@ import SwiftUI
 
 /// 광역시도 → 하위 도시/구 계층으로 지역을 선택하는 아코디언 피커.
 /// selected 배열에는 광역시도 단축명("경기")과 도시 키("수원시")가 함께 저장된다.
+///
+/// `qualified: true`면 도시 키를 `NotificationRegionKey` 형식("경기|수원시")으로 저장한다.
+/// 알림 관심 지역은 서울 중구와 부산 중구를 구분해야 해서 이 모드를 쓴다.
+/// 축제 필터는 주소 문자열 매칭이라 예전 형식(false)을 그대로 쓴다.
 struct RegionAccordionPicker: View {
     @Binding var selected: [String]
+    var qualified: Bool = false
     @State private var expanded: Set<String> = []
+
+    private func cityKey(province: String, city: String) -> String {
+        qualified ? NotificationRegionKey.make(province: province, district: city) : city
+    }
 
     var body: some View {
         VStack(spacing: 2) {
@@ -28,7 +37,7 @@ struct RegionAccordionPicker: View {
             .padding(.vertical, 3)
 
             if expanded.contains(region.name) {
-                cityGrid(region.cities)
+                cityGrid(region)
                     .padding(.top, 6)
                     .padding(.bottom, 4)
                     .padding(.leading, 2)
@@ -39,7 +48,7 @@ struct RegionAccordionPicker: View {
 
     private func regionChip(_ region: (name: String, cities: [String])) -> some View {
         let isOn = selected.contains(region.name)
-        let cityCount = region.cities.filter { selected.contains($0) }.count
+        let cityCount = region.cities.filter { selected.contains(cityKey(province: region.name, city: $0)) }.count
         let label = (!isOn && cityCount > 0) ? "\(region.name) +\(cityCount)" : region.name
 
         return Button {
@@ -91,23 +100,24 @@ struct RegionAccordionPicker: View {
 
     // MARK: - City grid
 
-    private func cityGrid(_ cities: [String]) -> some View {
+    private func cityGrid(_ region: (name: String, cities: [String])) -> some View {
         RegionFlowLayout(spacing: 5) {
-            ForEach(cities, id: \.self) { city in
-                cityChip(city)
+            ForEach(region.cities, id: \.self) { city in
+                cityChip(province: region.name, city: city)
             }
         }
     }
 
-    private func cityChip(_ city: String) -> some View {
-        let isOn = selected.contains(city)
+    private func cityChip(province: String, city: String) -> some View {
+        let key = cityKey(province: province, city: city)
+        let isOn = selected.contains(key)
         let display = FestivalFilter.cityDisplayName(city)
         return Button {
             withAnimation(.easeInOut(duration: FestivalDesign.Motion.quick)) {
-                if let idx = selected.firstIndex(of: city) {
+                if let idx = selected.firstIndex(of: key) {
                     selected.remove(at: idx)
                 } else {
-                    selected.append(city)
+                    selected.append(key)
                 }
             }
         } label: {

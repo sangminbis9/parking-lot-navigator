@@ -12,6 +12,32 @@ protocol APIClientProtocol {
     func discoveryProviderHealth() async throws -> [ProviderHealth]
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent]
     func pipelineStats() async throws -> PipelineStats
+    func festival(id: String) async throws -> Festival
+    func localEvent(id: String) async throws -> FreeEvent
+    func registerNotificationDevice(_ registration: NotificationDeviceRegistration) async throws
+}
+
+/// `POST /api/notifications/register` 요청 본문. 서버가 다가오는 행사 푸시 대상을 고를 때 쓰는
+/// 기기 정보와 알림 설정을 통째로 올린다. Worker의 `notificationRegisterSchema`와 필드가 1:1이다.
+struct NotificationDeviceRegistration: Encodable, Equatable {
+    struct Topic: Encodable, Equatable {
+        var enabled: Bool
+        var regions: [String]      // NotificationRegionKey 형식. 비면 전국 전체
+        var categories: [String]   // 비면 전체
+    }
+
+    struct QuietHours: Encodable, Equatable {
+        var enabled: Bool
+        var startHour: Int
+        var endHour: Int
+    }
+
+    var deviceId: String
+    var apnsToken: String?
+    var apnsEnvironment: String   // "production" | "sandbox"
+    var festival: Topic
+    var localEvent: Topic
+    var quietHours: QuietHours
 }
 
 extension APIClientProtocol {
@@ -135,6 +161,20 @@ final class APIClient: APIClientProtocol {
 
     func pipelineStats() async throws -> PipelineStats {
         try await get(endpoint("discover/pipeline-stats"))
+    }
+
+    func festival(id: String) async throws -> Festival {
+        let response: DiscoverFestivalDetailResponse = try await get(endpoint("api/festivals/\(id)"))
+        return response.item
+    }
+
+    func localEvent(id: String) async throws -> FreeEvent {
+        let response: DiscoverEventDetailResponse = try await get(endpoint("api/local-events/\(id)"))
+        return response.item
+    }
+
+    func registerNotificationDevice(_ registration: NotificationDeviceRegistration) async throws {
+        try await post(endpoint("api/notifications/register"), body: registration)
     }
 
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
@@ -364,4 +404,18 @@ final class MockAPIClient: APIClientProtocol {
             AgentActivityEvent(id: "mock-3", ts: now, agentId: "echo", action: "post", targetKind: "local_event", targetId: "mock-event", targetTitle: "샘플 카페 리뷰 이벤트", verdict: nil, reason: nil)
         ]
     }
+
+    func festival(id: String) async throws -> Festival {
+        let items = try await nearbyFestivals(lat: 0, lng: 0, radiusMeters: 0, upcomingWithinDays: 365, pastWithinDays: 0)
+        guard let match = items.first(where: { $0.id == id }) else { throw URLError(.resourceUnavailable) }
+        return match
+    }
+
+    func localEvent(id: String) async throws -> FreeEvent {
+        let items = try await nearbyEvents(lat: 0, lng: 0, radiusMeters: 0)
+        guard let match = items.first(where: { $0.id == id }) else { throw URLError(.resourceUnavailable) }
+        return match
+    }
+
+    func registerNotificationDevice(_ registration: NotificationDeviceRegistration) async throws {}
 }

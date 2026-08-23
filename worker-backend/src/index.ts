@@ -8,6 +8,7 @@ import {
   currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
+  getFestivalBySourceItemId,
   queryFestivalsFromCache,
   queryPerformancesFromCache,
   pruneOldSyncRuns,
@@ -52,6 +53,11 @@ import {
 import { queryStaticParkingCache } from "./staticParkingCache.js";
 import { createD1GeocodeStore } from "./geocodeStore.js";
 import { queryPipelineStats } from "./pipelineStats.js";
+import { apnsConfigFromEnv, createApnsSender } from "./apns.js";
+import {
+  dispatchPendingNotifications,
+  planUpcomingNotifications,
+} from "./upcomingNotifications.js";
 
 export type Env = {
   DB?: D1Database;
@@ -110,6 +116,12 @@ export type Env = {
   TAGGING_RUN_MAX_ROWS?: string;
   TAGGING_CONCURRENCY?: string;
   OPS_ALERT_WEBHOOK_URL?: string;
+  // APNs (다가오는 행사 알림 서버 발송). 넷 중 하나라도 없으면 발송을 건너뛴다.
+  APNS_KEY_ID?: string;
+  APNS_TEAM_ID?: string;
+  APNS_PRIVATE_KEY?: string;
+  APNS_BUNDLE_ID?: string;
+  UPCOMING_NOTIFICATION_MAX_PUSHES?: string;
 };
 
 type BackendModules = {
@@ -547,6 +559,14 @@ app.get("/api/festivals", async (c) =>
   }),
 );
 
+// 푸시 알림은 전체 JSON 대신 eventKind + eventId만 싣는다. 앱이 그 id로 상세를 받는다.
+app.get("/api/festivals/:id", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await getFestivalBySourceItemId(c.env.DB, c.req.param("id"));
+  if (!item) return c.json({ error: "not_found" }, 404);
+  return c.json({ item, generatedAt: new Date().toISOString() });
+});
+
 app.get("/api/performances", async (c) => {
   if (!c.env.DB) return c.json({ error: "DB not configured" }, 503);
   const query = discoverQuerySchema.safeParse(queryObject(c.req.raw.url));
@@ -597,6 +617,81 @@ app.get("/api/local-events/:id", async (c) => {
       return c.json({ error: "not_found" }, 404);
   }
   return c.json({ item, generatedAt: new Date().toISOString() });
+});
+
+// 알림 설정 동기화. 앱이 켤 때·설정을 바꿀 때·APNs 토큰이 바뀔 때마다 전체 상태를 보낸다.
+// 로그인 시스템이 없으므로 앱이 만든 익명 device id를 키로 upsert한다.
+const notificationRegisterSchema = z.object({
+  deviceId: z.string().min(8).max(128),
+  apnsToken: z.string().max(200).nullish(),
+  apnsEnvironment: z.enum(["production", "sandbox"]).default("production"),
+  festival: z
+    .object({
+      enabled: z.boolean().default(false),
+      regions: z.array(z.string().max(40)).max(300).default([]),
+      categories: z.array(z.string().max(40)).max(50).default([]),
+    })
+    .default({ enabled: false, regions: [], categories: [] }),
+  localEvent: z
+    .object({
+      enabled: z.boolean().default(false),
+      regions: z.array(z.string().max(40)).max(300).default([]),
+      categories: z.array(z.string().max(40)).max(50).default([]),
+    })
+    .default({ enabled: false, regions: [], categories: [] }),
+  quietHours: z
+    .object({
+      enabled: z.boolean().default(false),
+      startHour: z.number().int().min(0).max(23).default(22),
+      endHour: z.number().int().min(0).max(23).default(8),
+    })
+    .default({ enabled: false, startHour: 22, endHour: 8 }),
+});
+
+app.post("/api/notifications/register", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const body = notificationRegisterSchema.parse(await c.req.json());
+  const now = new Date().toISOString();
+  await c.env.DB.prepare(
+    `INSERT INTO notification_devices (
+        device_id, apns_token, apns_environment,
+        festival_enabled, festival_regions, festival_categories,
+        local_event_enabled, local_event_regions, local_event_categories,
+        quiet_hours_enabled, quiet_start_hour, quiet_end_hour,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(device_id) DO UPDATE SET
+        apns_token = COALESCE(excluded.apns_token, notification_devices.apns_token),
+        apns_environment = excluded.apns_environment,
+        festival_enabled = excluded.festival_enabled,
+        festival_regions = excluded.festival_regions,
+        festival_categories = excluded.festival_categories,
+        local_event_enabled = excluded.local_event_enabled,
+        local_event_regions = excluded.local_event_regions,
+        local_event_categories = excluded.local_event_categories,
+        quiet_hours_enabled = excluded.quiet_hours_enabled,
+        quiet_start_hour = excluded.quiet_start_hour,
+        quiet_end_hour = excluded.quiet_end_hour,
+        updated_at = excluded.updated_at`,
+  )
+    .bind(
+      body.deviceId,
+      body.apnsToken ?? null,
+      body.apnsEnvironment,
+      body.festival.enabled ? 1 : 0,
+      JSON.stringify(body.festival.regions),
+      JSON.stringify(body.festival.categories),
+      body.localEvent.enabled ? 1 : 0,
+      JSON.stringify(body.localEvent.regions),
+      JSON.stringify(body.localEvent.categories),
+      body.quietHours.enabled ? 1 : 0,
+      body.quietHours.startHour,
+      body.quietHours.endHour,
+      now,
+      now,
+    )
+    .run();
+  return c.json({ ok: true, generatedAt: now });
 });
 
 app.post("/api/local-events/report", async (c) => {
@@ -1009,6 +1104,27 @@ app.post("/admin/backfill-fees", async (c) => {
   }
 });
 
+const upcomingNotificationSchema = z.object({
+  maxPushes: z.coerce.number().int().min(1).max(45).optional(),
+  plan: z.coerce.boolean().optional(),
+});
+
+app.post("/admin/run-upcoming-notifications", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const query = upcomingNotificationSchema.parse(queryObject(c.req.raw.url));
+  try {
+    const result = await runUpcomingNotifications(c.env, {
+      plan: query.plan ?? true,
+      maxPushes: query.maxPushes,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/backfill-images", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -1123,6 +1239,17 @@ export default {
     if (!env.DB) return;
     if (controller.cron === "*/3 * * * *") {
       ctx.waitUntil(syncRealtimeParkingScheduled(env));
+      // 다가오는 행사 알림은 전용 cron slot이 없다(계정 한도 5개를 이미 다 쓴다).
+      // 실시간 주차 동기화는 외부 fetch를 한두 건만 쓰므로 같은 invocation의
+      // subrequest 50건 예산에 여유가 있다. 30분마다 발송하고, 정각에는 계획도 함께 돈다.
+      const scheduledAt = new Date(controller.scheduledTime);
+      if (scheduledAt.getUTCMinutes() % 30 === 0) {
+        ctx.waitUntil(
+          runUpcomingNotificationsScheduled(env, {
+            plan: scheduledAt.getUTCMinutes() === 0,
+          }),
+        );
+      }
       return;
     }
     if (controller.cron === "*/9 * * * *") {
@@ -1290,6 +1417,46 @@ async function runImageEnrichmentScheduled(env: Env): Promise<void> {
   } catch (error) {
     console.error("image enrichment scheduled failed", error);
     await notifyOpsFailure(env, "image enrichment", error);
+  }
+}
+
+/**
+ * 계획(D1만) + 발송(APNs)을 한 번에 돈다. APNs 설정이 없으면 계획만 하고 조용히 넘어간다 —
+ * 대기 행은 남아 있으므로 설정을 채운 뒤 다음 회차에 그대로 나간다.
+ */
+async function runUpcomingNotifications(
+  env: Env,
+  options: { plan: boolean; maxPushes?: number },
+): Promise<Record<string, unknown>> {
+  const db = env.DB!;
+  const planned = options.plan
+    ? await planUpcomingNotifications(db)
+    : { planned: 0, events: 0, devices: 0 };
+  const config = apnsConfigFromEnv(env);
+  if (!config) {
+    return { planned, dispatched: null, reason: "apns_not_configured" };
+  }
+  const maxPushes =
+    options.maxPushes ??
+    Number(env.UPCOMING_NOTIFICATION_MAX_PUSHES ?? "40") ??
+    40;
+  const dispatched = await dispatchPendingNotifications(
+    db,
+    createApnsSender(config),
+    { maxPushes },
+  );
+  return { planned, dispatched };
+}
+
+async function runUpcomingNotificationsScheduled(
+  env: Env,
+  options: { plan: boolean },
+): Promise<void> {
+  try {
+    await runUpcomingNotifications(env, options);
+  } catch (error) {
+    console.error("upcoming notifications failed", error);
+    await notifyOpsFailure(env, "upcoming notifications", error);
   }
 }
 

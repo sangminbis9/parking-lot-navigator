@@ -55,6 +55,10 @@ TAGGING_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 TAGGING_BATCH_SIZE = "20"
 TAGGING_RUN_MAX_ROWS = "200"
 TAGGING_CONCURRENCY = "2"
+# 다가오는 행사 알림 한 회차 APNs 호출 상한. 항목당 외부 fetch 1건이고 invocation당
+# 50건 한도라 40을 넘기지 않는다. 못 보낸 대기 행은 다음 회차에 그대로 다시 잡힌다.
+UPCOMING_NOTIFICATION_MAX_PUSHES = "40"
+APNS_BUNDLE_ID = "com.sangminbis9.ParkingLotNavigator"
 
 [triggers]
 crons = ["*/3 * * * *", "*/9 * * * *", "15 * * * *", "30 */3 * * *", "*/5 * * * *"]

@@ -153,14 +153,30 @@ struct AppRootView: View {
         .onReceive(DeepLinkRouter.shared.$pendingFestivalId) { id in
             guard let id else { return }
             DeepLinkRouter.shared.pendingFestivalId = nil
-            // 위젯이 보여준 축제는 위젯 캐시에 그대로 있다. 못 찾으면 축제 탭까지만 열어 준다.
+            // 위젯이 보여준 축제는 위젯 캐시에 그대로 있다.
             let cached = SharedFestivalCache.load(appGroupID: AppConfiguration.current.appGroupID)?
                 .items
                 .first(where: { $0.id == id })
             if let cached {
                 openDiscover(cached)
             } else {
+                // 서버 푸시는 id만 싣는다. 캐시에 없으면 상세를 받아 와서 연다.
                 openTab(.discover).path.removeAll()
+                Task { @MainActor in
+                    if let festival = try? await apiClient.festival(id: id) {
+                        openDiscover(festival)
+                    }
+                }
+            }
+        }
+        .onReceive(DeepLinkRouter.shared.$pendingLocalEventId) { id in
+            guard let id else { return }
+            DeepLinkRouter.shared.pendingLocalEventId = nil
+            openTab(.discover).path.removeAll()
+            Task { @MainActor in
+                if let event = try? await apiClient.localEvent(id: id) {
+                    openDiscover(event)
+                }
             }
         }
     }
