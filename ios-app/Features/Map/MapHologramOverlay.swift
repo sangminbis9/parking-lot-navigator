@@ -23,25 +23,14 @@ struct MapHologramOverlay: View {
 
     @ViewBuilder
     private var chipRow: some View {
-        RegionFlowLayout(spacing: 5) {
-            // 맨 앞 시기 태그만 토글 색을 그대로 채워 강조하고,
-            // 뒤따르는 분류 태그들은 같은 색을 옅게 깔아 한 계열로 묶는다.
+        // 태그 색 규칙은 DiscoverTagStyle 한 곳에 있다. 맨 앞 시기 태그만 꽉 찬 배경,
+        // 뒤따르는 분류 태그들은 같은 색을 옅게 깐다.
+        RegionFlowLayout(spacing: DiscoverTagStyle.Size.compact.spacing) {
             if let status {
-                Text(status.displayText)
-                    .font(.festival(size: 10, weight: .bold))
-                    .foregroundColor(FestivalDesign.onFill(tint))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(tint))
+                DiscoverTagChip(text: status.displayText, tint: tint, isLead: true, size: .compact)
             }
             ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { _, tag in
-                Text(tag)
-                    .font(.festival(size: 10, weight: .medium))
-                    .foregroundColor(FestivalDesign.readable(tint))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
-                    .lineLimit(1)
+                DiscoverTagChip(text: tag, tint: tint, size: .compact)
             }
         }
     }

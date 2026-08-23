@@ -346,6 +346,8 @@ struct DiscoverPresentation: Hashable {
     let address: String
     let status: DiscoverStatus
     let typeText: String
+    /// 태그 색을 정하는 분류. `typeText`는 이 값의 표시 이름이다.
+    let domain: DiscoverDomain
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
@@ -417,6 +419,7 @@ extension Festival {
             address: address,
             status: status,
             typeText: discoverDomain.displayName,
+            domain: discoverDomain,
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,
@@ -499,6 +502,7 @@ extension FreeEvent {
             address: address,
             status: timelineStatus,
             typeText: discoverDomain.displayName,
+            domain: discoverDomain,
             source: source,
             sourceUrl: sourceUrl,
             imageUrl: imageUrl,

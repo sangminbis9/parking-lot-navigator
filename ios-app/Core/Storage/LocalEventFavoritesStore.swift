@@ -115,6 +115,7 @@ extension SavedEvent {
             address: address,
             status: .upcoming,
             typeText: domain.displayName,
+            domain: domain,
             source: source,
             sourceUrl: nil,
             imageUrl: imageUrl,

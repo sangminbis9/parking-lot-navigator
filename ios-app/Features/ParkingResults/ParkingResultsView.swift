@@ -164,8 +164,9 @@ private struct DiscoverResultHeader: View {
     var onToggleFavorite: (() -> Void)? = nil
     var shareContent: DiscoverShareContent? = nil
 
+    /// 태그·히어로 이미지 색은 그 행사의 분류 토글 색을 따른다.
     private var tint: Color {
-        presentation.status == .ongoing ? FestivalDesign.coral : FestivalDesign.teal
+        presentation.domain.tint
     }
 
     var body: some View {
@@ -176,9 +177,9 @@ private struct DiscoverResultHeader: View {
                 tint: tint
             )
 
-            HStack(spacing: 8) {
-                StatusBadge(text: presentation.typeText, kind: .source)
-                StatusBadge(text: presentation.status.displayText, kind: presentation.status.badgeKind)
+            HStack(spacing: DiscoverTagStyle.Size.regular.spacing) {
+                DiscoverTagChip(text: presentation.typeText, tint: tint, isLead: true)
+                DiscoverTagChip(text: presentation.status.displayText, tint: tint)
                 Spacer(minLength: 0)
                 if let onToggleFavorite {
                     Button(action: onToggleFavorite) {
@@ -211,19 +212,10 @@ private struct DiscoverResultHeader: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // 첫 태그는 도메인이라 위 StatusBadge(typeText)와 같다. 나머지만 칩으로 보여준다.
+            // 첫 태그는 도메인이라 위 typeText 칩과 같다. 나머지만 뒤따르는 태그(옅은 배경)로 보여준다.
             let detailTags = Array(presentation.tags.dropFirst())
             if !detailTags.isEmpty {
-                RegionFlowLayout(spacing: 6) {
-                    ForEach(detailTags, id: \.self) { tag in
-                        Text(tag)
-                            .font(.festival(.caption, weight: .medium))
-                            .foregroundStyle(FestivalDesign.readable(tint))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(FestivalDesign.chipShape.fill(tint.opacity(0.12)))
-                    }
-                }
+                DiscoverTagRow(tags: detailTags, tint: tint, leadsRow: false)
             }
         }
         .padding(14)

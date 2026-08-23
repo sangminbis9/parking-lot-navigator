@@ -1195,11 +1195,12 @@ struct DiscoverTabRow: View {
             DiscoverTabThumbnail(imageUrl: item.imageUrl, isFestival: item.domain == .festival)
 
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    StatusBadge(text: item.typeText, kind: .tinted(item.domain.tint))
-                    StatusBadge(text: item.status.displayText, kind: item.status.badgeKind)
+                // 태그 색은 DiscoverTagStyle 규칙을 따른다. 맨 앞만 분류 토글 색을 꽉 채우고 나머지는 옅게.
+                HStack(spacing: DiscoverTagStyle.Size.regular.spacing) {
+                    DiscoverTagChip(text: item.typeText, tint: item.domain.tint, isLead: true)
+                    DiscoverTagChip(text: item.status.displayText, tint: item.domain.tint)
                     if item.isSponsored {
-                        StatusBadge(text: "스폰서", kind: .sponsor)
+                        DiscoverTagChip(text: "스폰서", tint: item.domain.tint)
                     }
                 }
                 Text(item.title)
