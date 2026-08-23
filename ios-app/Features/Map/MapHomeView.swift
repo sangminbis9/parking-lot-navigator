@@ -435,28 +435,33 @@ struct MapHomeView: View {
     }
 
     /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면
-    /// 멈춘 것처럼 보이므로 마스코트와 함께 진행 중임을 알린다.
+    /// 멈춘 것처럼 보이므로 지도를 흐리게 덮고 마스코트가 지팡이를 흔들며 진행 중임을 알린다.
     private var discoverLoadingBadge: some View {
-        VStack(spacing: 10) {
-            Image("FestivalMascotIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 52, height: 52)
-                .accessibilityHidden(true)
-            ProgressView()
-                .tint(FestivalDesign.coral)
-            Text("이벤트를 불러오는 중이에요")
-                .font(.festival(.caption, weight: .semibold))
-                .foregroundStyle(FestivalDesign.navy)
+        ZStack {
+            FestivalDesign.surface.opacity(0.78)
+                .ignoresSafeArea()
+            VStack(spacing: 16) {
+                WandWavingMascot()
+                loadingCaption
+            }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(FestivalDesign.surface)
-        )
-        .festivalShadow(.high)
         .allowsHitTesting(false)
+    }
+
+    /// 문장 끝 점이 하나씩 늘어난다. 점이 붙었다 빠지며 글자가 흔들리지 않도록 양쪽에 같은 폭을 비워 둔다.
+    private var loadingCaption: some View {
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: 20, height: 1)
+            Text("이벤트를 불러오는 중이에요")
+            TimelineView(.periodic(from: .now, by: 0.45)) { context in
+                let step = Int(context.date.timeIntervalSinceReferenceDate / 0.45) % 3 + 1
+                Text(String(repeating: ".", count: step))
+                    .frame(width: 20, alignment: .leading)
+            }
+        }
+        .font(.festival(.body, weight: .semibold))
+        .foregroundStyle(FestivalDesign.navy)
     }
 
     private var discoverPins: [MapPinItem] {
@@ -1567,6 +1572,23 @@ struct MapHomeView: View {
         if movedMeters > movementThreshold { return true }
         let radiusDelta = abs(viewport.radiusMeters - previous.radiusMeters)
         return radiusDelta > max(1_000, viewport.radiusMeters / 5)
+    }
+}
+
+/// 마스코트가 든 별 지팡이를 흔드는 것처럼 보이도록 몸통째 좌우로 기울인다.
+/// 지팡이만 따로 움직일 수 없어(한 장짜리 이미지) 전체 회전으로 대신한다.
+private struct WandWavingMascot: View {
+    @State private var isWaving = false
+
+    var body: some View {
+        Image("FestivalMascotGuide")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 132, height: 132)
+            .rotationEffect(.degrees(isWaving ? 8 : -8), anchor: .bottom)
+            .animation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true), value: isWaving)
+            .accessibilityHidden(true)
+            .onAppear { isWaving = true }
     }
 }
 
