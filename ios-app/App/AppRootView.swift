@@ -88,7 +88,12 @@ struct AppRootView: View {
             // 전환 애니메이션은 탭바 버튼 쪽에만 남긴다.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            FestivalTabBar(selection: $tabRouter.selectedTab)
+            FestivalTabBar(
+                selection: $tabRouter.selectedTab,
+                // 이미 보고 있는 탭을 다시 누르면 그 탭의 화면 스택만 처음으로 되감는다.
+                // 탭을 새로 만들지 않으므로 지도 위치·불러온 목록은 그대로 남는다.
+                onReselect: { routers.router(for: $0).path.removeAll() }
+            )
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .paperGrainOverlay()
@@ -293,6 +298,7 @@ private struct TabNavigationStack: View {
 
 private struct FestivalTabBar: View {
     @Binding var selection: AppTab
+    let onReselect: (AppTab) -> Void
     // 색을 static 경로에서 읽으므로, 테마가 바뀔 때 이 뷰가 다시 계산되도록 직접 구독한다.
     @EnvironmentObject private var themeStore: FestivalThemeStore
 
@@ -325,7 +331,11 @@ private struct FestivalTabBar: View {
         let isSelected = selection == tab
 
         return Button {
-            selection = tab
+            if isSelected {
+                onReselect(tab)
+            } else {
+                selection = tab
+            }
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: tab.systemImage)
