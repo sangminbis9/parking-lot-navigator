@@ -19,11 +19,8 @@ struct CalendarTabView: View {
     @State private var presentingFilter = false
     @State private var presentingSaved = false
     @State private var showNotificationDeniedAlert = false
-    /// 하단 어젠다 패널을 드래그로 얼마나 더 끌어올렸는지(pt). 0이면 달력 바로 아래에서 시작한다.
-    @State private var agendaExtraHeight: CGFloat = 0
     /// 달력 영역(헤더+월간+빠른 이동)의 실제 높이. 패널 기본 높이와 최대 확장량을 여기서 뽑는다.
     @State private var topBlockHeight: CGFloat = 380
-    @GestureState private var agendaDragTranslation: CGFloat = 0
 
     private let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -45,7 +42,6 @@ struct CalendarTabView: View {
         // 패널 높이만 드래그로 늘린다.
         GeometryReader { geo in
             let base = max(geo.size.height - topBlockHeight, 0)
-            let extra = min(max(agendaExtraHeight - agendaDragTranslation, 0), topBlockHeight)
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
@@ -70,20 +66,13 @@ struct CalendarTabView: View {
                     )
                     Spacer(minLength: 0)
                 }
-                VStack(spacing: 0) {
-                    agendaHandle
-                    Divider()
-                        .overlay(FestivalDesign.creamDeep.opacity(0.4))
+                AgendaPanel(
+                    baseHeight: base,
+                    maxExtraHeight: topBlockHeight,
+                    filterButton: { self.filterButton }
+                ) {
                     agendaScroll(sections: sections)
                 }
-                .frame(height: base + extra, alignment: .top)
-                .background(FestivalDesign.background)
-                .overlay(
-                    Rectangle()
-                        .fill(FestivalDesign.barBorder)
-                        .frame(height: 1),
-                    alignment: .top
-                )
             }
             .onPreferenceChange(CalendarTopHeightKey.self) { topBlockHeight = $0 }
         }
@@ -214,35 +203,6 @@ struct CalendarTabView: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("\u{D544}\u{D130}") // 필터
-    }
-
-    /// 어젠다 패널 상단의 드래그 손잡이. 드래그 영역은 필터 버튼 아래에 깔아 탭을 가로채지 않는다.
-    private var agendaHandle: some View {
-        ZStack {
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(agendaDragGesture)
-            Capsule()
-                .fill(FestivalDesign.creamDeep)
-                .frame(width: 40, height: 4)
-                .allowsHitTesting(false)
-            HStack(spacing: 0) {
-                Spacer()
-                filterButton
-            }
-        }
-        .frame(height: 40)
-        .padding(.horizontal, 12)
-    }
-
-    private var agendaDragGesture: some Gesture {
-        DragGesture()
-            .updating($agendaDragTranslation) { value, state, _ in
-                state = value.translation.height
-            }
-            .onEnded { value in
-                agendaExtraHeight = min(max(agendaExtraHeight - value.translation.height, 0), topBlockHeight)
-            }
     }
 
     private var quickJumpRow: some View {
@@ -697,6 +657,78 @@ struct CalendarTabView: View {
 }
 
 // MARK: - Agenda Row
+
+/// 하단 어젠다 패널. 드래그 상태를 이 뷰가 직접 들고 있어야 손가락을 따라가는 동안
+/// 달력 전체 body가 다시 계산되지 않는다(재계산하면 그날 목록을 매 프레임 다시 만들어 버벅인다).
+private struct AgendaPanel<Filter: View, Content: View>: View {
+    let baseHeight: CGFloat
+    let maxExtraHeight: CGFloat
+    let filterButton: Filter
+    let content: Content
+
+    /// 드래그로 얼마나 더 끌어올렸는지(pt). 0이면 달력 바로 아래에서 시작한다.
+    @State private var extraHeight: CGFloat = 0
+    @GestureState private var dragTranslation: CGFloat = 0
+
+    init(
+        baseHeight: CGFloat,
+        maxExtraHeight: CGFloat,
+        @ViewBuilder filterButton: () -> Filter,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.baseHeight = baseHeight
+        self.maxExtraHeight = maxExtraHeight
+        self.filterButton = filterButton()
+        self.content = content()
+    }
+
+    var body: some View {
+        let extra = min(max(extraHeight - dragTranslation, 0), maxExtraHeight)
+        VStack(spacing: 0) {
+            handle
+            Divider()
+                .overlay(FestivalDesign.creamDeep.opacity(0.4))
+            content
+        }
+        .frame(height: baseHeight + extra, alignment: .top)
+        .background(FestivalDesign.background)
+        .overlay(
+            Rectangle()
+                .fill(FestivalDesign.barBorder)
+                .frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    /// 패널 상단의 드래그 손잡이. 드래그 영역은 필터 버튼 아래에 깔아 탭을 가로채지 않는다.
+    private var handle: some View {
+        ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(dragGesture)
+            Capsule()
+                .fill(FestivalDesign.creamDeep)
+                .frame(width: 40, height: 4)
+                .allowsHitTesting(false)
+            HStack(spacing: 0) {
+                Spacer()
+                filterButton
+            }
+        }
+        .frame(height: 40)
+        .padding(.horizontal, 12)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .updating($dragTranslation) { value, state, _ in
+                state = value.translation.height
+            }
+            .onEnded { value in
+                extraHeight = min(max(extraHeight - value.translation.height, 0), maxExtraHeight)
+            }
+    }
+}
 
 private struct AgendaRow: View {
     let festival: Festival
