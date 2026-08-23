@@ -86,7 +86,7 @@ struct CalendarTabView: View {
             await reminderService.refreshScheduled()
         }
         .onChange(of: filterModel.filter) { _ in
-            viewModel.reapply(filter: filterModel.filter)
+            Task { await viewModel.reapply(filter: filterModel.filter) }
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
             festivalSync.sync(coordinate: coord)
         }

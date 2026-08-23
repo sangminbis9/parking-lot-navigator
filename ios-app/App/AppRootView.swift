@@ -83,7 +83,9 @@ struct AppRootView: View {
                     }
                 }
             }
-            .animation(.easeInOut(duration: FestivalDesign.Motion.quick), value: tabRouter.selectedTab)
+            // 탭 전체에 cross-fade를 걸면 전환하는 동안 지도 UIView와 다른 탭이 동시에 합성된다.
+            // 지도 엔진이 붙어 있는 화면에서는 그 한 프레임이 그대로 입력 지연으로 온다.
+            // 전환 애니메이션은 탭바 버튼 쪽에만 남긴다.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             FestivalTabBar(selection: $tabRouter.selectedTab)
@@ -104,7 +106,8 @@ struct AppRootView: View {
             Self.configureTabBarAppearance()
         }
         .task {
-            festivalSync.sync(coordinate: nil)
+            // 콜드 스타트에는 지도 탐색 API가 먼저다. 위젯 캐시가 아직 신선하면 이번 실행에서는 건드리지 않는다.
+            festivalSync.syncIfStale(coordinate: nil, minimumInterval: 1_800)
             discoveryService.scheduleNextRefresh()
         }
         .onChange(of: themeStore.selectedTheme) { _ in

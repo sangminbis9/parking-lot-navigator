@@ -18,15 +18,30 @@ final class FestivalSyncService: ObservableObject {
     }
 
     func syncIfStale(coordinate: (lat: Double, lng: Double)?, minimumInterval: TimeInterval = 300) {
-        if let lastSyncAt, Date().timeIntervalSince(lastSyncAt) < minimumInterval {
-            return
+        if let lastSyncAt, Date().timeIntervalSince(lastSyncAt) < minimumInterval { return }
+        inflight?.cancel()
+        // lastSyncAt은 메모리에만 있어 콜드 스타트마다 nil이었다. 그래서 앱을 열 때마다
+        // 지도 탐색 API와 위젯 sync가 같이 출발했다. 디스크 캐시의 생성 시각을 기준으로 삼되,
+        // 그 파일을 읽고 디코드하는 일 자체는 메인 스레드 밖에서 한다.
+        inflight = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let appGroupID = self.appGroupID
+            let cachedAt = await Task.detached(priority: .utility) {
+                SharedFestivalCache.load(appGroupID: appGroupID)?.generatedAt
+            }.value
+            if Task.isCancelled { return }
+            if let cachedAt, Date().timeIntervalSince(cachedAt) < minimumInterval {
+                self.lastSyncAt = cachedAt
+                return
+            }
+            await self.performSync(coordinate: coordinate)
         }
-        sync(coordinate: coordinate)
     }
 
     func sync(coordinate: (lat: Double, lng: Double)?) {
         inflight?.cancel()
-        inflight = Task { [weak self] in
+        // 위젯 갱신은 화면에 보이는 작업이 아니다. 지도/목록 요청에 우선순위를 양보한다.
+        inflight = Task(priority: .utility) { [weak self] in
             await self?.performSync(coordinate: coordinate)
         }
     }
@@ -56,15 +71,16 @@ final class FestivalSyncService: ObservableObject {
             }
 
             let now = Date()
+            // rank를 비교자 안에서 부르면 항목마다 O(log n)번 다시 계산된다. 한 번만 매긴다.
+            let usesUserLocation = basis.kind == .location
             let ranked = collected.values
                 .filter { widgetFilter.matches($0) }
+                .map { (festival: $0, score: Self.rank($0, now: now, usesUserLocation: usesUserLocation)) }
                 .sorted { lhs, rhs in
-                    let lhsScore = Self.rank(lhs, now: now, usesUserLocation: basis.kind == .location)
-                    let rhsScore = Self.rank(rhs, now: now, usesUserLocation: basis.kind == .location)
-                    if lhsScore != rhsScore { return lhsScore < rhsScore }
-                    return lhs.id < rhs.id
+                    if lhs.score != rhs.score { return lhs.score < rhs.score }
+                    return lhs.festival.id < rhs.festival.id
                 }
-            let items = Array(ranked.prefix(Self.maxCachedItems))
+            let items = ranked.prefix(Self.maxCachedItems).map(\.festival)
 
             await refreshThumbnails(for: items)
 
@@ -75,12 +91,19 @@ final class FestivalSyncService: ObservableObject {
                 basisLabel: basis.label,
                 hasActiveFilter: !filter.isEmpty
             )
-            SharedFestivalCache.save(snapshot, appGroupID: appGroupID)
+            await Self.persist(snapshot, appGroupID: appGroupID)
             lastSyncAt = now
             WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
         } catch {
             // 네트워크 실패 시 기존 캐시를 그대로 둔다. 위젯은 generatedAt으로 오래됨을 표시한다.
         }
+    }
+
+    /// JSONEncoder + 파일 쓰기. 메인 액터(클래스 전체가 @MainActor)에서 하면 앱 진입 직후 UI가 멈춘다.
+    private nonisolated static func persist(_ snapshot: WidgetSnapshot, appGroupID: String) async {
+        await Task.detached(priority: .utility) {
+            SharedFestivalCache.save(snapshot, appGroupID: appGroupID)
+        }.value
     }
 
     // MARK: 조회 기준
@@ -166,6 +189,7 @@ final class FestivalSyncService: ObservableObject {
     /// 위젯이 쓸 작은 JPEG을 App Group에 채운다. 한 회차에 받는 개수를 제한해
     /// 앱 진입 직후 네트워크를 오래 물고 있지 않게 한다.
     private func refreshThumbnails(for items: [Festival]) async {
+        let appGroupID = self.appGroupID
         var downloaded = 0
         for festival in items {
             guard downloaded < Self.maxThumbnailDownloads else { break }
@@ -174,9 +198,15 @@ final class FestivalSyncService: ObservableObject {
                   let url = URL(string: raw) else { continue }
             downloaded += 1
             guard let data = await Self.downloadThumbnail(url) else { continue }
-            WidgetThumbnailStore.write(data, festivalID: festival.id, appGroupID: appGroupID)
+            let festivalID = festival.id
+            await Task.detached(priority: .utility) {
+                WidgetThumbnailStore.write(data, festivalID: festivalID, appGroupID: appGroupID)
+            }.value
         }
-        WidgetThumbnailStore.prune(keeping: items.map(\.id), appGroupID: appGroupID)
+        let ids = items.map(\.id)
+        await Task.detached(priority: .utility) {
+            WidgetThumbnailStore.prune(keeping: ids, appGroupID: appGroupID)
+        }.value
     }
 
     /// 디코드·재인코드가 무거워 메인 액터(클래스 전체가 @MainActor)에 두면 앱 진입 직후 UI가 멈춘다.

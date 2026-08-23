@@ -215,6 +215,8 @@ enum MapPinRenderer {
     }
 
     /// 제목 라벨 버블이 달린 핀. (라벨 종류가 많아 별도 캐시하지 않고 호출부에서 styleID 단위로 1회 등록)
+    private static var labeledCache: [String: UIImage] = [:]
+
     static func labeledImage(
         category: MapPinCategory,
         theme: FestivalTheme,
@@ -225,7 +227,16 @@ enum MapPinRenderer {
         live: Bool = false,
         scale: CGFloat = MapPinRenderer.scale
     ) -> UIImage {
-        draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon, photo: photo, live: live)
+        // 대표 이미지가 붙은 핀은 행사마다 그림이 달라 캐시하지 않는다(image(...)와 같은 이유).
+        if photo != nil {
+            return draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon, photo: photo, live: live)
+        }
+        let key = "\(category.rawValue)|\(theme.rawValue)|\(FestivalAppearance.styleKey)|\(label)|\(border?.pinColorKey ?? "-")|\(neon)|\(live)|\(Int((scale * 100).rounded()))"
+        if let cached = labeledCache[key] { return cached }
+        let image = draw(category: category, theme: theme, selected: false, label: label, scale: scale, border: border, neon: neon, photo: photo, live: live)
+        if labeledCache.count > 600 { labeledCache.removeAll(keepingCapacity: true) }
+        labeledCache[key] = image
+        return image
     }
 
     private static var parkingCache: [String: UIImage] = [:]
@@ -244,6 +255,17 @@ enum MapPinRenderer {
     /// 개수 구간(2~9 / 10~49 / 50+)에 따라 크기와 색 진하기를 단계화한다 — 카카오·네이버·구글 표준.
     /// `isParking`/`theme`는 색(tint)에 이미 반영되어 있어 형태에는 쓰지 않는다.
     static func clusterImage(tint: UIColor, count: Int, isParking: Bool, theme: FestivalTheme, scale: CGFloat = MapPinRenderer.scale) -> UIImage {
+        let cacheKey = "\(tint.pinColorKey)|\(count)|\(isParking)|\(theme.rawValue)|\(FestivalAppearance.styleKey)|\(Int((scale * 100).rounded()))"
+        if let cached = clusterCache[cacheKey] { return cached }
+        let image = drawCluster(tint: tint, count: count, scale: scale)
+        if clusterCache.count > 400 { clusterCache.removeAll(keepingCapacity: true) }
+        clusterCache[cacheKey] = image
+        return image
+    }
+
+    private static var clusterCache: [String: UIImage] = [:]
+
+    private static func drawCluster(tint: UIColor, count: Int, scale: CGFloat) -> UIImage {
         let tier = count < 10 ? 0 : (count < 50 ? 1 : 2)
         let innerD: CGFloat = [30, 38, 46][tier]
         let fill: UIColor = [tint.pinMixedWithWhite(0.30), tint, tint.pinDeepened(0.72)][tier]

@@ -14,6 +14,9 @@ struct KakaoParkingMapView: UIViewRepresentable {
     var onCameraWillMove: (() -> Void)? = nil
     /// 아직 올려야 할 핀이 여러 프레임 분량 남았는지. 그동안은 지도가 제스처를 제대로 못 받는다.
     var onPinRenderPending: ((Bool) -> Void)? = nil
+    /// 지도 탭이 화면에 보이고 앱이 foreground일 때만 true. false면 엔진을 멈추고 핀도 올리지 않는다.
+    /// 다른 탭에 있는 동안 카카오맵이 되살아나 메인 스레드를 먹는 것을 막는다.
+    var isEngineActive: Bool = true
     var projector: MapProjector? = nil
 
     func makeUIView(context: Context) -> KMViewContainer {
@@ -40,9 +43,11 @@ struct KakaoParkingMapView: UIViewRepresentable {
         projector?.coordinator = context.coordinator
         view.addGestureRecognizer(tap)
         view.addGestureRecognizer(pinch)
-        context.coordinator.createController(view)
-        context.coordinator.prepareEngineIfNeeded()
-        context.coordinator.activateEngineIfNeeded()
+        PerfTrace.measure("map.makeUIView") {
+            context.coordinator.createController(view)
+            context.coordinator.prepareEngineIfNeeded()
+            context.coordinator.setEngineActive(isEngineActive)
+        }
         return view
     }
 
@@ -56,7 +61,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onCameraWillMove = onCameraWillMove
         context.coordinator.onPinRenderPending = onPinRenderPending
         projector?.coordinator = context.coordinator
-        context.coordinator.activateEngineIfNeeded()
+        context.coordinator.setEngineActive(isEngineActive)
         context.coordinator.render()
     }
 
@@ -87,10 +92,14 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private weak var container: KMViewContainer?
         private var enginePrepared = false
         private var engineActive = false
+        /// 지도 탭이 보이는 중인지. false면 activate/render를 통째로 건너뛴다.
+        private var engineAllowed = true
         private var mapReady = false
         private var stylesReady = false
         private var renderedCamera: MapCameraTarget?
         private var renderedPinSnapshot: [MapPinSnapshot] = []
+        /// renderedPinSnapshot을 만든 원본 핀. 청크를 이어 올릴 때 짝이 어긋나지 않게 함께 들고 있는다.
+        private var snapshotPins: [MapPinItem] = []
         /// 지도에 실제로 올라가 있는 POI. poiID → 스냅샷. 바뀐 핀만 교체해 깜빡임을 막는다.
         private var renderedPins: [String: MapPinSnapshot] = [:]
         private var observers: [NSObjectProtocol] = []
@@ -107,11 +116,13 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var lastReportedPinPending = false
         private var pinPendingResetWork: DispatchWorkItem?
 
-        /// 한 번의 render에서 새로 그리고 등록할 핀 개수 상한.
-        /// 콜드 스타트에는 수백 개가 한꺼번에 들어오는데, 핀 하나마다 비트맵 드로잉과
-        /// addPoiStyle(텍스처 등록)이 메인 스레드에서 일어나 그 사이 제스처가 통째로 밀린다.
-        /// 프레임 하나 분량씩 끊어 올려 지도를 붙잡지 않는다.
-        private static let maxPinsPerRenderPass = 40
+        /// 한 번의 render 패스가 메인 스레드를 붙잡아도 되는 시간.
+        /// 핀 하나마다 비트맵 드로잉과 addPoiStyle(텍스처 등록)이 메인 스레드에서 일어나는데,
+        /// 개수로 끊으면 핀 종류에 따라 한 개가 0.05ms이기도 3ms이기도 해서 상한이 무의미했다.
+        /// (사진이 붙은 핀은 캐시가 없어 매번 새로 그린다.) 실제 소요 시간으로 끊는다.
+        private static let pinRenderBudget: CFAbsoluteTime = 0.004
+        /// 예산을 이미 넘겼더라도 최소한 이만큼은 올린다. 한 개도 못 올리면 영원히 안 끝난다.
+        private static let minPinsPerRenderPass = 4
 
         func createController(_ view: KMViewContainer) {
             container = view
@@ -122,14 +133,26 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         func prepareEngineIfNeeded() {
             guard !enginePrepared else { return }
-            controller?.prepareEngine()
+            PerfTrace.measure("map.prepareEngine") { controller?.prepareEngine() }
             enginePrepared = true
         }
 
+        /// 지도 탭 표시 여부 + 앱 foreground 여부를 하나로 받는다.
+        /// SwiftUI scenePhase와 UIKit 알림 두 경로가 이 플래그를 공유해 서로 어긋나지 않는다.
+        func setEngineActive(_ active: Bool) {
+            engineAllowed = active
+            if active {
+                activateEngineIfNeeded()
+            } else {
+                pauseEngine()
+            }
+        }
+
         func activateEngineIfNeeded() {
+            guard engineAllowed else { return }
             prepareEngineIfNeeded()
             guard !engineActive else { return }
-            controller?.activateEngine()
+            PerfTrace.measure("map.activateEngine") { controller?.activateEngine() }
             engineActive = true
         }
 
@@ -220,7 +243,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
         }
 
         func render() {
-            guard mapReady, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            guard engineAllowed, mapReady, let mapView = controller?.getView("mapview") as? KakaoMap else { return }
             updateMapRect()
             configureLabelsIfNeeded()
             configureCameraEventsIfNeeded()
@@ -230,18 +253,30 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
-            let pinSnapshot = latestPins.map {
-                MapPinSnapshot(
-                    pin: $0,
-                    showsDiscoverLabels: showsDiscoverLabels,
-                    showsAllDiscoverLabels: showsAllDiscoverLabels,
-                    isSelected: $0.id == selectedPinID
-                )
+            let pinSnapshot = PerfTrace.measure("map.buildSnapshots", "\(latestPins.count)") {
+                latestPins.map {
+                    MapPinSnapshot(
+                        pin: $0,
+                        showsDiscoverLabels: showsDiscoverLabels,
+                        showsAllDiscoverLabels: showsAllDiscoverLabels,
+                        isSelected: $0.id == selectedPinID
+                    )
+                }
             }
             if renderedPinSnapshot != pinSnapshot || pendingPinChunk {
-                renderPins(on: mapView, snapshots: pinSnapshot)
                 renderedPinSnapshot = pinSnapshot
+                snapshotPins = latestPins
+                renderPins(on: mapView, pins: snapshotPins, snapshots: pinSnapshot)
             }
+        }
+
+        /// 남은 핀을 이어 올린다. 스냅샷을 다시 만들지 않고 직전 것을 그대로 쓴다.
+        /// (예전에는 여기서 render()를 다시 불러, 콜드 스타트에 600개 스냅샷을 청크 수만큼 반복 생성했다.)
+        private func continuePinChunk() {
+            guard engineAllowed, mapReady, pendingPinChunk,
+                  snapshotPins.count == renderedPinSnapshot.count,
+                  let mapView = controller?.getView("mapview") as? KakaoMap else { return }
+            renderPins(on: mapView, pins: snapshotPins, snapshots: renderedPinSnapshot)
         }
 
         private var showsDiscoverLabels: Bool {
@@ -379,12 +414,13 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         /// 카메라 이동·데이터 재조회 때마다 전체를 지우고 다시 그리면 남아 있어야 할 핀까지 깜빡인다.
         /// 그래서 사라졌거나 좌표·스타일이 달라진 POI만 지우고, 새로 생긴 것만 추가한다.
-        private func renderPins(on mapView: KakaoMap, snapshots: [MapPinSnapshot]) {
+        private func renderPins(on mapView: KakaoMap, pins: [MapPinItem], snapshots: [MapPinSnapshot]) {
+            let startedAt = CFAbsoluteTimeGetCurrent()
             let manager = mapView.getLabelManager()
             guard let layer = manager.getLabelLayer(layerID: "parking-pins") else { return }
 
             var desired: [String: (pin: MapPinItem, snapshot: MapPinSnapshot)] = [:]
-            for (pin, snapshot) in zip(latestPins, snapshots) {
+            for (pin, snapshot) in zip(pins, snapshots) {
                 desired[snapshot.poiID] = (pin, snapshot)
             }
 
@@ -407,7 +443,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             var clickableIDs: Set<String> = []
             var deferredCount = 0
             for (poiID, entry) in desired where renderedPins[poiID] == nil {
-                guard options.count < Coordinator.maxPinsPerRenderPass else {
+                if options.count >= Coordinator.minPinsPerRenderPass,
+                   CFAbsoluteTimeGetCurrent() - startedAt >= Coordinator.pinRenderBudget {
                     deferredCount += 1
                     continue
                 }
@@ -440,14 +477,16 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
             // 앱을 새로 열면 수십~수백 개가 한 번에 들어온다. 카카오맵 문서가 권장하는 대로
             // addPoi/show를 개수만큼 반복하지 않고 addPois·showPois로 한 번에 넘긴다.
-            let added = layer.addPois(options: options, at: positions) ?? []
-            for poi in added where clickableIDs.contains(poi.itemID) {
-                poiTapHandlers[poi.itemID] = poi.addPoiTappedEventHandler(
-                    target: self,
-                    handler: KakaoParkingMapView.Coordinator.poiTappedHandler
-                )
+            PerfTrace.measure("map.addPois", "\(options.count)") {
+                let added = layer.addPois(options: options, at: positions) ?? []
+                for poi in added where clickableIDs.contains(poi.itemID) {
+                    poiTapHandlers[poi.itemID] = poi.addPoiTappedEventHandler(
+                        target: self,
+                        handler: KakaoParkingMapView.Coordinator.poiTappedHandler
+                    )
+                }
+                layer.showPois(poiIDs: addedIDs)
             }
-            layer.showPois(poiIDs: addedIDs)
         }
 
         /// 핀 렌더가 진행 중인지 알린다. 켜는 건 즉시, 끄는 건 잠시 조용한 걸 확인한 뒤다.
@@ -482,7 +521,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
                 guard let self else { return }
                 self.pinChunkScheduled = false
-                self.render()
+                self.continuePinChunk()
             }
         }
 
@@ -625,19 +664,29 @@ private var pinStyleThemeKey: String {
     FestivalTheme.current.rawValue + "-" + FestivalAppearance.styleKey
 }
 
+/// poiID 변환 캐시. 메인 스레드에서만 만진다(스냅샷 생성이 메인에서만 일어난다).
+private enum PoiIDCache {
+    static let limit = 4_000
+    static var values: [String: String] = [:]
+}
+
 private extension MapPinItem {
     var isCurrentLocation: Bool {
         if case .currentLocation = kind { return true }
         return false
     }
 
+    /// 핀 id를 카카오맵이 받는 문자로 정제한 값. 문자 단위로 새 문자열을 만드는 비용이 있어
+    /// (핀 600개면 스냅샷을 만들 때마다 600번) id별로 한 번만 계산하고 재사용한다.
     var poiID: String {
-        id.map { character in
-            character.isLetter || character.isNumber || character == "-" || character == "_" ? character : "_"
+        if let cached = PoiIDCache.values[id] { return cached }
+        let sanitized = id.reduce(into: "") { result, character in
+            let allowed = character.isLetter || character.isNumber || character == "-" || character == "_"
+            result.append(allowed ? character : "_")
         }
-        .reduce(into: "") { result, character in
-            result.append(character)
-        }
+        if PoiIDCache.values.count > PoiIDCache.limit { PoiIDCache.values.removeAll(keepingCapacity: true) }
+        PoiIDCache.values[id] = sanitized
+        return sanitized
     }
 
     func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false, isSelected: Bool = false) -> String {

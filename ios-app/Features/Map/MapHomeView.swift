@@ -123,6 +123,9 @@ struct MapHomeView: View {
                 onPinRenderPending: { pending in
                     isPlacingPins = pending
                 },
+                // 지도 탭이 실제로 보이고 앱이 foreground일 때만 엔진을 돌린다.
+                // 다른 탭에서 앱으로 돌아왔을 때 카카오맵이 되살아나 메인 스레드를 먹는 것을 막는다.
+                isEngineActive: scenePhase == .active && tabRouter.selectedTab == .map,
                 projector: mapProjector
             )
             .ignoresSafeArea(edges: .top)

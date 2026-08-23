@@ -16,6 +16,8 @@ struct ParkingLotNavigatorApp: App {
     private let apiClient: APIClientProtocol = APIClient()
 
     init() {
+        // 메인 스레드가 100ms 이상 붙잡히면 콘솔에 남긴다. 성능 회귀를 기기에서 바로 확인하는 용도.
+        MainThreadHangMonitor.shared.start()
         URLCache.shared = URLCache(memoryCapacity: 50 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024)
         let appKey = AppConfiguration.current.kakaoNativeAppKey
         if !appKey.isEmpty {
