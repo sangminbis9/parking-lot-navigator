@@ -23,7 +23,10 @@ enum PerfTrace {
             signposter.endInterval(name, state)
             let elapsed = CFAbsoluteTimeGetCurrent() - started
             if elapsed >= slowThreshold {
-                logger.notice("\(name, privacy: .public) \(Int(elapsed * 1000), privacy: .public)ms \(detail(), privacy: .public)")
+                // OSLog 보간은 인자를 escaping autoclosure로 받는다. autoclosure 파라미터를
+                // 그대로 넘기면 컴파일이 막히므로 여기서 한 번 값으로 만든 뒤 넘긴다.
+                let detailText = detail()
+                logger.notice("\(name, privacy: .public) \(Int(elapsed * 1000), privacy: .public)ms \(detailText, privacy: .public)")
             }
         }
         return try body()
@@ -38,7 +41,8 @@ enum PerfTrace {
         let value = await body()
         signposter.endInterval(name, state)
         let elapsed = CFAbsoluteTimeGetCurrent() - started
-        logger.notice("\(name, privacy: .public) \(Int(elapsed * 1000), privacy: .public)ms \(detail(), privacy: .public)")
+        let detailText = detail()
+        logger.notice("\(name, privacy: .public) \(Int(elapsed * 1000), privacy: .public)ms \(detailText, privacy: .public)")
         return value
     }
 

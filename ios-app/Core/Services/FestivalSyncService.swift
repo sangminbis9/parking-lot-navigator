@@ -241,5 +241,5 @@ final class FestivalSyncService: ObservableObject {
     private static let maxRegionQueries = 4
     private static let maxCachedItems = 20
     private static let maxThumbnailDownloads = 8
-    private static let thumbnailMaxPixel: CGFloat = 240
+    private nonisolated static let thumbnailMaxPixel: CGFloat = 240
 }
