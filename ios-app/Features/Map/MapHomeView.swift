@@ -193,7 +193,7 @@ struct MapHomeView: View {
                             to: CLLocationCoordinate2D(latitude: item.lat, longitude: item.lng),
                             zoomLevel: 15
                         )
-                        openDiscoverResults(item)
+                        openDiscoverResults(item: item)
                     },
                     onClearRecents: { recentDiscover.clear() },
                     onClose: { closeSearchOverlay() }
@@ -1245,7 +1245,7 @@ struct MapHomeView: View {
         }
     }
 
-    private func openDiscoverResults(_ item: DiscoverTabItem) {
+    private func openDiscoverResults(item: DiscoverTabItem) {
         switch item.kind {
         case .festival(let festival): openDiscoverResults(.festival(festival))
         case .event(let event): openDiscoverResults(.event(event))
