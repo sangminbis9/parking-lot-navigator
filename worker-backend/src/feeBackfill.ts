@@ -4,6 +4,7 @@ import {
   getString,
   parseXmlItems,
 } from "../../backend/src/features/discover/events/eventProviderUtils.js";
+import { combineProgramInfo } from "../../backend/src/features/discover/events/KopisEventProvider.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { isRetryableBackfillError } from "./backfillRetry.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
@@ -12,6 +13,11 @@ import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 // 호출로만 얻을 수 있다. sync 한 번에 전부 부르면 subrequest 한도를 넘으므로,
 // 요금이 비어 있는 행을 매시간 조금씩 훑어 채운다. 한 번 조회한 행은
 // fee_checked_at으로 표시해 정보가 없는 행에 예산이 반복 소모되지 않게 한다.
+//
+// 프로그램 정보(KOPIS 공연시간·출연진·제작진, TourAPI 프로그램·부대행사)도 같은
+// detail 응답에 들어 있다. 예전에는 요금만 뽑고 나머지를 버려서, detail을 이미
+// 열어 본 행조차 programInfo가 비어 있었다. 이제 한 번 연 응답에서 둘 다 뽑는다 —
+// 추가 subrequest는 없고, 조회 여부는 program_checked_at으로 따로 추적한다.
 
 // invocation당 subrequest 예산이 50이라 한 번에 이보다 많이 돌 수 없다.
 const DEFAULT_MAX_ITEMS = 30;
@@ -41,6 +47,9 @@ export interface FeeBackfillResult {
   // 재시도해도 같은 결과인 오류로 확정한 행. empty(요금 정보가 원래 없는 행)와
   // 섞으면 쿼터 장애가 정상 회차처럼 보인다.
   permanentFailures: number;
+  // 요금과 별개로 프로그램 정보를 채운 행 수. 같은 detail 응답에서 나오지만
+  // 한쪽만 있는 행이 많아 따로 센다.
+  programFilled: number;
   bySource: Record<string, { scanned: number; filled: number }>;
   // 실패가 몰릴 때 원인을 로그 없이 응답만으로 가릴 수 있게 남기는 표본.
   errors?: string[];
@@ -69,22 +78,30 @@ export async function runFeeBackfill(
     empty: 0,
     failed: 0,
     permanentFailures: 0,
+    programFilled: 0,
     bySource: {},
   };
   if (sources.length === 0 || maxItems <= 0) return result;
 
   const placeholders = sources.map(() => "?").join(",");
+  // 요금이 필요한 행과 프로그램 정보가 필요한 행을 함께 잡는다. 이미 요금을
+  // 조회한 행도 프로그램은 안 봤을 수 있어서다(예전 backfill이 버렸다).
+  // 프로그램만 필요한 행은 이미 끝난 행사까지 훑을 이유가 없으므로 진행 중·예정만
+  // 대상으로 둔다 — 지난 행사에 예산을 쓰면 정작 앱에 보이는 행이 밀린다.
+  const today = kstToday();
   const rows = await db
     .prepare(
       `SELECT id, source, source_item_id
          FROM discovery_items
         WHERE source IN (${placeholders})
-          AND fee_checked_at IS NULL
-          AND (lowest_price_text IS NULL OR lowest_price_text = '')
+          AND (
+            (fee_checked_at IS NULL AND (lowest_price_text IS NULL OR lowest_price_text = ''))
+            OR (program_checked_at IS NULL AND (end_date IS NULL OR end_date >= ?))
+          )
         ORDER BY start_date
         LIMIT ?`,
     )
-    .bind(...sources, maxItems)
+    .bind(...sources, today, maxItems)
     .all<BackfillRow>();
 
   const targets = rows.results ?? [];
@@ -107,13 +124,13 @@ export async function runFeeBackfill(
     async (row) => {
       try {
         const kind = FEE_SOURCE_KINDS[row.source];
-        const text =
+        const detail =
           kind === "kopis"
-            ? await fetchKopisFee(env, row.source_item_id)
+            ? await fetchKopisDetail(env, row.source_item_id)
             : tourClient
-              ? await tourClient.admissionFee(contentIdOf(row.source_item_id))
-              : null;
-        return { row, text, failed: false, message: undefined };
+              ? await fetchTourDetail(tourClient, row.source_item_id)
+              : EMPTY_DETAIL;
+        return { row, ...detail, failed: false, message: undefined };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
@@ -123,65 +140,69 @@ export async function runFeeBackfill(
         console.warn(
           `fee backfill ${retryable ? "failed" : "gave up"} id=${row.id}: ${message}`,
         );
-        return { row, text: null, failed: retryable, message };
+        return { row, ...EMPTY_DETAIL, failed: retryable, message };
       }
     },
   );
 
   const errorSamples = new Set<string>();
-  for (const { row, text, failed, message } of fetched) {
+  for (const { row, fee: feeText, program, failed, message } of fetched) {
     result.scanned += 1;
     const bucket = (result.bySource[row.source] ??= { scanned: 0, filled: 0 });
     bucket.scanned += 1;
     if (failed) {
-      // 실패한 행은 fee_checked_at을 남기지 않아 다음 회차에 다시 시도한다.
+      // 실패한 행은 checked_at을 남기지 않아 다음 회차에 다시 시도한다.
       result.failed += 1;
       if (message && errorSamples.size < 5) errorSamples.add(message);
       continue;
     }
     if (message) {
-      // 영구 실패로 확정한 행. 요금 정보가 원래 없는 행(empty)과 따로 센다.
+      // 영구 실패로 확정한 행. 정보가 원래 없는 행(empty)과 따로 센다.
       result.permanentFailures += 1;
       if (errorSamples.size < 5) errorSamples.add(message);
-      statements.push(
-        db
-          .prepare("UPDATE discovery_items SET fee_checked_at = ? WHERE id = ?")
-          .bind(checkedAt, row.id),
-      );
-      continue;
     }
-    const fee = normalizeFee(text);
-    if (!fee.feeText) {
-      result.empty += 1;
-      statements.push(
-        db
-          .prepare(
-            "UPDATE discovery_items SET fee_checked_at = ? WHERE id = ?",
-          )
-          .bind(checkedAt, row.id),
-      );
-      continue;
-    }
-    result.filled += 1;
-    bucket.filled += 1;
+    const fee = normalizeFee(message ? null : feeText);
+    const programText = message ? null : program;
+    if (!fee.feeText && !programText) result.empty += 1;
+
     // raw_payload에도 함께 심어야 다음 full sync의 enrichment 병합이 값을
     // 살려 준다(sync는 raw_payload를 통째로 덮어쓴다).
-    const rawKey =
-      FEE_SOURCE_KINDS[row.source] === "kopis" ? "$.price" : "$.admissionFee";
+    const sets: string[] = [];
+    const binds: unknown[] = [];
+    let rawExpr = "raw_payload";
+    const rawBinds: unknown[] = [];
+    if (fee.feeText) {
+      result.filled += 1;
+      bucket.filled += 1;
+      sets.push("lowest_price_text = ?", "is_free = COALESCE(?, is_free)");
+      binds.push(fee.feeText, feeFreeFlag(fee));
+      const rawKey =
+        FEE_SOURCE_KINDS[row.source] === "kopis" ? "$.price" : "$.admissionFee";
+      rawExpr = `json_set(${rawExpr}, ${JSON.stringify(rawKey)}, ?)`;
+      rawBinds.push(fee.feeText);
+    }
+    if (programText) {
+      result.programFilled += 1;
+      rawExpr = `json_set(${rawExpr}, '$.programInfo', ?)`;
+      rawBinds.push(programText);
+    }
+    if (rawBinds.length > 0) {
+      sets.push(
+        `raw_payload = CASE
+           WHEN json_valid(raw_payload) THEN ${rawExpr}
+           ELSE raw_payload
+         END`,
+      );
+      binds.push(...rawBinds);
+    }
+    // 값이 없어도 조회 표식은 남긴다. 안 그러면 정보가 없는 행이 매 회차
+    // 예산을 다시 갉아먹는다.
+    sets.push("fee_checked_at = ?", "program_checked_at = ?");
+    binds.push(checkedAt, checkedAt);
     statements.push(
       db
-        .prepare(
-          `UPDATE discovery_items
-              SET lowest_price_text = ?,
-                  is_free = COALESCE(?, is_free),
-                  raw_payload = CASE
-                    WHEN json_valid(raw_payload) THEN json_set(raw_payload, ${JSON.stringify(rawKey)}, ?)
-                    ELSE raw_payload
-                  END,
-                  fee_checked_at = ?
-            WHERE id = ?`,
-        )
-        .bind(fee.feeText, feeFreeFlag(fee), fee.feeText, checkedAt, row.id),
+        .prepare(`UPDATE discovery_items SET ${sets.join(", ")} WHERE id = ?`)
+        .bind(...binds, row.id),
     );
   }
 
@@ -192,15 +213,23 @@ export async function runFeeBackfill(
   return result;
 }
 
-async function fetchKopisFee(
+// 한 detail 응답에서 뽑아 오는 두 값. 둘 다 같은 fetch 결과다.
+interface DetailFields {
+  fee: string | null;
+  program: string | null;
+}
+
+const EMPTY_DETAIL: DetailFields = { fee: null, program: null };
+
+async function fetchKopisDetail(
   env: FeeBackfillEnv,
   sourceItemId: string,
-): Promise<string | null> {
+): Promise<DetailFields> {
   const serviceKey = env.KOPIS_API_KEY?.trim();
   const baseUrl = env.KOPIS_BASE_URL;
-  if (!serviceKey || !baseUrl) return null;
+  if (!serviceKey || !baseUrl) return EMPTY_DETAIL;
   const id = sourceItemId.replace(/^kopis:/, "").trim();
-  if (!id) return null;
+  if (!id) return EMPTY_DETAIL;
   const url = new URL(`/openApi/restful/pblprfr/${id}`, baseUrl);
   url.searchParams.set("service", serviceKey);
   const response = await fetchWithTimeout(url, {
@@ -212,10 +241,31 @@ async function fetchKopisFee(
     if (response.status === 429 || response.status >= 500) {
       throw new Error(`KOPIS detail API failed: ${response.status}`);
     }
-    return null;
+    return EMPTY_DETAIL;
   }
   const detail = parseXmlItems(await response.text(), "db")[0];
-  return detail ? getString(detail, ["pcseguidance"]) : null;
+  if (!detail) return EMPTY_DETAIL;
+  return {
+    fee: getString(detail, ["pcseguidance"]),
+    program: combineProgramInfo(detail),
+  };
+}
+
+// admissionFee와 programInfo는 introItemCache를 공유하므로 fetch는 1건뿐이다.
+// admissionFee가 먼저 던지므로 조회 실패가 "정보 없음"으로 둔갑하지 않는다.
+async function fetchTourDetail(
+  client: TourApiDetailClient,
+  sourceItemId: string,
+): Promise<DetailFields> {
+  const contentId = contentIdOf(sourceItemId);
+  const fee = await client.admissionFee(contentId);
+  const program = await client.programInfo(contentId);
+  return { fee, program };
+}
+
+// D1에 저장된 날짜는 KST 기준 "yyyy-MM-dd"다.
+function kstToday(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 // discovery_items.source_item_id는 "tourapi:1100492" 형태로 저장된다.
