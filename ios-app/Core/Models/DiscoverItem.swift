@@ -728,6 +728,16 @@ struct DiscoverEventsResponse: Codable {
     let generatedAt: String
 }
 
+struct DiscoverFestivalDetailResponse: Decodable {
+    let item: Festival
+    let generatedAt: String
+}
+
+struct DiscoverEventDetailResponse: Decodable {
+    let item: FreeEvent
+    let generatedAt: String
+}
+
 struct DiscoverPerformancesResponse: Decodable {
     let festivals: [Festival]
     let events: [FreeEvent]

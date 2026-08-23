@@ -5,8 +5,7 @@ import Foundation
 struct FestivalNotificationPrefs: Codable, Hashable {
     var discoveryEnabled: Bool          // 새 축제 발견 알림 on/off
     var categories: Set<FestivalPrimaryCategory> // 비면 전체
-    var radiusKm: Int                   // 지역 미선택 시 현재 위치 기준 반경
-    var regions: [String]               // 비면 현재 위치 반경 사용
+    var regions: [String]               // 비면 전국 전체 (NotificationRegionKey 형식)
     var savedReminderEnabled: Bool      // 저장한 축제 리마인더 on/off
     var leadDays: Int                   // 0/1/3/7
     var reminderHour: Int               // 0–23
@@ -16,7 +15,6 @@ struct FestivalNotificationPrefs: Codable, Hashable {
     static let `default` = FestivalNotificationPrefs(
         discoveryEnabled: false,
         categories: [],
-        radiusKm: 50,
         regions: [],
         savedReminderEnabled: true,
         leadDays: 1,
@@ -24,13 +22,12 @@ struct FestivalNotificationPrefs: Codable, Hashable {
     )
 
     enum CodingKeys: String, CodingKey {
-        case discoveryEnabled, categories, radiusKm, regions, savedReminderEnabled, leadDays, reminderHour
+        case discoveryEnabled, categories, regions, savedReminderEnabled, leadDays, reminderHour
     }
 
     init(
         discoveryEnabled: Bool,
         categories: Set<FestivalPrimaryCategory>,
-        radiusKm: Int,
         regions: [String],
         savedReminderEnabled: Bool,
         leadDays: Int,
@@ -38,7 +35,6 @@ struct FestivalNotificationPrefs: Codable, Hashable {
     ) {
         self.discoveryEnabled = discoveryEnabled
         self.categories = categories
-        self.radiusKm = radiusKm
         self.regions = regions
         self.savedReminderEnabled = savedReminderEnabled
         self.leadDays = leadDays
@@ -50,8 +46,7 @@ struct FestivalNotificationPrefs: Codable, Hashable {
         let d = FestivalNotificationPrefs.default
         discoveryEnabled = try c.decodeIfPresent(Bool.self, forKey: .discoveryEnabled) ?? d.discoveryEnabled
         categories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .categories) ?? d.categories
-        radiusKm = try c.decodeIfPresent(Int.self, forKey: .radiusKm) ?? d.radiusKm
-        regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? d.regions
+        regions = NotificationRegionKey.migrate(legacy: try c.decodeIfPresent([String].self, forKey: .regions) ?? d.regions)
         savedReminderEnabled = try c.decodeIfPresent(Bool.self, forKey: .savedReminderEnabled) ?? d.savedReminderEnabled
         leadDays = try c.decodeIfPresent(Int.self, forKey: .leadDays) ?? d.leadDays
         reminderHour = try c.decodeIfPresent(Int.self, forKey: .reminderHour) ?? d.reminderHour
@@ -62,24 +57,21 @@ struct FestivalNotificationPrefs: Codable, Hashable {
 struct LocalEventNotificationPrefs: Codable, Hashable {
     var discoveryEnabled: Bool
     var categories: Set<LocalEventPrimaryCategory> // 비면 전체
-    var radiusKm: Int
-    var regions: [String]
+    var regions: [String]               // 비면 전국 전체 (NotificationRegionKey 형식)
 
     static let `default` = LocalEventNotificationPrefs(
         discoveryEnabled: false,
         categories: [],
-        radiusKm: 50,
         regions: []
     )
 
     enum CodingKeys: String, CodingKey {
-        case discoveryEnabled, categories, radiusKm, regions
+        case discoveryEnabled, categories, regions
     }
 
-    init(discoveryEnabled: Bool, categories: Set<LocalEventPrimaryCategory>, radiusKm: Int, regions: [String]) {
+    init(discoveryEnabled: Bool, categories: Set<LocalEventPrimaryCategory>, regions: [String]) {
         self.discoveryEnabled = discoveryEnabled
         self.categories = categories
-        self.radiusKm = radiusKm
         self.regions = regions
     }
 
@@ -88,8 +80,7 @@ struct LocalEventNotificationPrefs: Codable, Hashable {
         let d = LocalEventNotificationPrefs.default
         discoveryEnabled = try c.decodeIfPresent(Bool.self, forKey: .discoveryEnabled) ?? d.discoveryEnabled
         categories = try c.decodeIfPresent(Set<LocalEventPrimaryCategory>.self, forKey: .categories) ?? d.categories
-        radiusKm = try c.decodeIfPresent(Int.self, forKey: .radiusKm) ?? d.radiusKm
-        regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? d.regions
+        regions = NotificationRegionKey.migrate(legacy: try c.decodeIfPresent([String].self, forKey: .regions) ?? d.regions)
     }
 }
 
@@ -99,8 +90,6 @@ struct NotificationPreferences: Codable, Hashable {
     var quietHoursEnabled: Bool
     var quietStartHour: Int             // 방해 금지 시작 시각 (0–23)
     var quietEndHour: Int               // 방해 금지 종료 시각 (0–23)
-
-    static let allRadiusOptions: [Int] = [10, 20, 50]
 
     static let `default` = NotificationPreferences(
         festival: .default,
@@ -172,7 +161,9 @@ enum NotificationPreferencesStore {
     }
 
     /// 시도(광역) 및 하위 도시/구 중심 좌표. 지역 선택 시 백그라운드 발견 조회의 중심점으로 사용한다.
-    /// 중복 이름(남구·동구·서구·북구·중구·강서구·고성군 등)은 광역 키로만 커버한다.
+    /// 키는 이름 그대로다(축제 필터 `FestivalFilter.regions`가 이 형태를 쓴다).
+    /// 중복 이름(남구·동구·서구·북구·중구·강서구·고성군 등)은 이 표에 넣을 수 없어 빠져 있고,
+    /// 알림 관심 지역은 `NotificationRegionKey.centroid(for:)`가 광역시도 좌표로 대신 받는다.
     static let regionCentroids: [String: (lat: Double, lng: Double)] = [
         // 17 광역시도
         "서울": (37.5663, 126.9779),

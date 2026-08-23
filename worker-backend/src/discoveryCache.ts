@@ -188,6 +188,24 @@ export async function queryFestivalsFromCache(
   return dedupeFestivals(rows.map((row) => mapFestivalRow(row, lat, lng)));
 }
 
+/** 푸시 알림 딥링크용 단건 조회. 알림에는 id만 실리므로 앱이 이걸로 상세를 받는다. */
+export async function getFestivalBySourceItemId(
+  db: D1Database,
+  sourceItemId: string,
+): Promise<Festival | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM discovery_items
+        WHERE type = 'festival' AND source_item_id = ?
+        ORDER BY last_seen_at DESC
+        LIMIT 1`,
+    )
+    .bind(sourceItemId)
+    .first<DiscoveryItemRow>();
+  if (!row) return null;
+  return mapFestivalRow(row, row.lat, row.lng);
+}
+
 // 같은 축제가 여러 provider/동기화로 중복 저장되는 경우가 있어 응답 단계에서 제거한다.
 // 좌표가 실제로 가깝고(provider마다 지오코딩이 수백m씩 어긋나는 경우가 있어 격자
 // 반올림 대신 실거리로 판단) 날짜 범위가 겹치는 항목끼리만 하나의 중복 후보로 보고,

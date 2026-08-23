@@ -4,6 +4,7 @@ import UserNotifications
 struct NotificationSettingsView: View {
     @EnvironmentObject private var model: NotificationPreferencesModel
     @EnvironmentObject private var discoveryService: DiscoveryNotificationService
+    @EnvironmentObject private var registrationService: NotificationRegistrationService
     @Environment(\.openURL) private var openURL
 
     @State private var permissionDenied = false
@@ -30,6 +31,11 @@ struct NotificationSettingsView: View {
         .onChange(of: model.prefs.localEvent.discoveryEnabled) { enabled in
             handleDiscoveryToggle(enabled)
         }
+        // 서버(Worker cron)가 발송 대상을 고르므로 설정이 바뀌면 곧바로 올려야 한다.
+        .onChange(of: model.prefs) { prefs in
+            Task { await registrationService.sync(prefs: prefs) }
+        }
+        .task { await registrationService.sync(prefs: model.prefs) }
     }
 
     // MARK: - 상단 안내 / 권한
@@ -104,7 +110,7 @@ struct NotificationSettingsView: View {
             sectionTitle("축제 알림", systemImage: "ticket.fill")
 
             Toggle(isOn: boolBinding(\.festival.discoveryEnabled)) {
-                toggleLabel("다가오는 축제 알림", "관심 조건에 맞는 축제·공연·박람회를 30일·7일·1일 전에 알려드려요")
+                toggleLabel("다가오는 행사 알림", "관심 조건에 맞는 축제·공연·박람회를 시작 30일·7일·1일 전에 알려드려요")
             }
             .tint(FestivalDesign.coral)
 
@@ -112,15 +118,14 @@ struct NotificationSettingsView: View {
                 Divider()
                 fieldTitle("카테고리", "비워두면 전체")
                 festivalCategoryChips
-                fieldTitle("지역", "도시 ▾ 를 눌러 세부 지역 선택")
-                RegionAccordionPicker(selected: Binding(
-                    get: { model.prefs.festival.regions },
-                    set: { model.prefs.festival.regions = $0 }
-                ))
-                if model.prefs.festival.regions.isEmpty {
-                    fieldTitle("반경", nil)
-                    radiusChips(selected: model.prefs.festival.radiusKm) { model.prefs.festival.radiusKm = $0 }
-                }
+                fieldTitle("지역", "비워두면 전국 전체 · 도시 ▾ 를 눌러 세부 지역 선택")
+                RegionAccordionPicker(
+                    selected: Binding(
+                        get: { model.prefs.festival.regions },
+                        set: { model.prefs.festival.regions = $0 }
+                    ),
+                    qualified: true
+                )
             }
 
             Divider()
@@ -173,7 +178,7 @@ struct NotificationSettingsView: View {
             sectionTitle("로컬 이벤트 알림", systemImage: "storefront.fill")
 
             Toggle(isOn: boolBinding(\.localEvent.discoveryEnabled)) {
-                toggleLabel("새 이벤트 알림", "관심 조건에 새로 등록된 로컬 이벤트를 알려드려요")
+                toggleLabel("로컬 이벤트 알림", "관심 조건에 새 로컬 이벤트가 등록되면, 그리고 시작 30일·7일·1일 전에 알려드려요")
             }
             .tint(FestivalDesign.coral)
 
@@ -181,15 +186,14 @@ struct NotificationSettingsView: View {
                 Divider()
                 fieldTitle("카테고리", "비워두면 전체")
                 localEventCategoryChips
-                fieldTitle("지역", "도시 ▾ 를 눌러 세부 지역 선택")
-                RegionAccordionPicker(selected: Binding(
-                    get: { model.prefs.localEvent.regions },
-                    set: { model.prefs.localEvent.regions = $0 }
-                ))
-                if model.prefs.localEvent.regions.isEmpty {
-                    fieldTitle("반경", nil)
-                    radiusChips(selected: model.prefs.localEvent.radiusKm) { model.prefs.localEvent.radiusKm = $0 }
-                }
+                fieldTitle("지역", "비워두면 전국 전체 · 도시 ▾ 를 눌러 세부 지역 선택")
+                RegionAccordionPicker(
+                    selected: Binding(
+                        get: { model.prefs.localEvent.regions },
+                        set: { model.prefs.localEvent.regions = $0 }
+                    ),
+                    qualified: true
+                )
             }
         }
         .padding(14)
@@ -274,14 +278,6 @@ struct NotificationSettingsView: View {
         }
     }
 
-    private func radiusChips(selected: Int, set: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
-            ForEach(NotificationPreferences.allRadiusOptions, id: \.self) { km in
-                plainChip(label: "\(km)km", isOn: selected == km) { set(km) }
-            }
-        }
-    }
-
     private func categoryChip(label: String, systemImage: String, tint: Color, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
@@ -298,22 +294,6 @@ struct NotificationSettingsView: View {
             .overlay(
                 FestivalDesign.chipShape.stroke(isOn ? tint : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
             )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func plainChip(label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.festival(size: 12, weight: isOn ? .bold : .semibold))
-                .foregroundStyle(isOn ? FestivalDesign.onFill(FestivalDesign.coral) : FestivalDesign.navy)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(isOn ? FestivalDesign.coral : FestivalDesign.surface)
-                .clipShape(FestivalDesign.chipShape)
-                .overlay(
-                    FestivalDesign.chipShape.stroke(isOn ? FestivalDesign.coral : FestivalDesign.creamDeep.opacity(0.55), lineWidth: 1)
-                )
         }
         .buttonStyle(.plain)
     }

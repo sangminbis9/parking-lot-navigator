@@ -11,6 +11,7 @@ struct ParkingLotNavigatorApp: App {
     @StateObject private var notificationPrefs: NotificationPreferencesModel
     @StateObject private var discoveryService: DiscoveryNotificationService
     @StateObject private var reminderService: FestivalReminderService
+    @StateObject private var notificationRegistration: NotificationRegistrationService
     @StateObject private var festivalFavorites: FestivalFavoritesStore
     @StateObject private var eventFavorites: LocalEventFavoritesStore
     private let apiClient: APIClientProtocol = APIClient()
@@ -43,6 +44,10 @@ struct ParkingLotNavigatorApp: App {
             onRemove: { reminder.cancel(id: $0) }
         ))
         _eventFavorites = StateObject(wrappedValue: LocalEventFavoritesStore(appGroupID: appGroupID))
+        _notificationRegistration = StateObject(wrappedValue: NotificationRegistrationService(
+            apiClient: client,
+            appGroupID: appGroupID
+        ))
     }
 
     var body: some Scene {
@@ -56,6 +61,12 @@ struct ParkingLotNavigatorApp: App {
                 .environmentObject(reminderService)
                 .environmentObject(festivalFavorites)
                 .environmentObject(eventFavorites)
+                .environmentObject(notificationRegistration)
+                .task {
+                    // 서버가 D-30/D-7/D-1 발송 대상을 고르므로, 실행할 때마다 토큰과 설정을 맞춰 둔다.
+                    await notificationRegistration.registerForRemoteNotificationsIfAuthorized()
+                    await notificationRegistration.sync()
+                }
                 .onOpenURL { url in
                     DeepLinkRouter.shared.handle(url)
                 }

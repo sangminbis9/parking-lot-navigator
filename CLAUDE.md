@@ -146,6 +146,38 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - 수동 sync: `POST /admin/sync-akei-trade-expos` (다른 admin sync와 동일하게 `Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 제약: AKEI 게시판에서 실제로 수집하는 기간은 현재~3개월 범위다. `/api/festivals`의 `upcomingWithinDays`는 최대 365일까지 요청 가능하지만, 3개월보다 먼 미래의 무역박람회는 아직 AKEI에도 게시되지 않아 자연히 비어 보인다 — 버그 아님.
 
+## 다가오는 행사 알림 (D-30 / D-7 / D-1)
+
+예전에는 iOS `BGAppRefreshTask`가 깨어난 김에 8~30일 구간을 D-30으로 뭉뚱그려 보내고,
+발송 이력을 기기 `UserDefaults`에만 남기고, 한 회차 3건·하루 10건을 넘는 대상은 버렸다.
+지금은 Worker cron이 D1을 조회해 APNs로 직접 보낸다.
+
+- **기기 등록** — `POST /api/notifications/register` (`notification_devices`, migration `0023`).
+  앱이 실행할 때와 알림 설정이 바뀔 때마다 device id, APNs token, 토픽별 on/off,
+  관심 지역, 카테고리, 방해 금지 시간을 통째로 올린다 (`ios-app/Core/Services/NotificationRegistrationService.swift`).
+- **계획 (`planUpcomingNotifications`)** — 오늘(KST) + 30/7/1일에 **정확히** 시작하는 행사만 고른다.
+  구간이 아니라 그 하루다. `discovery_items`(축제·공연·박람회)와 `local_events`(approved)를 함께 읽으므로
+  로컬 이벤트도 같은 정책을 받는다. 기기 × 행사 조합을 `notification_sends`에 `INSERT OR IGNORE`로 쌓는다.
+- **발송 (`dispatchPendingNotifications`)** — `sent_at IS NULL`인 행을 기기·종류별로 묶어 보낸다.
+  한 기기에 같은 종류가 여러 건이면 묶음(digest) 알림 하나로 보내되 **대상 행 전부**를 발송 완료로 찍는다.
+  한 회차 push 상한(`UPCOMING_NOTIFICATION_MAX_PUSHES`, 기본 40)은 subrequest 50건 한도 때문이고,
+  못 보낸 행은 `sent_at IS NULL`로 남아 다음 회차에 그대로 다시 잡힌다 — 대상이 사라지지 않는다.
+- **중복 방지** — `notification_sends`의 PK `(device_id, event_id, notification_type)`.
+  cron이 하루에 몇 번 돌든 같은 조합은 한 번만 성공한다. 기기 저장소에 의존하지 않는다.
+- **지역 매칭** — `worker-backend/src/regionMatch.ts` / `ios-app/Core/Storage/NotificationRegionKey.swift`.
+  키는 `"서울"`(광역시도 전체) 또는 `"서울|중구"`(광역시도 + 시/군/구) 두 형태뿐이고 구분자는 `|`다.
+  주소에서 광역시도와 시/군/구를 따로 뽑아 비교하므로 서울 중구와 부산 중구,
+  강원 고성군과 경남 고성군이 갈린다. **관심 지역이 비면 전국 전체**이고, 반경으로 좁히지 않는다.
+- **카테고리** — 비면 전체, 값이 있으면 그 카테고리만. 지역과 AND.
+- **cron** — `"*/3 * * * *"` 안에서 `minute % 30 === 0`일 때 발송, `minute === 0`일 때 계획.
+  수동 실행은 `POST /admin/run-upcoming-notifications` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- **딥링크** — push payload는 `eventKind` + `eventId`만 싣는다(4KB 한도, 낡은 사본 방지).
+  앱이 `GET /api/festivals/:id` 또는 `GET /api/local-events/:id`로 상세를 받아 연다.
+- **분리된 기능** — 저장한 축제 리마인더(`FestivalReminderService`)와 새 로컬 이벤트 발견 알림
+  (`DiscoveryNotificationService`)은 여전히 기기 로컬 알림이다. 다가오는 행사 알림과 섞지 않는다.
+- **secret** — `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`(.p8 전문)는 wrangler secret,
+  `APNS_BUNDLE_ID`는 `wrangler.toml` var. 자세한 절차는 `worker-backend/README.md`.
+
 ## 요금 정보 파이프라인
 
 축제·공연·박람회 요금은 소스마다 필드가 달라 예전에는 축제는 `raw_payload.admissionFee`, 이벤트형 행은 `lowest_price_text`/`is_free` 컬럼으로 갈라져 있었고, `/api/festivals`는 전자만 읽어 이벤트형 행의 요금이 통째로 누락됐다. 지금은 세 층으로 정리돼 있다.

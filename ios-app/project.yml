@@ -18,7 +18,7 @@ settings:
     SWIFT_VERSION: 5.9
     DEVELOPMENT_TEAM: 95N46NPCJ7
     MARKETING_VERSION: 1.0
-    CURRENT_PROJECT_VERSION: 284
+    CURRENT_PROJECT_VERSION: 285
     APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
     INFOPLIST_OUTPUT_FORMAT: XML
 targets:
@@ -45,11 +45,19 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
         INFOPLIST_FILE: Resources/AppInfo.plist
-        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigator.entitlements
+        # 앱 타깃만 push 권한을 갖는다. 확장 타깃이 쓰는 공용 entitlements에 aps-environment를
+        # 넣으면 확장 프로비저닝 프로파일에도 Push 권한이 필요해진다.
+        CODE_SIGN_ENTITLEMENTS: Resources/ParkingLotNavigatorApp.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Integrations/NavigationBridge/ParkingLotNavigator-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING: NO
         INFOPLIST_OUTPUT_FORMAT: XML
+      configs:
+        # entitlements의 $(APS_ENVIRONMENT). Debug 빌드는 sandbox APNs, Release는 production.
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
     dependencies:
       - target: ParkingShareExtension
       - target: UpcomingFestivalsWidget
