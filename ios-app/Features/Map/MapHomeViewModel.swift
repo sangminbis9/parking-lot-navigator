@@ -279,42 +279,53 @@ final class MapHomeViewModel: ObservableObject {
     func loadDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default, showsError: Bool = false) async {
         isLoadingDiscover = true
         errorMessage = nil
+
+        // 세 요청은 서로 의존하지 않는다. 순차 await면 가장 느린 하나가 아니라 셋의 합만큼 기다린다.
+        let wantsFestivals = showsFestivalLayer || showsTradeExpoLayer
+        async let festivalResult: Result<[Festival], Error>? = wantsFestivals
+            ? await loadFestivalLayer(viewport: viewport, filter: filter)
+            : nil
+        async let eventResult: Result<[FreeEvent], Error>? = showsLocalEventLayer
+            ? await loadEventLayer(viewport: viewport)
+            : nil
+        async let performanceResult: Result<[PerformanceItem], Error>? = showsPerformanceLayer
+            ? await loadPerformanceLayer(viewport: viewport)
+            : nil
+
+        let festivalOutcome = await festivalResult
+        let eventOutcome = await eventResult
+        let performanceOutcome = await performanceResult
+
+        if Task.isCancelled { return }
+
         var failedLoads = 0
         var attemptedLoads = 0
 
-        if showsFestivalLayer || showsTradeExpoLayer {
+        // 결과는 한 번에 반영한다. 하나씩 넣으면 그때마다 핀 파이프라인이 처음부터 다시 돈다.
+        if let festivalOutcome {
             attemptedLoads += 1
-            switch await loadFestivalLayer(viewport: viewport, filter: filter) {
-            case .success(let items):
-                if Task.isCancelled { return }
-                festivals = items
-            case .failure:
-                failedLoads += 1
+            switch festivalOutcome {
+            case .success(let items): festivals = items
+            case .failure: failedLoads += 1
             }
         }
-        if showsLocalEventLayer {
+        if let eventOutcome {
             attemptedLoads += 1
-            switch await loadEventLayer(viewport: viewport) {
-            case .success(let items):
-                if Task.isCancelled { return }
-                events = items
-            case .failure:
-                failedLoads += 1
+            switch eventOutcome {
+            case .success(let items): events = items
+            case .failure: failedLoads += 1
             }
         }
-        if showsPerformanceLayer {
+        if let performanceOutcome {
             attemptedLoads += 1
-            switch await loadPerformanceLayer(viewport: viewport) {
-            case .success(let items):
-                if Task.isCancelled { return }
-                performances = items
-            case .failure:
-                failedLoads += 1
+            switch performanceOutcome {
+            case .success(let items): performances = items
+            case .failure: failedLoads += 1
             }
         }
-        if Task.isCancelled { return }
+
         if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
-            errorMessage = "\u{D0D0}\u{C0C9} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}. \u{C7A0}\u{C2DC} \u{D6C4} \u{B2E4}\u{C2DC} \u{C2DC}\u{B3C4}\u{D574} \u{C8FC}\u{C138}\u{C694}."
+            errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
         }
         isLoadingDiscover = false
     }

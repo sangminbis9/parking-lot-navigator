@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // 손그림(크레파스) 테마 전용 형태/질감 유틸.
 // 다른 테마는 이 파일의 어떤 것도 사용하지 않으므로 영향이 없다.
@@ -126,16 +127,46 @@ struct RoughRoundedRectangle: InsettableShape {
 
 /// 코드만으로 만든 종이 질감: 미세 반점 + 사선 크레용 해칭(빗금).
 /// 외부 이미지에 의존하지 않고, 결정적 배치라 스크롤 중 다시 그려도 동일하게 보인다.
+///
+/// 전체 화면 Canvas로 매번 그리면 반점 1,800여 개 + 빗금 수십 개를 화면 갱신마다 메인 스레드에서
+/// 다시 그린다. 패턴이 결정적이고 격자 주기(9pt, 34pt)의 공배수가 306pt이므로,
+/// 한 번 비트맵으로 구워 두고 타일로 반복한다. 픽셀은 같고 그리는 횟수만 1회로 줄어든다.
 struct PaperTexture: View {
     var body: some View {
-        Canvas { context, size in
-            // 다크에서는 종이가 어두워지므로 반점/해칭 잉크도 함께 밝은 쪽으로 뒤집힌다.
-            let charcoal = FestivalDesign.outline
+        Image(uiImage: PaperTextureTile.current())
+            .resizable(resizingMode: .tile)
+            .blendMode(.multiply)
+    }
+}
+
+/// 종이 질감 타일 캐시. 테마(라이트/다크, 스타일)별로 하나씩만 굽는다.
+private enum PaperTextureTile {
+    /// 9pt 반점 격자와 34pt 해칭 격자가 딱 떨어지는 최소 크기.
+    static let size: CGFloat = 306
+    private static var cache: [String: UIImage] = [:]
+
+    static func current() -> UIImage {
+        let ink = UIColor(FestivalDesign.outline).resolvedColor(with: .current)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ink.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let key = "\(Int(r * 255))|\(Int(g * 255))|\(Int(b * 255))|\(FestivalAppearance.styleKey)"
+        if let cached = cache[key] { return cached }
+        let image = draw(ink: ink)
+        cache[key] = image
+        return image
+    }
+
+    private static func draw(ink: UIColor) -> UIImage {
+        let bounds = CGSize(width: size, height: size)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: bounds, format: format).image { ctx in
+            let cg = ctx.cgContext
 
             // 1) 종이 알갱이 반점.
             let step: CGFloat = 9
-            let cols = max(1, Int(size.width / step))
-            let rows = max(1, Int(size.height / step))
+            let cols = Int(bounds.width / step)
+            let rows = Int(bounds.height / step)
             for row in 0..<rows {
                 for col in 0..<cols {
                     let h = handDrawnHash(Double(row) * 91.7 + Double(col) * 13.3)
@@ -146,15 +177,16 @@ struct PaperTexture: View {
                     let y = CGFloat(row) * step + step / 2 + jy
                     let d = 0.7 + handDrawnHash(Double(row) + Double(col) * 0.5) * 0.9
                     let alpha = 0.025 + h * 0.03
-                    let rect = CGRect(x: x, y: y, width: d, height: d)
-                    context.fill(Path(ellipseIn: rect), with: .color(charcoal.opacity(alpha)))
+                    cg.setFillColor(ink.withAlphaComponent(alpha).cgColor)
+                    cg.fillEllipse(in: CGRect(x: x, y: y, width: d, height: d))
                 }
             }
 
             // 2) 사선 크레용 해칭: 드문드문한 짧은 빗금이 왁스로 문지른 종이 느낌을 준다.
             let hatchStep: CGFloat = 34
-            let hatchCols = max(1, Int(size.width / hatchStep))
-            let hatchRows = max(1, Int(size.height / hatchStep))
+            let hatchCols = Int(bounds.width / hatchStep)
+            let hatchRows = Int(bounds.height / hatchStep)
+            cg.setLineCap(.round)
             for row in 0..<hatchRows {
                 for col in 0..<hatchCols {
                     let h = handDrawnHash(Double(row) * 47.3 + Double(col) * 19.1 + 5)
@@ -168,22 +200,18 @@ struct PaperTexture: View {
                     let tilt = -0.61 + (handDrawnHash(Double(row) * 6.1 + Double(col) * 2.3) - 0.5) * 0.3
                     let dx = cos(tilt) * len / 2
                     let dy = sin(tilt) * len / 2
-                    var stroke = Path()
-                    stroke.move(to: CGPoint(x: cx - dx, y: cy - dy))
-                    stroke.addQuadCurve(
+                    let alpha = 0.028 + h * 0.025
+                    cg.setStrokeColor(ink.withAlphaComponent(alpha).cgColor)
+                    cg.setLineWidth(1.1 + handDrawnHash(Double(col) * 5.3) * 0.8)
+                    cg.move(to: CGPoint(x: cx - dx, y: cy - dy))
+                    cg.addQuadCurve(
                         to: CGPoint(x: cx + dx, y: cy + dy),
                         control: CGPoint(x: cx + (handDrawnHash(Double(row) + Double(col)) - 0.5) * 3, y: cy)
                     )
-                    let alpha = 0.028 + h * 0.025
-                    context.stroke(
-                        stroke,
-                        with: .color(charcoal.opacity(alpha)),
-                        style: StrokeStyle(lineWidth: 1.1 + handDrawnHash(Double(col) * 5.3) * 0.8, lineCap: .round)
-                    )
+                    cg.strokePath()
                 }
             }
         }
-        .blendMode(.multiply)
     }
 }
 
