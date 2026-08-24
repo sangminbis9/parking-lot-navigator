@@ -4,6 +4,13 @@ compatibility_date = "2026-04-17"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 minify = true
 
+# Worker 로그를 Cloudflare에 보존한다. 없으면 wrangler tail(실시간) 말고는 과거 로그를
+# 조회할 방법이 없어서, 알림 중복 같은 사후 조사에서 발송 시각·claim_id·APNs 응답을
+# 되짚을 수 없다. upcomingNotifications의 logAttempt가 남기는 구조화 로그가 여기 쌓인다.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [vars]
 NODE_ENV = "production"
 LOG_LEVEL = "info"
