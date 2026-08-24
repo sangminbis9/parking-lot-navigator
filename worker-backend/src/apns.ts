@@ -5,12 +5,20 @@ export type ApnsResult = {
   ok: boolean;
   status: number;
   reason?: string;
+  /** APNs가 돌려주는 발송 식별자. 중복 신고가 들어왔을 때 로그로 추적할 유일한 값이다. */
+  apnsId?: string;
 };
 
 export type ApnsPayload = {
   title: string;
   body: string;
   threadId?: string;
+  /**
+   * apns-collapse-id. 같은 값으로 두 번 도착하면 APNs가 기기에서 하나로 합친다.
+   * 서버 중복 방지가 뚫렸을 때의 마지막 방어선이지 그것만으로 충분한 장치는 아니다.
+   * 64바이트를 넘으면 APNs가 400을 주므로 호출자가 그 안에서 만들어야 한다.
+   */
+  collapseId?: string;
   /** aps 밖에 실려 앱이 딥링크에 쓰는 값. */
   data: Record<string, string>;
 };
@@ -122,18 +130,21 @@ export function createApnsSender(config: ApnsConfig): ApnsSender {
         },
         ...payload.data,
       });
+      const headers: Record<string, string> = {
+        authorization: `bearer ${jwt}`,
+        "apns-topic": config.bundleId,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        "content-type": "application/json",
+      };
+      if (payload.collapseId) headers["apns-collapse-id"] = payload.collapseId;
       const response = await fetch(`https://${host}/3/device/${deviceToken}`, {
         method: "POST",
-        headers: {
-          authorization: `bearer ${jwt}`,
-          "apns-topic": config.bundleId,
-          "apns-push-type": "alert",
-          "apns-priority": "10",
-          "content-type": "application/json",
-        },
+        headers,
         body,
       });
-      if (response.status === 200) return { ok: true, status: 200 };
+      const apnsId = response.headers.get("apns-id") ?? undefined;
+      if (response.status === 200) return { ok: true, status: 200, apnsId };
       let reason: string | undefined;
       try {
         const parsed = (await response.json()) as { reason?: string };
@@ -141,7 +152,7 @@ export function createApnsSender(config: ApnsConfig): ApnsSender {
       } catch {
         reason = undefined;
       }
-      return { ok: false, status: response.status, reason };
+      return { ok: false, status: response.status, reason, apnsId };
     },
   };
 }

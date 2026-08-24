@@ -58,6 +58,7 @@ import {
   dispatchPendingNotifications,
   planUpcomingNotifications,
 } from "./upcomingNotifications.js";
+import { registerNotificationDevice } from "./notificationRegistration.js";
 
 export type Env = {
   DB?: D1Database;
@@ -652,46 +653,19 @@ app.post("/api/notifications/register", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
   const body = notificationRegisterSchema.parse(await c.req.json());
   const now = new Date().toISOString();
-  await c.env.DB.prepare(
-    `INSERT INTO notification_devices (
-        device_id, apns_token, apns_environment,
-        festival_enabled, festival_regions, festival_categories,
-        local_event_enabled, local_event_regions, local_event_categories,
-        quiet_hours_enabled, quiet_start_hour, quiet_end_hour,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(device_id) DO UPDATE SET
-        apns_token = COALESCE(excluded.apns_token, notification_devices.apns_token),
-        apns_environment = excluded.apns_environment,
-        festival_enabled = excluded.festival_enabled,
-        festival_regions = excluded.festival_regions,
-        festival_categories = excluded.festival_categories,
-        local_event_enabled = excluded.local_event_enabled,
-        local_event_regions = excluded.local_event_regions,
-        local_event_categories = excluded.local_event_categories,
-        quiet_hours_enabled = excluded.quiet_hours_enabled,
-        quiet_start_hour = excluded.quiet_start_hour,
-        quiet_end_hour = excluded.quiet_end_hour,
-        updated_at = excluded.updated_at`,
-  )
-    .bind(
-      body.deviceId,
-      body.apnsToken ?? null,
-      body.apnsEnvironment,
-      body.festival.enabled ? 1 : 0,
-      JSON.stringify(body.festival.regions),
-      JSON.stringify(body.festival.categories),
-      body.localEvent.enabled ? 1 : 0,
-      JSON.stringify(body.localEvent.regions),
-      JSON.stringify(body.localEvent.categories),
-      body.quietHours.enabled ? 1 : 0,
-      body.quietHours.startHour,
-      body.quietHours.endHour,
-      now,
-      now,
-    )
-    .run();
-  return c.json({ ok: true, generatedAt: now });
+  const { transferredFrom } = await registerNotificationDevice(
+    c.env.DB,
+    {
+      deviceId: body.deviceId,
+      apnsToken: body.apnsToken ?? null,
+      apnsEnvironment: body.apnsEnvironment,
+      festival: body.festival,
+      localEvent: body.localEvent,
+      quietHours: body.quietHours,
+    },
+    now,
+  );
+  return c.json({ ok: true, transferredFrom, generatedAt: now });
 });
 
 app.post("/api/local-events/report", async (c) => {
