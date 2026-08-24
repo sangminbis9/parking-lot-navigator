@@ -162,8 +162,20 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
   한 기기에 같은 종류가 여러 건이면 묶음(digest) 알림 하나로 보내되 **대상 행 전부**를 발송 완료로 찍는다.
   한 회차 push 상한(`UPCOMING_NOTIFICATION_MAX_PUSHES`, 기본 40)은 subrequest 50건 한도 때문이고,
   못 보낸 행은 `sent_at IS NULL`로 남아 다음 회차에 그대로 다시 잡힌다 — 대상이 사라지지 않는다.
-- **중복 방지** — `notification_sends`의 PK `(device_id, event_id, notification_type)`.
-  cron이 하루에 몇 번 돌든 같은 조합은 한 번만 성공한다. 기기 저장소에 의존하지 않는다.
+- **중복 방지 (migration `0025`)** — 기기 저장소에 의존하지 않고 층을 셋 쌓는다.
+  1) `notification_devices (apns_environment, apns_token)` 부분 UNIQUE 인덱스 —
+     같은 물리 기기가 여러 `device_id` 행으로 갈라지지 않는다. 같은 토큰으로 새 device가
+     등록하면 `notificationRegistration.ts`가 옛 행의 토큰을 비우고 `notification_sends`
+     이력을 새 device로 옮긴다(재설치해도 이미 보낸 알림이 다시 안 나간다).
+  2) 발송은 `device_id`가 아니라 **(환경, 토큰)** 단위로 묶는다. DB가 잠시 지저분해도
+     한 물리 기기에 한 번만 나간다.
+  3) `notification_sends.claim_id` / `claimed_at` — 조건부 UPDATE로 선점한 회차만 보낸다.
+     cron과 admin 호출이 겹쳐도 한쪽은 `skippedClaimed`로 빠진다. 선점은
+     `CLAIM_TTL_MS`(1시간) 뒤 만료된다. APNs 응답을 못 받은 경우(`delivery_unknown`)는
+     선점을 **일부러 유지**해 즉시 재시도하지 않는다 — 애플이 이미 받았을 수 있어서다.
+  마지막 방어선으로 `apns-collapse-id`(`upcomingCollapseId`)를 붙여 두 건이 도착해도
+  기기에서 하나로 합쳐진다. 여기에만 기대면 안 된다.
+  PK `(device_id, event_id, notification_type)`는 그대로 계획 단계 중복을 막는다.
 - **지역 매칭** — `worker-backend/src/regionMatch.ts` / `ios-app/Core/Storage/NotificationRegionKey.swift`.
   키는 `"서울"`(광역시도 전체) 또는 `"서울|중구"`(광역시도 + 시/군/구) 두 형태뿐이고 구분자는 `|`다.
   주소에서 광역시도와 시/군/구를 따로 뽑아 비교하므로 서울 중구와 부산 중구,

@@ -6,8 +6,13 @@
 //    한 회차에 보낼 수 있는 양이 제한되는데, 못 보낸 행은 sent_at IS NULL로 남아
 //    다음 회차에 그대로 다시 잡힌다. 상한에 걸렸다고 대상이 사라지지 않는다.
 //
-// 중복 발송 방지는 notification_sends의 PK (device_id, event_id, notification_type)가
-// 담당한다. cron이 몇 번을 돌든 같은 조합은 한 행뿐이고, 성공하면 sent_at이 채워진다.
+// 중복 발송 방지는 세 겹이다. PK 하나로는 부족하다는 걸 운영에서 배웠다.
+//  1) notification_sends의 PK (device_id, event_id, notification_type) — 계획 단계 중복.
+//  2) 물리 발송 대상(apns_environment + apns_token) 단위 묶기 — device_id가 여러 개여도
+//     실제 기기는 한 대다. 0025의 UNIQUE 인덱스가 정상 상태를 보장하고, 발송은 그마저
+//     깨졌을 때를 대비해 한 번 더 토큰으로 묶는다.
+//  3) claim_id 선점 — SELECT → APNs → UPDATE 사이에 다른 invocation이 끼어드는 경합.
+// 그 위에 apns-collapse-id를 얹어 기기 단에서 한 번 더 합쳐지게 한다.
 
 import { matchesRegions } from "./regionMatch.js";
 import {
@@ -48,6 +53,7 @@ export type NotificationDevice = {
   quiet_hours_enabled: number;
   quiet_start_hour: number;
   quiet_end_hour: number;
+  updated_at: string;
 };
 
 export type PendingSend = {
@@ -332,10 +338,47 @@ export function buildNotification(
   };
 }
 
+// ------------------------------------------------------- 물리 발송 대상 · 지문
+
+/** 로그에 원본 APNs 토큰을 남기지 않기 위한 짧은 지문. FNV-1a 32bit. */
+export function tokenHash(token: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < token.length; i += 1) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** 같은 토큰이면 device_id가 몇 개든 물리적으로 한 대다. 발송 단위는 이 키다. */
+export function deliveryTargetKey(environment: string, token: string): string {
+  return `${environment}|${token}`;
+}
+
+/**
+ * apns-collapse-id. 같은 논리적 알림이면 회차·claim·device_id와 무관하게 같은 값이 나온다.
+ * 단건은 (종류, 행사), 묶음은 (종류, 대상 날짜)가 정체성이다. 발송 대상은 넣지 않는다 —
+ * APNs가 collapse-id를 토큰별로 따로 보므로 넣어 봐야 64바이트만 쓴다.
+ */
+export function upcomingCollapseId(
+  type: NotificationType,
+  rows: PendingSend[],
+  dayKey: string,
+): string {
+  const raw =
+    rows.length === 1
+      ? `up-${type}-${rows[0].event_kind}-${rows[0].event_id}`
+      : `up-${type}-digest-${dayKey}`;
+  if (new TextEncoder().encode(raw).length <= 64) return raw;
+  return `up-${type}-${tokenHash(raw)}`;
+}
+
 export type DispatchOptions = {
   /** 한 회차 APNs 호출 상한. invocation당 외부 fetch 50건 한도 안에 들어야 한다. */
   maxPushes?: number;
   now?: Date;
+  /** 이 회차의 선점 식별자. 테스트에서 두 회차를 구분하려고 주입한다. */
+  claimId?: string;
 };
 
 export type DispatchResult = {
@@ -344,8 +387,30 @@ export type DispatchResult = {
   failed: number;
   skippedQuietHours: number;
   clearedTokens: number;
+  /** 다른 invocation이 이미 선점한 묶음. 이번 회차는 손대지 않았다. */
+  skippedClaimed: number;
+  /** APNs 응답을 못 받아 발송 여부를 모르는 묶음. 선점을 붙잡아 둔 채 남긴다. */
+  deliveryUnknown: number;
 };
 
+/**
+ * 선점이 살아 있는 시간. 이 시간이 지나면 죽은 invocation이 잡아 둔 행을 다시 잡는다.
+ * 짧게 두면 응답을 못 받은 발송을 금방 재시도해 중복이 되고, 길게 두면 진짜 실패가
+ * 그만큼 늦게 나간다. 중복을 피하는 쪽을 택해 1시간으로 둔다.
+ */
+export const CLAIM_TTL_MS = 60 * 60 * 1000;
+
+function logAttempt(entry: Record<string, unknown>): void {
+  console.log(JSON.stringify({ at: "upcoming_dispatch", ...entry }));
+}
+
+/**
+ * 대기 행을 물리 발송 대상(환경+토큰) × 알림 종류로 묶어 묶음당 push 하나를 보낸다.
+ *
+ * 순서가 중요하다. 먼저 선점(claim)으로 행의 소유권을 원자적으로 가져오고, 그 다음
+ * 선점한 행만 다시 읽어 알림을 만든다. 두 invocation이 겹치면 UPDATE 한쪽만 행을 잡고
+ * 다른 쪽은 0건을 읽어 아예 보내지 않는다 — 묶음이 둘로 쪼개져 두 번 나가지 않는다.
+ */
 export async function dispatchPendingNotifications(
   db: D1Database,
   sender: ApnsSender,
@@ -353,46 +418,87 @@ export async function dispatchPendingNotifications(
 ): Promise<DispatchResult> {
   const maxPushes = options.maxPushes ?? 40;
   const now = options.now ?? new Date();
+  const claimId = options.claimId ?? crypto.randomUUID();
   const result: DispatchResult = {
     sent: 0,
     rowsMarked: 0,
     failed: 0,
     skippedQuietHours: 0,
     clearedTokens: 0,
+    skippedClaimed: 0,
+    deliveryUnknown: 0,
   };
+
+  const nowIso = now.toISOString();
+  const staleBefore = new Date(now.getTime() - CLAIM_TTL_MS).toISOString();
+  const dayKey = seoulDayString(now);
 
   const pendingRows = await db
     .prepare(
-      `SELECT device_id, event_id, notification_type, event_kind,
-              event_title, event_start_date, attempts
+      `SELECT DISTINCT device_id, notification_type
          FROM notification_sends
         WHERE sent_at IS NULL
-        ORDER BY device_id, notification_type, event_start_date
+          AND (claim_id IS NULL OR claimed_at <= ?)
+        ORDER BY device_id, notification_type
         LIMIT 1000`,
     )
-    .all<PendingSend>();
+    .bind(staleBefore)
+    .all<{ device_id: string; notification_type: NotificationType }>();
   const pending = pendingRows.results ?? [];
   if (pending.length === 0) return result;
 
-  const byDevice = new Map<string, PendingSend[]>();
-  for (const row of pending) {
-    const bucket = byDevice.get(row.device_id);
-    if (bucket) bucket.push(row);
-    else byDevice.set(row.device_id, [row]);
-  }
-
   const devices = await loadActiveDevices(db);
   const deviceById = new Map(devices.map((device) => [device.device_id, device]));
-  const hour = seoulHour(now);
-  const sentAt = now.toISOString();
 
-  let budget = maxPushes;
-  for (const [deviceId, rows] of byDevice) {
-    if (budget <= 0) break;
-    const device = deviceById.get(deviceId);
+  // 같은 토큰을 든 device_id가 여럿이면 물리적으로 한 대다. 대표(가장 최근 updated_at,
+  // 동률이면 device_id가 큰 쪽)의 설정을 쓰고, 대기 행은 그룹 전체 것을 함께 보낸다.
+  const targets = new Map<
+    string,
+    { device: NotificationDevice; deviceIds: string[] }
+  >();
+  for (const device of devices) {
+    if (!device.apns_token) continue;
+    const key = deliveryTargetKey(device.apns_environment, device.apns_token);
+    const existing = targets.get(key);
+    if (!existing) {
+      targets.set(key, { device, deviceIds: [device.device_id] });
+      continue;
+    }
+    existing.deviceIds.push(device.device_id);
+    const better =
+      device.updated_at > existing.device.updated_at ||
+      (device.updated_at === existing.device.updated_at &&
+        device.device_id > existing.device.device_id);
+    if (better) existing.device = device;
+  }
+  const targetKeyByDevice = new Map<string, string>();
+  for (const [key, target] of targets) {
+    for (const deviceId of target.deviceIds) targetKeyByDevice.set(deviceId, key);
+  }
+
+  // (물리 대상, 종류) 하나가 push 하나다.
+  const groups = new Map<string, { targetKey: string; type: NotificationType }>();
+  for (const row of pending) {
     // 알림을 껐거나 토큰이 없는 기기는 발송 대상이 아니다. 행은 남겨 두었다가
     // 다시 켜면 그때 나간다.
-    if (!device || !device.apns_token) continue;
+    if (!deviceById.has(row.device_id)) continue;
+    const targetKey = targetKeyByDevice.get(row.device_id);
+    if (!targetKey) continue;
+    groups.set(`${targetKey}|${row.notification_type}`, {
+      targetKey,
+      type: row.notification_type,
+    });
+  }
+
+  const hour = seoulHour(now);
+  let budget = maxPushes;
+
+  for (const { targetKey, type } of groups.values()) {
+    if (budget <= 0) break;
+    const target = targets.get(targetKey);
+    if (!target) continue;
+    const device = target.device;
+    if (!device.apns_token) continue;
     if (
       device.quiet_hours_enabled === 1 &&
       isWithinQuietHours(hour, device.quiet_start_hour, device.quiet_end_hour)
@@ -401,67 +507,150 @@ export async function dispatchPendingNotifications(
       continue;
     }
 
-    const byType = new Map<NotificationType, PendingSend[]>();
-    for (const row of rows) {
-      const bucket = byType.get(row.notification_type);
-      if (bucket) bucket.push(row);
-      else byType.set(row.notification_type, [row]);
+    const placeholders = target.deviceIds.map(() => "?").join(",");
+    // 선점. 이미 다른 회차가 잡았거나 TTL이 안 지난 행은 여기서 걸러진다.
+    await db
+      .prepare(
+        `UPDATE notification_sends
+            SET claim_id = ?, claimed_at = ?
+          WHERE notification_type = ?
+            AND sent_at IS NULL
+            AND (claim_id IS NULL OR claimed_at <= ?)
+            AND device_id IN (${placeholders})`,
+      )
+      .bind(claimId, nowIso, type, staleBefore, ...target.deviceIds)
+      .run();
+
+    const claimedRows = await db
+      .prepare(
+        `SELECT device_id, event_id, notification_type, event_kind,
+                event_title, event_start_date, attempts
+           FROM notification_sends
+          WHERE notification_type = ?
+            AND sent_at IS NULL
+            AND claim_id = ?
+            AND device_id IN (${placeholders})
+          ORDER BY event_start_date, event_id`,
+      )
+      .bind(type, claimId, ...target.deviceIds)
+      .all<PendingSend>();
+    const rows = claimedRows.results ?? [];
+    if (rows.length === 0) {
+      // 다른 invocation이 먼저 잡았다. 이 회차는 보내지 않는다.
+      result.skippedClaimed += 1;
+      continue;
     }
 
-    for (const [type, typeRows] of byType) {
-      if (budget <= 0) break;
-      const content = buildNotification(type, typeRows);
-      budget -= 1;
-      const outcome = await sender.send(
-        device.apns_token,
-        device.apns_environment,
-        {
-          title: content.title,
-          body: content.body,
-          threadId: `upcoming-${type}`,
-          data: content.data,
-        },
-      );
-      if (outcome.ok) {
-        result.sent += 1;
-        result.rowsMarked += typeRows.length;
-        await db.batch(
-          typeRows.map((row) =>
-            db
-              .prepare(
-                `UPDATE notification_sends SET sent_at = ?, attempts = attempts + 1
-                  WHERE device_id = ? AND event_id = ? AND notification_type = ?`,
-              )
-              .bind(sentAt, row.device_id, row.event_id, row.notification_type),
-          ),
-        );
-        continue;
-      }
+    // DB가 잠시 지저분해 같은 행사가 device_id별로 여러 행일 수 있다. 문구는 행사 단위로
+    // 만들되(같은 축제가 "3건"으로 보이지 않게) 발송 완료 표시는 잡은 행 전부에 남긴다.
+    const seenEvents = new Set<string>();
+    const uniqueRows = rows.filter((row) => {
+      const eventKey = `${row.event_kind}|${row.event_id}`;
+      if (seenEvents.has(eventKey)) return false;
+      seenEvents.add(eventKey);
+      return true;
+    });
+    const content = buildNotification(type, uniqueRows);
+    const collapseId = upcomingCollapseId(type, uniqueRows, dayKey);
+    const logBase = {
+      logicalNotificationKey: collapseId,
+      tokenHash: tokenHash(device.apns_token),
+      deviceIds: target.deviceIds,
+      notificationType: type,
+      eventIds: uniqueRows.map((row) => row.event_id),
+      claimId,
+      rows: rows.length,
+    };
 
-      result.failed += 1;
-      const reason = `${outcome.status}${outcome.reason ? ` ${outcome.reason}` : ""}`;
+    budget -= 1;
+    let outcome;
+    try {
+      outcome = await sender.send(device.apns_token, device.apns_environment, {
+        title: content.title,
+        body: content.body,
+        threadId: `upcoming-${type}`,
+        collapseId,
+        data: content.data,
+      });
+    } catch (error) {
+      // 응답을 못 받았다. 애플이 받았는지 알 수 없으므로 선점을 풀지 않는다 —
+      // 지금 재시도하면 중복이 될 수 있고, TTL이 지나면 자연히 한 번 더 잡힌다.
+      const reason = `delivery_unknown ${String(error).slice(0, 120)}`;
+      result.deliveryUnknown += 1;
+      logAttempt({ ...logBase, outcome: "delivery_unknown", error: reason });
       await db.batch(
-        typeRows.map((row) =>
+        rows.map((row) =>
           db
             .prepare(
               `UPDATE notification_sends SET attempts = attempts + 1, last_error = ?
-                WHERE device_id = ? AND event_id = ? AND notification_type = ?`,
+                WHERE device_id = ? AND event_id = ? AND notification_type = ?
+                  AND claim_id = ?`,
             )
-            .bind(reason, row.device_id, row.event_id, row.notification_type),
+            .bind(reason, row.device_id, row.event_id, row.notification_type, claimId),
         ),
       );
-      if (isPermanentTokenFailure(outcome)) {
-        // 죽은 토큰으로 계속 재시도하면 예산만 태운다. 토큰만 비우고 대기 행은 남긴다.
-        await db
+      continue;
+    }
+
+    if (outcome.ok) {
+      result.sent += 1;
+      result.rowsMarked += rows.length;
+      logAttempt({
+        ...logBase,
+        outcome: "sent",
+        status: outcome.status,
+        apnsId: outcome.apnsId,
+        sentAt: nowIso,
+      });
+      await db.batch(
+        rows.map((row) =>
+          db
+            .prepare(
+              `UPDATE notification_sends
+                  SET sent_at = ?, attempts = attempts + 1, claim_id = NULL
+                WHERE device_id = ? AND event_id = ? AND notification_type = ?
+                  AND claim_id = ?`,
+            )
+            .bind(nowIso, row.device_id, row.event_id, row.notification_type, claimId),
+        ),
+      );
+      continue;
+    }
+
+    result.failed += 1;
+    const reason = `${outcome.status}${outcome.reason ? ` ${outcome.reason}` : ""}`;
+    logAttempt({
+      ...logBase,
+      outcome: "failed",
+      status: outcome.status,
+      reason: outcome.reason,
+      apnsId: outcome.apnsId,
+    });
+    // APNs가 명시적으로 거절했다 — 안 갔다는 뜻이므로 선점을 풀어 다음 회차에 다시 잡히게 한다.
+    await db.batch(
+      rows.map((row) =>
+        db
           .prepare(
-            `UPDATE notification_devices SET apns_token = NULL, updated_at = ?
-              WHERE device_id = ?`,
+            `UPDATE notification_sends
+                SET attempts = attempts + 1, last_error = ?,
+                    claim_id = NULL, claimed_at = NULL
+              WHERE device_id = ? AND event_id = ? AND notification_type = ?
+                AND claim_id = ?`,
           )
-          .bind(sentAt, deviceId)
-          .run();
-        result.clearedTokens += 1;
-        break;
-      }
+          .bind(reason, row.device_id, row.event_id, row.notification_type, claimId),
+      ),
+    );
+    if (isPermanentTokenFailure(outcome)) {
+      // 죽은 토큰으로 계속 재시도하면 예산만 태운다. 토큰만 비우고 대기 행은 남긴다.
+      await db
+        .prepare(
+          `UPDATE notification_devices SET apns_token = NULL, updated_at = ?
+            WHERE device_id = ?`,
+        )
+        .bind(nowIso, device.device_id)
+        .run();
+      result.clearedTokens += 1;
+      targets.delete(targetKey);
     }
   }
   return result;
