@@ -170,41 +170,26 @@ async function computePipelineStats(
   db: D1Database,
   options: PipelineStatsOptions = {},
 ): Promise<PipelineStats> {
+  // D1은 하루 읽은 행 수로 과금·제한된다. 지표마다 같은 테이블을 따로 훑으면
+  // 한 번의 대시보드 호출이 테이블 크기 × 지표 수만큼 행을 읽는다. 한 번의
+  // 스캔으로 계산 가능한 스칼라 지표(COUNT/SUM/MIN/MAX)는 전부 아래 집계 하나에
+  // 모으고, 키가 서로 다른 GROUP BY만 별도 statement로 남긴다.
   const [
-    discoveryTotal,
+    discoveryAggregate,
     discoveryByType,
     discoveryBySource,
     discoveryByStatus,
     discoveryByCategory,
-    discoveryTagged,
-    discoveryFee,
-    discoveryIngest,
-    discoveryDailyNew,
-    discoveryNewBySource,
-    discoveryTagging,
-    discoveryTaggingAges,
     discoveryTaggingModels,
-    discoveryFeeAges,
+    discoveryNewLast7d,
   ] = await db.batch<Record<string, unknown>>([
-    db.prepare(`SELECT COUNT(*) AS count FROM discovery_items`),
-    db.prepare(`SELECT type AS key, COUNT(*) AS count FROM discovery_items GROUP BY type`),
-    db.prepare(`SELECT source AS key, COUNT(*) AS count FROM discovery_items GROUP BY source ORDER BY count DESC`),
-    db.prepare(`SELECT COALESCE(status, 'unknown') AS key, COUNT(*) AS count FROM discovery_items GROUP BY 1 ORDER BY count DESC`),
-    db.prepare(
-      `SELECT COALESCE(primary_category, 'untagged') AS key, COUNT(*) AS count
-         FROM discovery_items GROUP BY 1 ORDER BY count DESC`
-    ),
-    db.prepare(`SELECT COUNT(*) AS count FROM discovery_items WHERE tagging_version > 0`),
     db.prepare(
       `SELECT
+         COUNT(*) AS total,
          SUM(CASE WHEN is_free = 1 THEN 1 ELSE 0 END) AS free,
          SUM(CASE WHEN is_free = 0 THEN 1 ELSE 0 END) AS paid,
          SUM(CASE WHEN is_free IS NULL AND fee_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS unknown,
-         SUM(CASE WHEN fee_checked_at IS NULL THEN 1 ELSE 0 END) AS unchecked
-       FROM discovery_items`
-    ),
-    db.prepare(
-      `SELECT
+         SUM(CASE WHEN fee_checked_at IS NULL THEN 1 ELSE 0 END) AS unchecked,
          SUM(CASE WHEN first_seen_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS newLast24h,
          SUM(CASE WHEN first_seen_at >= ${isoAgo("-7 days")} THEN 1 ELSE 0 END) AS newLast7d,
          SUM(CASE WHEN last_seen_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS refreshedLast24h,
@@ -216,32 +201,36 @@ async function computePipelineStats(
                   THEN 1 ELSE 0 END) AS staleEndedOver7d,
          SUM(CASE WHEN lat = 0 OR lng = 0 THEN 1 ELSE 0 END) AS missingCoordinates,
          MAX(first_seen_at) AS latestFirstSeenAt,
-         MAX(synced_at) AS latestSyncedAt
-       FROM discovery_items`
-    ),
-    db.prepare(
-      `SELECT substr(first_seen_at, 1, 10) AS key, COUNT(*) AS count
-         FROM discovery_items
-        WHERE first_seen_at >= ${isoAgo("-7 days")}
-        GROUP BY 1 ORDER BY 1`
-    ),
-    db.prepare(
-      `SELECT source AS key, COUNT(*) AS count
-         FROM discovery_items
-        WHERE first_seen_at >= ${isoAgo("-7 days")}
-        GROUP BY 1 ORDER BY count DESC LIMIT 12`
-    ),
-    db.prepare(
-      `SELECT
+         MAX(synced_at) AS latestSyncedAt,
          SUM(CASE WHEN tagging_version > 0 THEN 1 ELSE 0 END) AS llmTagged,
          SUM(CASE WHEN tagging_version = -1 THEN 1 ELSE 0 END) AS fallbackTagged,
-         SUM(CASE WHEN tagging_version = 0 THEN 1 ELSE 0 END) AS pending
+         SUM(CASE WHEN tagging_version = 0 THEN 1 ELSE 0 END) AS taggingPending,
+         MIN(CASE WHEN tagging_version = 0 THEN first_seen_at END) AS oldestPendingFirstSeenAt,
+         MAX(tagged_at) AS lastTaggedAt,
+         MIN(CASE WHEN fee_checked_at IS NULL THEN first_seen_at END) AS oldestUncheckedFirstSeenAt,
+         MAX(fee_checked_at) AS feeLastCheckedAt,
+         SUM(CASE WHEN fee_checked_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS feeCheckedLast24h,
+         SUM(CASE WHEN geocode_checked_at IS NULL
+                   AND COALESCE(venue_name, '') <> ''
+                   AND end_date >= date('now')
+                   AND (${discoveryFallbackCoordinateMatch()})
+                  THEN 1 ELSE 0 END) AS geocodePending,
+         MAX(geocode_checked_at) AS geocodeLastCheckedAt,
+         SUM(CASE WHEN geocode_checked_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS geocodeCheckedLast24h,
+         SUM(CASE WHEN images_checked_at IS NULL
+                   AND source IN (${imageBackfillSourceList()})
+                   AND (end_date IS NULL OR end_date >= date('now'))
+                  THEN 1 ELSE 0 END) AS imagePending,
+         MAX(images_checked_at) AS imageLastCheckedAt,
+         SUM(CASE WHEN images_checked_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS imageCheckedLast24h
        FROM discovery_items`
     ),
+    db.prepare(`SELECT type AS key, COUNT(*) AS count FROM discovery_items GROUP BY type`),
+    db.prepare(`SELECT source AS key, COUNT(*) AS count FROM discovery_items GROUP BY source ORDER BY count DESC`),
+    db.prepare(`SELECT COALESCE(status, 'unknown') AS key, COUNT(*) AS count FROM discovery_items GROUP BY 1 ORDER BY count DESC`),
     db.prepare(
-      `SELECT
-         (SELECT MIN(first_seen_at) FROM discovery_items WHERE tagging_version = 0) AS oldestPendingFirstSeenAt,
-         (SELECT MAX(tagged_at) FROM discovery_items) AS lastTaggedAt`
+      `SELECT COALESCE(primary_category, 'untagged') AS key, COUNT(*) AS count
+         FROM discovery_items GROUP BY 1 ORDER BY count DESC`
     ),
     db.prepare(
       `SELECT tagging_model AS key, COUNT(*) AS count
@@ -249,24 +238,22 @@ async function computePipelineStats(
         WHERE tagging_model IS NOT NULL
         GROUP BY 1 ORDER BY count DESC LIMIT 6`
     ),
+    // 일자별 신규와 소스별 신규는 같은 7일 구간을 훑는다. (일자, 소스) 하나로
+    // 묶어 한 번만 읽고 TypeScript에서 두 축으로 각각 접는다.
     db.prepare(
-      `SELECT
-         (SELECT MIN(first_seen_at) FROM discovery_items WHERE fee_checked_at IS NULL) AS oldestUncheckedFirstSeenAt,
-         (SELECT MAX(fee_checked_at) FROM discovery_items) AS lastCheckedAt,
-         (SELECT COUNT(*) FROM discovery_items WHERE fee_checked_at >= ${isoAgo("-1 day")}) AS checkedLast24h`
+      `SELECT substr(first_seen_at, 1, 10) AS day, source AS source, COUNT(*) AS count
+         FROM discovery_items
+        WHERE first_seen_at >= ${isoAgo("-7 days")}
+        GROUP BY 1, 2`
     ),
   ]);
 
   const [
-    localTotal,
+    localAggregate,
     localByStatus,
     localBySource,
     localByEventType,
-    localNeedsReview,
-    localTagged,
-    localIngest,
     localDailyNew,
-    discoveryBackfill,
     cityStats,
     akeiStats,
     syncRunning,
@@ -275,45 +262,27 @@ async function computePipelineStats(
     syncLastSuccess,
     recentSyncRuns,
   ] = await db.batch<Record<string, unknown>>([
-    db.prepare(`SELECT COUNT(*) AS count FROM local_events`),
-    db.prepare(`SELECT status AS key, COUNT(*) AS count FROM local_events GROUP BY status`),
-    db.prepare(`SELECT source AS key, COUNT(*) AS count FROM local_events GROUP BY source ORDER BY count DESC`),
-    db.prepare(`SELECT event_type AS key, COUNT(*) AS count FROM local_events GROUP BY event_type ORDER BY count DESC`),
-    db.prepare(`SELECT COUNT(*) AS count FROM local_events WHERE needs_review = 1`),
-    db.prepare(`SELECT COUNT(*) AS count FROM local_events WHERE tagging_version > 0`),
     db.prepare(
       `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN needs_review = 1 THEN 1 ELSE 0 END) AS needsReview,
+         SUM(CASE WHEN tagging_version > 0 THEN 1 ELSE 0 END) AS tagged,
          SUM(CASE WHEN created_at >= ${isoAgo("-1 day")} THEN 1 ELSE 0 END) AS newLast24h,
          SUM(CASE WHEN created_at >= ${isoAgo("-7 days")} THEN 1 ELSE 0 END) AS newLast7d,
          SUM(CASE WHEN approved_at >= ${isoAgo("-7 days")} THEN 1 ELSE 0 END) AS approvedLast7d,
          AVG(confidence_score) AS averageConfidence,
          MAX(created_at) AS latestCreatedAt,
-         (SELECT MIN(created_at) FROM local_events WHERE status = 'pending') AS oldestPendingCreatedAt
+         MIN(CASE WHEN status = 'pending' THEN created_at END) AS oldestPendingCreatedAt
        FROM local_events`
     ),
+    db.prepare(`SELECT status AS key, COUNT(*) AS count FROM local_events GROUP BY status`),
+    db.prepare(`SELECT source AS key, COUNT(*) AS count FROM local_events GROUP BY source ORDER BY count DESC`),
+    db.prepare(`SELECT event_type AS key, COUNT(*) AS count FROM local_events GROUP BY event_type ORDER BY count DESC`),
     db.prepare(
       `SELECT substr(created_at, 1, 10) AS key, COUNT(*) AS count
          FROM local_events
         WHERE created_at >= ${isoAgo("-7 days")}
         GROUP BY 1 ORDER BY 1`
-    ),
-    db.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM discovery_items
-           WHERE geocode_checked_at IS NULL
-             AND COALESCE(venue_name, '') <> ''
-             AND end_date >= date('now')
-             AND (${discoveryFallbackCoordinateMatch()})) AS geocodePending,
-         (SELECT MAX(geocode_checked_at) FROM discovery_items) AS geocodeLastCheckedAt,
-         (SELECT COUNT(*) FROM discovery_items
-           WHERE geocode_checked_at >= ${isoAgo("-1 day")}) AS geocodeCheckedLast24h,
-         (SELECT COUNT(*) FROM discovery_items
-           WHERE images_checked_at IS NULL
-             AND source IN (${imageBackfillSourceList()})
-             AND (end_date IS NULL OR end_date >= date('now'))) AS imagePending,
-         (SELECT MAX(images_checked_at) FROM discovery_items) AS imageLastCheckedAt,
-         (SELECT COUNT(*) FROM discovery_items
-           WHERE images_checked_at >= ${isoAgo("-1 day")}) AS imageCheckedLast24h`
     ),
     db.prepare(
       `SELECT
@@ -379,11 +348,14 @@ async function computePipelineStats(
   const cityTotalCount = firstNumber(cityStats, "total");
   const cityGeocodeChecked = firstNumber(cityStats, "geocodeChecked");
   const cityUpcoming = firstNumber(cityStats, "upcoming");
+  const discoveryTotal = firstNumber(discoveryAggregate, "total");
+  const discoveryLlmTagged = firstNumber(discoveryAggregate, "llmTagged");
+  const localTotal = firstNumber(localAggregate, "total");
 
   return {
     generatedAt: new Date().toISOString(),
     discoveryItems: {
-      total: firstCount(discoveryTotal),
+      total: discoveryTotal,
       byType: toCountList(discoveryByType),
       bySource: toCountList(discoveryBySource).map((row) => ({ source: row.type, count: row.count })),
       byStatus: toCountList(discoveryByStatus).map((row) => ({ status: row.type, count: row.count })),
@@ -391,64 +363,61 @@ async function computePipelineStats(
         category: row.type,
         count: row.count,
       })),
-      taggingCoverage: { tagged: firstCount(discoveryTagged), total: firstCount(discoveryTotal) },
+      taggingCoverage: { tagged: discoveryLlmTagged, total: discoveryTotal },
       feeCoverage: {
-        free: firstNumber(discoveryFee, "free"),
-        paid: firstNumber(discoveryFee, "paid"),
-        unknown: firstNumber(discoveryFee, "unknown"),
-        unchecked: firstNumber(discoveryFee, "unchecked"),
+        free: firstNumber(discoveryAggregate, "free"),
+        paid: firstNumber(discoveryAggregate, "paid"),
+        unknown: firstNumber(discoveryAggregate, "unknown"),
+        unchecked: firstNumber(discoveryAggregate, "unchecked"),
       },
       ingestion: {
-        newLast24h: firstNumber(discoveryIngest, "newLast24h"),
-        newLast7d: firstNumber(discoveryIngest, "newLast7d"),
-        refreshedLast24h: firstNumber(discoveryIngest, "refreshedLast24h"),
-        staleOver7d: firstNumber(discoveryIngest, "staleOver7d"),
-        staleEndedOver7d: firstNumber(discoveryIngest, "staleEndedOver7d"),
-        missingCoordinates: firstNumber(discoveryIngest, "missingCoordinates"),
-        latestFirstSeenAt: firstText(discoveryIngest, "latestFirstSeenAt"),
-        latestSyncedAt: firstText(discoveryIngest, "latestSyncedAt"),
-        dailyNew: toCountList(discoveryDailyNew).map((row) => ({ date: row.type, count: row.count })),
-        newBySourceLast7d: toCountList(discoveryNewBySource).map((row) => ({
-          source: row.type,
-          count: row.count,
-        })),
+        newLast24h: firstNumber(discoveryAggregate, "newLast24h"),
+        newLast7d: firstNumber(discoveryAggregate, "newLast7d"),
+        refreshedLast24h: firstNumber(discoveryAggregate, "refreshedLast24h"),
+        staleOver7d: firstNumber(discoveryAggregate, "staleOver7d"),
+        staleEndedOver7d: firstNumber(discoveryAggregate, "staleEndedOver7d"),
+        missingCoordinates: firstNumber(discoveryAggregate, "missingCoordinates"),
+        latestFirstSeenAt: firstText(discoveryAggregate, "latestFirstSeenAt"),
+        latestSyncedAt: firstText(discoveryAggregate, "latestSyncedAt"),
+        dailyNew: foldNewByDay(discoveryNewLast7d),
+        newBySourceLast7d: foldNewBySource(discoveryNewLast7d),
       },
       tagging: {
-        llmTagged: firstNumber(discoveryTagging, "llmTagged"),
-        fallbackTagged: firstNumber(discoveryTagging, "fallbackTagged"),
-        pending: firstNumber(discoveryTagging, "pending"),
-        oldestPendingFirstSeenAt: firstText(discoveryTaggingAges, "oldestPendingFirstSeenAt"),
-        lastTaggedAt: firstText(discoveryTaggingAges, "lastTaggedAt"),
+        llmTagged: discoveryLlmTagged,
+        fallbackTagged: firstNumber(discoveryAggregate, "fallbackTagged"),
+        pending: firstNumber(discoveryAggregate, "taggingPending"),
+        oldestPendingFirstSeenAt: firstText(discoveryAggregate, "oldestPendingFirstSeenAt"),
+        lastTaggedAt: firstText(discoveryAggregate, "lastTaggedAt"),
         byModel: toCountList(discoveryTaggingModels).map((row) => ({ model: row.type, count: row.count })),
       },
       fee: {
-        oldestUncheckedFirstSeenAt: firstText(discoveryFeeAges, "oldestUncheckedFirstSeenAt"),
-        lastCheckedAt: firstText(discoveryFeeAges, "lastCheckedAt"),
-        checkedLast24h: firstNumber(discoveryFeeAges, "checkedLast24h"),
+        oldestUncheckedFirstSeenAt: firstText(discoveryAggregate, "oldestUncheckedFirstSeenAt"),
+        lastCheckedAt: firstText(discoveryAggregate, "feeLastCheckedAt"),
+        checkedLast24h: firstNumber(discoveryAggregate, "feeCheckedLast24h"),
       },
       backfill: {
-        geocodePending: firstNumber(discoveryBackfill, "geocodePending"),
-        geocodeLastCheckedAt: firstText(discoveryBackfill, "geocodeLastCheckedAt"),
-        geocodeCheckedLast24h: firstNumber(discoveryBackfill, "geocodeCheckedLast24h"),
-        imagePending: firstNumber(discoveryBackfill, "imagePending"),
-        imageLastCheckedAt: firstText(discoveryBackfill, "imageLastCheckedAt"),
-        imageCheckedLast24h: firstNumber(discoveryBackfill, "imageCheckedLast24h"),
+        geocodePending: firstNumber(discoveryAggregate, "geocodePending"),
+        geocodeLastCheckedAt: firstText(discoveryAggregate, "geocodeLastCheckedAt"),
+        geocodeCheckedLast24h: firstNumber(discoveryAggregate, "geocodeCheckedLast24h"),
+        imagePending: firstNumber(discoveryAggregate, "imagePending"),
+        imageLastCheckedAt: firstText(discoveryAggregate, "imageLastCheckedAt"),
+        imageCheckedLast24h: firstNumber(discoveryAggregate, "imageCheckedLast24h"),
       },
     },
     localEvents: {
-      total: firstCount(localTotal),
+      total: localTotal,
       byStatus: toCountList(localByStatus).map((row) => ({ status: row.type, count: row.count })),
       bySource: toCountList(localBySource).map((row) => ({ source: row.type, count: row.count })),
       byEventType: toCountList(localByEventType).map((row) => ({ eventType: row.type, count: row.count })),
-      needsReview: firstCount(localNeedsReview),
-      taggingCoverage: { tagged: firstCount(localTagged), total: firstCount(localTotal) },
+      needsReview: firstNumber(localAggregate, "needsReview"),
+      taggingCoverage: { tagged: firstNumber(localAggregate, "tagged"), total: localTotal },
       ingestion: {
-        newLast24h: firstNumber(localIngest, "newLast24h"),
-        newLast7d: firstNumber(localIngest, "newLast7d"),
-        approvedLast7d: firstNumber(localIngest, "approvedLast7d"),
-        averageConfidence: firstOptionalNumber(localIngest, "averageConfidence"),
-        oldestPendingCreatedAt: firstText(localIngest, "oldestPendingCreatedAt"),
-        latestCreatedAt: firstText(localIngest, "latestCreatedAt"),
+        newLast24h: firstNumber(localAggregate, "newLast24h"),
+        newLast7d: firstNumber(localAggregate, "newLast7d"),
+        approvedLast7d: firstNumber(localAggregate, "approvedLast7d"),
+        averageConfidence: firstOptionalNumber(localAggregate, "averageConfidence"),
+        oldestPendingCreatedAt: firstText(localAggregate, "oldestPendingCreatedAt"),
+        latestCreatedAt: firstText(localAggregate, "latestCreatedAt"),
         dailyNew: toCountList(localDailyNew).map((row) => ({ date: row.type, count: row.count })),
       },
     },
@@ -525,6 +494,39 @@ function toCountList(result: D1Result<Record<string, unknown>>): { type: string;
     type: row.key ?? "unknown",
     count: Number(row.count),
   }));
+}
+
+interface NewRow {
+  day: string | null;
+  source: string | null;
+  count: number;
+}
+
+// (일자, 소스) 한 번의 스캔 결과를 일자축으로 접는다. 예전 전용 쿼리와 같이
+// 날짜 오름차순이다.
+function foldNewByDay(result: D1Result<Record<string, unknown>>): { date: string; count: number }[] {
+  const byDay = new Map<string, number>();
+  for (const row of (result.results ?? []) as unknown as NewRow[]) {
+    const date = row.day ?? "unknown";
+    byDay.set(date, (byDay.get(date) ?? 0) + Number(row.count));
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([date, count]) => ({ date, count }));
+}
+
+// 같은 결과를 소스축으로 접는다. 예전 전용 쿼리와 같이 건수 내림차순 상위 12개다
+// (건수가 같을 때의 순서는 SQLite 임의 순서 대신 소스명 오름차순으로 고정한다).
+function foldNewBySource(result: D1Result<Record<string, unknown>>): { source: string; count: number }[] {
+  const bySource = new Map<string, number>();
+  for (const row of (result.results ?? []) as unknown as NewRow[]) {
+    const source = row.source ?? "unknown";
+    bySource.set(source, (bySource.get(source) ?? 0) + Number(row.count));
+  }
+  return [...bySource.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, 12)
+    .map(([source, count]) => ({ source, count }));
 }
 
 // 지역 대표 좌표(서울시청 등) 위에 얹힌 행을 세는 조건. geocodeBackfill이 대상을
