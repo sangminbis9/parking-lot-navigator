@@ -276,8 +276,16 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverLayers(viewport: viewport, filter: filter, showsError: false)
     }
 
-    func loadDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default, showsError: Bool = false) async {
-        isLoadingDiscover = true
+    /// `showsSpinner`는 지도를 끌고 다니며 도는 재검색을 위해 있다. 그 경로는 이미 핀이 떠 있는
+    /// 상태라 스피너가 깜빡이기만 하고, 사용자가 누른 것도 아니라 피드백이 필요 없다.
+    /// 콜드 스타트와 토글·필터 변경은 기본값 그대로 스피너를 켠다.
+    func loadDiscoverLayers(
+        viewport: MapViewport,
+        filter: FestivalFilter = .default,
+        showsError: Bool = false,
+        showsSpinner: Bool = true
+    ) async {
+        if showsSpinner { isLoadingDiscover = true }
         errorMessage = nil
 
         // 세 요청은 서로 의존하지 않는다. 순차 await면 가장 느린 하나가 아니라 셋의 합만큼 기다린다.
@@ -327,7 +335,7 @@ final class MapHomeViewModel: ObservableObject {
         if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
             errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
         }
-        isLoadingDiscover = false
+        if showsSpinner { isLoadingDiscover = false }
     }
 
     func loadDiscoverItems(viewport: MapViewport) async {
