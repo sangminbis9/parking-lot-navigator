@@ -1,13 +1,13 @@
 # 다음 단계
 
-마지막 업데이트: 2026-06-24
+마지막 업데이트: 2026-08-28
 
 ## 현재 상태
 
 - 브랜치: `master`
-- 마지막으로 push 된 커밋: `f3e1e22 Bump build number to 174`
+- 마지막으로 push 된 커밋: `53243a7 Show the discover spinner only on cold start, not on map-pan refreshes`
 - 제품 방향은 축제/이벤트 발견 우선이며, 주차/실시간은 선택한 목적지 방문을 보조하는 역할이다. 여기에 머천트용 유료 로컬 이벤트 등록 퍼널이 더해진다.
-- iOS 빌드 번호는 `ios-app/project.yml` 에서 `1.0 (174)`. Codemagic 빌드 후 TestFlight 제출 대기 중.
+- iOS 빌드 번호는 `ios-app/project.yml` 에서 `1.0 (286)`. Codemagic 빌드 후 TestFlight 제출 대기 중.
 - Worker 프로덕션 배포 완료: 버전 `7e048884` 운영 중.
 - D1 마이그레이션 0001–0014 원격 DB 모두 적용 완료. `apply-d1-migrations.yml` workflow 도 0014 까지 포함.
 - 오픈 기념 무료 프로모(`MERCHANT_LAUNCH_PROMO_FREE`)가 기본 활성 상태 — 머천트 이벤트 등록 무료.
@@ -63,7 +63,7 @@
 ## iOS 빌드 / 릴리스
 
 - Codemagic/Xcode 빌드는 iOS 파일이 바뀔 때만 필요하다.
-- 현재 `CURRENT_PROJECT_VERSION` 은 `174`. 다음 Codemagic/TestFlight 업로드 시 publish 로그의 `Version code` 가 App Store Connect 의 기존 최고 빌드보다 높은지 확인한다.
+- 현재 `CURRENT_PROJECT_VERSION` 은 `286`. 다음 Codemagic/TestFlight 업로드 시 publish 로그의 `Version code` 가 App Store Connect 의 기존 최고 빌드보다 높은지 확인한다.
 - App Store Connect Privacy Nutrition Labels: 검색 기록(목적지명 + 익명 랜덤 UUID)을 analytics 용도로 수집하므로 "기타 사용 데이터 - 앱 기능" 항목 선택 권장.
 - "내 가게 이벤트 등록" 버튼이 실기기(시뮬레이터 아님)에서 Safari 로 `https://parking-lot-navigator-api.parkingnav.workers.dev/merchant` 를 여는지 확인한다 — Apple 심사가 link-out 흐름을 점검한다.
 - 캘린더 탭/위젯 검증: 시뮬레이터 또는 실기기에서 ① 캘린더 dot 표시 ② 필터 시트 적용 시 dot/위젯 동기화 ③ 홈 화면에 Medium 위젯 추가 후 다가오는 축제 3개 카드 노출 ④ 빈 상태(90일 매칭 없음) 문구.

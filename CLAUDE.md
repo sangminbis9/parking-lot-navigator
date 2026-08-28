@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `178` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`)
+- 현재 빌드번호: `286` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -183,6 +183,13 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - **카테고리** — 비면 전체, 값이 있으면 그 카테고리만. 지역과 AND.
 - **cron** — `"*/3 * * * *"` 안에서 `minute % 30 === 0`일 때 발송, `minute === 0`일 때 계획.
   수동 실행은 `POST /admin/run-upcoming-notifications` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- **쓰기 예산** — `notification_sends`는 인덱스 3개(PK autoindex + `_pending` + `_claim`)라
+  계획 행 1건이 D1 쓰기 4행이다. 2026-08-28 실측으로 `discovery_items`의 미래 행사가
+  3,712건 / 서로 다른 시작일 125일(하루 평균 29.7건, 최대 214건)이므로, D-30·D-7·D-1
+  세 날짜를 합치면 기기 하나당 하루 계획 행이 대략 90건 = 360행 쓰기다.
+  기기 100대면 하루 36,000행으로 무료 쓰기 예산(100,000행)의 3분의 1을 알림만으로 쓴다.
+  기기 수가 늘면 계획 주기를 줄이거나 계획을 발송 직전으로 미루는 쪽을 먼저 검토한다.
+  자세한 예산은 `docs/operations/worker-limits.md`.
 - **딥링크** — push payload는 `eventKind` + `eventId`만 싣는다(4KB 한도, 낡은 사본 방지).
   앱이 `GET /api/festivals/:id` 또는 `GET /api/local-events/:id`로 상세를 받아 연다.
 - **분리된 기능** — 저장한 축제 리마인더(`FestivalReminderService`)와 새 로컬 이벤트 발견 알림
@@ -190,35 +197,80 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - **secret** — `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`(.p8 전문)는 wrangler secret,
   `APNS_BUNDLE_ID`는 `wrangler.toml` var. 자세한 절차는 `worker-backend/README.md`.
 
-## 요금 정보 파이프라인
+## 요금·프로그램 정보 파이프라인
 
 축제·공연·박람회 요금은 소스마다 필드가 달라 예전에는 축제는 `raw_payload.admissionFee`, 이벤트형 행은 `lowest_price_text`/`is_free` 컬럼으로 갈라져 있었고, `/api/festivals`는 전자만 읽어 이벤트형 행의 요금이 통째로 누락됐다. 지금은 세 층으로 정리돼 있다.
 
 1. **정규화 (`worker-backend/src/feeNormalize.ts`)** — `normalizeFee()`가 어떤 소스의 요금 문구든 `{ feeType: free|paid|unknown, feeText }`로 만든다. 금액(`5,000원`)이 있으면 무조건 유료, `65세 이상 무료`처럼 특정 대상만 무료인 문구는 free로 치지 않는다. HTML 태그 제거·공백 정리·300자 상한 포함. `feeFreeFlag()`는 판별 불가를 `NULL`로 남겨 "유료"와 "모름"을 섞지 않는다.
 2. **저장/조회 (`discoveryCache.ts`)** — `discoveryRow`가 축제·이벤트 양쪽 모두 `lowest_price_text` + `is_free`에 같은 모양으로 쓴다. 읽을 때는 `mapFestivalRow`가 `raw_payload.admissionFee` → `raw_payload.price` → `lowest_price_text` → `is_free===1 ? "무료"` 순으로 fallback한다. `mergeWithExistingEnrichment`가 `lowest_price_text`도 함께 보므로, 채워 넣은 요금이 다음 sync의 `raw_payload` 통째 덮어쓰기에 지워지지 않는다.
-3. **Backfill (`worker-backend/src/feeBackfill.ts`)** — KOPIS `pcseguidance`와 TourAPI `usetimefestival`은 목록이 아니라 항목별 detail 응답에만 있어 sync 중 전부 호출할 수 없다. `runFeeBackfill()`이 `fee_checked_at IS NULL`이고 요금이 빈 행을 시작일 순으로 한 회차에 `FEE_BACKFILL_MAX_ITEMS`(기본 30)건씩 조회해 채운다. 결과가 "요금 정보 없음"이어도 `fee_checked_at`을 남겨 같은 행에 예산을 재소모하지 않고, 일시적 실패(429·5xx·네트워크)는 `NULL`로 두어 다음 회차에 재시도한다. KOPIS가 특정 id에 항상 400을 주는 경우는 재시도해도 소용없으므로 "요금 없음"으로 확정한다.
+3. **Backfill (`worker-backend/src/feeBackfill.ts`)** — KOPIS `pcseguidance`와 TourAPI `usetimefestival`, 그리고 프로그램·출연진(KOPIS `dtguidance`/`prfcast`/`prfcrew`, TourAPI `playtime`/`program`/`subevent`)은 목록이 아니라 항목별 detail 응답에만 있어 sync 중 전부 호출할 수 없다. `runFeeBackfill()`이 한 회차에 `FEE_BACKFILL_MAX_ITEMS`(기본 45)건을 골라 **detail을 행마다 한 번만 열고 거기서 요금과 프로그램을 함께** 뽑는다 — 프로그램 때문에 추가로 fetch하지 않는다.
 
-- 마이그레이션: `migrations/0017_discovery_fee_checked_at.sql` (`fee_checked_at` 컬럼 + `(source, fee_checked_at)` 인덱스).
-- **subrequest 예산이 이 파이프라인의 상한이다.** 이 계정의 Worker는 invocation 하나당 외부 fetch 50건까지만 가능하고(51번째부터 `Too many subrequests by single Worker invocation`), backfill은 항목당 fetch 1건을 쓴다. D1 쿼리는 이 한도에 포함되지 않는다. 그래서 한 회차 상한은 30건이고 `POST /admin/backfill-fees`의 `maxItems`도 45로 제한한다. 이 값을 올리면 초과분이 통째로 실패한다.
-- cron: `"*/5 * * * *"`의 분 슬롯(`floor(UTC분/5) % 4`)이 태깅·요금·좌표·사진을 나눠 갖는다. 한 invocation에 한 작업만 둬서 CPU 10ms와 subrequest 50건을 통째로 쓴다 — 요금은 슬롯 1, 하루 72회 × 30건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
+재조회 정책은 migration `0026` 이후 네 상태다. 예전에는 `fee_checked_at` 하나에 "값을 확보했다"와 "조회했지만 원본에 없다"를 섞어 찍어서, 나중에 공개된 정보를 영영 다시 보지 않았고 일시적 실패는 표식이 없어 같은 행만 매 회차 다시 잡혔다.
+
+- **값 확보 완료** — `fee_filled_at` / `program_filled_at`. 그 필드는 두 번 다시 조회하지 않는다(둘은 따로 논다: 요금만 채워진 행은 프로그램만 다시 본다).
+- **조회했지만 없음** — `detail_state='empty'` + `detail_retry_after`(행사가 가까울수록 짧은 backoff). 아직 공개되지 않은 정보가 올라오면 자연히 보강된다.
+- **일시적 실패**(429·5xx·네트워크) — `detail_state`는 그대로 두고 `detail_retry_after`만 지수 backoff(5분 시작, 최대 6시간)로 미룬다. 영구 확정이 아니다.
+- **영구 조회 불필요** — `detail_state='nodata'`. KOPIS `NODATA`·잘못된 source id·400, 그리고 이미 끝난 행사.
+
+대상을 고른 직후 `detail_attempts`를 올리고 `detail_retry_after`를 15분(`CLAIM_TTL_MINUTES`) 뒤로 선점하며, 결과는 `FLUSH_CHUNK`(10건)마다 바로 쓴다. invocation이 CPU 10ms 초과로 조용히 죽어도 다음 회차가 같은 행에 갇히지 않고, 죽기 전까지의 작업이 통째로 사라지지 않는다.
+
+- 마이그레이션: `0017_discovery_fee_checked_at.sql`(`fee_checked_at`) → `0024`(`program_checked_at`) → `0026_discovery_detail_backfill_state.sql`(`fee_filled_at` / `program_filled_at` / `detail_state` / `detail_retry_after` / `detail_attempts` + 대상 선정용 `idx_discovery_detail_backfill(source, detail_state, detail_retry_after)`). `fee_checked_at`·`program_checked_at`은 "마지막 시도 시각"으로만 남아 pipelineStats 대시보드가 읽는다 — 어떤 `WHERE` 선두에도 없으므로 그 둘을 받치던 인덱스는 `0027`이 지웠다.
+- **subrequest 예산이 이 파이프라인의 상한이다.** 이 계정의 Worker는 invocation 하나당 외부 fetch 50건까지만 가능하고(51번째부터 `Too many subrequests by single Worker invocation`), backfill은 항목당 fetch 1건을 쓴다. D1 쿼리는 이 한도에 포함되지 않는다. 그래서 회차 상한이 45건이고 `POST /admin/backfill-fees`의 `maxItems`도 45로 제한한다. 이 값을 올리면 초과분이 통째로 실패한다.
+- cron: `"*/5 * * * *"`의 분 슬롯(`floor(UTC분/5) % 4`)이 태깅·요금·좌표·사진을 나눠 갖는다. 한 invocation에 한 작업만 둬서 CPU 10ms와 subrequest 50건을 통째로 쓴다 — 요금은 슬롯 1, 하루 72회 × 45건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
 - 수동 실행: `POST /admin/backfill-fees?maxItems=<1..45>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
-- 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다.
+- 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다. 이 소스들은 애초에 detail backfill 대상(`kopis` / `tourapi` 계열)에 들어가지 않는다.
 
-## D1 인덱스와 행 읽기 예산
+## D1 인덱스와 행 읽기·쓰기 예산
 
-D1 무료 한도는 하루 5,000,000행 읽기다. subrequest·CPU와 달리 **행 읽기 초과는 예외를
-던지지 않아서**, 인덱스가 빠진 쿼리 하나가 조용히 예산을 통째로 먹는다. 2026-08-18 실측
-5,049만행/일이 그 상태였다.
+**2026-09-01부터 Cloudflare가 D1 무료 한도를 강제한다 — 하루 5,000,000행 읽기, 100,000행 쓰기.**
+subrequest·CPU와 달리 **행 읽기·쓰기 초과는 예외를 던지지 않아서**, 인덱스가 빠진 쿼리 하나나
+인덱스가 많은 테이블의 upsert 하나가 조용히 예산을 통째로 먹는다.
+
+2026-08-28 실측(`wrangler d1 insights`, 1일 창):
+
+- 읽기 상위 10개 합계 **1,350,540행** — 한도의 27%로 여유가 있다. 2026-08-18에는 5,049만행이었고,
+  `0021`·`0027` 인덱스 작업과 pipelineStats 통합으로 내려왔다.
+- 쓰기 상위 10개 합계 **549,917행** — **한도의 5.5배다. 여기는 아직 미해결이다.**
+  `realtime_parking_status` upsert 하나가 310,842행(57%), `discovery_items` upsert가 158,788행.
+  (이 창은 `0027` 적용 전후가 섞여 있고 인덱스 생성 자체의 40,530행도 포함한다 — 깨끗한
+  재측정이 필요하다.)
+
+읽기 쪽 규칙:
 
 - 상관 서브쿼리(`NOT EXISTS (... WHERE aa.target_id = X)`)를 새로 쓰면 그 join 컬럼에
   인덱스가 있는지 먼저 확인한다. 없으면 후보 행마다 상대 테이블 전체를 훑는다.
   agent 쿼리는 `idx_agent_activity_target(target_id, agent_id, action)`이 받치고 있다.
 - `ORDER BY`/`WHERE`에 쓰는 컬럼이 기존 복합 인덱스의 **선두**인지 본다.
   `(sync_type, started_at)`은 `sync_type` 없는 `started_at` 정렬을 못 받는다.
+- 같은 테이블을 한 요청에서 여러 번 훑지 않는다. `pipelineStats.ts`는 스칼라 서브쿼리들을
+  `SUM(CASE ...)` 단일 집계로 합쳐 `discovery_items` 훑기를 23회 → 7회, `local_events`를
+  9회 → 5회로 줄였다.
 - 로그성 테이블(`sync_runs`, `agent_activity`)은 보관 정리를 같이 넣는다.
   `pruneOldSyncRuns`가 `15 * * * *` cron의 UTC 6시 가드에서 30일치만 남긴다.
-- 무엇이 얼마나 읽는지는 `pnpm -C worker-backend exec wrangler d1 insights parking-lot-navigator --remote`로
-  본다(상위 5개만 나온다). 인덱스 전후 실측은 `docs/operations/worker-limits.md` 참고.
+
+쓰기 쪽 규칙:
+
+- **쓰기는 인덱스 개수만큼 증폭된다.** upsert 1건 = 본체 1행 + 그 테이블의 인덱스 수.
+  `discovery_items`는 `0027` 이후 인덱스 11개(명시 9 + UNIQUE autoindex 2)라 upsert 1건이
+  12행 쓰기다. 인덱스를 하나 더 만들면 그 테이블의 하루 쓰기가 upsert 건수만큼 통째로 늘어난다 —
+  읽기 이득이 그만큼 되는지 먼저 따진다.
+- 인덱스를 지우기 전에는 `EXPLAIN QUERY PLAN`으로 실제로 선택되지 않는지 확인한다.
+  옵티마이저는 `ORDER BY`를 공짜로 만족시키는 인덱스를 더 선택적인 인덱스보다 앞세우므로,
+  "있으면 쓰겠지" 싶은 인덱스가 실제로는 한 번도 안 골라지는 경우가 있다.
+  `0027_d1_read_budget_indexes.sql`이 그렇게 소비자 없는 인덱스 5개를 지우고 축제 상세 조회용
+  `(type, source_item_id, last_seen_at DESC)` 하나만 추가했다. 적용 확인:
+  `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='discovery_items'` → 11.
+- 주기적 upsert는 "바뀐 것만 쓰기"가 가장 큰 절감이다. `realtime_parking_status`는 3분마다
+  최대 1000행을 통째로 덮어써서 단일 쿼리로 예산의 3배를 쓴다. 아직 손대지 않았다.
+
+무엇이 얼마나 읽고 쓰는지는 이렇게 본다(상위 N개만 나온다):
+
+```bash
+pnpm -C worker-backend exec wrangler d1 insights parking-lot-navigator --sort-by reads --limit 10
+pnpm -C worker-backend exec wrangler d1 insights parking-lot-navigator --sort-by writes --limit 10
+```
+
+인덱스 전후 실측과 유료 플랜으로 풀리는 항목은 `docs/operations/worker-limits.md` 참고.
 
 ## 자주 쓰는 명령
 
@@ -256,16 +308,22 @@ curl -X POST \
 
 주요 endpoint:
 
-- `GET /api/festivals`
-- `GET /api/local-events`
-- `GET /api/local-events/:id`
-- `POST /api/local-events/report`
-- `POST /api/admin/local-events`
-- `PATCH /api/admin/local-events/:id/status`
-- `PATCH /api/admin/local-events/:id`
+앱이 쓰는 것:
+
+- `GET /api/festivals`, `GET /api/festivals/:id`
+- `GET /api/performances`
+- `GET /api/local-events`, `GET /api/local-events/:id`
 - `GET /api/map/items?type=festival|event|all`
-- `POST /admin/sync-local-events`
-- `POST /admin/backfill-fees`
+- `POST /api/local-events/report`
+- `POST /api/notifications/register`
+
+관리용 (`Authorization: Bearer $SYNC_ADMIN_TOKEN`):
+
+- `POST /api/admin/local-events`, `PATCH /api/admin/local-events/:id`, `PATCH /api/admin/local-events/:id/status`
+- `POST /admin/sync-local-events`, `POST /admin/sync-city-festivals`, `POST /admin/sync-akei-trade-expos`, `POST /admin/sync-discovery`
+- `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40)
+- `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`
+- `GET /discover/pipeline-stats` (파이프라인 대시보드), `GET /discover/providers/health`
 
 앱에서 이벤트가 안 보일 때 먼저 확인할 것:
 
