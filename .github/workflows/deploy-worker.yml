@@ -12,10 +12,52 @@ on:
       - "package-lock.json"
       - "pnpm-workspace.yaml"
       - ".github/workflows/deploy-worker.yml"
+      - ".github/workflows/apply-d1-migrations.yml"
   workflow_dispatch:
 
+# 순서가 이 워크플로의 핵심이다: verify(테스트·타입체크) → migrate(원격 D1) →
+# deploy(Worker) → smoke. 예전에는 migration이 별도 수동 워크플로였고 deploy만
+# 자동이라, 새 컬럼을 읽는 Worker가 컬럼 없는 DB 위에 먼저 올라갈 수 있었다.
+# needs 체인으로 앞 단계가 실패하면 뒤 단계가 아예 시작되지 않는다.
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck Worker
+        working-directory: worker-backend
+        run: pnpm exec tsc --noEmit
+
+      - name: Test Worker
+        working-directory: worker-backend
+        run: pnpm test
+
+      - name: Test backend
+        run: pnpm --filter @parking/backend test
+
+  migrate:
+    needs: verify
+    uses: ./.github/workflows/apply-d1-migrations.yml
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
   deploy:
+    needs: migrate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -40,10 +82,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Typecheck Worker
-        working-directory: worker-backend
-        run: pnpm exec tsc --noEmit
-
       - name: Sync Worker API secrets
         working-directory: worker-backend
         run: |
@@ -60,6 +98,16 @@ jobs:
       - name: Deploy Worker
         working-directory: worker-backend
         run: pnpm exec wrangler deploy
+
+      # 배포된 Worker가 실제로 새 스키마를 읽을 수 있는지 확인한다. migration이
+      # 빠졌으면 여기서 `no such column`으로 500이 떠 배포 실패로 드러난다.
+      - name: Smoke test deployed Worker
+        run: |
+          set -e
+          base="https://parking-lot-navigator-api.parkingnav.workers.dev"
+          curl -fsS "${base}/health" > /dev/null
+          curl -fsS "${base}/api/festivals?lat=37.5665&lng=126.9780&radiusMeters=20000&upcomingWithinDays=30" > /dev/null
+          curl -fsS "${base}/api/performances?lat=37.5665&lng=126.9780&radiusMeters=20000&upcomingWithinDays=30" > /dev/null
 
       - name: Refresh discovery cache
         if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
@@ -78,3 +126,12 @@ jobs:
             -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
             "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events" \
             || echo "sync-local-events failed, continuing (hourly cron retries anyway)"
+
+      # 새 컬럼이 실제로 채워지기 시작하는지 배포 직후 한 회차 확인한다.
+      - name: Run one detail backfill round
+        if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
+            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/backfill-fees?maxItems=45" \
+            || echo "backfill-fees failed, continuing (cron retries every 20 minutes)"

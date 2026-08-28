@@ -31,6 +31,44 @@ describe("SeoulCultureEventProvider sourceUrl normalization", () => {
     expect(items[0].sourceUrl).toBe("https://www.example.go.kr");
   });
 
+  it("keeps the cast, program, and running time the list response already carries", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(culturalEventResponse({
+      PRO_TIME: "19:00~21:00",
+      PLAYER: "아이유, ○○밴드",
+      PROGRAM: "개막식, 축하공연",
+      USE_TRGT: "전체 관람가",
+    })));
+
+    const provider = new SeoulCultureEventProvider("test-key", "https://example.com");
+    const items = await provider.events(testQuery());
+
+    expect(items[0].programInfo).toBe(
+      "공연시간: 19:00~21:00\n출연: 아이유, ○○밴드\n프로그램: 개막식, 축하공연\n관람대상: 전체 관람가",
+    );
+  });
+
+  it("falls back to IS_FREE when USE_FEE is blank", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(culturalEventResponse({
+      USE_FEE: "",
+      IS_FREE: "무료",
+    })));
+
+    const provider = new SeoulCultureEventProvider("test-key", "https://example.com");
+    const items = await provider.events(testQuery());
+
+    expect(items[0].price).toBe("무료");
+    expect(items[0].isFree).toBe(true);
+  });
+
+  it("leaves programInfo null when the row carries none of those fields", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(culturalEventResponse({})));
+
+    const provider = new SeoulCultureEventProvider("test-key", "https://example.com");
+    const items = await provider.events(testQuery());
+
+    expect(items[0].programInfo).toBeNull();
+  });
+
   it("returns null sourceUrl when ORG_LINK is missing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(culturalEventResponse({
       ORG_LINK: undefined,

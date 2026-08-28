@@ -1336,9 +1336,9 @@ async function runTaggingScheduled(env: Env): Promise<void> {
 async function runFeeBackfillScheduled(env: Env): Promise<void> {
   try {
     const result = await runFeeBackfill(env.DB!, env);
-    if (result.scanned > 0) {
-      console.log("fee backfill done", JSON.stringify(result));
-    }
+    // scanned=0도 남긴다. 로그가 아예 없으면 "처리할 행이 없음"과
+    // "invocation이 죽어서 못 돌았음"을 구분할 수 없다.
+    console.log("fee backfill done", JSON.stringify(result));
   } catch (error) {
     console.error("fee backfill failed", error);
     await notifyOpsFailure(env, "fee backfill", error);

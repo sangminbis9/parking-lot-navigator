@@ -1,7 +1,19 @@
 name: Apply D1 migrations
 
+# 예전에는 migration 파일 하나마다 `wrangler d1 execute --file`을 손으로 적어 뒀다.
+# 새 파일을 추가할 때 이 목록을 같이 고치는 걸 잊으면 조용히 빠졌고(실제로 0015~0025가
+# 전부 빠져 있었다), 이미 적용된 파일도 매번 다시 실행돼 ALTER TABLE에서 깨졌다.
+# 지금은 wrangler의 d1 migrations를 쓴다 — `d1_migrations` 테이블에 적용 이력이 남아
+# 새 파일만 이름 순으로 한 번씩 적용된다. 기존 데이터는 건드리지 않는다.
+
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
 
 jobs:
   migrate:
@@ -25,58 +37,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Apply parking lot schema
+      - name: List pending migrations
         working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0001_parking_lots.sql
+        run: pnpm exec wrangler d1 migrations list parking-lot-navigator --remote
 
-      - name: Apply realtime parking cache schema
+      - name: Apply pending migrations
         working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0002_realtime_parking_status.sql
-
-      - name: Apply discovery cache schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql
-
-      - name: Apply local events schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0004_local_events.sql
-
-      - name: Apply local events naver place source schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0005_local_event_naver_place_source.sql
-
-      - name: Apply local events naver blog source schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0006_local_event_naver_blog_source.sql
-
-      - name: Apply merchant signup schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0007_merchant_signup.sql
-
-      - name: Apply local events pending payment schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0008_local_event_pending_payment.sql
-
-      - name: Apply agent activity schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0009_agent_activity.sql
-
-      - name: Apply geocode cache schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0010_geocode_cache.sql
-
-      - name: Apply discovery tagging schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0011_discovery_tagging.sql
-
-      - name: Apply local events tagging schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0012_local_events_tagging.sql
-
-      - name: Apply discovery images schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0013_discovery_images.sql
-
-      - name: Apply local event short description schema
-        working-directory: worker-backend
-        run: pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0014_local_event_short_description.sql
+        run: pnpm exec wrangler d1 migrations apply parking-lot-navigator --remote
