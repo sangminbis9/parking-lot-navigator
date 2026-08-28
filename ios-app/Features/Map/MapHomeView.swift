@@ -1556,7 +1556,11 @@ struct MapHomeView: View {
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
             if discoverLayersActive {
-                await viewModel.loadDiscoverLayers(viewport: viewport, filter: festivalFilterModel.filter)
+                await viewModel.loadDiscoverLayers(
+                    viewport: viewport,
+                    filter: festivalFilterModel.filter,
+                    showsSpinner: false
+                )
             }
             if freeParkingActive {
                 await viewModel.loadStaticFreeParkingLots(viewport: viewport)
