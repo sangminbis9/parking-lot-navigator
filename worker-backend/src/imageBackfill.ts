@@ -91,33 +91,50 @@ export async function runImageBackfill(
     now.getTime() - RECHECK_AFTER_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
   const placeholders = sources.map(() => "?").join(",");
-  // 이미 끝난 행은 앱에 노출되지 않으니 예산을 쓰지 않는다. 아직 조회하지 않은
-  // 행을 먼저 다 훑고, 남는 예산으로만 재조회 대상을 본다.
-  const rows = await db
+  // 예전에는 "처음 조회"와 "재조회"를 OR 하나로 묶어 한 번에 뽑았다. OR 안에
+  // json_valid()/json_array_length()가 섞여 있어 B-tree가 후보를 좁히기 전에
+  // JSON을 평가해야 했고, EXPLAIN도 MULTI-INDEX OR + 임시 B-tree로 풀렸다.
+  // 지금은 두 큐로 나눈다: 아직 조회하지 않은 행을 먼저 채우고, 예산이 남을
+  // 때만 재조회 큐를 본다. 재조회 쿼리에서도 (source, images_checked_at)
+  // 인덱스가 먼저 범위를 좁힌 뒤에야 JSON 조건이 평가된다. 두 큐는
+  // images_checked_at IS NULL / IS NOT NULL로 갈려 겹치는 행이 없다.
+  const firstCheck = await db
     .prepare(
       `SELECT id, source, source_item_id, image_url, images_json
          FROM discovery_items
         WHERE source IN (${placeholders})
+          AND images_checked_at IS NULL
           AND (end_date IS NULL OR end_date >= ?)
-          AND (
-            images_checked_at IS NULL
-            OR (
-              images_checked_at < ?
-              AND start_date >= ?
-              AND (
-                images_json IS NULL
-                OR NOT json_valid(images_json)
-                OR json_array_length(images_json) < 2
-              )
-            )
-          )
-        ORDER BY images_checked_at IS NOT NULL, start_date
+        ORDER BY start_date
         LIMIT ?`,
     )
-    .bind(...sources, today, recheckBefore, today, maxItems)
+    .bind(...sources, today, maxItems)
     .all<BackfillRow>();
 
-  const targets = rows.results ?? [];
+  const targets: BackfillRow[] = [...(firstCheck.results ?? [])];
+  const remaining = maxItems - targets.length;
+  if (remaining > 0) {
+    const recheck = await db
+      .prepare(
+        `SELECT id, source, source_item_id, image_url, images_json
+           FROM discovery_items
+          WHERE source IN (${placeholders})
+            AND images_checked_at < ?
+            AND start_date >= ?
+            AND (end_date IS NULL OR end_date >= ?)
+            AND (
+              images_json IS NULL
+              OR NOT json_valid(images_json)
+              OR json_array_length(images_json) < 2
+            )
+          ORDER BY start_date
+          LIMIT ?`,
+      )
+      .bind(...sources, recheckBefore, today, today, remaining)
+      .all<BackfillRow>();
+    targets.push(...(recheck.results ?? []));
+  }
+
   if (targets.length === 0) return result;
 
   const tourClient =
