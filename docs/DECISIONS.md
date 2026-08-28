@@ -1,6 +1,6 @@
 # 결정 사항
 
-마지막 업데이트: 2026-06-11
+마지막 업데이트: 2026-08-28
 
 ## 제품 방향
 
@@ -90,13 +90,21 @@
 - 지도 핀 탭과 이벤트 탭 행 탭은 동일한 이벤트 상세 + 주변 주차 추천 화면을 연다.
 - 이벤트 탭은 선택될 때만 발견 데이터를 로드하고, 떠난 뒤 언로드하며, SwiftUI 목록/diff 정체를 피하기 위해 20개 단위 페이지로 행을 렌더링한다.
 
+## D1 / Worker 예산 결정 (2026-08-28)
+
+- **2026-09-01부터 강제되는 D1 무료 한도(하루 5,000,000행 읽기 / 100,000행 쓰기)를 설계 예산으로 지킨다.** 유료 전환은 뒤로 미룬다.
+- 인덱스는 **읽기 이득을 EXPLAIN QUERY PLAN으로 증명한 것만** 만든다. upsert 1건이 "본체 1행 + 인덱스 수"만큼 쓰기를 소모하므로, 안 쓰이는 인덱스는 순수 비용이다. `0027_d1_read_budget_indexes.sql`이 그 기준으로 `discovery_items` 명시 인덱스를 13개 → 9개로 줄이고 축제 상세 조회용 하나만 추가했다.
+- `SELECT *`를 전부 담는 covering index는 만들지 않는다. 읽기 이득보다 쓰기 증폭이 크다.
+- 통계·대시보드 쿼리는 같은 테이블을 여러 번 훑지 않고 `SUM(CASE ...)` 단일 집계로 합친다 (`pipelineStats.ts`).
+- 쓰기 예산 초과분(현재 한도의 5.5배)은 인덱스가 아니라 `realtime_parking_status`의 3분 주기 전량 upsert가 원인이다. 여기를 손대면 좌표 갱신 동작이 함께 바뀌므로, 동작 변경을 감수할지 결정한 뒤에 진행한다.
+
 ## 빌드/릴리스
 
 - 변경을 커밋할 때 iOS 빌드 번호를 1 올린다.
 - TestFlight 업로드 전에 Codemagic 의 publish 로그가 이전 App Store Connect 빌드보다 높은 `Version code` 를 보이는지 확인한다.
 - 2026-05-09 의 publish 시도는 App Store Connect 에 이미 빌드 79 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 79 여서 실패했다.
 - 이후 publish 시도는 App Store Connect 에 이미 빌드 95 가 있는데 업로드한 IPA 의 빌드 번호가 여전히 95 여서 실패했다.
-- 현재 빌드 메타데이터 목표는 `1.0 (167)` (2026-06-11 크레파스 손그림 강화 반영, Codemagic 검증 대기).
+- 현재 빌드 메타데이터 목표는 `1.0 (286)` (2026-08-28 지도 스피너 콜드 스타트 한정 반영, Codemagic 검증 대기).
 - iOS 빌드 검증에는 Codemagic/TestFlight 를 사용한다. Codemagic 코드 사이닝은 **수동(Manual)** 방식이며, 새 app extension target 추가 시 별도 distribution provisioning profile 을 발급해 업로드해야 한다.
 - 신규 app extension 추가 시 체크리스트: ① Apple Developer Portal 에서 App ID 등록 ② App Groups capability 의 **Configure 버튼**으로 기존 그룹에 명시 매핑 (체크박스만 켜는 것은 부족) ③ 동일 distribution certificate 로 provisioning profile 발급 후 Codemagic Provisioning profiles 슬롯에 업로드 ④ project.yml 에서 Bundle ID 를 `$(APP_BUNDLE_ID).XXX` 형태로 inline 파생.
 - GitHub Actions 도 push 와 pull request 에서 iOS 시뮬레이터 검증 workflow 를 실행한다.
