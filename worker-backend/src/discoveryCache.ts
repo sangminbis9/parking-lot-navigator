@@ -897,7 +897,7 @@ const DISCOVERY_ENRICHMENT_FIELDS = [
 // event 형태 item의 요금(price)과 programInfo도 같은 이유로 보존한다 — 요금
 // backfill이나 직전 회차의 상세 조회가 채워 넣은 값이 다음 sync에서 통째로
 // 날아가면 그 조회 자체가 무의미해진다.
-async function mergeWithExistingEnrichment(
+export async function mergeWithExistingEnrichment(
   db: D1Database,
   items: DiscoveryItem[],
 ): Promise<DiscoveryItem[]> {

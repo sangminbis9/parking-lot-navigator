@@ -67,6 +67,46 @@ function discoveryRow(overrides: Record<string, unknown>) {
 describe("queryPerformancesFromCache", () => {
   const options = { radiusMeters: 50000, upcomingWithinDays: 365 };
 
+  // backfill이 채운 요금·프로그램·출연진이 앱까지 실제로 도달하는지 본다.
+  it("carries the backfilled fee and programInfo into the API response", async () => {
+    const calls: FakeCall[] = [];
+    const db = fakeDb(
+      [
+        discoveryRow({
+          source: "kopis",
+          source_item_id: "PF1",
+          title: "창작ing",
+          lowest_price_text: "전석 20,000원",
+          is_free: 0,
+          raw_payload: JSON.stringify({
+            programInfo: "공연시간: 토요일 15:00\n출연: 아이유",
+          }),
+        }),
+        discoveryRow({
+          source: "tourapi",
+          source_item_id: "1100492",
+          title: "지역 축제",
+          primary_category: "music_performance",
+          lowest_price_text: "성인 10,000원",
+          raw_payload: JSON.stringify({
+            programInfo: "공연시간: 10:00~18:00\n부대행사: 불꽃놀이",
+          }),
+        }),
+      ],
+      calls,
+    );
+
+    const result = await queryPerformancesFromCache(db, 37.5665, 126.978, options);
+
+    const event = result.events[0];
+    expect(event.programInfo).toBe("공연시간: 토요일 15:00\n출연: 아이유");
+    expect(event.price).toBe("전석 20,000원");
+
+    const festival = result.festivals[0];
+    expect(festival.programInfo).toBe("공연시간: 10:00~18:00\n부대행사: 불꽃놀이");
+    expect(festival.admissionFee).toBe("성인 10,000원");
+  });
+
   it("returns kopis rows as events even though they are stored as type='festival'", async () => {
     const calls: FakeCall[] = [];
     const db = fakeDb(

@@ -34,6 +34,14 @@ interface SeoulCultureEventRow {
   LOT?: string;
   LAT?: string;
   RGSTDATE?: string;
+  // 아래 필드는 목록 응답에 이미 들어 있는데 여태 읽지 않아 버려졌다.
+  // 출연진·프로그램·공연시간을 얻으려고 detail을 따로 부를 필요가 없다.
+  PLAYER?: string;
+  PROGRAM?: string;
+  PRO_TIME?: string;
+  USE_TRGT?: string;
+  ETC_DESC?: string;
+  IS_FREE?: string;
 }
 
 export class SeoulCultureEventProvider
@@ -194,7 +202,8 @@ function normalizeSeoulEvent(
   const dates = parseDateRange(row.DATE ?? "");
   if (!row.TITLE || !dates || !Number.isFinite(lat) || !Number.isFinite(lng))
     return null;
-  const feeText = row.USE_FEE ?? "";
+  // USE_FEE가 비어도 IS_FREE("무료"/"유료")가 남아 있는 행이 많다.
+  const feeText = row.USE_FEE?.trim() || row.IS_FREE?.trim() || "";
   const isFree = isFreeText(feeText);
   return {
     id: `seoul-culture:${hashKey(`${row.TITLE}|${row.PLACE}|${row.DATE}`)}`,
@@ -216,9 +225,30 @@ function normalizeSeoulEvent(
     imageUrl: row.MAIN_IMG ?? null,
     shortDescription: row.ORG_NAME ?? null,
     price: feeText || null,
+    programInfo: combineProgramInfo(row),
     region: row.GUNAME ?? null,
     updatedAt: row.RGSTDATE ?? new Date().toISOString(),
   };
+}
+
+// 출연진(PLAYER)·세부 프로그램(PROGRAM)·공연시간(PRO_TIME)·관람대상(USE_TRGT)은
+// 목록 응답에 그대로 실려 오는데 여태 어디에도 매핑되지 않아 통째로 버려졌다.
+// KOPIS/TourAPI의 combineProgramInfo와 같은 모양으로 묶어 상세 화면에 노출한다.
+// 원본에 있는 문장만 옮기고 없는 정보를 만들어 내지 않는다.
+function combineProgramInfo(row: SeoulCultureEventRow): string | null {
+  const parts = [
+    label("공연시간", row.PRO_TIME),
+    label("출연", row.PLAYER),
+    label("프로그램", row.PROGRAM),
+    label("관람대상", row.USE_TRGT),
+    label("기타", row.ETC_DESC),
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function label(name: string, value: string | undefined): string | null {
+  const trimmed = value?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return trimmed ? `${name}: ${trimmed}` : null;
 }
 
 // ORG_LINK sometimes arrives with leading/trailing whitespace or as a
