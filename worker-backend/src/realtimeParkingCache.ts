@@ -6,12 +6,30 @@ import { distanceMeters } from "../../backend/src/services/geo.js";
 const KOREA_REALTIME_SYNC_CENTER = { lat: 36.35, lng: 127.8 };
 const KOREA_REALTIME_SYNC_RADIUS_METERS = 460000;
 const REALTIME_CACHE_MAX_AGE_SECONDS = 45 * 60;
+
+// 조건부 쓰기용 시간 예산. 세 값의 순서가 계약이다.
+//   heartbeat(30분) < 조회 신선도(45분) < prune 보존(90분)
+// 값이 안 바뀐 주차장은 30분에 한 번만 last_seen_at을 쓰므로, 조회 시점에
+// last_seen_at이 가장 오래된 경우라도 30분 + 한 회차 간격이다. 45분 필터에
+// 걸리지 않을 만큼의 여유를 남겨 둔 것이고, 이 순서가 깨지면 provider가
+// 계속 주고 있는 주차장이 앱에서 사라진다.
+const REALTIME_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000;
+const REALTIME_PRUNE_RETENTION_MS = 90 * 60 * 1000;
+/// 좌표 비교 오차. 1e-7도는 약 1cm라 부동소수 왕복 오차만 흡수하고
+/// 실제 좌표 수정은 통과시킨다.
+const REALTIME_COORD_EPSILON = 1e-7;
 const REALTIME_CACHE_RESULT_LIMIT = 1000;
 const REALTIME_CLUSTER_RESULT_LIMIT = 5000;
 
 export interface RealtimeCacheSyncResult {
   fetched: number;
+  /// 실제로 발행한 쓰기 문장 수(inserted + changed + coordinate + heartbeat).
   upserted: number;
+  inserted: number;
+  changed: number;
+  coordinate: number;
+  heartbeat: number;
+  unchangedSkipped: number;
   skipped: number;
   pruned: number;
   generatedAt: string;
@@ -46,25 +64,152 @@ export async function syncRealtimeParkingCache(
     (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
   );
   const skipped = items.length - validItems.length;
-  const upserted = await upsertRealtimeParkingItems(
-    db,
-    validItems,
-    generatedAt,
-  );
+  const counts = await upsertRealtimeParkingItems(db, validItems, generatedAt);
   const pruned = await pruneUnseenRealtimeParking(db, generatedAt);
 
-  return { fetched: items.length, upserted, skipped, pruned, generatedAt };
+  return {
+    fetched: items.length,
+    upserted: counts.writes,
+    inserted: counts.inserted,
+    changed: counts.changed,
+    coordinate: counts.coordinate,
+    heartbeat: counts.heartbeat,
+    unchangedSkipped: counts.unchangedSkipped,
+    skipped,
+    pruned,
+    generatedAt,
+  };
 }
 
 const REALTIME_PARKING_UPSERT_BATCH_SIZE = 50;
+
+export interface RealtimeUpsertCounts {
+  inserted: number;
+  changed: number;
+  coordinate: number;
+  heartbeat: number;
+  unchangedSkipped: number;
+  writes: number;
+}
+
+/// 비교에 쓰는 기존 행. freshness_timestamp / updated_at은 일부러 빼 놨다 —
+/// 대전 피드는 원본에 시각이 없어 provider가 new Date()로 채우므로 매 회차
+/// 달라지고, 그것까지 "변경"으로 치면 조건부 쓰기가 통째로 무의미해진다.
+/// 값이 안 바뀐 행의 표시 시각은 heartbeat가 30분 간격으로 따라잡는다.
+interface ExistingRealtimeRow {
+  id: string;
+  source: string;
+  source_parking_id: string;
+  name: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  total_capacity: number | null;
+  available_spaces: number | null;
+  occupancy_rate: number | null;
+  congestion_status: string | null;
+  realtime_available: number;
+  operating_hours: string | null;
+  fee_summary: string | null;
+  supports_ev: number;
+  supports_accessible: number;
+  is_public: number;
+  is_private: number;
+  display_status: string | null;
+  last_seen_at: string;
+}
+
+const EXISTING_REALTIME_COLUMNS = `id, source, source_parking_id, name, address, lat, lng,
+        total_capacity, available_spaces, occupancy_rate, congestion_status,
+        realtime_available, operating_hours, fee_summary, supports_ev,
+        supports_accessible, is_public, is_private, display_status, last_seen_at`;
+
+const REALTIME_HEARTBEAT_SQL = `UPDATE realtime_parking_status
+      SET last_seen_at = ?, freshness_timestamp = ?, updated_at = ?
+      WHERE id = ?`;
+
+/// 좌표는 본 upsert의 SET에서 빠져 있다((lat, lng) 인덱스를 매 회차 다시 쓰지
+/// 않으려고 `0028`에서 뺐다). 그래서 실제로 좌표가 달라진 행만 이 문장으로
+/// 따로 고친다 — 원본의 좌표 수정이 영영 반영되지 않는 회귀를 막는다.
+const REALTIME_COORDINATE_SQL = `UPDATE realtime_parking_status
+      SET lat = ?, lng = ? WHERE id = ?`;
+
+function boolColumn(value: boolean | null | undefined): number {
+  return value ? 1 : 0;
+}
+
+function realtimeMaterialChanged(
+  existing: ExistingRealtimeRow,
+  item: ParkingLot,
+): boolean {
+  return (
+    existing.source !== item.source ||
+    existing.source_parking_id !== item.sourceParkingId ||
+    existing.name !== item.name ||
+    (existing.address ?? null) !== (item.address ?? null) ||
+    (existing.total_capacity ?? null) !== (item.totalCapacity ?? null) ||
+    (existing.available_spaces ?? null) !== (item.availableSpaces ?? null) ||
+    (existing.occupancy_rate ?? null) !== (item.occupancyRate ?? null) ||
+    (existing.congestion_status ?? null) !== (item.congestionStatus ?? null) ||
+    existing.realtime_available !== boolColumn(item.realtimeAvailable) ||
+    (existing.operating_hours ?? null) !== (item.operatingHours ?? null) ||
+    (existing.fee_summary ?? null) !== (item.feeSummary ?? null) ||
+    existing.supports_ev !== boolColumn(item.supportsEv) ||
+    existing.supports_accessible !== boolColumn(item.supportsAccessible) ||
+    existing.is_public !== boolColumn(item.isPublic) ||
+    existing.is_private !== boolColumn(item.isPrivate) ||
+    (existing.display_status ?? null) !== (item.displayStatus ?? null)
+  );
+}
+
+function realtimeCoordinateChanged(
+  existing: ExistingRealtimeRow,
+  item: ParkingLot,
+): boolean {
+  return (
+    Math.abs(existing.lat - item.lat) > REALTIME_COORD_EPSILON ||
+    Math.abs(existing.lng - item.lng) > REALTIME_COORD_EPSILON
+  );
+}
+
+function realtimeHeartbeatDue(lastSeenAt: string, syncedAt: string): boolean {
+  const last = Date.parse(lastSeenAt);
+  const now = Date.parse(syncedAt);
+  if (!Number.isFinite(last) || !Number.isFinite(now)) return true;
+  return now - last >= REALTIME_HEARTBEAT_INTERVAL_MS;
+}
+
+async function fetchExistingRealtimeRows(
+  db: D1Database,
+  items: ParkingLot[],
+): Promise<Map<string, ExistingRealtimeRow>> {
+  const existingById = new Map<string, ExistingRealtimeRow>();
+  if (items.length === 0) return existingById;
+  const ids = items.map((item) => item.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT ${EXISTING_REALTIME_COLUMNS} FROM realtime_parking_status WHERE id IN (${placeholders})`,
+    )
+    .bind(...ids)
+    .all<ExistingRealtimeRow>();
+  for (const row of rows.results ?? []) existingById.set(row.id, row);
+  return existingById;
+}
 
 async function upsertRealtimeParkingItems(
   db: D1Database,
   items: ParkingLot[],
   syncedAt: string,
-): Promise<number> {
-  if (items.length === 0) return 0;
-  let upserted = 0;
+): Promise<RealtimeUpsertCounts> {
+  const counts: RealtimeUpsertCounts = {
+    inserted: 0,
+    changed: 0,
+    coordinate: 0,
+    heartbeat: 0,
+    unchangedSkipped: 0,
+    writes: 0,
+  };
   for (
     let start = 0;
     start < items.length;
@@ -74,13 +219,52 @@ async function upsertRealtimeParkingItems(
       start,
       start + REALTIME_PARKING_UPSERT_BATCH_SIZE,
     );
-    const statements = slice.map((item) =>
-      prepareRealtimeParkingUpsert(db, item, syncedAt),
-    );
-    await db.batch(statements);
-    upserted += slice.length;
+    const existingById = await fetchExistingRealtimeRows(db, slice);
+    const statements: D1PreparedStatement[] = [];
+    for (const item of slice) {
+      const existing = existingById.get(item.id);
+      if (!existing) {
+        counts.inserted += 1;
+        statements.push(prepareRealtimeParkingUpsert(db, item, syncedAt));
+        continue;
+      }
+      const coordinateChanged = realtimeCoordinateChanged(existing, item);
+      if (coordinateChanged) {
+        counts.coordinate += 1;
+        statements.push(
+          db
+            .prepare(REALTIME_COORDINATE_SQL)
+            .bind(item.lat, item.lng, item.id),
+        );
+      }
+      if (realtimeMaterialChanged(existing, item)) {
+        counts.changed += 1;
+        statements.push(prepareRealtimeParkingUpsert(db, item, syncedAt));
+      } else if (
+        coordinateChanged ||
+        realtimeHeartbeatDue(existing.last_seen_at, syncedAt)
+      ) {
+        // 좌표만 고친 회차에도 last_seen_at을 같이 밀어 준다. 좌표 UPDATE는
+        // last_seen_at을 건드리지 않으므로 이게 없으면 prune 시계가 멈춘다.
+        counts.heartbeat += 1;
+        statements.push(
+          db
+            .prepare(REALTIME_HEARTBEAT_SQL)
+            .bind(
+              syncedAt,
+              item.freshnessTimestamp ?? syncedAt,
+              item.freshnessTimestamp ?? syncedAt,
+              item.id,
+            ),
+        );
+      } else {
+        counts.unchangedSkipped += 1;
+      }
+    }
+    if (statements.length > 0) await db.batch(statements);
+    counts.writes += statements.length;
   }
-  return upserted;
+  return counts;
 }
 
 export async function queryRealtimeParkingCache(
@@ -235,17 +419,26 @@ function prepareRealtimeParkingUpsert(
     );
 }
 
+/// 예전에는 "이번 회차에 안 보인 행"을 즉시 지웠다. 조건부 쓰기 이후로는
+/// 값이 안 바뀐 행이 매 회차 last_seen_at을 쓰지 않으므로 그 기준을 그대로
+/// 두면 살아 있는 주차장을 지운다. 그래서 보존 기간(90분) 기준으로 바꿨다.
+/// heartbeat 30분 + 회차 간격이 90분을 넘지 않으므로 계속 공급되는 행은
+/// 절대 걸리지 않고, 피드에서 사라진 행은 45분 뒤 조회에서 빠진 다음
+/// 90분 뒤 실제로 지워진다.
 async function pruneUnseenRealtimeParking(
   db: D1Database,
   syncedAt: string,
 ): Promise<number> {
+  const cutoff = new Date(
+    Date.parse(syncedAt) - REALTIME_PRUNE_RETENTION_MS,
+  ).toISOString();
   const result = await db
     .prepare(
       `DELETE FROM realtime_parking_status
        WHERE source IN ('seoul-realtime', 'seoul-seongdong-iot', 'seoul-hangang-parking', 'daejeon-realtime', 'suseong-realtime', 'kac-airport-realtime', 'incheon-airport-realtime')
          AND last_seen_at < ?`,
     )
-    .bind(syncedAt)
+    .bind(cutoff)
     .run();
   return result.meta.changes ?? 0;
 }

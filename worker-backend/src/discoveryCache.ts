@@ -88,7 +88,13 @@ export interface DiscoverySyncRuntime {
 export interface DiscoverySyncResult {
   syncType: string;
   fetched: number;
+  /// 실제로 발행한 쓰기 문장 수(inserted + changed + heartbeat). 예전에는 배치
+  /// 크기를 그대로 더해 "받은 항목 수"였고, 쓰기가 얼마나 나갔는지 알 수 없었다.
   upserted: number;
+  inserted: number;
+  changed: number;
+  heartbeat: number;
+  unchangedSkipped: number;
   skipped: number;
   pruned: number;
   sources: Record<string, number>;
@@ -552,10 +558,13 @@ function syncRunOutcome(result: DiscoverySyncResult): {
   if (result.providerErrors.length > 0) {
     parts.push(result.providerErrors.join("; "));
   }
+  // 조건부 쓰기 이후로는 "몇 건 받았나"보다 "몇 행을 실제로 썼나"가 중요해서,
+  // 문제가 없는 회차에도 내역을 한 줄 남긴다.
+  const breakdown = `writes ${result.upserted} (new ${result.inserted}, changed ${result.changed}, heartbeat ${result.heartbeat}, skipped ${result.unchangedSkipped})`;
   if (parts.length === 0) {
-    return { status: "success", message: null };
+    return { status: "success", message: breakdown };
   }
-  const message = parts.join(" | ").slice(0, 300);
+  const message = [...parts, breakdown].join(" | ").slice(0, 300);
   if (result.fetched > 0) return { status: "success", message };
   return {
     status: result.timedOutCenters.length > 0 ? "timeout" : "failed",
@@ -597,6 +606,10 @@ export async function syncDiscoveryCache(
         syncType: `discover:${kind}`,
         fetched: 0,
         upserted: 0,
+        inserted: 0,
+        changed: 0,
+        heartbeat: 0,
+        unchangedSkipped: 0,
         skipped: 0,
         pruned: 0,
         sources: {},
@@ -656,14 +669,18 @@ async function syncDiscoveryKind(
     (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
   );
   const skipped = items.length - validItems.length;
-  const upserted = await upsertDiscoveryItems(db, validItems, generatedAt);
+  const counts = await upsertDiscoveryItems(db, validItems, generatedAt);
   // festivals/events 어느 kind로 들어와도 행은 type='festival'로 저장되므로,
   // 프루닝 대상도 하나뿐이다. (예전 events 가드는 지울 행이 없어 무의미했다.)
   const pruned = await pruneStaleDiscovery(db, "festival");
   return {
     syncType: `discover:${kind}`,
     fetched: items.length,
-    upserted,
+    upserted: counts.writes,
+    inserted: counts.inserted,
+    changed: counts.changed,
+    heartbeat: counts.heartbeat,
+    unchangedSkipped: counts.unchangedSkipped,
     skipped,
     pruned,
     sources,
@@ -703,6 +720,10 @@ export async function syncDiscoveryChunk(
       syncType,
       fetched: 0,
       upserted: 0,
+      inserted: 0,
+      changed: 0,
+      heartbeat: 0,
+      unchangedSkipped: 0,
       skipped: 0,
       pruned: 0,
       sources: {},
@@ -842,7 +863,14 @@ export function prepareDiscoveryUpsert(
   item: DiscoveryItem,
   syncedAt: string,
 ): D1PreparedStatement {
-  const row = discoveryRow(item, syncedAt);
+  return prepareDiscoveryUpsertRow(db, discoveryRow(item, syncedAt), syncedAt);
+}
+
+function prepareDiscoveryUpsertRow(
+  db: D1Database,
+  row: DiscoveryRowPayload,
+  syncedAt: string,
+): D1PreparedStatement {
   return db
     .prepare(DISCOVERY_UPSERT_SQL)
     .bind(
@@ -902,35 +930,83 @@ export async function mergeWithExistingEnrichment(
   items: DiscoveryItem[],
 ): Promise<DiscoveryItem[]> {
   if (items.length === 0) return items;
+  const existingById = await fetchExistingDiscoveryRows(db, items);
+  return mergeItemsWithExistingRows(items, existingById);
+}
 
+/// 한 배치가 D1을 읽는 유일한 지점. enrichment 복원과 "이 행을 다시 써야 하나"
+/// 판정이 같은 결과를 쓰므로 SELECT는 하나뿐이다. 컬럼을 늘려도 읽는 행 수는
+/// 그대로라 D1 읽기 예산에는 영향이 없다.
+const EXISTING_DISCOVERY_COLUMNS = `id, type, source, source_item_id, title, subtitle,
+        category_text, start_date, end_date, status, is_free, venue_name, address, lat, lng,
+        rating, review_count, lowest_price_text, lowest_price_platform, source_url,
+        image_url, images_json, tags_json, amenities_json, offers_json, raw_payload,
+        primary_category, tagging_version, geocode_checked_at, last_seen_at`;
+
+interface ExistingDiscoveryRow {
+  id: string;
+  type: string | null;
+  source: string | null;
+  source_item_id: string | null;
+  title: string | null;
+  subtitle: string | null;
+  category_text: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+  is_free: number | null;
+  venue_name: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  rating: number | null;
+  review_count: number | null;
+  lowest_price_text: string | null;
+  lowest_price_platform: string | null;
+  source_url: string | null;
+  image_url: string | null;
+  images_json: string | null;
+  tags_json: string | null;
+  amenities_json: string | null;
+  offers_json: string | null;
+  raw_payload: string | null;
+  primary_category: string | null;
+  tagging_version: number | null;
+  geocode_checked_at: string | null;
+  last_seen_at: string | null;
+}
+
+async function fetchExistingDiscoveryRows(
+  db: D1Database,
+  items: DiscoveryItem[],
+): Promise<Map<string, ExistingDiscoveryRow>> {
+  const existingById = new Map<string, ExistingDiscoveryRow>();
+  if (items.length === 0) return existingById;
   const ids = items.map(discoveryItemId);
   const placeholders = ids.map(() => "?").join(",");
   const rows = await db
     .prepare(
-      `SELECT id, raw_payload, lowest_price_text FROM discovery_items WHERE id IN (${placeholders})`,
+      `SELECT ${EXISTING_DISCOVERY_COLUMNS} FROM discovery_items WHERE id IN (${placeholders})`,
     )
     .bind(...ids)
-    .all<{
-      id: string;
-      raw_payload: string | null;
-      lowest_price_text: string | null;
-    }>();
+    .all<ExistingDiscoveryRow>();
+  for (const row of rows.results ?? []) existingById.set(row.id, row);
+  return existingById;
+}
 
-  const existingById = new Map<
-    string,
-    { raw: Record<string, unknown> | null; priceText: string | null }
-  >();
-  for (const row of rows.results ?? []) {
-    existingById.set(row.id, {
-      raw: parseRawPayload(row.raw_payload),
-      priceText: row.lowest_price_text,
-    });
-  }
+function mergeItemsWithExistingRows(
+  items: DiscoveryItem[],
+  existingById: Map<string, ExistingDiscoveryRow>,
+): DiscoveryItem[] {
   if (existingById.size === 0) return items;
 
   return items.map((item) => {
-    const existing = existingById.get(discoveryItemId(item));
-    if (!existing) return item;
+    const row = existingById.get(discoveryItemId(item));
+    if (!row) return item;
+    const existing = {
+      raw: parseRawPayload(row.raw_payload),
+      priceText: row.lowest_price_text,
+    };
     if ("eventType" in item) {
       // KOPIS 상세(pblprfr/{id})는 회차당 KOPIS_DETAIL_MAX_ITEMS건만 연다.
       // 이번 회차에 안 열린 항목의 programInfo는 null로 오므로, 요금과 같은
@@ -970,27 +1046,232 @@ export async function mergeWithExistingEnrichment(
   });
 }
 
-async function upsertDiscoveryItems(
+// ---------------------------------------------------------------------------
+// 조건부 쓰기: 바뀐 것만 쓴다
+// ---------------------------------------------------------------------------
+// discovery_items는 인덱스가 11개라 upsert 1건이 실측 11.3행이다. 그런데 같은
+// 행사가 하루 서너 번 다시 들어오고 대부분 내용이 그대로다(2026-08-29 실측:
+// 하루 upsert 10,396건 / 117,151행, 한도 100,000행의 대부분).
+// 그래서 네 갈래로 나눈다.
+//   신규          → 전체 INSERT
+//   내용이 바뀜   → 기존 upsert 그대로(머지 규칙을 SQL에 남겨둔다)
+//   동일 + 오래됨 → last_seen_at만 갱신하는 최소 UPDATE (본체 1 + last_seen 인덱스 2)
+//   동일 + 최근   → 쓰지 않는다
+//
+// heartbeat 간격은 프루닝 기준(DISCOVERY_STALE_DAYS: festival 100일)보다 훨씬
+// 짧아야 한다. 한 provider 청크는 9분 로테이션 11칸이라 하루 약 14.5회 돌아오므로
+// 24시간이면 행사 하나당 하루 한 번만 last_seen_at을 쓰고, 프루닝 기준까지는
+// 100배 여유가 남는다. sync가 며칠 통째로 실패해도 프루닝에 걸리지 않는다.
+// 2026-08-29 실측으로 하루 안에 다시 들어오는 행이 3,101건이고 heartbeat UPDATE
+// 하나가 3행(본체 1 + last_seen_at 인덱스 2)이라, 12시간이면 18,606행/일,
+// 24시간이면 9,303행/일이다. 쓰기 예산이 병목이라 후자를 택했다.
+const DISCOVERY_HEARTBEAT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+const DISCOVERY_HEARTBEAT_SQL = `UPDATE discovery_items
+      SET last_seen_at = ?, synced_at = ?, data_updated_at = ?
+      WHERE id = ?`;
+
+// raw_payload는 item을 통째로 직렬화한 값이라 조회 중심점에 따라 달라지는
+// 거리와 "가져온 시각" 대체값이 섞여 있다. 이 셋을 빼지 않으면 내용이 그대로여도
+// 매번 다른 문자열이 되어 조건부 쓰기가 통째로 무의미해진다.
+//   distanceMeters / distanceFromDestinationMeters — 17개 center마다 다른 값
+//   updatedAt — eventProviderUtils가 소스에 값이 없으면 new Date()로 채운다
+// 셋 다 저장된 raw_payload에서 다시 읽히지 않는다(거리는 조회 때 좌표로 다시
+// 계산하고, 앱이 보는 updatedAt은 discovery_items.data_updated_at이다).
+const VOLATILE_PAYLOAD_KEYS = new Set([
+  "distanceMeters",
+  "distanceFromDestinationMeters",
+  "updatedAt",
+]);
+
+/// 비교 전용 표준형. 키 순서를 정렬하고 위 휘발성 필드를 지운다.
+/// 저장되는 raw_payload 자체는 건드리지 않는다.
+export function normalizeDiscoveryPayloadForComparison(
+  payload: string | null,
+): string | null {
+  if (!payload) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return payload;
+  }
+  return JSON.stringify(canonicalizeForComparison(parsed));
+}
+
+function canonicalizeForComparison(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeForComparison);
+  if (value !== null && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      if (VOLATILE_PAYLOAD_KEYS.has(key)) continue;
+      if (source[key] === undefined) continue;
+      out[key] = canonicalizeForComparison(source[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+function emptyToNull(value: string | null | undefined): string | null {
+  return value == null || value === "" ? null : value;
+}
+
+function jsonArrayLength(value: string | null): number {
+  if (!value) return 0;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/// upsert의 image_url / images_json 머지 규칙(COALESCE·CASE)을 그대로 옮긴 것.
+/// "이 upsert가 실제로 값을 바꾸는가"를 판단하려면 SQL과 같은 결과를 내야 한다.
+function effectiveImageUrl(
+  existing: string | null,
+  next: string | null,
+): string | null {
+  return emptyToNull(next) ?? emptyToNull(existing);
+}
+
+function effectiveImagesJson(
+  existing: string | null,
+  next: string | null,
+): string | null {
+  if (jsonArrayLength(existing) > jsonArrayLength(next)) return existing;
+  return emptyToNull(next) ?? emptyToNull(existing);
+}
+
+export function discoveryMaterialChanged(
+  existing: ExistingDiscoveryRow,
+  next: DiscoveryRowPayload,
+): boolean {
+  if (
+    existing.type !== next.type ||
+    existing.source !== next.source ||
+    existing.source_item_id !== next.sourceItemId ||
+    existing.title !== next.title ||
+    emptyToNull(existing.subtitle) !== emptyToNull(next.subtitle) ||
+    emptyToNull(existing.category_text) !== emptyToNull(next.categoryText) ||
+    emptyToNull(existing.start_date) !== emptyToNull(next.startDate) ||
+    emptyToNull(existing.end_date) !== emptyToNull(next.endDate) ||
+    emptyToNull(existing.status) !== emptyToNull(next.status) ||
+    (existing.is_free ?? null) !== (next.isFree ?? null) ||
+    emptyToNull(existing.venue_name) !== emptyToNull(next.venueName) ||
+    emptyToNull(existing.address) !== emptyToNull(next.address) ||
+    (existing.rating ?? null) !== (next.rating ?? null) ||
+    (existing.review_count ?? null) !== (next.reviewCount ?? null) ||
+    emptyToNull(existing.lowest_price_text) !==
+      emptyToNull(next.lowestPriceText) ||
+    emptyToNull(existing.lowest_price_platform) !==
+      emptyToNull(next.lowestPricePlatform) ||
+    emptyToNull(existing.source_url) !== emptyToNull(next.sourceUrl) ||
+    emptyToNull(existing.tags_json) !== emptyToNull(next.tagsJson) ||
+    emptyToNull(existing.amenities_json) !== emptyToNull(next.amenitiesJson) ||
+    emptyToNull(existing.offers_json) !== emptyToNull(next.offersJson)
+  ) {
+    return true;
+  }
+  // 좌표는 geocode backfill이 손댄 행이면 upsert가 기존 값을 지키므로 비교하지 않는다.
+  if (
+    existing.geocode_checked_at == null &&
+    (existing.lat !== next.lat || existing.lng !== next.lng)
+  ) {
+    return true;
+  }
+  if (
+    emptyToNull(existing.image_url) !==
+    effectiveImageUrl(existing.image_url, next.imageUrl)
+  ) {
+    return true;
+  }
+  if (
+    emptyToNull(existing.images_json) !==
+    effectiveImagesJson(existing.images_json, next.imagesJson)
+  ) {
+    return true;
+  }
+  // primary_category는 새 값이 있을 때만 덮어쓴다(COALESCE). null이면 태깅 결과를 지키므로 변화 없음.
+  if (next.primaryCategory != null) {
+    if (existing.primary_category !== next.primaryCategory) return true;
+    if ((existing.tagging_version ?? 0) !== next.taggingVersion) return true;
+  }
+  return (
+    normalizeDiscoveryPayloadForComparison(existing.raw_payload) !==
+    normalizeDiscoveryPayloadForComparison(next.rawPayload)
+  );
+}
+
+export function discoveryHeartbeatDue(
+  lastSeenAt: string | null,
+  syncedAt: string,
+  intervalMs: number = DISCOVERY_HEARTBEAT_INTERVAL_MS,
+): boolean {
+  if (!lastSeenAt) return true;
+  const last = Date.parse(lastSeenAt);
+  const now = Date.parse(syncedAt);
+  if (!Number.isFinite(last) || !Number.isFinite(now)) return true;
+  return now - last >= intervalMs;
+}
+
+export interface DiscoveryUpsertCounts {
+  inserted: number;
+  changed: number;
+  heartbeat: number;
+  unchangedSkipped: number;
+  writes: number;
+}
+
+/// 테스트가 쓰기 건수를 직접 세기 위해 내보낸다.
+export async function upsertDiscoveryItems(
   db: D1Database,
   items: DiscoveryItem[],
   syncedAt: string,
-): Promise<number> {
-  if (items.length === 0) return 0;
-  let upserted = 0;
+): Promise<DiscoveryUpsertCounts> {
+  const counts: DiscoveryUpsertCounts = {
+    inserted: 0,
+    changed: 0,
+    heartbeat: 0,
+    unchangedSkipped: 0,
+    writes: 0,
+  };
   for (
     let start = 0;
     start < items.length;
     start += DISCOVERY_UPSERT_BATCH_SIZE
   ) {
     const slice = items.slice(start, start + DISCOVERY_UPSERT_BATCH_SIZE);
-    const merged = await mergeWithExistingEnrichment(db, slice);
-    const statements = merged.map((item) =>
-      prepareDiscoveryUpsert(db, item, syncedAt),
-    );
-    await db.batch(statements);
-    upserted += slice.length;
+    const existingById = await fetchExistingDiscoveryRows(db, slice);
+    const merged = mergeItemsWithExistingRows(slice, existingById);
+    const statements: D1PreparedStatement[] = [];
+    for (const item of merged) {
+      const id = discoveryItemId(item);
+      const existing = existingById.get(id);
+      const row = discoveryRow(item, syncedAt);
+      if (!existing) {
+        counts.inserted += 1;
+        statements.push(prepareDiscoveryUpsertRow(db, row, syncedAt));
+      } else if (discoveryMaterialChanged(existing, row)) {
+        counts.changed += 1;
+        statements.push(prepareDiscoveryUpsertRow(db, row, syncedAt));
+      } else if (discoveryHeartbeatDue(existing.last_seen_at, syncedAt)) {
+        counts.heartbeat += 1;
+        statements.push(
+          db
+            .prepare(DISCOVERY_HEARTBEAT_SQL)
+            .bind(syncedAt, syncedAt, syncedAt, id),
+        );
+      } else {
+        counts.unchangedSkipped += 1;
+      }
+    }
+    if (statements.length > 0) await db.batch(statements);
+    counts.writes += statements.length;
   }
-  return upserted;
+  return counts;
 }
 
 // discovery_items의 primary key. discoveryRow와 enrichment 병합이 같은 규칙을
@@ -1050,7 +1331,7 @@ export function discoveryRow(
   };
 }
 
-async function pruneStaleDiscovery(
+export async function pruneStaleDiscovery(
   db: D1Database,
   type: DiscoveryType,
 ): Promise<number> {

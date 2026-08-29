@@ -133,15 +133,28 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/// LLM 실패로 fallback 태깅된 행(`tagging_version = -1`)을 다시 볼 간격.
+/// 예전에는 backoff가 없어서 999건이 매 회차 다시 잡혀 LLM 호출과 UPDATE를
+/// 그대로 반복했다(2026-08-29 실측: discovery_items 태깅 UPDATE 21,843행/일).
+/// 그렇다고 fallback을 영구 확정하면 나중에 모델이나 프롬프트가 나아져도
+/// 영영 보강되지 않으므로, 7일 뒤에는 다시 후보가 되게 한다.
+const TAGGING_FALLBACK_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+function fallbackRetryCutoff(): string {
+  return new Date(Date.now() - TAGGING_FALLBACK_RETRY_MS).toISOString();
+}
+
 async function fetchFestivalRows(
   db: D1Database,
   mode: "incremental" | "backfill",
   limit: number,
 ): Promise<FestivalTaggingRow[]> {
-  const where =
-    mode === "backfill"
-      ? "type = 'festival'"
-      : "type = 'festival' AND (tagging_version = 0 OR tagging_version = -1)";
+  const backfill = mode === "backfill";
+  const where = backfill
+    ? "type = 'festival'"
+    : `type = 'festival' AND (tagging_version = 0
+           OR (tagging_version = -1 AND (tagged_at IS NULL OR tagged_at < ?)))`;
+  const binds = backfill ? [limit] : [fallbackRetryCutoff(), limit];
   const rs = await db
     .prepare(
       `SELECT id, title, subtitle, category_text, source, tags_json
@@ -150,7 +163,7 @@ async function fetchFestivalRows(
        ORDER BY last_seen_at DESC
        LIMIT ?`,
     )
-    .bind(limit)
+    .bind(...binds)
     .all<FestivalTaggingRow>();
   return rs.results ?? [];
 }
@@ -160,10 +173,12 @@ async function fetchLocalEventRows(
   mode: "incremental" | "backfill",
   limit: number,
 ): Promise<LocalEventTaggingRow[]> {
-  const where =
-    mode === "backfill"
-      ? "1 = 1"
-      : "tagging_version = 0 OR tagging_version = -1";
+  const backfill = mode === "backfill";
+  const where = backfill
+    ? "1 = 1"
+    : `tagging_version = 0
+           OR (tagging_version = -1 AND (tagged_at IS NULL OR tagged_at < ?))`;
+  const binds = backfill ? [limit] : [fallbackRetryCutoff(), limit];
   const rs = await db
     .prepare(
       `SELECT id, title, description, benefit, event_type, source
@@ -172,7 +187,7 @@ async function fetchLocalEventRows(
        ORDER BY updated_at DESC
        LIMIT ?`,
     )
-    .bind(limit)
+    .bind(...binds)
     .all<LocalEventTaggingRow>();
   return rs.results ?? [];
 }
