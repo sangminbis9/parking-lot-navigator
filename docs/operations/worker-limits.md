@@ -1,6 +1,6 @@
 # Worker 계정 한도
 
-마지막 확인: 2026-08-28 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
+마지막 확인: 2026-08-29 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
 
 이 문서는 코드 설계를 직접 규정하는 플랫폼 한도를 한곳에 모은다. 배치 크기, cron
 배치, 쿼리 모양이 전부 여기서 나왔다. **한도를 올리기 전에 이 표를 먼저 본다.**
@@ -11,7 +11,7 @@
 | invocation당 CPU 시간 | 10ms | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | cron 핸들러 전부. 예전에는 태깅과 backfill이 `*/20` 한 invocation에 얹혀 있어 backfill이 회차당 4건 남짓만 처리하고 죽었다. 지금은 `*/5`에서 한 invocation에 한 작업만 둔다. 실측 2026-08-18: 24시간 892회 invocation 중 524회(59%)가 `exceededResources`로 죽었다 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | `wrangler.toml`의 5개 스케줄. 새 주기가 필요하면 기존 cron에 시간/분 가드를 얹는다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
-| D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **현재 이 한도를 5배 넘고 있다** | 2026-08-28 실측 상위 10개 합계 549,917/일. `realtimeParkingCache.ts`(3분마다 최대 1000행 upsert)가 310,842행으로 57%, `discovery_items` upsert가 158,788행. 아래 "D1 행 쓰기 예산" 참고 |
+| D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **현재 이 한도를 4.7배 넘고 있다** | 2026-08-29 실측 상위 10개 합계 474,322/일. `realtimeParkingCache.ts`(3분 주기 upsert, 하루 114,515건)가 343,553행으로 72%, `discovery_items` upsert가 97,494행. 아래 "D1 행 쓰기 예산" 참고 |
 | D1 prepared statement 바인딩 | 100 | 101번째 바인딩에서 쿼리가 실패한다. | `geocodeBackfill.ts`의 지역 대표 좌표 매칭(18좌표 × 4 + 1 = 73). `pipelineStats.ts`는 같은 조건을 리터럴로 박아 바인딩을 아예 안 쓴다 |
 
 D1 쿼리는 subrequest 한도에 포함되지 않는다. Workers AI(`ai.run`) 호출은 포함된다.
@@ -56,27 +56,42 @@ CPU·subrequest와 달리 D1 행 읽기는 **한 쿼리가 조용히 수백만 �
 
 ## D1 행 쓰기 예산
 
-읽기와 달리 쓰기는 인덱스 정리와 쿼리 모양만으로는 못 줄인다. **upsert 1건이 쓰는 행은
-"본체 1행 + 그 테이블의 인덱스 수"**이기 때문이다. 인덱스를 하나 추가하면 그 테이블의 하루
-쓰기가 upsert 건수만큼 통째로 늘어난다.
+읽기와 달리 쓰기는 인덱스 정리와 쿼리 모양만으로는 못 줄인다. **새 INSERT 1건이 쓰는 행은
+"본체 1행 + 그 테이블의 인덱스 수"**이기 때문이다(upsert가 기존 행을 갱신할 때는 그게 상한이고,
+실제로는 다시 쓰이는 컬럼의 인덱스만 갱신된다 — 아래 정정 참고). 인덱스를 하나 추가하면 그
+테이블의 하루 쓰기가 그만큼 통째로 늘어난다.
 
-2026-08-28 실측(`wrangler d1 insights --sort-by writes --limit 10`, 1일 창):
+2026-08-29 실측(`wrangler d1 insights --sort-by writes --limit 10`, 1일 창).
+`0027` 배포 후 만 하루가 지난 깨끗한 창이고 1회성 인덱스 빌드도 빠졌다:
 
-| 쿼리 | 하루 쓰기 | 비고 |
-| --- | --- | --- |
-| `realtime_parking_status` upsert | 310,842 | 인덱스 3개 → 행당 4행 쓰기. 3분마다 최대 1000행 |
-| `discovery_items` upsert | 158,788 | `0027` 이후 인덱스 11개 → 행당 12행 쓰기 |
-| `idx_discovery_detail_backfill` 생성 | 40,530 | `0026` 마이그레이션의 1회성 인덱스 빌드 |
-| 나머지 7개(태깅 UPDATE, agent/sync 로그 등) | 39,757 | |
-| **합계** | **549,917** | 한도 100,000의 5.5배 |
+| 쿼리 | 하루 쓰기 | 실행 | 행당 | 비고 |
+| --- | --- | --- | --- | --- |
+| `realtime_parking_status` upsert | 343,553 | 114,515 | 3.0 | 전체의 72% |
+| `discovery_items` upsert | 97,494 | 8,560 | 11.4 | `0027` 전 158,788에서 39% 감소 |
+| `discovery_items` 태깅 UPDATE | 21,218 | 9,734 | 2.2 | |
+| detail backfill 선점 UPDATE | 7,118 | 3,559 | 2.0 | `0026`이 추가한 선점 |
+| 나머지 6개 | 4,939 | | | agent/sync 로그, 요금·프로그램 반영 |
+| **합계** | **474,322** | | | 한도 100,000의 4.7배 |
 
-이 창은 `0027` 적용 전후가 섞여 있고 1회성 인덱스 빌드도 포함한다. **깨끗한 재측정이 필요하다.**
-다만 `realtime_parking_status` 한 쿼리만으로 이미 한도의 3배라, 인덱스 정리로는 해결되지 않는다.
+2026-08-28 창(549,917)과 비교하면 75,595행이 줄었다. 감소분은 대부분 `discovery_items`
+인덱스 정리(명시 13개 → 9개)와 1회성 인덱스 빌드 40,530행이 빠진 것이다.
+
+**측정으로 드러난 정정: 쓰기 증폭은 "인덱스 수 + 1"이 상한이지 항상 그 값은 아니다.**
+`ON CONFLICT DO UPDATE`는 `SET`에 등장해 실제로 다시 쓰이는 컬럼의 인덱스만 갱신한다.
+`realtime_parking_status`는 인덱스가 3개(PK autoindex, `(lat, lng)`, `(last_seen_at)`)라
+상한이 4행이지만 실측은 정확히 3.0행이다 — `id`가 바뀌지 않아 PK autoindex는 안 쓰이고,
+본체 1 + `(lat, lng)` 1 + `(last_seen_at)` 1만 쓴다.
 
 줄일 수 있는 곳(아직 손대지 않음, 각각 동작 변화가 따라온다):
 
-- `realtimeParkingCache.ts`의 `ON CONFLICT ... SET`에서 `lat`/`lng`를 빼면 하루 약 77,000행이
-  준다(예산의 77%). 대신 원본이 좌표를 고쳐도 반영되지 않는다.
+- `realtimeParkingCache.ts`의 `ON CONFLICT ... SET`에서 `lat`/`lng`를 빼면 `(lat, lng)`
+  인덱스 갱신이 사라져 행당 3행 → 2행이 된다. **하루 114,515행 절감**(그 쿼리의 3분의 1,
+  전체 예산과 맞먹는 양)이고 이건 추정이 아니라 실행 횟수에서 바로 나온 값이다.
+  대신 원본이 좌표를 고쳐도 기존 행에는 반영되지 않는다 — 다만
+  `pruneUnseenRealtimeParking`이 이번 회차에 안 보인 행을 지우므로, 피드에서 한 번
+  빠졌다 돌아오는 주차장은 재삽입 때 새 좌표를 받는다.
+- `(last_seen_at)` 인덱스는 지우면 안 된다. 위 prune DELETE(`WHERE ... last_seen_at < ?`)와
+  조회의 신선도 필터가 실제로 쓴다.
 - 주차 sync 주기를 3분에서 늘리거나, 값이 실제로 바뀐 행만 쓰도록 조건부 upsert로 바꾸는 방법.
 
 앞으로 늘어날 쪽은 알림 계획이다. `notification_sends`는 인덱스 3개라 계획 행 1건이 4행 쓰기이고,
