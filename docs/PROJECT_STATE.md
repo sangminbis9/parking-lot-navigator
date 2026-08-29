@@ -174,10 +174,13 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
     정리되지 않은 `sync_runs`였다. `0021_hot_query_indexes.sql`, `0027_d1_read_budget_indexes.sql`,
     pipelineStats 집계 통합을 거쳐 2026-08-28 실측은 상위 10개 합계 135만행/일(한도의 27%)이다.
   - 쓰기는 아직 미해결이다. `0027` 배포 후 만 하루가 지난 2026-08-29 실측으로 상위 10개
-    합계 474,322행/일, 한도의 4.7배다. `realtime_parking_status` upsert 하나가 343,553행(72%)이고
-    `discovery_items`는 인덱스 정리로 158,788 → 97,494행이 됐다. 인덱스로 줄일 몫은 거의 다
-    썼고, 남은 건 realtime upsert의 `SET`에서 `lat`/`lng`를 빼는 것(하루 114,515행 절감,
-    대신 원본 좌표 수정이 기존 행에 반영 안 됨)이나 sync 주기 조정처럼 동작이 바뀌는 선택이다.
+    합계 474,322행/일, 한도의 4.7배였다. `realtime_parking_status` upsert 하나가 343,553행(72%)이고
+    `discovery_items`는 인덱스 정리로 158,788 → 97,494행이 됐다.
+    같은 날 `0028_realtime_parking_write_budget.sql`(`(last_seen_at)` 인덱스 삭제)과
+    realtime upsert의 `SET`에서 `lat`/`lng` 제거를 합쳐 realtime 쪽을 행당 3행 → 1행,
+    346,055 → 115,349행/일로 줄였다. sync 주기(3분)와 prune 계약은 그대로다.
+    예상 합계는 약 243,616행/일로 **여전히 한도의 2.4배**이고, 다음 대상은
+    `discovery_items` upsert 97,494행이다.
   - 상세는 `docs/operations/worker-limits.md`의 "D1 행 읽기 예산" / "D1 행 쓰기 예산".
 - Workers AI 바인딩: `AI` (`orion` head agent 및 LLM 태깅 사용).
 
