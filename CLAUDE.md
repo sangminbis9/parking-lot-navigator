@@ -234,8 +234,9 @@ subrequest·CPU와 달리 **행 읽기·쓰기 초과는 예외를 던지지 않
   한도의 4.7배였다. `realtime_parking_status` upsert 하나가 343,553행(72%)이고,
   `discovery_items` upsert는 `0027` 인덱스 정리로 158,788 → 97,494행이 됐다.
   같은 날 `0028`(`(last_seen_at)` 인덱스 삭제) + realtime upsert의 `SET`에서 `lat`/`lng` 제거로
-  realtime 쪽이 행당 3행 → 1행이 되어 **346,055 → 115,349행/일**이 된다. 예상 합계 약 243,616행/일.
-  **그래도 한도의 2.4배라 아직 미해결이다** — 남은 최대 항목은 `discovery_items` upsert 97,494행.
+  realtime 쪽이 행당 3행 → 1행이 되어 **346,055 → 115,349행/일**이 됐다. 그래도 한도의 2.4배라,
+  같은 날 조건부 쓰기(아래 "바뀐 것만 쓴다")를 넣어 **약 82,000행/일**을 예상한다.
+  이 82,000은 아직 **예상치다** — 배포 후 만 하루가 지난 창에서 다시 재야 실측이 된다.
 
 읽기 쪽 규칙:
 
@@ -272,11 +273,36 @@ subrequest·CPU와 달리 **행 읽기·쓰기 초과는 예외를 던지지 않
   지워 realtime upsert를 행당 2행 → 1행으로 만들었다. prune DELETE(`last_seen_at < ?`)가
   이 인덱스를 실제로 쓰고 있었으므로 그쪽은 866행 전체 스캔이 된다 — 읽기가 한도의 27%라
   감당되는 교환이고, 읽기가 병목이 되면 `0028` 주석의 `CREATE INDEX` 한 줄로 되돌린다.
-- 주기적 upsert에서 "바뀐 것만 쓰기"는 여기서는 **택하지 않았다.** `pruneUnseenRealtimeParking`이
-  `last_seen_at < syncedAt`으로 지우므로 모든 행이 매 회차 `last_seen_at`을 다시 써야 살아남는다.
-  조건부 upsert로 바꾸려면 prune 기준부터 옮겨야 하는데, 그러면 45분간 값이 안 변한 주차장이
-  조회 신선도 필터에서 먼저 탈락한 뒤 지워지는 회귀가 생긴다. sync 주기를 늘리는 안도
-  실시간성을 그대로 깎아 택하지 않았다 — 위 두 조치가 같은 절감을 동작 변화 없이 얻는다.
+- **주기적 upsert는 "바뀐 것만 쓴다".** 수집 주기는 그대로 두고(realtime 3분, discovery 9분
+  로테이션) 배치마다 기존 행을 한 번 SELECT해 네 갈래로 가른다 — 신규는 전체 INSERT,
+  내용이 바뀌었으면 기존 upsert 그대로, 내용은 같은데 heartbeat 간격이 지났으면
+  `last_seen_at`만 미는 최소 UPDATE, 내용도 같고 heartbeat도 남았으면 **아무것도 쓰지 않는다.**
+  이 SELECT는 enrichment 복원(`mergeWithExistingEnrichment`)이 이미 하던 조회를 컬럼만 넓힌
+  것이라 읽는 행 수는 그대로다.
+  - 비교에서 `synced_at`/`data_updated_at`/`last_seen_at`은 제외하고, `raw_payload` 안의
+    휘발성 필드(`distanceMeters`·`distanceFromDestinationMeters`·`updatedAt`)도 지운 뒤 비교한다.
+    이걸 빼지 않으면 내용이 그대로여도 매번 다른 문자열이라 조건부 쓰기가 무의미해진다.
+    realtime 쪽은 `freshness_timestamp`/`updated_at`이 같은 이유로 비교 대상에서 빠진다.
+  - upsert의 머지 규칙(`image_url`의 COALESCE, `images_json`의 길이 비교,
+    `lat`/`lng`의 `geocode_checked_at` 가드, `primary_category`의 COALESCE)을 비교 함수가
+    그대로 복제한다. "이 upsert가 실제로 값을 바꾸는가"를 물어야 하므로 SQL과 같은 답을 내야 한다.
+  - **prune 기준을 시간 기반으로 옮기는 것이 이 변경의 전제다.** `pruneUnseenRealtimeParking`이
+    `last_seen_at < syncedAt`으로 지우면 값이 안 바뀐 행이 전부 죽는다. 지금은
+    `heartbeat(30분) < 조회 신선도(45분) < prune 보존(90분)` 순서가 계약이고, 이 순서가 깨지면
+    provider가 계속 주는 주차장이 앱에서 사라진다. discovery 쪽은 heartbeat 24시간 대
+    프루닝 100일이라 100배 여유가 있다.
+  - realtime 좌표는 본 upsert의 `SET`에서 빠져 있으므로 실제로 달라진 행만 별도
+    `UPDATE ... SET lat = ?, lng = ?`로 고친다(오차 `1e-7`). `0028`이 만든 "좌표 수정이 영영
+    반영되지 않는" 회귀를 여기서 닫았다. 좌표 UPDATE는 `last_seen_at`을 건드리지 않으므로
+    heartbeat를 같이 보내 prune 시계를 멈추지 않게 한다.
+  - 회귀는 테스트로 못 박아 뒀다: `tests/discoveryConditionalWrite.test.ts`,
+    `tests/realtimeConditionalWrite.test.ts`, `tests/taggingFallbackBackoff.test.ts`.
+    쓰기 문장 수를 직접 세는 fake D1(`tests/fakeD1.ts`)이라 "같은 항목 N번 sync = N번 쓰기"
+    회귀가 다시 들어오면 바로 깨진다.
+- **fallback 태깅은 영구 확정하지 않고 7일 backoff를 준다.** `tagging_version = -1`(LLM 실패 후
+  결정론적 fallback) 행이 매 cron마다 다시 조회·재기록돼 하루 21,843행을 썼다(실측 999행).
+  지금은 `tagged_at`이 7일보다 오래된 것만 다시 잡는다 — 영구 제외하면 나중에 LLM 보강 기회가
+  사라지므로 backoff이지 제외가 아니다.
 
 무엇이 얼마나 읽고 쓰는지는 이렇게 본다(상위 N개만 나온다):
 
