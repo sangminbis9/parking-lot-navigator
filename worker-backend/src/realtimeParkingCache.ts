@@ -166,6 +166,11 @@ export async function queryRealtimeParkingClusters(
   );
 }
 
+// D1 쓰기 예산: 이 upsert는 하루 11만 건 넘게 돌아 쓰기 1위다. `ON CONFLICT DO UPDATE`는
+// SET에 등장하는 컬럼의 인덱스만 다시 쓰므로, `lat`/`lng`를 SET에서 빼면 (lat, lng) 인덱스
+// 갱신이 통째로 사라진다(행당 3행 → 2행, `0028`이 (last_seen_at) 인덱스를 지워 최종 1행).
+// 대가: 원본이 좌표를 고쳐도 기존 행에는 반영되지 않는다. 피드에서 한 번 빠진 주차장은
+// pruneUnseenRealtimeParking이 지우고 다음 회차에 새 좌표로 다시 INSERT된다.
 const REALTIME_PARKING_UPSERT_SQL = `INSERT INTO realtime_parking_status (
         id, source, source_parking_id, name, address, lat, lng,
         total_capacity, available_spaces, occupancy_rate, congestion_status,
@@ -178,8 +183,6 @@ const REALTIME_PARKING_UPSERT_SQL = `INSERT INTO realtime_parking_status (
         source_parking_id = excluded.source_parking_id,
         name = excluded.name,
         address = excluded.address,
-        lat = excluded.lat,
-        lng = excluded.lng,
         total_capacity = excluded.total_capacity,
         available_spaces = excluded.available_spaces,
         occupancy_rate = excluded.occupancy_rate,

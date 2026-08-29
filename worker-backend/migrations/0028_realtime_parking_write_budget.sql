@@ -1,0 +1,43 @@
+-- D1 Free Tier(2026-09-01부터 rows written 100,000/일) 안에서 버티기 위한
+-- realtime_parking_status 쓰기 축소. 이 테이블 하나가 현재 하루 쓰기의 72%다.
+--
+-- 2026-08-29 실측(d1 insights, 1일 창):
+--   realtime_parking_status upsert — 346,055 writes / 115,349 runs = 행당 3.0행.
+--   전체 쓰기 474,322행(한도의 4.7배) 중 이 쿼리 하나가 최대 항목이다.
+--
+-- 행당 3.0행의 내역: 본체 1행 + (lat, lng) 인덱스 1행 + (last_seen_at) 인덱스 1행.
+-- 인덱스는 4개(PK autoindex 포함)지만 `ON CONFLICT DO UPDATE`는 SET에 등장하는
+-- 컬럼의 인덱스만 다시 쓴다 — id는 SET에 없으므로 PK autoindex는 건드리지 않는다.
+-- 그래서 "upsert 1건 = 본체 + 인덱스 수"는 상한이고, 실측이 정확히 3.0이었다.
+--
+-- 이 마이그레이션과 같은 커밋의 코드 변경(realtimeParkingCache.ts에서 lat/lng를
+-- SET 절에서 제거)을 합치면 행당 3.0행 → 1.0행, 하루 346,055행 → 115,349행이 된다.
+-- sync 주기(3분)도 prune 계약도 바꾸지 않으므로 실시간성은 그대로다.
+
+-- ---------------------------------------------------------------------------
+-- 삭제: (last_seen_at) 단일 컬럼 인덱스
+-- ---------------------------------------------------------------------------
+-- 소비자는 둘이다.
+--   (1) pruneUnseenRealtimeParking
+--       DELETE FROM realtime_parking_status WHERE source IN (...) AND last_seen_at < ?
+--   (2) 조회의 신선도 필터
+--       SELECT * ... WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?
+--                      AND last_seen_at >= ? LIMIT ?
+--
+-- EXPLAIN QUERY PLAN 확인:
+--   (1) SEARCH realtime_parking_status USING INDEX
+--       idx_realtime_parking_status_last_seen (last_seen_at<?)  ← 실제로 쓴다
+--   (2) SEARCH ... USING INDEX idx_realtime_parking_status_lat_lng (lat>? AND lat<?)
+--       ← 공간 필터가 먼저 걸리고 last_seen_at은 잔여 조건이라 이 인덱스를 안 쓴다
+--
+-- 즉 잃는 것은 (1)의 탐색뿐이고, 대신 매 prune마다 테이블 전체 스캔이 된다.
+-- 이 테이블은 866행(2026-08-29 실측: daejeon-realtime 741, seoul-realtime 106,
+-- incheon-airport-realtime 19)이고 상한은 REALTIME_CACHE_RESULT_LIMIT 수준이라
+-- prune 1회당 최대 수백~천 행 읽기다. 하루 prune 횟수를 감안해도 읽기 증가는
+-- 10만~40만행 수준이고, 읽기는 현재 한도의 27%(1,350,540/5,000,000)라 여유가 있다.
+-- 읽기를 조금 내주고 쓰기를 230,706행 줄이는 교환이다 — 지금 병목은 쓰기다.
+--
+-- 되돌리는 법(읽기가 병목이 되면):
+--   CREATE INDEX idx_realtime_parking_status_last_seen
+--     ON realtime_parking_status(last_seen_at);
+DROP INDEX IF EXISTS idx_realtime_parking_status_last_seen;
