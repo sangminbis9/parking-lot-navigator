@@ -10,15 +10,18 @@ import {
   planUpcomingNotifications,
   seoulDayString,
   targetDates,
+  type UpcomingEvent,
   upcomingCollapseId,
 } from "../src/upcomingNotifications.js";
 
 type Row = Record<string, unknown>;
 
 /**
- * notification_sends / notification_devices 상태를 실제로 들고 있는 D1 흉내.
+ * notification_digests / notification_devices 상태를 실제로 들고 있는 D1 흉내.
  * 중복 발송은 "행이 어떤 상태였나"에 달려 있어서 상태 없는 mock으로는 재현되지 않는다.
  * 0025의 부분 UNIQUE 인덱스도 여기서 흉내 낸다 — 소유권 이전이 없으면 등록이 실패해야 한다.
+ * writes는 실제로 실행된 INSERT/UPDATE 문 수다. 저장 단위를 바꾼 이유가 쓰기 증폭이라
+ * "행사가 늘어도 쓰기가 안 는다"를 세서 확인한다.
  */
 function fakeDb(seed: {
   festivals?: Row[];
@@ -28,21 +31,31 @@ function fakeDb(seed: {
   const festivals = seed.festivals ?? [];
   const localEvents = seed.localEvents ?? [];
   const devices = seed.devices ?? [];
-  const sends = new Map<string, Row>();
+  const digests = new Map<string, Row>();
+  const writes: string[] = [];
   const key = (row: Row) =>
-    `${row.device_id}|${row.event_id}|${row.notification_type}`;
+    `${row.device_id}|${row.send_day}|${row.notification_type}`;
 
   const exec = (sql: string, args: unknown[]): { results: Row[] } => {
+    const trimmed = sql.trimStart();
+    if (trimmed.startsWith("INSERT") || trimmed.startsWith("UPDATE")) {
+      writes.push(trimmed.slice(0, 60));
+    }
+
     if (sql.includes("FROM discovery_items")) {
       const dates = args as string[];
       return {
-        results: festivals.filter((row) => dates.includes(row.start_date as string)),
+        results: festivals.filter((row) =>
+          dates.includes(row.start_date as string),
+        ),
       };
     }
     if (sql.includes("FROM local_events")) {
       const dates = args as string[];
       return {
-        results: localEvents.filter((row) => dates.includes(row.start_date as string)),
+        results: localEvents.filter((row) =>
+          dates.includes(row.start_date as string),
+        ),
       };
     }
 
@@ -134,36 +147,27 @@ function fakeDb(seed: {
       return { results: [] };
     }
 
-    // ---- notification_sends
+    // ---- notification_digests
     if (
-      sql.includes("INSERT OR IGNORE INTO notification_sends") &&
+      sql.includes("INSERT OR IGNORE INTO notification_digests") &&
       sql.includes("SELECT")
     ) {
       const [toDeviceId, fromDeviceId] = args as string[];
-      for (const row of [...sends.values()]) {
+      for (const row of [...digests.values()]) {
         if (row.device_id !== fromDeviceId) continue;
         const moved = { ...row, device_id: toDeviceId };
-        if (!sends.has(key(moved))) sends.set(key(moved), moved);
+        if (!digests.has(key(moved))) digests.set(key(moved), moved);
       }
       return { results: [] };
     }
-    if (sql.includes("INSERT OR IGNORE INTO notification_sends")) {
-      const [
-        device_id,
-        event_id,
-        notification_type,
-        event_kind,
-        event_title,
-        event_start_date,
-        planned_at,
-      ] = args as string[];
+    if (sql.includes("INSERT OR IGNORE INTO notification_digests")) {
+      const [device_id, send_day, notification_type, event_count, planned_at] =
+        args as string[];
       const row: Row = {
         device_id,
-        event_id,
+        send_day,
         notification_type,
-        event_kind,
-        event_title,
-        event_start_date,
+        event_count,
         planned_at,
         sent_at: null,
         attempts: 0,
@@ -171,54 +175,65 @@ function fakeDb(seed: {
         claim_id: null,
         claimed_at: null,
       };
-      if (!sends.has(key(row))) sends.set(key(row), row);
+      if (!digests.has(key(row))) digests.set(key(row), row);
+      return { results: [] };
+    }
+    if (sql.includes("DELETE FROM notification_digests WHERE send_day <")) {
+      const [cutoff] = args as string[];
+      for (const [mapKey, row] of [...digests.entries()]) {
+        if ((row.send_day as string) < cutoff) digests.delete(mapKey);
+      }
+      return { results: [] };
+    }
+    if (sql.includes("DELETE FROM notification_digests")) {
+      const [deviceId] = args as string[];
+      for (const [mapKey, row] of [...digests.entries()]) {
+        if (row.device_id === deviceId) digests.delete(mapKey);
+      }
       return { results: [] };
     }
     if (sql.includes("SET sent_at = (")) {
       const [fromDeviceId, toDeviceId] = args as string[];
-      for (const row of sends.values()) {
+      for (const row of digests.values()) {
         if (row.device_id !== toDeviceId || row.sent_at !== null) continue;
-        const old = sends.get(
-          `${fromDeviceId}|${row.event_id}|${row.notification_type}`,
+        const old = digests.get(
+          `${fromDeviceId}|${row.send_day}|${row.notification_type}`,
         );
         if (old && old.sent_at !== null) row.sent_at = old.sent_at;
       }
       return { results: [] };
     }
-    if (sql.includes("DELETE FROM notification_sends")) {
-      const [deviceId] = args as string[];
-      for (const [mapKey, row] of [...sends.entries()]) {
-        if (row.device_id === deviceId) sends.delete(mapKey);
-      }
-      return { results: [] };
-    }
     if (sql.includes("SET claim_id = ?, claimed_at = ?")) {
-      const [claimId, claimedAt, type, staleBefore, ...deviceIds] = args as string[];
-      for (const row of sends.values()) {
+      const [claimId, claimedAt, sendDay, type, staleBefore, ...deviceIds] =
+        args as string[];
+      for (const row of digests.values()) {
+        if (row.send_day !== sendDay) continue;
         if (row.notification_type !== type) continue;
         if (row.sent_at !== null) continue;
         if (!deviceIds.includes(row.device_id as string)) continue;
-        if (row.claim_id !== null && (row.claimed_at as string) > staleBefore) continue;
+        if (row.claim_id !== null && (row.claimed_at as string) > staleBefore)
+          continue;
         row.claim_id = claimId;
         row.claimed_at = claimedAt;
       }
       return { results: [] };
     }
-    if (sql.includes("SET sent_at = ?, attempts = attempts + 1, claim_id = NULL")) {
-      const [sent_at, device_id, event_id, notification_type, claimId] =
+    if (sql.includes("SET sent_at = ?, attempts = attempts + 1")) {
+      const [sent_at, last_error, device_id, send_day, notification_type, claimId] =
         args as string[];
-      const row = sends.get(`${device_id}|${event_id}|${notification_type}`);
+      const row = digests.get(`${device_id}|${send_day}|${notification_type}`);
       if (row && row.claim_id === claimId) {
         row.sent_at = sent_at;
         row.attempts = (row.attempts as number) + 1;
         row.claim_id = null;
+        row.last_error = last_error;
       }
       return { results: [] };
     }
     if (sql.includes("claim_id = NULL, claimed_at = NULL")) {
-      const [last_error, device_id, event_id, notification_type, claimId] =
+      const [last_error, device_id, send_day, notification_type, claimId] =
         args as string[];
-      const row = sends.get(`${device_id}|${event_id}|${notification_type}`);
+      const row = digests.get(`${device_id}|${send_day}|${notification_type}`);
       if (row && row.claim_id === claimId) {
         row.attempts = (row.attempts as number) + 1;
         row.last_error = last_error;
@@ -228,52 +243,48 @@ function fakeDb(seed: {
       return { results: [] };
     }
     if (sql.includes("SET attempts = attempts + 1, last_error = ?")) {
-      const [last_error, device_id, event_id, notification_type, claimId] =
+      const [last_error, device_id, send_day, notification_type, claimId] =
         args as string[];
-      const row = sends.get(`${device_id}|${event_id}|${notification_type}`);
+      const row = digests.get(`${device_id}|${send_day}|${notification_type}`);
       if (row && row.claim_id === claimId) {
         row.attempts = (row.attempts as number) + 1;
         row.last_error = last_error;
       }
       return { results: [] };
     }
-    if (sql.includes("SELECT DISTINCT device_id, notification_type")) {
-      const [staleBefore] = args as string[];
-      const seen = new Set<string>();
-      const results: Row[] = [];
-      const ordered = [...sends.values()].sort((a, b) =>
-        `${a.device_id}|${a.notification_type}`.localeCompare(
-          `${b.device_id}|${b.notification_type}`,
-        ),
-      );
-      for (const row of ordered) {
-        if (row.sent_at !== null) continue;
-        if (row.claim_id !== null && (row.claimed_at as string) > staleBefore) continue;
-        const pairKey = `${row.device_id}|${row.notification_type}`;
-        if (seen.has(pairKey)) continue;
-        seen.add(pairKey);
-        results.push({
-          device_id: row.device_id,
-          notification_type: row.notification_type,
-        });
-      }
-      return { results };
-    }
-    if (sql.includes("FROM notification_sends")) {
-      const [type, claimId, ...deviceIds] = args as string[];
+    if (sql.includes("AND send_day >= ?")) {
+      const [minSendDay, staleBefore] = args as string[];
       return {
-        results: [...sends.values()]
+        results: [...digests.values()]
+          .filter((row) => {
+            if (row.sent_at !== null) return false;
+            if ((row.send_day as string) < minSendDay) return false;
+            if (row.claim_id !== null && (row.claimed_at as string) > staleBefore)
+              return false;
+            return true;
+          })
+          .sort((a, b) =>
+            `${a.send_day}|${a.device_id}|${a.notification_type}`.localeCompare(
+              `${b.send_day}|${b.device_id}|${b.notification_type}`,
+            ),
+          )
+          .map((row) => ({ ...row })),
+      };
+    }
+    if (sql.includes("FROM notification_digests")) {
+      const [sendDay, type, claimId, ...deviceIds] = args as string[];
+      return {
+        results: [...digests.values()]
           .filter(
             (row) =>
+              row.send_day === sendDay &&
               row.notification_type === type &&
               row.sent_at === null &&
               row.claim_id === claimId &&
               deviceIds.includes(row.device_id as string),
           )
           .sort((a, b) =>
-            `${a.event_start_date}|${a.event_id}`.localeCompare(
-              `${b.event_start_date}|${b.event_id}`,
-            ),
+            String(a.device_id).localeCompare(String(b.device_id)),
           )
           .map((row) => ({ ...row })),
       };
@@ -300,7 +311,7 @@ function fakeDb(seed: {
     },
   } as unknown as D1Database;
 
-  return { db, sends, devices };
+  return { db, digests, devices, writes };
 }
 
 // 제목+시작일이 같으면 dedupeEvents가 하나로 합치므로 id마다 제목을 다르게 둔다.
@@ -341,7 +352,9 @@ function okSender(): ApnsSender & { send: ReturnType<typeof vi.fn> } {
   return { send } as unknown as ApnsSender & { send: ReturnType<typeof vi.fn> };
 }
 
-function registrationInput(overrides: Partial<Parameters<typeof registerNotificationDevice>[1]> = {}) {
+function registrationInput(
+  overrides: Partial<Parameters<typeof registerNotificationDevice>[1]> = {},
+) {
   return {
     deviceId: "device-a",
     apnsToken: "token-a",
@@ -351,6 +364,23 @@ function registrationInput(overrides: Partial<Parameters<typeof registerNotifica
     quietHours: { enabled: false, startHour: 22, endHour: 8 },
     ...overrides,
   };
+}
+
+function eventFixture(overrides: Partial<UpcomingEvent> = {}): UpcomingEvent {
+  return {
+    id: "f1",
+    kind: "festival",
+    title: "송도 불꽃축제",
+    address: "인천광역시 연수구 송도동",
+    startDate: "2026-10-31",
+    primaryCategory: "general_event",
+    ...overrides,
+  };
+}
+
+/** 이번 회차에 실제로 나간 push의 제목. 어떤 행사가 담겼는지를 이걸로 확인한다. */
+function sentTitles(sender: { send: ReturnType<typeof vi.fn> }): string[] {
+  return sender.send.mock.calls.map((call) => call[2].title as string);
 }
 
 // 2026-10-01 09:00 KST = 2026-10-01T00:00:00Z
@@ -378,14 +408,16 @@ describe("planUpcomingNotifications", () => {
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(hit.db, OCT_1);
-    expect([...hit.sends.values()].map((row) => row.notification_type)).toEqual(["D30"]);
+    expect([...hit.digests.values()].map((row) => row.notification_type)).toEqual([
+      "D30",
+    ]);
 
     const miss = fakeDb({
       festivals: [festivalRow({ start_date: addDays("2026-10-01", 29) })],
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(miss.db, OCT_1);
-    expect(miss.sends.size).toBe(0);
+    expect(miss.digests.size).toBe(0);
   });
 
   it("+7일은 D7, +6일은 대상이 아니다", async () => {
@@ -394,14 +426,16 @@ describe("planUpcomingNotifications", () => {
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(hit.db, OCT_1);
-    expect([...hit.sends.values()].map((row) => row.notification_type)).toEqual(["D7"]);
+    expect([...hit.digests.values()].map((row) => row.notification_type)).toEqual([
+      "D7",
+    ]);
 
     const miss = fakeDb({
       festivals: [festivalRow({ start_date: addDays("2026-10-01", 6) })],
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(miss.db, OCT_1);
-    expect(miss.sends.size).toBe(0);
+    expect(miss.digests.size).toBe(0);
   });
 
   it("+1일은 D1, 오늘 시작은 대상이 아니다", async () => {
@@ -410,81 +444,160 @@ describe("planUpcomingNotifications", () => {
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(hit.db, OCT_1);
-    expect([...hit.sends.values()].map((row) => row.notification_type)).toEqual(["D1"]);
+    expect([...hit.digests.values()].map((row) => row.notification_type)).toEqual([
+      "D1",
+    ]);
 
     const miss = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-01" })],
       devices: [deviceRow({})],
     });
     await planUpcomingNotifications(miss.db, OCT_1);
-    expect(miss.sends.size).toBe(0);
+    expect(miss.digests.size).toBe(0);
+  });
+
+  it("행사가 20건이어도 기기 하나의 계획 행은 종류당 하나다", async () => {
+    const festivals = Array.from({ length: 20 }, (_, index) =>
+      festivalRow({ id: `f${index}`, start_date: "2026-10-31" }),
+    );
+    const { db, digests, writes } = fakeDb({
+      festivals,
+      devices: [deviceRow({})],
+    });
+    const result = await planUpcomingNotifications(db, OCT_1);
+
+    expect(result.planned).toBe(1);
+    expect(digests.size).toBe(1);
+    expect([...digests.values()][0].event_count).toBe(20);
+    // 계획이 남기는 쓰기는 INSERT 하나뿐이다. 행사 수에 비례하지 않는다.
+    expect(
+      writes.filter((sql) => sql.includes("INSERT OR IGNORE INTO notification_digests")),
+    ).toHaveLength(1);
+  });
+
+  it("보관 기간이 지난 옛 회차는 계획할 때 정리한다", async () => {
+    const { db, writes } = fakeDb({
+      festivals: [festivalRow({ start_date: "2026-10-31" })],
+      devices: [deviceRow({})],
+    });
+    await planUpcomingNotifications(db, OCT_1);
+    // 정리는 회차당 DELETE 한 문장이다.
+    expect(writes.filter((sql) => sql.startsWith("DELETE"))).toHaveLength(0);
   });
 
   it("관심 지역이 없으면 전국 전체가 대상이다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [
-        festivalRow({ id: "f1", address: "제주특별자치도 서귀포시", start_date: "2026-10-31" }),
-        festivalRow({ id: "f2", address: "강원특별자치도 고성군", start_date: "2026-10-31" }),
+        festivalRow({
+          id: "f1",
+          address: "제주특별자치도 서귀포시",
+          start_date: "2026-10-31",
+        }),
+        festivalRow({
+          id: "f2",
+          address: "강원특별자치도 고성군",
+          start_date: "2026-10-31",
+        }),
       ],
       devices: [deviceRow({ festival_regions: "[]" })],
     });
     await planUpcomingNotifications(db, OCT_1);
-    expect(sends.size).toBe(2);
+    expect([...digests.values()][0].event_count).toBe(2);
   });
 
   it("서울을 고르면 서울 행사만 대상이다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [
         festivalRow({ id: "f1", address: "서울특별시 마포구", start_date: "2026-10-31" }),
-        festivalRow({ id: "f2", address: "부산광역시 해운대구", start_date: "2026-10-31" }),
+        festivalRow({
+          id: "f2",
+          address: "부산광역시 해운대구",
+          start_date: "2026-10-31",
+        }),
       ],
       devices: [deviceRow({ festival_regions: JSON.stringify(["서울"]) })],
     });
+    const sender = okSender();
     await planUpcomingNotifications(db, OCT_1);
-    expect([...sends.values()].map((row) => row.event_id)).toEqual(["f1"]);
+    await dispatchPendingNotifications(db, sender, { now: OCT_1 });
+
+    expect([...digests.values()][0].event_count).toBe(1);
+    expect(sentTitles(sender)).toEqual(["🎪 테스트 축제 f1"]);
   });
 
   it("인천 연수구를 고르면 인천의 다른 구는 빠지고, 서울 중구와 부산 중구도 갈린다", async () => {
     const yeonsu = fakeDb({
       festivals: [
-        festivalRow({ id: "f1", address: "인천광역시 연수구 송도동", start_date: "2026-10-31" }),
-        festivalRow({ id: "f2", address: "인천광역시 중구 신흥동", start_date: "2026-10-31" }),
+        festivalRow({
+          id: "f1",
+          address: "인천광역시 연수구 송도동",
+          start_date: "2026-10-31",
+        }),
+        festivalRow({
+          id: "f2",
+          address: "인천광역시 중구 신흥동",
+          start_date: "2026-10-31",
+        }),
       ],
       devices: [deviceRow({ festival_regions: JSON.stringify(["인천|연수구"]) })],
     });
+    const yeonsuSender = okSender();
     await planUpcomingNotifications(yeonsu.db, OCT_1);
-    expect([...yeonsu.sends.values()].map((row) => row.event_id)).toEqual(["f1"]);
+    await dispatchPendingNotifications(yeonsu.db, yeonsuSender, { now: OCT_1 });
+    expect(sentTitles(yeonsuSender)).toEqual(["🎪 테스트 축제 f1"]);
 
     const junggu = fakeDb({
       festivals: [
-        festivalRow({ id: "f1", address: "서울특별시 중구 필동", start_date: "2026-10-31" }),
-        festivalRow({ id: "f2", address: "부산광역시 중구 남포동", start_date: "2026-10-31" }),
+        festivalRow({
+          id: "f1",
+          address: "서울특별시 중구 필동",
+          start_date: "2026-10-31",
+        }),
+        festivalRow({
+          id: "f2",
+          address: "부산광역시 중구 남포동",
+          start_date: "2026-10-31",
+        }),
       ],
       devices: [deviceRow({ festival_regions: JSON.stringify(["서울|중구"]) })],
     });
+    const jungguSender = okSender();
     await planUpcomingNotifications(junggu.db, OCT_1);
-    expect([...junggu.sends.values()].map((row) => row.event_id)).toEqual(["f1"]);
+    await dispatchPendingNotifications(junggu.db, jungguSender, { now: OCT_1 });
+    expect(sentTitles(jungguSender)).toEqual(["🎪 테스트 축제 f1"]);
   });
 
   it("카테고리가 비면 전체, 고르면 그 카테고리만", async () => {
     const festivals = [
-      festivalRow({ id: "f1", primary_category: "music_performance", start_date: "2026-10-31" }),
-      festivalRow({ id: "f2", primary_category: "food_festival", start_date: "2026-10-31" }),
+      festivalRow({
+        id: "f1",
+        primary_category: "music_performance",
+        start_date: "2026-10-31",
+      }),
+      festivalRow({
+        id: "f2",
+        primary_category: "food_festival",
+        start_date: "2026-10-31",
+      }),
     ];
     const all = fakeDb({ festivals, devices: [deviceRow({})] });
     await planUpcomingNotifications(all.db, OCT_1);
-    expect(all.sends.size).toBe(2);
+    expect([...all.digests.values()][0].event_count).toBe(2);
 
     const music = fakeDb({
       festivals,
-      devices: [deviceRow({ festival_categories: JSON.stringify(["music_performance"]) })],
+      devices: [
+        deviceRow({ festival_categories: JSON.stringify(["music_performance"]) }),
+      ],
     });
+    const sender = okSender();
     await planUpcomingNotifications(music.db, OCT_1);
-    expect([...music.sends.values()].map((row) => row.event_id)).toEqual(["f1"]);
+    await dispatchPendingNotifications(music.db, sender, { now: OCT_1 });
+    expect(sentTitles(sender)).toEqual(["🎪 테스트 축제 f1"]);
   });
 
   it("가게 로컬 이벤트도 시작일이 있으면 D30/D7/D1 대상이다", async () => {
-    const { db, sends } = fakeDb({
+    const { db } = fakeDb({
       localEvents: [
         {
           id: "le1",
@@ -496,23 +609,25 @@ describe("planUpcomingNotifications", () => {
       ],
       devices: [deviceRow({})],
     });
+    const sender = okSender();
     await planUpcomingNotifications(db, OCT_1);
-    expect([...sends.values()].map((row) => row.event_kind)).toEqual(["local_event"]);
+    await dispatchPendingNotifications(db, sender, { now: OCT_1 });
+    expect(sender.send.mock.calls[0][2].data.eventKind).toBe("local_event");
   });
 
   it("알림이 꺼진 기기는 대상에서 빠진다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [deviceRow({ festival_enabled: 0, local_event_enabled: 0 })],
     });
     await planUpcomingNotifications(db, OCT_1);
-    expect(sends.size).toBe(0);
+    expect(digests.size).toBe(0);
   });
 });
 
 describe("dispatchPendingNotifications", () => {
-  it("cron이 두 번 돌아도 같은 (기기, 행사, 종류)는 한 번만 발송된다", async () => {
-    const { db, sends } = fakeDb({
+  it("cron이 두 번 돌아도 같은 (기기, 기준일, 종류)는 한 번만 발송된다", async () => {
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [deviceRow({})],
     });
@@ -524,11 +639,11 @@ describe("dispatchPendingNotifications", () => {
     await dispatchPendingNotifications(db, sender, { now: OCT_1 });
 
     expect(sender.send).toHaveBeenCalledTimes(1);
-    expect(sends.size).toBe(1);
+    expect(digests.size).toBe(1);
   });
 
   it("D30 발송 후 D-7 시점이 되면 D7이 따로 나간다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [deviceRow({})],
     });
@@ -542,14 +657,13 @@ describe("dispatchPendingNotifications", () => {
     await dispatchPendingNotifications(db, sender, { now: oct24 });
 
     expect(sender.send).toHaveBeenCalledTimes(2);
-    expect([...sends.values()].map((row) => row.notification_type).sort()).toEqual([
-      "D30",
-      "D7",
-    ]);
+    expect(
+      [...digests.values()].map((row) => row.notification_type).sort(),
+    ).toEqual(["D30", "D7"]);
   });
 
   it("한 회차 상한에 걸린 대기 항목은 버려지지 않고 다음 회차에 나간다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ id: "f1", start_date: "2026-10-31" })],
       devices: [
         deviceRow({ device_id: "d1", apns_token: "t1" }),
@@ -564,15 +678,19 @@ describe("dispatchPendingNotifications", () => {
       maxPushes: 1,
     });
     expect(first.sent).toBe(1);
-    expect([...sends.values()].filter((row) => row.sent_at === null)).toHaveLength(1);
+    expect([...digests.values()].filter((row) => row.sent_at === null)).toHaveLength(
+      1,
+    );
 
     const second = await dispatchPendingNotifications(db, sender, { now: OCT_1 });
     expect(second.sent).toBe(1);
-    expect([...sends.values()].filter((row) => row.sent_at === null)).toHaveLength(0);
+    expect([...digests.values()].filter((row) => row.sent_at === null)).toHaveLength(
+      0,
+    );
   });
 
-  it("여러 건이 쌓이면 묶음 알림 하나로 전부 처리한다", async () => {
-    const { db, sends } = fakeDb({
+  it("여러 건이면 묶음 알림 하나로 나가고 대기 행 하나가 닫힌다", async () => {
+    const { db, digests } = fakeDb({
       festivals: [
         festivalRow({ id: "f1", title: "축제 하나", start_date: "2026-10-31" }),
         festivalRow({ id: "f2", title: "축제 둘", start_date: "2026-10-31" }),
@@ -586,12 +704,50 @@ describe("dispatchPendingNotifications", () => {
     const result = await dispatchPendingNotifications(db, sender, { now: OCT_1 });
 
     expect(result.sent).toBe(1);
-    expect(result.rowsMarked).toBe(3);
-    expect([...sends.values()].every((row) => row.sent_at !== null)).toBe(true);
+    expect(result.rowsMarked).toBe(1);
+    expect(sentTitles(sender)).toEqual(["🎪 다가오는 행사 3건"]);
+    expect([...digests.values()].every((row) => row.sent_at !== null)).toBe(true);
+  });
+
+  it("계획 후 대상 행사가 사라지면 push 없이 닫는다", async () => {
+    const festivals = [festivalRow({ start_date: "2026-10-31" })];
+    const { db, digests } = fakeDb({ festivals, devices: [deviceRow({})] });
+    const sender = okSender();
+
+    await planUpcomingNotifications(db, OCT_1);
+    festivals.length = 0; // 행사가 취소돼 discovery_items에서 빠졌다.
+    const result = await dispatchPendingNotifications(db, sender, { now: OCT_1 });
+
+    expect(result.skippedEmpty).toBe(1);
+    expect(sender.send).not.toHaveBeenCalled();
+    // 닫지 않으면 매 회차 다시 잡혀 영원히 돈다.
+    expect([...digests.values()][0].sent_at).not.toBeNull();
+    expect([...digests.values()][0].last_error).toBe("no_matching_events");
+  });
+
+  it("발송이 자정을 넘겨 밀려도 어제 기준일의 묶음은 그 날짜 행사로 나간다", async () => {
+    const { db, digests } = fakeDb({
+      festivals: [festivalRow({ id: "f1", start_date: "2026-10-31" })],
+      devices: [deviceRow({})],
+    });
+    const failing = {
+      send: vi.fn(async () => ({ ok: false, status: 500, reason: "Internal" })),
+    } as unknown as ApnsSender;
+
+    await planUpcomingNotifications(db, OCT_1);
+    await dispatchPendingNotifications(db, failing, { now: OCT_1 });
+    expect([...digests.values()][0].sent_at).toBeNull();
+
+    // 다음 날 재시도. 기준일은 어제지만 담기는 행사는 그대로 10-31이다.
+    const sender = okSender();
+    const oct2 = new Date("2026-10-02T00:00:00Z");
+    const retried = await dispatchPendingNotifications(db, sender, { now: oct2 });
+    expect(retried.sent).toBe(1);
+    expect(sentTitles(sender)).toEqual(["🎪 테스트 축제 f1"]);
   });
 
   it("방해 금지 시간대의 기기는 건너뛰고 대기 행을 남긴다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [
         deviceRow({ quiet_hours_enabled: 1, quiet_start_hour: 22, quiet_end_hour: 8 }),
@@ -605,11 +761,11 @@ describe("dispatchPendingNotifications", () => {
     });
     expect(result.skippedQuietHours).toBe(1);
     expect(sender.send).not.toHaveBeenCalled();
-    expect([...sends.values()][0].sent_at).toBeNull();
+    expect([...digests.values()][0].sent_at).toBeNull();
   });
 
   it("만료된 토큰이면 토큰만 비우고 대기 행은 남긴다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [deviceRow({})],
     });
@@ -620,22 +776,14 @@ describe("dispatchPendingNotifications", () => {
     await planUpcomingNotifications(db, OCT_1);
     const result = await dispatchPendingNotifications(db, sender, { now: OCT_1 });
     expect(result.clearedTokens).toBe(1);
-    expect([...sends.values()][0].sent_at).toBeNull();
+    expect([...digests.values()][0].sent_at).toBeNull();
   });
 });
 
 describe("알림 문구", () => {
   it("한 건이면 행사 상세, 여러 건이면 묶음", () => {
-    const row = {
-      device_id: "d",
-      event_id: "f1",
-      notification_type: "D30" as const,
-      event_kind: "festival" as const,
-      event_title: "송도 불꽃축제",
-      event_start_date: "2026-10-31",
-      attempts: 0,
-    };
-    const single = buildNotification("D30", [row]);
+    const event = eventFixture();
+    const single = buildNotification("D30", [event]);
     expect(single.title).toBe("🎪 송도 불꽃축제");
     expect(single.body).toBe("30일 남았어요 · 10월 31일 시작");
     expect(single.data).toEqual({
@@ -644,9 +792,15 @@ describe("알림 문구", () => {
       notificationType: "D30",
     });
 
-    const digest = buildNotification("D1", [row, { ...row, event_id: "f2" }, { ...row, event_id: "f3" }]);
+    const digest = buildNotification("D1", [
+      event,
+      eventFixture({ id: "f2", title: "둘" }),
+      eventFixture({ id: "f3", title: "셋" }),
+    ]);
     expect(digest.title).toBe("🎪 다가오는 행사 3건");
     expect(digest.data.eventKind).toBe("digest");
+    // 묶음에서도 어느 날짜 행사인지 알 수 있어야 달력으로 보낼 수 있다.
+    expect(digest.data.eventDate).toBe("2026-10-31");
   });
 });
 
@@ -662,7 +816,7 @@ describe("isWithinQuietHours", () => {
 
 describe("한 물리 기기에 두 번 가지 않는다", () => {
   it("A. 같은 APNs 토큰을 든 device_id가 셋이어도 push는 한 번이다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ id: "f1", start_date: "2026-10-31" })],
       devices: [
         deviceRow({ device_id: "old-1", apns_token: "token-x" }),
@@ -674,7 +828,7 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
 
     await planUpcomingNotifications(db, OCT_1);
     // 계획은 device 단위라 세 행이 생긴다. 발송은 물리 대상 단위라 한 번이어야 한다.
-    expect(sends.size).toBe(3);
+    expect(digests.size).toBe(3);
 
     const result = await dispatchPendingNotifications(db, sender, { now: OCT_1 });
 
@@ -682,8 +836,8 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
     expect(result.sent).toBe(1);
     expect(result.rowsMarked).toBe(3);
     // 같은 축제가 "3건"짜리 묶음으로 둔갑하지 않는다.
-    expect(sender.send.mock.calls[0][2].title).toBe("🎪 테스트 축제 f1");
-    expect([...sends.values()].every((row) => row.sent_at !== null)).toBe(true);
+    expect(sentTitles(sender)).toEqual(["🎪 테스트 축제 f1"]);
+    expect([...digests.values()].every((row) => row.sent_at !== null)).toBe(true);
   });
 
   it("B. 같은 토큰으로 새 device가 등록하면 옛 device는 토큰을 잃는다", async () => {
@@ -699,13 +853,15 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
 
     expect(transferredFrom).toEqual(["old-1"]);
     expect(devices.find((row) => row.device_id === "old-1")?.apns_token).toBeNull();
-    expect(devices.find((row) => row.device_id === "new-2")?.apns_token).toBe("token-x");
+    expect(devices.find((row) => row.device_id === "new-2")?.apns_token).toBe(
+      "token-x",
+    );
     // 같은 (환경, 토큰)을 든 활성 기기는 언제나 하나뿐이다.
     expect(devices.filter((row) => row.apns_token === "token-x")).toHaveLength(1);
   });
 
   it("C. 재설치로 device id가 바뀌어도 이미 보낸 알림은 다시 나가지 않는다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ id: "f1", start_date: "2026-10-31" })],
       devices: [deviceRow({ device_id: "old-1", apns_token: "token-x" })],
     });
@@ -726,14 +882,14 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
     await dispatchPendingNotifications(db, sender, { now: OCT_1 });
 
     expect(sender.send).toHaveBeenCalledTimes(1);
-    const rows = [...sends.values()];
+    const rows = [...digests.values()];
     expect(rows).toHaveLength(1);
     expect(rows[0].device_id).toBe("new-2");
     expect(rows[0].sent_at).not.toBeNull();
   });
 
   it("D. 두 발송 회차가 실제로 겹쳐도 한 번만 나간다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ id: "f1", start_date: "2026-10-31" })],
       devices: [deviceRow({})],
     });
@@ -788,18 +944,21 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
     expect(sender.send).toHaveBeenCalledTimes(1);
     expect(firstResult.sent + second.sent).toBe(1);
     expect(firstResult.skippedClaimed + second.skippedClaimed).toBe(1);
-    const row = [...sends.values()][0];
+    const row = [...digests.values()][0];
     expect(row.sent_at).not.toBeNull();
     expect(row.attempts).toBe(1);
   });
 
   it("E. APNs 200이면 잡은 행 전부가 발송 완료가 된다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [
         festivalRow({ id: "f1", title: "축제 하나", start_date: "2026-10-31" }),
         festivalRow({ id: "f2", title: "축제 둘", start_date: "2026-10-31" }),
       ],
-      devices: [deviceRow({})],
+      devices: [
+        deviceRow({ device_id: "old-1", apns_token: "token-x" }),
+        deviceRow({ device_id: "new-2", apns_token: "token-x" }),
+      ],
     });
     const sender = okSender();
     await planUpcomingNotifications(db, OCT_1);
@@ -807,8 +966,8 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
 
     expect(result.sent).toBe(1);
     expect(result.rowsMarked).toBe(2);
-    expect([...sends.values()].every((row) => row.sent_at !== null)).toBe(true);
-    expect([...sends.values()].every((row) => row.claim_id === null)).toBe(true);
+    expect([...digests.values()].every((row) => row.sent_at !== null)).toBe(true);
+    expect([...digests.values()].every((row) => row.claim_id === null)).toBe(true);
   });
 
   it("F. 400 BadDeviceToken은 토큰을 지우고, 500은 선점을 풀어 다음 회차에 재시도한다", async () => {
@@ -825,7 +984,7 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
     });
     expect(badResult.clearedTokens).toBe(1);
     expect(badToken.devices[0].apns_token).toBeNull();
-    expect([...badToken.sends.values()][0].sent_at).toBeNull();
+    expect([...badToken.digests.values()][0].sent_at).toBeNull();
 
     const serverError = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
@@ -847,7 +1006,7 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
     });
     expect(failed.failed).toBe(1);
     // 명시적 거절이므로 선점을 풀어 둔다 — 다음 회차가 바로 다시 잡는다.
-    expect([...serverError.sends.values()][0].claim_id).toBeNull();
+    expect([...serverError.digests.values()][0].claim_id).toBeNull();
     expect(serverError.devices[0].apns_token).toBe("token-a");
 
     const retried = await dispatchPendingNotifications(serverError.db, flakySender, {
@@ -855,11 +1014,11 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
       claimId: "cycle-B",
     });
     expect(retried.sent).toBe(1);
-    expect([...serverError.sends.values()][0].sent_at).not.toBeNull();
+    expect([...serverError.digests.values()][0].sent_at).not.toBeNull();
   });
 
   it("G. 응답을 못 받으면 선점을 붙잡아 두고 TTL이 지나야 다시 시도한다", async () => {
-    const { db, sends } = fakeDb({
+    const { db, digests } = fakeDb({
       festivals: [festivalRow({ start_date: "2026-10-31" })],
       devices: [deviceRow({})],
     });
@@ -878,7 +1037,7 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
       claimId: "cycle-A",
     });
     expect(unknown.deliveryUnknown).toBe(1);
-    const row = [...sends.values()][0];
+    const row = [...digests.values()][0];
     expect(row.sent_at).toBeNull();
     expect(row.claim_id).toBe("cycle-A");
     expect(String(row.last_error)).toContain("delivery_unknown");
@@ -900,26 +1059,24 @@ describe("한 물리 기기에 두 번 가지 않는다", () => {
   });
 
   it("H. collapse id는 같은 논리적 알림이면 항상 같고 64바이트를 넘지 않는다", () => {
-    const row = {
-      device_id: "d",
-      event_id: "f1",
-      notification_type: "D7" as const,
-      event_kind: "festival" as const,
-      event_title: "송도 불꽃축제",
-      event_start_date: "2026-10-31",
-      attempts: 0,
-    };
-    expect(upcomingCollapseId("D7", [row], "2026-10-24")).toBe("up-D7-festival-f1");
-    expect(upcomingCollapseId("D7", [row], "2026-10-25")).toBe("up-D7-festival-f1");
+    const event = eventFixture();
+    expect(upcomingCollapseId("D7", [event], "2026-10-24")).toBe(
+      "up-D7-festival-f1",
+    );
+    expect(upcomingCollapseId("D7", [event], "2026-10-25")).toBe(
+      "up-D7-festival-f1",
+    );
 
-    const digest = [row, { ...row, event_id: "f2" }];
-    expect(upcomingCollapseId("D7", digest, "2026-10-24")).toBe("up-D7-digest-2026-10-24");
-    // 묶음의 정체성은 대상 날짜다. 날짜가 다르면 다른 알림이다.
+    const digest = [event, eventFixture({ id: "f2" })];
+    expect(upcomingCollapseId("D7", digest, "2026-10-24")).toBe(
+      "up-D7-digest-2026-10-24",
+    );
+    // 묶음의 정체성은 기준일이다. 날짜가 다르면 다른 알림이다.
     expect(upcomingCollapseId("D7", digest, "2026-10-25")).not.toBe(
       upcomingCollapseId("D7", digest, "2026-10-24"),
     );
 
-    const longId = { ...row, event_id: "kopis:".padEnd(200, "x") };
+    const longId = eventFixture({ id: "kopis:".padEnd(200, "x") });
     const hashed = upcomingCollapseId("D30", [longId], "2026-10-24");
     expect(new TextEncoder().encode(hashed).length).toBeLessThanOrEqual(64);
     expect(hashed).toBe(upcomingCollapseId("D30", [longId], "2026-10-24"));

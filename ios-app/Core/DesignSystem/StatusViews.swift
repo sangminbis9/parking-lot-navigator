@@ -83,9 +83,11 @@ struct FailureStateView: View {
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
                 .multilineTextAlignment(.center)
+                .accessibilityIdentifier("failure-message")
             Button("다시 시도", action: retry)
                 .buttonStyle(.borderedProminent)
                 .tint(FestivalDesign.teal)
+                .accessibilityIdentifier("failure-retry")
         }
         .padding()
     }

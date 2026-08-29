@@ -46,6 +46,18 @@ import { runTagging } from "./llmTagging.js";
 import { createMerchantApp } from "./merchant/routes.js";
 import { createLegalApp } from "./legal/routes.js";
 import {
+  createEventReport,
+  eventReportSchema,
+  patchEventReportStatus,
+  queryEventReports,
+} from "./eventReports.js";
+import {
+  analyticsBatchSchema,
+  pruneOldAnalytics,
+  queryAnalyticsDaily,
+  recordAnalytics,
+} from "./analytics.js";
+import {
   queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
   syncRealtimeParkingCache,
@@ -677,6 +689,68 @@ app.post("/api/local-events/report", async (c) => {
   return c.json({ item, generatedAt: new Date().toISOString() }, 202);
 });
 
+// 행사 정보 오류 신고. 위 /api/local-events/report는 "새 이벤트를 제보"하는
+// 통로라 의미가 다르다 - 이쪽은 이미 실린 행사의 내용이 틀렸다는 신고다.
+app.post("/api/event-reports", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const item = await createEventReport(
+    c.env.DB,
+    eventReportSchema.parse(await c.req.json()),
+  );
+  return c.json({ item, generatedAt: new Date().toISOString() }, 202);
+});
+
+app.get("/api/admin/event-reports", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const params = queryObject(c.req.raw.url);
+  const items = await queryEventReports(c.env.DB, {
+    status: typeof params.status === "string" ? params.status : undefined,
+    limit: typeof params.limit === "string" ? Number(params.limit) : undefined,
+  });
+  return c.json({ items, generatedAt: new Date().toISOString() });
+});
+
+app.patch("/api/admin/event-reports/:id", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const body = z
+    .object({ status: z.enum(["pending", "accepted", "rejected"]) })
+    .parse(await c.req.json());
+  const updated = await patchEventReportStatus(
+    c.env.DB,
+    c.req.param("id"),
+    body.status,
+  );
+  if (!updated) return c.json({ error: "not_found" }, 404);
+  return c.json({ ok: true, generatedAt: new Date().toISOString() });
+});
+
+// 익명 집계. 앱은 응답을 기다리지 않으므로 실패해도 조용히 넘어간다.
+app.post("/api/analytics", async (c) => {
+  if (!c.env.DB) return c.json({ ok: true, accepted: 0 });
+  const accepted = await recordAnalytics(
+    c.env.DB,
+    analyticsBatchSchema.parse(await c.req.json()),
+  );
+  return c.json({ ok: true, accepted });
+});
+
+app.get("/api/admin/analytics", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const params = queryObject(c.req.raw.url);
+  const days = typeof params.days === "string" ? Number(params.days) : 14;
+  const rows = await queryAnalyticsDaily(
+    c.env.DB,
+    Number.isFinite(days) ? days : 14,
+  );
+  return c.json({ items: rows, generatedAt: new Date().toISOString() });
+});
+
 // 수동 등록은 가게 이름만 주는 경우가 대부분이다. 좌표가 없으면 lat/lng이 0으로
 // 저장돼 지도에서 영영 안 보이므로, 여기서 Kakao Local로 한 번 찾아 채운다.
 // 끝내 못 찾으면 0,0으로 묻지 말고 422로 돌려보내 등록자가 좌표를 직접 주게 한다.
@@ -1259,6 +1333,15 @@ export default {
         ctx.waitUntil(
           pruneOldSyncRuns(env.DB).catch((error) => {
             console.error("pruneOldSyncRuns failed", error);
+            return 0;
+          }),
+        );
+      }
+      // analytics_daily도 같은 하루 1회 슬롯에서 보관 기간(180일)만 남긴다.
+      if (scheduledAt.getUTCHours() === 6 && env.DB) {
+        ctx.waitUntil(
+          pruneOldAnalytics(env.DB).catch((error) => {
+            console.error("pruneOldAnalytics failed", error);
             return 0;
           }),
         );

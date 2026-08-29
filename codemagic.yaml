@@ -64,8 +64,24 @@ workflows:
             APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
             INFOPLIST_OUTPUT_FORMAT=XML \
             build
+      - name: UI 테스트
+        script: |
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; ids=[x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']]; print(ids[0] if ids else '')")
+          if [ -z "$DEVICE_ID" ]; then
+            echo "사용 가능한 iPhone 시뮬레이터가 없어 UI 테스트를 건너뜁니다."
+            exit 0
+          fi
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "id=$DEVICE_ID" \
+            CODE_SIGNING_ALLOWED=NO \
+            APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
+            INFOPLIST_OUTPUT_FORMAT=XML \
+            test
     artifacts:
       - ~/Library/Developer/Xcode/DerivedData/**/Logs/Build/*.xcactivitylog
+      - ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
 
   ios-testflight:
     name: iOS TestFlight 업로드

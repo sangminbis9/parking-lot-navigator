@@ -8,7 +8,10 @@ struct AppConfiguration {
 
     static var current: AppConfiguration {
         let info = Bundle.main.infoDictionary ?? [:]
-        let apiBaseString = (info["API_BASE_URL"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // UI 테스트에서 네트워크 실패 화면을 재현할 때만 쓰는 대체 주소.
+        let overrideBase = ProcessInfo.processInfo.environment["UITEST_API_BASE_URL"]
+        let apiBaseString = (overrideBase ?? (info["API_BASE_URL"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let apiBase = URL(string: normalizedAPIBaseURLString(apiBaseString)).flatMap { url -> URL? in
             guard url.scheme == "https", url.host != nil else { return nil }
             return url

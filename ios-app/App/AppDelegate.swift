@@ -3,6 +3,15 @@ import UserNotifications
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
+    /// 서버가 보내는 `eventDate`는 KST 기준 "yyyy-MM-dd"다.
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -54,12 +63,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // APNs payload 4KB 한도에 축제 JSON 전체가 들어가지 않고, 담기더라도 발송 시점의
         // 낡은 사본이 열리기 때문이다.
         if let kind = userInfo["eventKind"] as? String, let id = userInfo["eventId"] as? String {
+            AnalyticsService.shared.track(.notificationOpen, label: kind)
             DispatchQueue.main.async {
                 switch kind {
                 case "local_event": DeepLinkRouter.shared.pendingLocalEventId = id
                 case "festival": DeepLinkRouter.shared.pendingFestivalId = id
-                default: break   // digest 알림은 앱만 연다.
+                default: break
                 }
+            }
+            completionHandler()
+            return
+        }
+        // 묶음 알림은 행사 하나를 가리키지 않으므로 그 날짜의 달력으로 보낸다.
+        // 무엇이 왔는지 확인할 곳이 없으면 알림을 열 이유도 없다.
+        if userInfo["eventKind"] as? String == "digest" {
+            let day = (userInfo["eventDate"] as? String).flatMap(Self.dayFormatter.date(from:))
+            DispatchQueue.main.async {
+                DeepLinkRouter.shared.pendingCalendarDay = day
+                DeepLinkRouter.shared.pendingCalendarAt = Date()
             }
             completionHandler()
             return

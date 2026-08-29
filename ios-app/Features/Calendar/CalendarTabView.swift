@@ -77,12 +77,22 @@ struct CalendarTabView: View {
         }
         .background(FestivalDesign.background)
         .task {
+            AnalyticsService.shared.track(.calendarOpen)
             locationProvider.request()
             await reload()
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
             await performanceViewModel.load(coordinate: coord)
             await storeEventViewModel.load(coordinate: coord)
             await reminderService.refreshScheduled()
+        }
+        .onAppear {
+            // 묶음 푸시로 들어왔으면 그 날짜를 펴 준다. 탭이 이제 막 만들어졌을 수도 있어
+            // published 신호가 아니라 남아 있는 값을 읽어 간다.
+            if let day = DeepLinkRouter.shared.pendingCalendarDay {
+                DeepLinkRouter.shared.pendingCalendarDay = nil
+                monthAnchor = day
+                selectedDay = calendar.startOfDay(for: day)
+            }
         }
         .onChange(of: filterModel.filter) { _ in
             Task { await viewModel.reapply(filter: filterModel.filter) }

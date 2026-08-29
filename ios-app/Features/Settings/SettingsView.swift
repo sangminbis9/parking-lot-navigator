@@ -12,7 +12,10 @@ struct SettingsView: View {
                 notificationSettingsCard
                 merchantCard
                 dataSourceCard
+                infoCard
+                #if DEBUG
                 developerSectionCard
+                #endif
             }
             .padding(16)
         }
@@ -22,6 +25,26 @@ struct SettingsView: View {
 
     private var merchantURL: URL {
         AppConfiguration.current.apiBaseURL.appendingPathComponent("merchant")
+    }
+
+    private var privacyPolicyURL: URL {
+        AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/privacy")
+    }
+
+    private var termsURL: URL {
+        AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/terms")
+    }
+
+    // 개인정보 처리방침에 이미 공개된 주소다. 여기서 새로 만들지 않는다.
+    private var supportMailURL: URL? {
+        URL(string: "mailto:privacy@eventda.app")
+    }
+
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "-"
+        let build = info?["CFBundleVersion"] as? String ?? "-"
+        return "\(version) (\(build))"
     }
 
     private var themeSettingsCard: some View {
@@ -129,6 +152,9 @@ struct SettingsView: View {
                 .foregroundStyle(FestivalDesign.onAccent)
                 .clipShape(FestivalDesign.controlShape)
             }
+            .simultaneousGesture(TapGesture().onEnded {
+                AnalyticsService.shared.track(.merchantRegisterTap)
+            })
         }
         .padding(14)
         .festivalCard()
@@ -136,19 +162,69 @@ struct SettingsView: View {
 
     private var dataSourceCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("데이터 출처")
+            Text("데이터 안내")
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
-            Text("Kakao Local, 서울 열린데이터광장, data.go.kr provider를 백엔드에서 통합합니다.")
+            Text("행사 정보는 공공기관 및 공식 제공처 데이터를 기반으로 제공됩니다. 현장 사정이나 제공처 갱신 시점에 따라 실제 정보와 차이가 있을 수 있습니다.")
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
-            Text("실시간 정보는 제공처 갱신 지연과 현장 상황에 따라 다를 수 있습니다.")
+                .fixedSize(horizontal: false, vertical: true)
+            Text("주차장 정보와 잔여 면수는 제공처가 갱신하는 시점에 따라 현장과 다를 수 있으니 참고용으로 확인해 주세요.")
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
-            settingRow("내비 제공자", AppConfiguration.current.navigationProvider)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("잘못된 행사 정보를 발견하면 행사 상세 화면의 \u{201C}정보에 문제가 있나요?\u{201D}로 알려주세요.")
+                .font(.festival(.caption))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .festivalCard()
+    }
+
+    private var infoCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("정보")
+                .font(.festival(.headline))
+                .foregroundStyle(FestivalDesign.navy)
+
+            settingRow("앱 버전", appVersionText)
+
+            linkRow(icon: "hand.raised.fill", title: "개인정보 처리방침", url: privacyPolicyURL)
+            linkRow(icon: "doc.text.fill", title: "이용약관", url: termsURL)
+            if let supportMailURL {
+                linkRow(icon: "envelope.fill", title: "문의하기", url: supportMailURL)
+            }
+
+            Text("이 앱은 로그인 없이 사용하며, 즐겨찾기와 설정은 기기에만 저장됩니다. 앱을 삭제하면 함께 지워집니다. 알림을 받기 위해 저장된 기기 토큰의 삭제를 원하시면 문의하기로 요청해 주세요.")
+                .font(.festival(.caption))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    private func linkRow(icon: String, title: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.coralText)
+                    .frame(width: 22)
+                Text(title)
+                    .font(.festival(.subheadline, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
+            .padding(10)
+            .background(FestivalDesign.cream.opacity(0.35))
+            .clipShape(FestivalDesign.controlShape)
+        }
+        .buttonStyle(.plain)
     }
 
     private var developerSectionCard: some View {
@@ -166,6 +242,7 @@ struct SettingsView: View {
             developerRow(icon: "heart.text.square.fill", title: "Provider 상태", subtitle: "주차·탐색 provider 헬스체크") {
                 ProviderStatusView(apiClient: apiClient)
             }
+            settingRow("내비 제공자", AppConfiguration.current.navigationProvider)
         }
         .padding(14)
         .festivalCard()

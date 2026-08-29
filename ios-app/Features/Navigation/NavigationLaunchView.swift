@@ -155,6 +155,7 @@ struct NavigationLaunchView: View {
     }
 
     private func openKakaoNavi() {
+        AnalyticsService.shared.track(.navigationStart)
         let destination = NaviLocation(
             name: parkingLot.name,
             x: String(parkingLot.lng),

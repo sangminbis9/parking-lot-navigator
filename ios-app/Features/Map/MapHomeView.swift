@@ -217,6 +217,7 @@ struct MapHomeView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
+            AnalyticsService.shared.track(.mapLoaded)
             locationProvider.request()
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
@@ -1308,6 +1309,7 @@ struct MapHomeView: View {
                 )
             }
         case .festival, .event:
+            AnalyticsService.shared.track(.eventPinTap, label: pin.isFestival ? "festival" : "local_event")
             let targetZoom = max(mapZoomLevel, 15)
             let anchor = resolvedHologramAnchor(tapPoint: tapPoint)
             focusMapBelowCenter(to: pin.coordinate, zoomLevel: targetZoom)

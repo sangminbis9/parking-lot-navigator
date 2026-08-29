@@ -35,6 +35,17 @@ enum AppTab: Hashable {
         }
     }
 
+    /// UI 테스트가 탭을 집는 안정적인 이름. 화면 문구가 바뀌어도 테스트가 깨지지 않는다.
+    var accessibilityID: String {
+        switch self {
+        case .map: return "tab-map"
+        case .discover: return "tab-discover"
+        case .favorites: return "tab-favorites"
+        case .calendar: return "tab-calendar"
+        case .settings: return "tab-settings"
+        }
+    }
+
     static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .calendar, .settings]
 }
 
@@ -371,6 +382,7 @@ private struct FestivalTabBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
+        .accessibilityIdentifier(tab.accessibilityID)
     }
 }
 

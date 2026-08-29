@@ -17,6 +17,8 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
     }
 
     func request() {
+        // UI 테스트는 시스템 권한 팝업을 다룰 수 없다. 이 인자가 있으면 요청 자체를 건너뛴다.
+        if ProcessInfo.processInfo.arguments.contains("-uiTestingDenyLocation") { return }
         switch manager.authorizationStatus {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
