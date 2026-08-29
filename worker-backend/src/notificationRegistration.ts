@@ -50,38 +50,40 @@ async function transferOwnership(
     // 새 device에 없는 조합은 상태(sent_at 포함)째로 복사한다.
     db
       .prepare(
-        `INSERT OR IGNORE INTO notification_sends (
-            device_id, event_id, notification_type, event_kind, event_title,
-            event_start_date, planned_at, sent_at, attempts, last_error
+        `INSERT OR IGNORE INTO notification_digests (
+            device_id, send_day, notification_type, event_count,
+            planned_at, sent_at, attempts, last_error
           )
-          SELECT ?, event_id, notification_type, event_kind, event_title,
-                 event_start_date, planned_at, sent_at, attempts, last_error
-            FROM notification_sends
+          SELECT ?, send_day, notification_type, event_count,
+                 planned_at, sent_at, attempts, last_error
+            FROM notification_digests
            WHERE device_id = ?`,
       )
       .bind(toDeviceId, fromDeviceId),
     // 이미 있던 조합이 대기 중이고 옛 쪽이 보낸 상태면 "보냈음"을 살린다.
     db
       .prepare(
-        `UPDATE notification_sends
+        `UPDATE notification_digests
             SET sent_at = (
-                  SELECT old.sent_at FROM notification_sends old
+                  SELECT old.sent_at FROM notification_digests old
                    WHERE old.device_id = ?
-                     AND old.event_id = notification_sends.event_id
-                     AND old.notification_type = notification_sends.notification_type
+                     AND old.send_day = notification_digests.send_day
+                     AND old.notification_type = notification_digests.notification_type
                 )
           WHERE device_id = ?
             AND sent_at IS NULL
             AND EXISTS (
-                  SELECT 1 FROM notification_sends old
+                  SELECT 1 FROM notification_digests old
                    WHERE old.device_id = ?
-                     AND old.event_id = notification_sends.event_id
-                     AND old.notification_type = notification_sends.notification_type
+                     AND old.send_day = notification_digests.send_day
+                     AND old.notification_type = notification_digests.notification_type
                      AND old.sent_at IS NOT NULL
                 )`,
       )
       .bind(fromDeviceId, toDeviceId, fromDeviceId),
-    db.prepare(`DELETE FROM notification_sends WHERE device_id = ?`).bind(fromDeviceId),
+    db
+      .prepare(`DELETE FROM notification_digests WHERE device_id = ?`)
+      .bind(fromDeviceId),
     // 설정 이력은 남기고 토큰만 뗀다. 발송 대상 조회는 토큰이 있는 행만 본다.
     db
       .prepare(

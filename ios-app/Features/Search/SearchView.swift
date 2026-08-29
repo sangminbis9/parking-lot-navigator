@@ -93,6 +93,7 @@ struct SearchView: View {
                                             .festivalCard()
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityIdentifier("discover-row")
                                 }
 
                                 if visibleItems.count < filteredItems.count {

@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `286` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `288` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -155,27 +155,38 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - **기기 등록** — `POST /api/notifications/register` (`notification_devices`, migration `0023`).
   앱이 실행할 때와 알림 설정이 바뀔 때마다 device id, APNs token, 토픽별 on/off,
   관심 지역, 카테고리, 방해 금지 시간을 통째로 올린다 (`ios-app/Core/Services/NotificationRegistrationService.swift`).
+- **저장 단위 (migration `0029`)** — 행사별로 행을 쌓지 않는다. `notification_digests`의
+  PK `(device_id, send_day, notification_type)` 하나가 **실제로 나가는 push 하나**에 대응한다.
+  어떤 행사가 담기는지는 저장하지 않고 발송 시점에 계획 때와 같은 규칙으로 다시 계산한다 —
+  D-30/D-7/D-1이 구간이 아니라 "정확히 그 날짜"라서 기준일 하나에 담길 행사 집합은
+  계획 때든 발송 때든 같은 질의로 나온다. `event_count`는 계획 시점 참고값일 뿐
+  무엇을 보낼지 정하지 않는다. 옛 `notification_sends`는 지우지 않고 그대로 둔다.
 - **계획 (`planUpcomingNotifications`)** — 오늘(KST) + 30/7/1일에 **정확히** 시작하는 행사만 고른다.
   구간이 아니라 그 하루다. `discovery_items`(축제·공연·박람회)와 `local_events`(approved)를 함께 읽으므로
-  로컬 이벤트도 같은 정책을 받는다. 기기 × 행사 조합을 `notification_sends`에 `INSERT OR IGNORE`로 쌓는다.
-- **발송 (`dispatchPendingNotifications`)** — `sent_at IS NULL`인 행을 기기·종류별로 묶어 보낸다.
-  한 기기에 같은 종류가 여러 건이면 묶음(digest) 알림 하나로 보내되 **대상 행 전부**를 발송 완료로 찍는다.
-  한 회차 push 상한(`UPCOMING_NOTIFICATION_MAX_PUSHES`, 기본 40)은 subrequest 50건 한도 때문이고,
-  못 보낸 행은 `sent_at IS NULL`로 남아 다음 회차에 그대로 다시 잡힌다 — 대상이 사라지지 않는다.
+  로컬 이벤트도 같은 정책을 받는다. 기기마다 종류별로 대상 건수를 세어 행이 있을 때만
+  `INSERT OR IGNORE`로 한 행 쌓는다. 회차 시작에 `DIGEST_RETENTION_DAYS`(30일)보다 오래된
+  기준일을 지운다.
+- **발송 (`dispatchPendingNotifications`)** — `sent_at IS NULL`이고 기준일이
+  `DIGEST_MAX_AGE_DAYS`(1일) 안인 행만 잡는다. 이틀 지난 "내일 시작해요"는 이미 틀린 문구라
+  보내지 않는다. 잡은 행의 기준일·종류로 행사를 다시 계산해, 한 건이면 그 행사 알림,
+  여러 건이면 묶음(digest) 알림 하나로 보낸다. 한 회차 push 상한
+  (`UPCOMING_NOTIFICATION_MAX_PUSHES`, 기본 40)은 subrequest 50건 한도 때문이고,
+  못 보낸 행은 `sent_at IS NULL`로 남아 다음 회차에 그대로 다시 잡힌다.
+  다시 계산한 결과가 비면(행사 취소·승인 철회) push 없이 `no_matching_events`로 닫는다 —
+  안 닫으면 그 행이 매 회차 영원히 다시 잡힌다.
 - **중복 방지 (migration `0025`)** — 기기 저장소에 의존하지 않고 층을 셋 쌓는다.
   1) `notification_devices (apns_environment, apns_token)` 부분 UNIQUE 인덱스 —
      같은 물리 기기가 여러 `device_id` 행으로 갈라지지 않는다. 같은 토큰으로 새 device가
-     등록하면 `notificationRegistration.ts`가 옛 행의 토큰을 비우고 `notification_sends`
+     등록하면 `notificationRegistration.ts`가 옛 행의 토큰을 비우고 `notification_digests`
      이력을 새 device로 옮긴다(재설치해도 이미 보낸 알림이 다시 안 나간다).
   2) 발송은 `device_id`가 아니라 **(환경, 토큰)** 단위로 묶는다. DB가 잠시 지저분해도
      한 물리 기기에 한 번만 나간다.
-  3) `notification_sends.claim_id` / `claimed_at` — 조건부 UPDATE로 선점한 회차만 보낸다.
+  3) `notification_digests.claim_id` / `claimed_at` — 조건부 UPDATE로 선점한 회차만 보낸다.
      cron과 admin 호출이 겹쳐도 한쪽은 `skippedClaimed`로 빠진다. 선점은
      `CLAIM_TTL_MS`(1시간) 뒤 만료된다. APNs 응답을 못 받은 경우(`delivery_unknown`)는
      선점을 **일부러 유지**해 즉시 재시도하지 않는다 — 애플이 이미 받았을 수 있어서다.
   마지막 방어선으로 `apns-collapse-id`(`upcomingCollapseId`)를 붙여 두 건이 도착해도
   기기에서 하나로 합쳐진다. 여기에만 기대면 안 된다.
-  PK `(device_id, event_id, notification_type)`는 그대로 계획 단계 중복을 막는다.
 - **지역 매칭** — `worker-backend/src/regionMatch.ts` / `ios-app/Core/Storage/NotificationRegionKey.swift`.
   키는 `"서울"`(광역시도 전체) 또는 `"서울|중구"`(광역시도 + 시/군/구) 두 형태뿐이고 구분자는 `|`다.
   주소에서 광역시도와 시/군/구를 따로 뽑아 비교하므로 서울 중구와 부산 중구,
@@ -183,15 +194,20 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - **카테고리** — 비면 전체, 값이 있으면 그 카테고리만. 지역과 AND.
 - **cron** — `"*/3 * * * *"` 안에서 `minute % 30 === 0`일 때 발송, `minute === 0`일 때 계획.
   수동 실행은 `POST /admin/run-upcoming-notifications` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
-- **쓰기 예산** — `notification_sends`는 인덱스 3개(PK autoindex + `_pending` + `_claim`)라
-  계획 행 1건이 D1 쓰기 4행이다. 2026-08-28 실측으로 `discovery_items`의 미래 행사가
-  3,712건 / 서로 다른 시작일 125일(하루 평균 29.7건, 최대 214건)이므로, D-30·D-7·D-1
-  세 날짜를 합치면 기기 하나당 하루 계획 행이 대략 90건 = 360행 쓰기다.
-  기기 100대면 하루 36,000행으로 무료 쓰기 예산(100,000행)의 3분의 1을 알림만으로 쓴다.
-  기기 수가 늘면 계획 주기를 줄이거나 계획을 발송 직전으로 미루는 쪽을 먼저 검토한다.
+- **쓰기 예산** — 저장 단위를 바꾼 이유가 이것이다. 옛 `notification_sends`는 인덱스 3개
+  (PK autoindex + `_pending` + `_claim`)라 계획 행 1건이 D1 쓰기 4행이었고, 2026-08-28 실측으로
+  `discovery_items`의 미래 행사가 3,712건 / 서로 다른 시작일 125일(하루 평균 29.7건)이라
+  기기 하나당 하루 계획 행이 대략 90건 = 360행이었다. 기기 100대면 하루 36,000행으로
+  무료 쓰기 예산(100,000행)의 3분의 1을 알림만으로 썼다.
+  `notification_digests`는 **보조 인덱스가 없어** 계획 행 1건이 D1 쓰기 2행(본체 + PK autoindex)이고,
+  기기당 하루 행이 최대 3건(D30/D7/D1)이다 — 기기 100대에 하루 약 600행. 행사가 하루 200건이어도
+  계획 쓰기는 그대로다. 인덱스를 하나라도 더 붙이면 이 이득이 바로 깎이므로,
+  대상 선정 쿼리는 PK 스캔으로 감당하게 두었다(행 수가 기기 수 × 3이라 작다).
   자세한 예산은 `docs/operations/worker-limits.md`.
-- **딥링크** — push payload는 `eventKind` + `eventId`만 싣는다(4KB 한도, 낡은 사본 방지).
+- **딥링크** — 한 건짜리 push payload는 `eventKind` + `eventId`만 싣는다(4KB 한도, 낡은 사본 방지).
   앱이 `GET /api/festivals/:id` 또는 `GET /api/local-events/:id`로 상세를 받아 연다.
+  묶음은 `eventKind: "digest"` + `eventDate`(그 기준일이 가리키는 시작일)를 싣는다 —
+  앱이 그 날짜의 목록으로 보낼 수 있어야 사용자가 무엇이 왔는지 확인할 수 있다.
 - **분리된 기능** — 저장한 축제 리마인더(`FestivalReminderService`)와 새 로컬 이벤트 발견 알림
   (`DiscoveryNotificationService`)은 여전히 기기 로컬 알림이다. 다가오는 행사 알림과 섞지 않는다.
 - **secret** — `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`(.p8 전문)는 wrangler secret,
@@ -345,6 +361,26 @@ curl -X POST \
 - Swift/iOS UI를 바꾼 경우에만 Codemagic 또는 Xcode 빌드를 고려한다.
 - D1 schema를 바꾸면 반드시 새 migration을 추가한다. 기존 migration을 임의 수정하지 않는다.
 
+## 행사 정보 오류 신고와 익명 사용 집계 (migration `0030`)
+
+둘 다 로그인이 없는 앱이라 **사용자를 식별하는 필드를 두지 않는다.** 설계 기준은 D1 쓰기다.
+
+- **오류 신고** — `event_reports`. 앱은 행사 상세 화면 아래 `정보에 문제가 있나요?` 한 줄에서
+  `EventReportSheet`을 연다(`ios-app/Features/ParkingResults/EventReportSheet.swift`).
+  보내는 값은 `eventKind`(`festival`|`local_event`) · `eventId` · `eventTitle` · `reason` 7종 ·
+  선택 메모뿐이고, `eventReportSchema`가 그 외 필드(기기 id·이메일 등)를 **파싱 단계에서 버린다**.
+  같은 기기가 같은 행사를 반복 신고하는 것만 `EventReportedStore`(UserDefaults)로 막는다 —
+  서버에 신고자 식별자를 만들지 않기 위해 억제는 기기 쪽에 둔다. 인덱스는 관리자 목록용
+  `(status, created_at DESC)` 하나뿐이다.
+- **익명 집계** — `analytics_daily`, PK `(day, event, label)`뿐이고 보조 인덱스가 없다.
+  행을 쌓지 않고 카운터만 올리므로 **쓰기가 사용자 수가 아니라 서로 다른 (날짜·이벤트·라벨)
+  조합 수 × 전송 횟수로 묶인다.** INSERT는 2행(본체 + PK autoindex), 카운트만 올리는 UPDATE는 1행.
+  앱은 `AnalyticsService`가 메모리에 횟수만 모아 두었다가 백그라운드 진입 때 한 번 보내고
+  (fire-and-forget, 실패하면 조용히 버린다), 서버는 `ANALYTICS_EVENTS` allowlist에 있는
+  이벤트·라벨만 받는다 — 클라이언트가 무엇을 보내든 좌표·검색어가 저장될 자리가 없다.
+  `api_error`는 **경로를 라벨로 쓰지 않는다**(요청 URL에 좌표가 들어 있다).
+  보관은 `ANALYTICS_RETENTION_DAYS`, 정리는 `pruneOldAnalytics`가 cron에서 돈다.
+
 ## API 기준
 
 주요 endpoint:
@@ -357,6 +393,8 @@ curl -X POST \
 - `GET /api/map/items?type=festival|event|all`
 - `POST /api/local-events/report`
 - `POST /api/notifications/register`
+- `POST /api/event-reports` (행사 정보 오류 신고)
+- `POST /api/analytics` (익명 사용 집계)
 
 관리용 (`Authorization: Bearer $SYNC_ADMIN_TOKEN`):
 
@@ -365,6 +403,8 @@ curl -X POST \
 - `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40)
 - `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`
 - `GET /discover/pipeline-stats` (파이프라인 대시보드), `GET /discover/providers/health`
+- `GET /api/admin/event-reports`, `PATCH /api/admin/event-reports/:id` (신고 처리 상태)
+- `GET /api/admin/analytics` (날짜별 집계 조회)
 
 앱에서 이벤트가 안 보일 때 먼저 확인할 것:
 

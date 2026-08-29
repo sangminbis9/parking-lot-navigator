@@ -15,6 +15,7 @@ protocol APIClientProtocol {
     func festival(id: String) async throws -> Festival
     func localEvent(id: String) async throws -> FreeEvent
     func registerNotificationDevice(_ registration: NotificationDeviceRegistration) async throws
+    func submitEventReport(_ report: EventReportSubmission) async throws
 }
 
 /// `POST /api/notifications/register` 요청 본문. 서버가 다가오는 행사 푸시 대상을 고를 때 쓰는
@@ -177,6 +178,10 @@ final class APIClient: APIClientProtocol {
         try await post(endpoint("api/notifications/register"), body: registration)
     }
 
+    func submitEventReport(_ report: EventReportSubmission) async throws {
+        try await post(endpoint("api/event-reports"), body: report)
+    }
+
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] {
         var components = URLComponents(url: endpoint("agent-office/activity"), resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
@@ -201,6 +206,8 @@ final class APIClient: APIClientProtocol {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             AppLogger.networking.error("API call failed: \(error.localizedDescription)")
+            // 실패한 경로가 아니라 실패했다는 사실만 센다. URL에는 좌표가 들어 있다.
+            AnalyticsService.shared.track(.apiError, label: "other")
             throw error
         }
     }
@@ -418,4 +425,5 @@ final class MockAPIClient: APIClientProtocol {
     }
 
     func registerNotificationDevice(_ registration: NotificationDeviceRegistration) async throws {}
+    func submitEventReport(_ report: EventReportSubmission) async throws {}
 }

@@ -9,6 +9,8 @@ struct ParkingResultsView: View {
     @EnvironmentObject private var festivalFavorites: FestivalFavoritesStore
     @EnvironmentObject private var eventFavorites: LocalEventFavoritesStore
     @StateObject private var viewModel: ParkingResultsViewModel
+    @State private var isShowingReportSheet = false
+    @State private var hasReported = false
 
     init(destination: Destination, apiClient: APIClientProtocol, presentation: DiscoverPresentation? = nil) {
         self.destination = destination
@@ -17,12 +19,28 @@ struct ParkingResultsView: View {
         _viewModel = StateObject(wrappedValue: ParkingResultsViewModel(destination: destination, apiClient: apiClient))
     }
 
+    /// 저장·신고 모두 접두어를 뗀 원본 id를 쓴다.
+    private var rawEventId: String {
+        if destination.id.hasPrefix("festival-") {
+            return String(destination.id.dropFirst("festival-".count))
+        }
+        if destination.id.hasPrefix("event-") {
+            return String(destination.id.dropFirst("event-".count))
+        }
+        return destination.id
+    }
+
+    /// 서버가 쓰는 종류 이름. 축제·공연·박람회는 모두 festival 쪽 상세로 열린다.
+    private var reportEventKind: String? {
+        switch destination.normalizedCategory {
+        case "festival": return "festival"
+        case "event": return "local_event"
+        default: return nil
+        }
+    }
+
     private var isFavorite: Bool {
-        let rawId = destination.id.hasPrefix("festival-")
-            ? String(destination.id.dropFirst("festival-".count))
-            : destination.id.hasPrefix("event-")
-                ? String(destination.id.dropFirst("event-".count))
-                : destination.id
+        let rawId = rawEventId
         if destination.normalizedCategory == "festival" {
             return festivalFavorites.contains(id: rawId)
         } else if destination.normalizedCategory == "event" {
@@ -33,6 +51,9 @@ struct ParkingResultsView: View {
 
     private func toggleFavorite() {
         guard let presentation else { return }
+        if !isFavorite {
+            AnalyticsService.shared.track(.favoriteAdd, label: reportEventKind)
+        }
         if destination.normalizedCategory == "festival" {
             festivalFavorites.toggle(SavedFestival(destination: destination, presentation: presentation))
         } else if destination.normalizedCategory == "event" {
@@ -55,6 +76,7 @@ struct ParkingResultsView: View {
                         shareContent: shareContent
                     )
                     DiscoverDescriptionCard(presentation: presentation)
+                    reportEntryRow
                 } else {
                     ParkingGuideHeader(destination: destination)
                 }
@@ -67,8 +89,54 @@ struct ParkingResultsView: View {
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
-        .festivalNavigationTitle("주차 추천")
-        .task { await viewModel.load() }
+        .festivalNavigationTitle(presentation == nil ? "주차 추천" : "행사 정보")
+        .task {
+            if let reportEventKind {
+                AnalyticsService.shared.track(.eventDetailOpen, label: reportEventKind)
+                hasReported = EventReportedStore.contains(kind: reportEventKind, id: rawEventId)
+            }
+            AnalyticsService.shared.track(.parkingView)
+            await viewModel.load()
+        }
+        .sheet(isPresented: $isShowingReportSheet, onDismiss: {
+            if let reportEventKind {
+                hasReported = EventReportedStore.contains(kind: reportEventKind, id: rawEventId)
+            }
+        }) {
+            if let reportEventKind {
+                EventReportSheet(
+                    eventKind: reportEventKind,
+                    eventId: rawEventId,
+                    eventTitle: presentation?.title ?? destination.name,
+                    apiClient: apiClient
+                )
+            }
+        }
+    }
+
+    /// 상세 내용을 가리지 않도록 카드 아래 한 줄로만 둔다.
+    @ViewBuilder
+    private var reportEntryRow: some View {
+        if reportEventKind != nil {
+            HStack {
+                Spacer(minLength: 0)
+                if hasReported {
+                    Label("신고해 주셔서 감사합니다", systemImage: "checkmark.circle")
+                        .font(.festival(.caption))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                } else {
+                    Button {
+                        isShowingReportSheet = true
+                    } label: {
+                        Label("정보에 문제가 있나요?", systemImage: "exclamationmark.bubble")
+                            .font(.festival(.caption))
+                            .foregroundStyle(FestivalDesign.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event-report-button")
+                }
+            }
+        }
     }
 
     private var parkingRecommendationSection: some View {
@@ -103,6 +171,7 @@ struct ParkingResultsView: View {
                     .festivalCard()
             } else if viewModel.isEmptyResult {
                 ParkingEmptyStateView()
+                    .onAppear { AnalyticsService.shared.track(.emptyResult, label: "parking") }
                     .frame(maxWidth: .infinity)
                     .festivalCard()
             } else {
@@ -191,6 +260,7 @@ private struct DiscoverResultHeader: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isFavorite ? "관심 축제 해제" : "관심 축제로 저장")
+                    .accessibilityIdentifier("event-favorite-button")
                 }
                 if let shareContent {
                     DiscoverShareButton(content: shareContent)

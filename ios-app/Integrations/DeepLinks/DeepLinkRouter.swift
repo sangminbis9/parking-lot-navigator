@@ -15,6 +15,9 @@ final class DeepLinkRouter: ObservableObject {
     @Published var pendingLocalEventId: String?
     /// 캘린더 탭으로만 보내는 진입점(위젯 "전체 보기"). 값이 바뀌는 것 자체가 신호다.
     @Published var pendingCalendarAt: Date?
+    /// 묶음 푸시가 가리키는 날짜. 탭을 여는 신호(`pendingCalendarAt`)와 달리 캘린더 화면이
+    /// 나타난 뒤에 읽어 가므로 published가 아니다 — 탭이 아직 만들어지지 않았어도 살아남는다.
+    var pendingCalendarDay: Date?
 
     func urlForDestinationSearch(_ query: String) -> URL {
         var components = URLComponents()
