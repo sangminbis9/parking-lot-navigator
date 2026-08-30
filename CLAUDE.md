@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `290` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `291` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)

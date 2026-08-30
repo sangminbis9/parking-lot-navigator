@@ -223,8 +223,15 @@ struct MapHomeView: View {
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
-            // 응답이 끝난 시점부터 핀이 올라가기 시작한다. 렌더 신호가 켜질 틈을 주고 넘긴다.
+            // 응답이 끝난 시점부터 핀이 올라가기 시작한다. 렌더 신호가 켜질 틈을 주고,
+            // 그 신호가 꺼질 때까지(= 첫 핀이 다 자리 잡을 때까지) 기다렸다가 로딩을 내린다.
+            // 신호가 끝내 안 꺼져도 로딩이 영영 남지 않도록 상한을 둔다.
             try? await Task.sleep(nanoseconds: 700_000_000)
+            var waitedTicks = 0
+            while isPlacingPins, waitedTicks < 50 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                waitedTicks += 1
+            }
             hasSettledAfterInitialLoad = true
         }
         .onChange(of: scenePhase) { phase in
@@ -433,11 +440,11 @@ struct MapHomeView: View {
         }
     }
 
-    /// 지도가 굳어 있는 구간 전체를 덮는다. 응답이 도착해도 핀은 프레임당 몇십 개씩 올라가므로
-    /// 데이터가 채워진 시점이 아니라 핀 렌더가 끝나는 시점까지 유지한다.
-    /// 첫 조회 조건은 그대로 둬서, 지도에 이미 핀이 있는 재조회는 화면을 가리지 않는다.
+    /// 지도가 굳어 있는 구간 전체를 덮는다. 첫 조회에서만 뜬다 — 핀 렌더 대기는
+    /// `hasSettledAfterInitialLoad` 안으로 들어가 있어서, 줌·이동으로 핀이 다시 올라가는
+    /// 재조회는 화면을 가리지 않는다.
     private var isInitialDiscoverLoading: Bool {
-        !hasSettledAfterInitialLoad || isPlacingPins || isResumingMap
+        !hasSettledAfterInitialLoad || isResumingMap
     }
 
     /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면
