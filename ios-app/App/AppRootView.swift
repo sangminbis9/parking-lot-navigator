@@ -68,6 +68,8 @@ struct AppRootView: View {
         appGroupID: AppConfiguration.current.appGroupID
     )
     @StateObject private var toastCenter = ToastCenter()
+    @State private var showsNotificationInbox = false
+    @State private var notificationFocusId: String?
     @Environment(\.scenePhase) private var scenePhase
 
     init(apiClient: APIClientProtocol) {
@@ -145,6 +147,22 @@ struct AppRootView: View {
             } else if phase == .background {
                 discoveryService.scheduleNextRefresh()
             }
+        }
+        // 알림센터는 탭이 아니라 시트다. 어느 탭에서 열든 원래 보던 화면으로 그대로 돌아간다.
+        .sheet(isPresented: $showsNotificationInbox) {
+            NotificationsInboxView(
+                apiClient: apiClient,
+                focusId: notificationFocusId,
+                onOpenFestival: { openDiscover($0) },
+                onOpenEvent: { openDiscover($0) }
+            )
+        }
+        .onReceive(DeepLinkRouter.shared.$pendingNotificationInboxAt) { at in
+            guard at != nil else { return }
+            DeepLinkRouter.shared.pendingNotificationInboxAt = nil
+            notificationFocusId = DeepLinkRouter.shared.pendingNotificationFocusId
+            DeepLinkRouter.shared.pendingNotificationFocusId = nil
+            showsNotificationInbox = true
         }
         .onReceive(DeepLinkRouter.shared.$pendingCalendarAt) { at in
             guard at != nil else { return }

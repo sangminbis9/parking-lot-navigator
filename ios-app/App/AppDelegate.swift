@@ -17,6 +17,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sweepDeliveredNotifications),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
         // 이미 권한을 준 사용자는 실행할 때마다 토큰을 다시 받아 서버 등록을 최신으로 유지한다.
         // (권한이 없으면 APNs가 토큰을 주지 않으므로 요청 자체를 건너뛴다.)
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -45,12 +51,37 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         AppLogger.networking.error("APNs registration failed: \(String(describing: error), privacy: .public)")
     }
 
+    /// 앱이 떠 있는 동안 도착한 알림도 알림센터에 남긴다.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        Self.ingest(notification)
         completionHandler([.banner, .sound, .badge])
+    }
+
+    /// 앱이 꺼져 있는 동안 온 알림은 사용자가 배너를 탭하지 않으면 `didReceive`가 오지 않는다.
+    /// 활성화될 때 알림 센터에 남아 있는 것들을 한 번 훑어 보관함을 채운다.
+    /// 데이터 원본이 아니라 유입 경로일 뿐이다 — 읽음 상태와 목록은 보관함이 갖는다.
+    /// (SwiftUI scene 생명주기에서는 `applicationDidBecomeActive(_:)`가 불리지 않아 알림으로 받는다.)
+    @objc private func sweepDeliveredNotifications() {
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            let items = notifications.flatMap {
+                AppNotificationPayload.items(from: $0.request.content.userInfo, receivedAt: $0.date)
+            }
+            guard !items.isEmpty else { return }
+            DispatchQueue.main.async { NotificationInboxStore.shared.ingest(items) }
+        }
+    }
+
+    private static func ingest(_ notification: UNNotification) {
+        let items = AppNotificationPayload.items(
+            from: notification.request.content.userInfo,
+            receivedAt: notification.date
+        )
+        guard !items.isEmpty else { return }
+        DispatchQueue.main.async { NotificationInboxStore.shared.ingest(items) }
     }
 
     func userNotificationCenter(
@@ -59,44 +90,31 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        // 서버 푸시는 전체 JSON 대신 (종류, id)만 싣는다. 상세는 앱이 API로 다시 받아 온다 —
-        // APNs payload 4KB 한도에 축제 JSON 전체가 들어가지 않고, 담기더라도 발송 시점의
-        // 낡은 사본이 열리기 때문이다.
-        if let kind = userInfo["eventKind"] as? String, let id = userInfo["eventId"] as? String {
-            AnalyticsService.shared.track(.notificationOpen, label: kind)
+        // 알림을 탭하면 행사 상세로 바로 가지 않고 앱 안 알림센터를 연다.
+        // 묶음 알림 하나에 행사가 여럿 담겨 있어도 사용자가 무엇이 왔는지 전부 볼 수 있어야 한다.
+        // (앱 안 이동과 URL 딥링크는 예전 경로 그대로다.)
+        let items = AppNotificationPayload.items(
+            from: userInfo,
+            receivedAt: response.notification.date
+        )
+        if !items.isEmpty {
+            if let kind = userInfo["eventKind"] as? String {
+                AnalyticsService.shared.track(.notificationOpen, label: kind)
+            }
             DispatchQueue.main.async {
-                switch kind {
-                case "local_event": DeepLinkRouter.shared.pendingLocalEventId = id
-                case "festival": DeepLinkRouter.shared.pendingFestivalId = id
-                default: break
-                }
+                NotificationInboxStore.shared.ingest(items)
+                DeepLinkRouter.shared.pendingNotificationFocusId = items.first?.id
+                DeepLinkRouter.shared.pendingNotificationInboxAt = Date()
             }
             completionHandler()
             return
         }
-        // 묶음 알림은 행사 하나를 가리키지 않으므로 그 날짜의 달력으로 보낸다.
-        // 무엇이 왔는지 확인할 곳이 없으면 알림을 열 이유도 없다.
+        // 가리킬 행사를 알 수 없는 옛 묶음 알림은 예전처럼 그 날짜의 달력으로 보낸다.
         if userInfo["eventKind"] as? String == "digest" {
             let day = (userInfo["eventDate"] as? String).flatMap(Self.dayFormatter.date(from:))
             DispatchQueue.main.async {
                 DeepLinkRouter.shared.pendingCalendarDay = day
                 DeepLinkRouter.shared.pendingCalendarAt = Date()
-            }
-            completionHandler()
-            return
-        }
-        // 기기에서 만든 로컬 알림은 예전처럼 JSON을 통째로 싣는다.
-        if let jsonString = userInfo["festivalJSON"] as? String,
-           let data = jsonString.data(using: .utf8),
-           let festival = try? JSONDecoder().decode(Festival.self, from: data) {
-            DispatchQueue.main.async {
-                DeepLinkRouter.shared.pendingFestival = festival
-            }
-        } else if let jsonString = userInfo["eventJSON"] as? String,
-                  let data = jsonString.data(using: .utf8),
-                  let event = try? JSONDecoder().decode(FreeEvent.self, from: data) {
-            DispatchQueue.main.async {
-                DeepLinkRouter.shared.pendingEvent = event
             }
         }
         completionHandler()
