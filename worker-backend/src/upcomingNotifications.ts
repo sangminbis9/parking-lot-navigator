@@ -319,6 +319,20 @@ const TYPE_PHRASE: Record<NotificationType, string> = {
   D1: "내일 시작해요",
 };
 
+/**
+ * 앱 알림센터가 읽는 `notificationKind`. 기기 로컬 알림 producer와 같은 계약이다
+ * (`ios-app/Core/Models/AppNotificationItem.swift`의 `AppNotificationKind`).
+ * 옛 앱이 읽는 `notificationType`은 그대로 함께 싣는다.
+ */
+const TYPE_KIND: Record<NotificationType, string> = {
+  D30: "upcoming_d30",
+  D7: "upcoming_d7",
+  D1: "upcoming_d1",
+};
+
+/** 묶음 payload에 싣는 행사 수 상한. APNs payload 4KB 한도 때문이다. */
+const MAX_DIGEST_PAYLOAD_EVENTS = 20;
+
 function displayDate(day: string): string {
   const [, month, date] = day.split("-").map(Number);
   return `${month}월 ${date}일`;
@@ -344,9 +358,13 @@ export function buildNotification(
         eventKind: event.kind,
         eventId: event.id,
         notificationType: type,
+        notificationKind: TYPE_KIND[type],
+        occurrenceDate: event.startDate,
+        eventTitle: event.title,
       },
     };
   }
+  const carried = events.slice(0, MAX_DIGEST_PAYLOAD_EVENTS);
   const names = events
     .slice(0, 2)
     .map((event) => event.title)
@@ -360,8 +378,15 @@ export function buildNotification(
     data: {
       eventKind: "digest",
       notificationType: type,
-      // 묶음은 특정 행사로 갈 수 없으므로 날짜를 실어 달력 탭 그 날짜로 보낸다.
+      notificationKind: TYPE_KIND[type],
+      // 계획이 "정확히 그 날 시작하는 행사"만 담으므로 묶음 안의 시작일은 모두 같다.
+      occurrenceDate: events[0]?.startDate ?? "",
+      // 옛 앱은 이 날짜로 달력 탭을 연다.
       eventDate: events[0]?.startDate ?? "",
+      // 새 앱은 이 목록으로 알림센터에 행사별 카드를 만든다. 상세는 앱이 다시 받아 온다.
+      eventIds: carried.map((event) => `${event.kind}:${event.id}`).join(","),
+      // 제목에는 쉼표가 들어갈 수 있어 줄바꿈으로 가른다.
+      eventTitles: carried.map((event) => event.title).join("\n"),
     },
   };
 }

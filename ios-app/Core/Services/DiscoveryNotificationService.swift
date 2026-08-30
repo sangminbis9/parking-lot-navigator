@@ -83,6 +83,8 @@ final class DiscoveryNotificationService: ObservableObject {
     /// 한 회차에 개별 알림으로 내보내는 최대 건수. 이보다 많으면 묶음 알림 1건으로 바꾼다.
     /// 초과분을 버리는 게 아니라 표현만 바꾸는 것이라, 알림 대상이 영구 누락되지 않는다.
     private static let maxIndividualNotifications = 3
+    /// 묶음 payload에 싣는 행사 수 상한. 알림 payload를 작게 유지한다.
+    private static let maxDigestPayloadEvents = 20
 
     /// 새로 등록된 가게 이벤트를 축제 알림과 같은 형식(대표 이미지 + 상세 이동)으로 보낸다.
     /// 건수가 많으면 개별 알림 대신 묶음 알림 1건으로 내보낸다.
@@ -119,6 +121,17 @@ final class DiscoveryNotificationService: ObservableObject {
         content.body = events.count > 2 ? "\(names) 외 \(events.count - 2)건이 등록됐어요" : names
         content.sound = .default
         content.threadIdentifier = "new-local-event"
+        // 묶음도 어떤 행사가 담겼는지 실어야 알림센터가 행사별 카드를 만든다.
+        // 사진·상세는 싣지 않는다 — payload를 작게 두고 앱이 최신 상세를 다시 받아 온다.
+        let carried = Array(events.prefix(Self.maxDigestPayloadEvents))
+        content.userInfo = [
+            AppNotificationKind.kindKey: AppNotificationKind.newLocalEvent,
+            AppNotificationKind.eventIdsKey: carried
+                .map { "\(AppNotificationKind.localEventKind):\($0.id)" }
+                .joined(separator: ","),
+            AppNotificationKind.eventTitlesKey: carried.map(\.title).joined(separator: "\n"),
+            AppNotificationKind.eventDatesKey: carried.map(\.startDate).joined(separator: ",")
+        ]
 
         let request = UNNotificationRequest(
             identifier: "new-local-event-digest-\(Int(Date().timeIntervalSince1970))",
@@ -138,10 +151,19 @@ final class DiscoveryNotificationService: ObservableObject {
         content.body = parts.joined(separator: " · ")
         content.sound = .default
 
+        // 옛 payload(`eventJSON`)를 그대로 두되, 공통 계약 키를 함께 싣는다.
+        var userInfo: [String: Any] = [
+            AppNotificationKind.kindKey: AppNotificationKind.newLocalEvent,
+            AppNotificationKind.eventKindKey: AppNotificationKind.localEventKind,
+            AppNotificationKind.eventIdKey: event.id,
+            AppNotificationKind.occurrenceDateKey: event.startDate,
+            AppNotificationKind.eventTitleKey: event.title
+        ]
         if let data = try? JSONEncoder().encode(event),
            let jsonString = String(data: data, encoding: .utf8) {
-            content.userInfo = ["eventJSON": jsonString]
+            userInfo["eventJSON"] = jsonString
         }
+        content.userInfo = userInfo
         if let attachment = await imageAttachment(urlString: event.imageUrl ?? event.imageUrls.first) {
             content.attachments = [attachment]
         }

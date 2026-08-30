@@ -19,6 +19,7 @@ struct MapHomeView: View {
     @StateObject private var locationProvider = CurrentLocationProvider()
     /// 진행 중 행사 핀에 넣을 대표 이미지 공급자. 로드가 끝나면 지도를 다시 그린다.
     @StateObject private var pinPhotos = MapPinPhotoStore()
+    @ObservedObject private var notificationInbox = NotificationInboxStore.shared
     @State private var mapCenter = CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780)
     @State private var mapViewport = MapViewport(
         center: CLLocationCoordinate2D(latitude: 37.5665, longitude: 126.9780),
@@ -961,6 +962,19 @@ struct MapHomeView: View {
             Spacer()
             VStack(spacing: 10) {
                 Button {
+                    // 알림센터는 루트가 시트로 띄운다. 알림을 탭해서 들어올 때와 같은 경로다.
+                    DeepLinkRouter.shared.pendingNotificationInboxAt = Date()
+                } label: {
+                    MapNotificationIcon(unreadCount: notificationInbox.unreadCount)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    notificationInbox.unreadCount > 0
+                        ? "\u{C54C}\u{B9BC}, \u{C77D}\u{C9C0} \u{C54A}\u{C740} \u{C54C}\u{B9BC} \(notificationInbox.unreadCount)\u{AC1C}"
+                        : "\u{C54C}\u{B9BC}"
+                )
+
+                Button {
                     tabRouter.selectedTab = .discover
                 } label: {
                     MapFloatingIcon(systemName: "list.bullet.rectangle.portrait.fill", tint: FestivalDesign.teal, size: 48)
@@ -1838,6 +1852,33 @@ private enum DiscoverCategory: String, CaseIterable, Identifiable {
         case "local_event", "local-event", "local event": return .localEvent
         default: return .other
         }
+    }
+}
+
+/// 알림 버튼. 지도 위 다른 floating 버튼과 같은 모양이고, 안 읽은 개수만 배지로 얹는다.
+private struct MapNotificationIcon: View {
+    let unreadCount: Int
+
+    var body: some View {
+        MapFloatingIcon(
+            systemName: unreadCount > 0 ? "bell.fill" : "bell",
+            tint: FestivalDesign.coral,
+            size: 44
+        )
+        .overlay(alignment: .topTrailing) {
+            if unreadCount > 0 {
+                Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                    .font(.festival(size: 11, weight: .bold))
+                    .foregroundStyle(FestivalDesign.onFill(FestivalDesign.navy))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(FestivalDesign.navy))
+                    .overlay(Capsule().stroke(FestivalDesign.surface.opacity(0.85), lineWidth: 1.5))
+                    .offset(x: 6, y: -4)
+            }
+        }
+        // 배지가 튀어나와도 손가락이 닿는 넓이는 아이콘 그대로다.
+        .frame(width: 44, height: 44)
     }
 }
 

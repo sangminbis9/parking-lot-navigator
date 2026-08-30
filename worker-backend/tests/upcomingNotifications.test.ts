@@ -790,6 +790,9 @@ describe("알림 문구", () => {
       eventKind: "festival",
       eventId: "f1",
       notificationType: "D30",
+      notificationKind: "upcoming_d30",
+      occurrenceDate: "2026-10-31",
+      eventTitle: "송도 불꽃축제",
     });
 
     const digest = buildNotification("D1", [
@@ -801,6 +804,21 @@ describe("알림 문구", () => {
     expect(digest.data.eventKind).toBe("digest");
     // 묶음에서도 어느 날짜 행사인지 알 수 있어야 달력으로 보낼 수 있다.
     expect(digest.data.eventDate).toBe("2026-10-31");
+    // 앱 알림센터가 행사별 카드를 만들 목록. 상세는 앱이 다시 받아 온다.
+    expect(digest.data.eventIds).toBe("festival:f1,festival:f2,festival:f3");
+    expect(digest.data.eventTitles).toBe("송도 불꽃축제\n둘\n셋");
+    expect(digest.data.notificationKind).toBe("upcoming_d1");
+  });
+
+  it("묶음 payload는 20건까지만 싣는다", () => {
+    // APNs payload 4KB 한도. 문구는 전체 건수를 그대로 말하고 목록만 자른다.
+    const many = Array.from({ length: 25 }, (_, index) =>
+      eventFixture({ id: `f${index}`, title: `행사 ${index}` }),
+    );
+    const digest = buildNotification("D7", many);
+    expect(digest.title).toBe("🎪 다가오는 행사 25건");
+    expect(digest.data.eventIds.split(",")).toHaveLength(20);
+    expect(digest.data.eventTitles.split("\n")).toHaveLength(20);
   });
 });
 

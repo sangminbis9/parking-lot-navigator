@@ -94,6 +94,15 @@ final class FestivalReminderService: ObservableObject {
         content.title = festival.title
         content.body = bodyParts.joined(separator: " · ")
         content.sound = .default
+        // 어느 행사의 어느 회차인지 알림 자신이 실어야 알림센터가 카드를 만들 수 있다.
+        // 서버 푸시와 같은 계약을 쓴다.
+        content.userInfo = [
+            AppNotificationKind.kindKey: AppNotificationKind.savedReminder,
+            AppNotificationKind.eventKindKey: AppNotificationKind.festivalKind,
+            AppNotificationKind.eventIdKey: festival.id,
+            AppNotificationKind.occurrenceDateKey: festival.startDate,
+            AppNotificationKind.eventTitleKey: festival.title
+        ]
 
         var components = Calendar(identifier: .gregorian)
         components.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
