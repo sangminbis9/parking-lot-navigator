@@ -10,7 +10,6 @@ import {
   CulturePortalEventProvider,
 } from "./CulturePortalEventProvider.js";
 import { dedupeCachedEvents } from "./eventProviderUtils.js";
-import { KcisaCultureEventProvider } from "./KcisaCultureEventProvider.js";
 import { KopisEventProvider } from "./KopisEventProvider.js";
 import { MockEventProvider } from "./MockEventProvider.js";
 import { SeoulCultureEventProvider } from "./SeoulCultureEventProvider.js";
@@ -93,30 +92,10 @@ export function createEventService(): EventService {
       ),
     );
   }
-  if (config.KCISA_428_API_KEY) {
-    providers.push(
-      new KcisaCultureEventProvider({
-        source: "kcisa_428",
-        serviceKey: config.KCISA_428_API_KEY,
-        baseUrl: config.KCISA_BASE_URL,
-        path: "/openapi/service/rest/meta16/getkopis07",
-        defaultCategoryText: "performance",
-        resolver,
-      }),
-    );
-  }
-  if (config.KCISA_196_API_KEY) {
-    providers.push(
-      new KcisaCultureEventProvider({
-        source: "kcisa_196",
-        serviceKey: config.KCISA_196_API_KEY,
-        baseUrl: config.KCISA_BASE_URL,
-        path: "/openapi/service/rest/meta4/getKCPG0504",
-        defaultCategoryText: "culture",
-        resolver,
-      }),
-    );
-  }
+  // KCISA 두 소스(428 KOPIS 축제목록 / 196 지역축제정보)는 2026-08-31에 뺐다.
+  // Worker의 fetch가 api.kcisa.kr에 닿지 못해(530 error code: 1016) 24시간 내내
+  // 0건이었고, 같은 데이터는 kopis와 public-data-culture-festival이 이미 덮는다.
+  // KcisaCultureEventProvider와 KCISA_* env는 남겨 뒀으므로 되살릴 수 있다.
   if (providers.length === 0 && config.PARKING_PROVIDER_MODE === "mock") {
     providers.push(new MockEventProvider());
   }

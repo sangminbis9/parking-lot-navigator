@@ -142,7 +142,15 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 
 - `primary_category`는 `trade_expo`로 고정되며 LLM 태깅 대상이 아니다 (`llmTaggingSchema.ts`에 없음, `llmTaggingFallback.ts`의 결정론적 패턴도 `general_event`로만 보냄).
 - 전시장 좌표는 `worker-backend/src/exhibitionVenues.ts`에 하드코딩된 이름→좌표 매핑(코엑스/킨텍스/벡스코/송도컨벤시아/aT센터/SETEC/EXCO)이다. 부분 문자열 매칭이라 새 항목 추가 시 키 길이 정렬 순서에 유의할 것. 좌표는 근사치이며 지도 서비스로 재검증이 필요하다는 경고 주석이 파일 상단에 있다.
-- cron: 기존 `"15 * * * *"` 핸들러 안 `hour===5` 가드(city-festival의 `hour===4`와 별개)에서 매일 1회 실행.
+- cron: `"*/3 * * * *"` 핸들러 안 `minute===21` + `hour===5` 가드에서 매일 1회 실행
+  (city-festival은 같은 21분의 `hour===4`). 예전에는 `"15 * * * *"`에 얹혀 있었는데,
+  그 invocation은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 subrequest 50건
+  예산을 나눠 쓴다. AKEI만 3개월 × 최대 10페이지라 예산을 넘기면 첫 fetch부터 실패해
+  아무것도 저장하지 못했다(2026-08-24~29 6일 연속 `scraped_at` 무변화). `*/3` 쪽은
+  실시간 주차 sync 한두 건만 쓰고, 21분은 알림이 도는 0/30분 슬롯과 겹치지 않는다.
+  두 스크래퍼는 회차마다 `sync_runs`에 결과 한 행(`city-festival-scrape` /
+  `akei-trade-expo-scrape`)을 남긴다 — 예전에는 아무 흔적도 없어 "cron이 안 돌았다"와
+  "원본이 비었다"를 구분할 수 없었다.
 - 수동 sync: `POST /admin/sync-akei-trade-expos` (다른 admin sync와 동일하게 `Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 제약: AKEI 게시판에서 실제로 수집하는 기간은 현재~3개월 범위다. `/api/festivals`의 `upcomingWithinDays`는 최대 365일까지 요청 가능하지만, 3개월보다 먼 미래의 무역박람회는 아직 AKEI에도 게시되지 않아 자연히 비어 보인다 — 버그 아님.
 
