@@ -112,8 +112,8 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 - 서울 열린데이터 문화행사.
 - 문화포털 "한눈에보는문화정보" / 공공 문화정보.
 - KOPIS 공연 목록.
-- KCISA Culture API id 428, source id `kcisa_428`.
-- KCISA Culture API id 196, source id `kcisa_196`.
+- KCISA Culture API id 428 / 196 (source id `kcisa_428` / `kcisa_196`) — 2026-08-31에
+  비활성화. Worker의 fetch가 `api.kcisa.kr`에 닿지 못한다(`530 error code: 1016`).
 
 ## 로컬 이벤트 (축제와 별개 도메인)
 

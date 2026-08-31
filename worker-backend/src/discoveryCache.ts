@@ -101,6 +101,7 @@ export interface DiscoverySyncResult {
   // 타임아웃된 center는 빈 배열을 돌려주므로 결과만 봐서는 성공과 구분되지 않는다.
   // 어느 center가 시간 안에 못 끝냈는지 sync_runs에 남기려고 함께 올린다.
   timedOutCenters: string[];
+  centerCount: number;
   // provider는 실패를 빈 배열로 흡수하므로 결과에는 fetched=0만 남는다.
   // 어느 provider가 왜 실패했는지 health의 lastError를 그대로 올린다.
   providerErrors: string[];
@@ -551,8 +552,9 @@ function syncRunOutcome(result: DiscoverySyncResult): {
 } {
   const parts: string[] = [];
   if (result.timedOutCenters.length > 0) {
+    // 청크마다 center 수가 다를 수 있으므로 전국 상수가 아니라 이번 회차 수로 적는다.
     parts.push(
-      `timed out ${result.timedOutCenters.length}/${NATIONAL_DISCOVERY_CENTERS.length} centers: ${result.timedOutCenters.join(",")}`,
+      `timed out ${result.timedOutCenters.length}/${result.centerCount} centers: ${result.timedOutCenters.join(",")}`,
     );
   }
   if (result.providerErrors.length > 0) {
@@ -614,6 +616,7 @@ export async function syncDiscoveryCache(
         pruned: 0,
         sources: {},
         timedOutCenters: [],
+        centerCount: 0,
         providerErrors: [],
         generatedAt: new Date().toISOString(),
       };
@@ -636,9 +639,10 @@ async function syncDiscoveryKind(
   kind: DiscoverySyncKind,
   providerAllowlist?: ReadonlySet<string>,
   fetchTimeoutMs?: number,
+  centerIds?: string[],
 ): Promise<DiscoverySyncResult> {
   const generatedAt = new Date().toISOString();
-  const centers = centersForKind();
+  const centers = centersForKind(centerIds);
   const batches = await mapWithConcurrency(
     centers,
     discoverySyncConcurrency(),
@@ -685,6 +689,7 @@ async function syncDiscoveryKind(
     pruned,
     sources,
     timedOutCenters,
+    centerCount: centers.length,
     providerErrors: collectProviderErrors(runtime, kind, providerAllowlist),
     generatedAt,
   };
@@ -710,6 +715,7 @@ export async function syncDiscoveryChunk(
       chunk.kind,
       providerSet,
       chunk.fetchTimeoutMs,
+      chunk.centerIds,
     );
     const annotated = { ...result, syncType };
     const outcome = syncRunOutcome(annotated);
@@ -728,6 +734,7 @@ export async function syncDiscoveryChunk(
       pruned: 0,
       sources: {},
       timedOutCenters: [],
+      centerCount: 0,
       providerErrors: [],
       generatedAt: new Date().toISOString(),
     };
@@ -742,8 +749,14 @@ export async function syncDiscoveryChunk(
   }
 }
 
-function centersForKind(): Array<{ id: string; lat: number; lng: number }> {
-  return NATIONAL_DISCOVERY_CENTERS;
+function centersForKind(
+  centerIds?: string[],
+): Array<{ id: string; lat: number; lng: number }> {
+  if (!centerIds || centerIds.length === 0) return NATIONAL_DISCOVERY_CENTERS;
+  const wanted = new Set(centerIds);
+  const centers = NATIONAL_DISCOVERY_CENTERS.filter((center) => wanted.has(center.id));
+  // 오타로 아무 center도 안 남으면 조용히 0건이 되는 대신 전국으로 되돌린다.
+  return centers.length > 0 ? centers : NATIONAL_DISCOVERY_CENTERS;
 }
 
 // 좌표를 못 구한 항목은 수집 단계에서 지역 대표 좌표(예: 서울 37.5665/126.978)로 저장된다.
@@ -1359,7 +1372,7 @@ function mapFestivalRow(
     description: descriptionFromRaw(raw),
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
-    status: row.status ?? "upcoming",
+    status: derivedStatus(row),
     venueName: row.venue_name,
     address: row.address,
     lat: row.lat,
@@ -1445,7 +1458,7 @@ function mapEventRow(
     sourceId: row.source_item_id,
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
-    status: row.status ?? "upcoming",
+    status: derivedStatus(row),
     isFree: Boolean(row.is_free),
     venueName: row.venue_name,
     address: row.address,
@@ -1482,11 +1495,23 @@ function eventCategory(value: string | null): EventCategory {
     : "other";
 }
 
+/// status는 수집 시점의 날짜로 찍혀 저장되고 다음 sync 때까지 그대로 남는다.
+/// provider가 더 이상 주지 않는 행은 영영 갱신되지 않고(실측 2026-08-31: end_date가
+/// 지났는데 status가 'ongoing'/'upcoming'인 행 2,226건), 오늘 시작한 행사도 다음
+/// sync 전까지 'upcoming'으로 남아 진행중 필터에서 빠진다.
+/// 조회할 때 날짜로 다시 계산하면 이 시차가 통째로 사라진다.
+/// ended는 rowPassesFilters의 날짜 조건이 이미 걸러 내므로 DiscoverStatus에는 없다.
+function derivedStatus(row: DiscoveryItemRow): "ongoing" | "upcoming" {
+  if (!row.start_date) return row.status ?? "upcoming";
+  const today = new Date().toISOString().slice(0, 10);
+  return row.start_date <= today ? "ongoing" : "upcoming";
+}
+
 function rowPassesFilters(
   row: DiscoveryItemRow,
   options: DiscoveryQueryOptions,
 ): boolean {
-  if (options.ongoingOnly && row.status !== "ongoing") return false;
+  if (options.ongoingOnly && derivedStatus(row) !== "ongoing") return false;
   // freeOnly는 event source 행에만 의미가 있어 queryPerformancesFromCache에서 처리한다.
   // (모든 행이 type='festival'로 저장되므로 여기서 걸면 is_free가 NULL인 축제까지 사라진다.)
   if (!row.start_date || !row.end_date) return true;
@@ -1503,9 +1528,11 @@ function sortDiscoveryRows(
   lat: number,
   lng: number,
 ): number {
-  if (a.status !== b.status) {
-    if (a.status === "ongoing") return -1;
-    if (b.status === "ongoing") return 1;
+  const aStatus = derivedStatus(a);
+  const bStatus = derivedStatus(b);
+  if (aStatus !== bStatus) {
+    if (aStatus === "ongoing") return -1;
+    if (bStatus === "ongoing") return 1;
   }
   return (
     distanceMeters(lat, lng, a.lat, a.lng) -

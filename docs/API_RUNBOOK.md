@@ -70,8 +70,11 @@ Expected public culture source IDs after sync, depending on configured secrets:
 - `seoul_open_data`
 - `culture_portal`
 - `kopis`
-- `kcisa_428`
-- `kcisa_196`
+
+`kcisa_428` / `kcisa_196` are disabled since 2026-08-31: every Worker fetch to
+`api.kcisa.kr` returns `530 error code: 1016` (Cloudflare cannot reach the origin),
+while the same host answers normally from a Korean network. The rows they used to
+supply are already covered by `kopis` and `public-data-culture-festival`.
 
 ## D1
 
@@ -148,8 +151,10 @@ Culture and event APIs:
 
 - `CULTURE_PORTAL_API_KEY` maps to Culture Portal event data. Where applicable, `PUBLIC_DATA_SERVICE_KEY` can be used as fallback.
 - `KOPIS_API_KEY` maps to KOPIS performance data.
-- `KCISA_428_API_KEY` maps to KCISA API id 428.
-- `KCISA_196_API_KEY` maps to KCISA API id 196.
+- `KCISA_428_API_KEY` / `KCISA_196_API_KEY` map to KCISA API ids 428 / 196. Both
+  providers are disabled since 2026-08-31 (Worker cannot reach `api.kcisa.kr`); the
+  secrets are kept so re-enabling only needs the two chunk entries back in
+  `discoverySchedule.ts`.
 - Several list APIs do not include rich descriptions. The app shows upstream description when present and falls back to a generated summary.
 
 ## Build Notes

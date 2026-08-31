@@ -46,7 +46,7 @@
 - 지역별 실시간 provider 를 정적/provider 후보 위에 병합한다.
 - 폭넓은 후보 커버리지를 위한 fallback 으로 Kakao Local `category_group_code=PK6` 을 사용한다.
 - 스크래핑에 앞서 공식 API 를 통해 이벤트/축제 발견을 전국으로 확장한다.
-- 현재 발견 소스에는 TourAPI, 전국 문화축제 표준 데이터, 서울 열린데이터, 문화포털, KOPIS, KCISA id 428, KCISA id 196 이 포함된다.
+- 현재 발견 소스에는 TourAPI, 전국 문화축제 표준 데이터, 서울 열린데이터, 문화포털, KOPIS 가 포함된다. KCISA id 428 / 196 은 2026-08-31에 제외했다 — Worker에서 `api.kcisa.kr` 접근이 `530 error code: 1016` 으로 막힌다.
 - 사용 가능한 좌표가 없는 행은 설정된 곳에서 sync 중 Kakao Local 로 지오코딩할 수 있다. 해결되지 않은 행은 지도 핀 표시에서 제외된다.
 - 여러 공식 목록 API 는 설명이 빈약하다. 가능하면 상위(upstream) 설명을 그대로 보여주고, 없을 때는 생성된 구조화 요약을 보여준다. 상세 API enrichment 는 추후 추가한다.
 

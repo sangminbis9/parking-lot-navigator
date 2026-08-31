@@ -907,14 +907,123 @@ app.get("/discover/clusters", async (c) => {
 
 app.get("/discover/providers/health", async (c) => {
   const backend = await loadBackend(c.env);
-  return c.json({
-    providers: [
-      ...backend.festivalService.health(),
-      ...backend.eventService.health(),
-    ],
-    generatedAt: new Date().toISOString(),
+  const declared = [
+    ...backend.festivalService.health(),
+    ...backend.eventService.health(),
+  ];
+  // provider.health()는 isolate 메모리의 circuit breaker 상태다. Worker isolate는
+  // 요청마다 새로 뜨는 것이나 마찬가지라 이 값은 항상 status="up", lastSuccessAt=null로
+  // 나왔고, 그래서 이 엔드포인트로는 무엇이 죽었는지 알 수 없었다.
+  // 실제 상태는 D1의 sync_runs에만 남으므로 최근 24시간 결과로 덮어쓴다.
+  const recent = c.env.DB
+    ? await queryRecentProviderRuns(c.env.DB, hasValidAdminToken(c.req.raw, c.env))
+    : new Map<string, ProviderRunSummary>();
+  const providers = declared.map((provider) => {
+    const runs = recent.get(provider.name);
+    if (!runs) {
+      return {
+        ...provider,
+        status: "down" as const,
+        lastSuccessAt: null,
+        lastError: "최근 24시간 sync_runs 기록 없음",
+        stale: true,
+      };
+    }
+    const successRate = runs.total > 0 ? runs.success / runs.total : 0;
+    return {
+      ...provider,
+      status: successRate >= 0.8 ? ("up" as const) : successRate > 0 ? ("degraded" as const) : ("down" as const),
+      lastSuccessAt: runs.lastSuccessAt,
+      lastError: runs.lastError,
+      stale: runs.lastSuccessAt === null,
+      last24h: {
+        total: runs.total,
+        success: runs.success,
+        failed: runs.failed,
+        timeout: runs.timeout,
+      },
+    };
   });
+  // 어느 provider 목록에도 없는데 sync_runs에는 도는 것들(스크래퍼 등)도 같이 보여 준다.
+  const declaredNames = new Set(declared.map((provider) => provider.name));
+  for (const [name, runs] of recent) {
+    if (declaredNames.has(name)) continue;
+    const successRate = runs.total > 0 ? runs.success / runs.total : 0;
+    providers.push({
+      name,
+      status: successRate >= 0.8 ? ("up" as const) : successRate > 0 ? ("degraded" as const) : ("down" as const),
+      lastSuccessAt: runs.lastSuccessAt,
+      lastError: runs.lastError,
+      qualityScore: 0,
+      stale: runs.lastSuccessAt === null,
+      last24h: {
+        total: runs.total,
+        success: runs.success,
+        failed: runs.failed,
+        timeout: runs.timeout,
+      },
+    });
+  }
+  return c.json({ providers, generatedAt: new Date().toISOString() });
 });
+
+interface ProviderRunSummary {
+  total: number;
+  success: number;
+  failed: number;
+  timeout: number;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+}
+
+/// sync_type은 discovery chunk가 `discover:<kind>:<provider>`, 스크래퍼가 `<name>-scrape`다.
+/// 앞의 접두어를 떼서 provider.health()의 name과 맞춘다.
+/// 이 쿼리는 started_at만 걸러서 sync_runs를 훑는다 — idx_sync_runs_type_started의
+/// 선두 컬럼이 sync_type이라 인덱스를 못 쓴다. 보관이 30일이라 수천 행 수준이고
+/// 관리·개발용으로만 부르는 엔드포인트여서 이 스캔을 그대로 둔다.
+async function queryRecentProviderRuns(
+  db: D1Database,
+  includeMessages: boolean,
+): Promise<Map<string, ProviderRunSummary>> {
+  const result = await db
+    .prepare(
+      `SELECT sync_type,
+              COUNT(*) AS total,
+              SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+              SUM(CASE WHEN status = 'timeout' THEN 1 ELSE 0 END) AS timeout,
+              MAX(CASE WHEN status = 'success' THEN started_at END) AS last_success_at,
+              MAX(CASE WHEN status != 'success' THEN message END) AS last_message
+         FROM sync_runs
+        WHERE started_at > datetime('now', '-24 hours')
+        GROUP BY sync_type`,
+    )
+    .all<{
+      sync_type: string;
+      total: number;
+      success: number;
+      failed: number;
+      timeout: number;
+      last_success_at: string | null;
+      last_message: string | null;
+    }>();
+  const summaries = new Map<string, ProviderRunSummary>();
+  for (const row of result.results ?? []) {
+    const name = row.sync_type.startsWith("discover:")
+      ? row.sync_type.split(":").slice(2).join(":") || row.sync_type
+      : row.sync_type;
+    if (!name) continue;
+    summaries.set(name, {
+      total: row.total ?? 0,
+      success: row.success ?? 0,
+      failed: row.failed ?? 0,
+      timeout: row.timeout ?? 0,
+      lastSuccessAt: row.last_success_at,
+      lastError: includeMessages ? row.last_message : null,
+    });
+  }
+  return summaries;
+}
 
 app.get("/discover/pipeline-stats", async (c) => {
   if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
@@ -1298,6 +1407,20 @@ export default {
           }),
         );
       }
+      // 하루 1회짜리 스크래퍼 둘은 예전에 "15 * * * *"에 얹혀 있었는데, 그 invocation은
+      // 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 subrequest 50건 예산을 나눠
+      // 쓴다. AKEI만 해도 3개월 × 최대 10페이지라 예산을 넘기면 첫 fetch부터 실패하고
+      // 아무것도 저장하지 못한다(실측: 8/24~8/29 6일 연속 scraped_at 무변화).
+      // 이 invocation은 실시간 주차 sync 한두 건만 쓰므로 여유가 있다. 21분은 알림이
+      // 도는 0/30분 슬롯과도 겹치지 않는다.
+      if (scheduledAt.getUTCMinutes() === 21) {
+        if (scheduledAt.getUTCHours() === 4) {
+          ctx.waitUntil(syncCityFestivalsScheduled(env, scheduledAt));
+        }
+        if (scheduledAt.getUTCHours() === 5) {
+          ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
+        }
+      }
       return;
     }
     if (controller.cron === "*/9 * * * *") {
@@ -1318,15 +1441,6 @@ export default {
           currentLocalEventChunkIndex(scheduledAt, LOCAL_EVENT_CHUNK_COUNT),
         ),
       );
-      // 전용 cron 슬롯을 새로 쓰지 않고, 이 시간당 트리거에 UTC 4시 가드를 얹어
-      // 하루 1회 도시별 축제 스크래핑을 실행한다 (계정의 5개 cron trigger 한도 때문).
-      if (scheduledAt.getUTCHours() === 4) {
-        ctx.waitUntil(syncCityFestivalsScheduled(env, scheduledAt));
-      }
-      // 같은 이유로 AKEI 무역박람회 스크래핑은 UTC 5시 가드로 하루 1회 실행한다.
-      if (scheduledAt.getUTCHours() === 5) {
-        ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
-      }
       // sync_runs 보관 정리도 같은 이유로 UTC 6시 가드를 얹어 하루 1회만 돈다.
       // 하루 269행씩 늘어나므로 이 주기로 충분하다.
       if (scheduledAt.getUTCHours() === 6 && env.DB) {
@@ -1623,7 +1737,46 @@ async function syncLocalEventsScheduled(
   }
 }
 
+/// 스크래퍼 한 회차를 sync_runs에 한 행으로 남긴다.
+/// discovery chunk와 달리 이 둘은 아무 흔적도 남기지 않아서, 앱에 새 행사가 없을 때
+/// "cron이 안 돌았다"인지 "원본이 비었다"인지 "fetch가 실패했다"인지 대시보드로
+/// 구분할 수 없었다. notifyOpsFailure는 webhook이 설정돼 있어야만 무언가를 남긴다.
+/// 실행 중 상태('running')는 쓰지 않는다 — 결과 한 행이면 충분하고,
+/// reapStaleSyncRuns가 잡을 미완료 행도 만들지 않는다.
+async function recordScraperRun(
+  db: D1Database | undefined,
+  syncType: string,
+  startedAt: string,
+  status: "success" | "failed",
+  counts: { fetched: number; upserted: number },
+  message: string | null,
+): Promise<void> {
+  if (!db) return;
+  try {
+    await db
+      .prepare(
+        `INSERT INTO sync_runs (id, sync_type, started_at, finished_at, status, fetched, upserted, skipped, pruned, message)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+      )
+      .bind(
+        `${syncType}:${startedAt}`,
+        syncType,
+        startedAt,
+        new Date().toISOString(),
+        status,
+        counts.fetched,
+        counts.upserted,
+        message,
+      )
+      .run();
+  } catch (error) {
+    // 기록 실패가 스크래핑 결과를 되돌리지는 않는다.
+    console.error(`sync_runs record failed for ${syncType}`, error);
+  }
+}
+
 async function syncCityFestivalsScheduled(env: Env, scheduledAt: Date): Promise<void> {
+  const startedAt = new Date().toISOString();
   try {
     const chunkIndex = currentCityFestivalChunkIndex(scheduledAt, CITY_FESTIVAL_SITES.length);
     const sites = sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE);
@@ -1631,13 +1784,24 @@ async function syncCityFestivalsScheduled(env: Env, scheduledAt: Date): Promise<
     if (result.failedSites.length > 0) {
       console.warn(`city festival discovery failedSites=${result.failedSites.join(",")}`);
     }
+    await recordScraperRun(
+      env.DB,
+      "city-festival-scrape",
+      startedAt,
+      "success",
+      { fetched: result.processed, upserted: result.published },
+      `chunk=${chunkIndex} sites=${sites.length}` +
+        (result.failedSites.length > 0 ? ` failedSites=${result.failedSites.join(",")}` : ""),
+    );
   } catch (error) {
     console.error("city festival discovery sync failed", error);
+    await recordScraperRun(env.DB, "city-festival-scrape", startedAt, "failed", { fetched: 0, upserted: 0 }, String(error));
     await notifyOpsFailure(env, "city festival discovery sync", error);
   }
 }
 
 async function syncAkeiTradeExposScheduled(env: Env, scheduledAt: Date): Promise<void> {
+  const startedAt = new Date().toISOString();
   try {
     const result = await runAkeiTradeExpoDiscovery(env.DB!, scheduledAt);
     if (result.failedMonths.length > 0 || result.unmappedVenues > 0) {
@@ -1645,8 +1809,17 @@ async function syncAkeiTradeExposScheduled(env: Env, scheduledAt: Date): Promise
         `akei trade expo discovery failedMonths=${result.failedMonths.join(",")} unmappedVenues=${result.unmappedVenues}`,
       );
     }
+    await recordScraperRun(
+      env.DB,
+      "akei-trade-expo-scrape",
+      startedAt,
+      result.failedMonths.length > 0 || result.failedBatches > 0 ? "failed" : "success",
+      { fetched: result.processed, upserted: result.published },
+      `failedMonths=${result.failedMonths.join(",")} failedBatches=${result.failedBatches} unmappedVenues=${result.unmappedVenues}`,
+    );
   } catch (error) {
     console.error("akei trade expo discovery sync failed", error);
+    await recordScraperRun(env.DB, "akei-trade-expo-scrape", startedAt, "failed", { fetched: 0, upserted: 0 }, String(error));
     await notifyOpsFailure(env, "akei trade expo discovery sync", error);
   }
 }
