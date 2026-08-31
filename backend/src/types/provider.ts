@@ -7,6 +7,8 @@ export interface RawParkingRecord {
   address?: string | null;
   lat?: number | null;
   lng?: number | null;
+  /** 원본에 좌표가 없어 주소 지오코딩으로 채운 근사 좌표. 원본 좌표가 있으면 그쪽이 이긴다. */
+  coordinateIsApproximate?: boolean;
   totalCapacity?: number | null;
   availableSpaces?: number | null;
   congestionStatus?: ParkingLot["congestionStatus"] | null;

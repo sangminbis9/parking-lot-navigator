@@ -94,6 +94,47 @@ describe("CompositeParkingProvider", () => {
       displayStatus: "실시간 18면"
     });
   });
+
+  it("prefers Seoul metadata coordinates over the realtime provider's geocoded fallback", async () => {
+    const now = new Date().toISOString();
+    const provider = new CompositeParkingProvider([
+      new StaticProvider("seoul-realtime", [
+        {
+          source: "seoul-realtime",
+          sourceParkingId: "seoul-1",
+          name: "Seoul Realtime Parking",
+          lat: 37.56598553,
+          lng: 126.9773931,
+          coordinateIsApproximate: true,
+          totalCapacity: 100,
+          availableSpaces: 18,
+          realtimeAvailable: true,
+          freshnessTimestamp: now,
+          isPublic: true,
+          isPrivate: false
+        }
+      ]),
+      new StaticProvider("seoul-metadata", [
+        {
+          source: "seoul-metadata",
+          sourceParkingId: "seoul-1",
+          name: "Seoul Realtime Parking",
+          address: "Seoul",
+          lat: 37.56602,
+          lng: 126.97724,
+          totalCapacity: 100,
+          realtimeAvailable: false,
+          isPublic: true,
+          isPrivate: false
+        }
+      ])
+    ]);
+
+    const items = await provider.nearby(37.5665, 126.9780, { radiusMeters: 800 });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ lat: 37.56602, lng: 126.97724, realtimeAvailable: true });
+  });
 });
 
 class StaticProvider implements ParkingProvider {

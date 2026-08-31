@@ -61,8 +61,7 @@ function mergeRecord(a: RawParkingRecord, b: RawParkingRecord): RawParkingRecord
     sourceParkingId: a.sourceParkingId || b.sourceParkingId,
     name: a.name || b.name,
     address: a.address ?? b.address,
-    lat: validCoord(a.lat) ? a.lat : b.lat,
-    lng: validCoord(a.lng) ? a.lng : b.lng,
+    ...mergeCoordinates(a, b),
     totalCapacity: b.totalCapacity ?? a.totalCapacity,
     availableSpaces: b.availableSpaces ?? a.availableSpaces,
     realtimeAvailable: Boolean(a.realtimeAvailable || b.realtimeAvailable),
@@ -71,6 +70,21 @@ function mergeRecord(a: RawParkingRecord, b: RawParkingRecord): RawParkingRecord
     feeSummary: a.feeSummary ?? b.feeSummary,
     rawSourcePayload: { merged: [a.rawSourcePayload ?? a, b.rawSourcePayload ?? b] }
   };
+}
+
+// 원본 좌표가 있으면 지오코딩 폴백 좌표보다 먼저 쓴다. 폴백은 지번 주소 중심점이라
+// 원본과 수십~수백 m 어긋나고, 두 좌표가 회차마다 번갈아 이기면 realtime 캐시가
+// 매번 좌표 UPDATE를 쓴다.
+function mergeCoordinates(
+  a: RawParkingRecord,
+  b: RawParkingRecord
+): Pick<RawParkingRecord, "lat" | "lng" | "coordinateIsApproximate"> {
+  const candidates = [a, b];
+  const chosen =
+    candidates.find((record) => hasCoordinates(record) && !record.coordinateIsApproximate) ??
+    candidates.find((record) => hasCoordinates(record));
+  if (!chosen) return { lat: validCoord(a.lat) ? a.lat : b.lat, lng: validCoord(a.lng) ? a.lng : b.lng };
+  return { lat: chosen.lat, lng: chosen.lng, coordinateIsApproximate: chosen.coordinateIsApproximate };
 }
 
 function hasCoordinates(record: RawParkingRecord): record is RawParkingRecord & { lat: number; lng: number } {

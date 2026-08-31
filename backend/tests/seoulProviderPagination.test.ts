@@ -14,6 +14,9 @@ describe("Seoul realtime provider pagination", () => {
       vi.fn(async (url: string) => {
         requestedUrls.push(url);
         const isFirstPage = url.includes("/1/1000/");
+        if (url.includes("/GetParkInfo/")) {
+          return Response.json({ GetParkInfo: { list_total_count: 0, row: [] } });
+        }
         return Response.json({
           GetParkingInfo: {
             list_total_count: 1001,
@@ -40,6 +43,40 @@ describe("Seoul realtime provider pagination", () => {
     expect(realtimeUrls[1]).toContain("/1001/1001/");
     expect(records.map((record) => record.sourceParkingId)).toEqual(["first", "second"]);
     expect(records.map((record) => record.availableSpaces)).toEqual([4, 6]);
+  });
+
+  it("drops the whole cycle instead of returning coordinate-less rows when a page has no row", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const isFirstPage = url.includes("/1/1000/");
+        if (url.includes("/GetParkInfo/")) {
+          return Response.json({ GetParkInfo: { list_total_count: 0, row: [] } });
+        }
+        if (!isFirstPage) return Response.json({ GetParkingInfo: { list_total_count: 1001 } });
+        return Response.json({
+          GetParkingInfo: {
+            list_total_count: 1001,
+            row: [
+              {
+                PKLT_CD: "first",
+                PKLT_NM: "First Parking",
+                TPKCT: 10,
+                NOW_PRK_VHCL_CNT: 6,
+                NOW_PRK_VHCL_UPDT_TM: "2026-04-18 12:00:00",
+                PRK_STTS_YN: "1"
+              }
+            ]
+          }
+        });
+      })
+    );
+
+    const provider = new SeoulRealtimeParkingProvider(testConfig());
+    const records = await provider.fetchNearby(37.5665, 126.978, { radiusMeters: 800 });
+
+    expect(records).toEqual([]);
+    expect(provider.health().status).not.toBe("up");
   });
 });
 
