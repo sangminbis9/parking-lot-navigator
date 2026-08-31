@@ -114,7 +114,8 @@ async function fetchAllSeoulRows<TBody, TRow>(
 ): Promise<TRow[]> {
   const firstBody = await fetchSeoulJson<TBody>(config, service, 1, SEOUL_PAGE_SIZE);
   const firstResult = extract(firstBody);
-  const firstRows = firstResult?.row ?? [];
+  if (!firstResult) throw new Error(`서울 열린데이터광장 ${service} 응답 형식이 올바르지 않습니다.`);
+  const firstRows = firstResult.row ?? [];
   const totalCount = Math.min(firstResult?.list_total_count ?? firstRows.length, SEOUL_MAX_ROWS);
   if (totalCount <= SEOUL_PAGE_SIZE) return firstRows;
 
@@ -126,7 +127,11 @@ async function fetchAllSeoulRows<TBody, TRow>(
   const remaining = await Promise.all(
     ranges.map(async ([start, end]) => {
       const body = await fetchSeoulJson<TBody>(config, service, start, end);
-      return extract(body)?.row ?? [];
+      const page = extract(body);
+      if (!page?.row) {
+        throw new Error(`서울 열린데이터광장 ${service} ${start}-${end} 구간 응답에 row가 없습니다.`);
+      }
+      return page.row;
     })
   );
 
