@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchWithTimeout } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { resolveExhibitionVenue } from "./exhibitionVenues.js";
+import { delay } from "./concurrency.js";
 
 const AKEI_BASE_URL = "https://www.akei.or.kr";
 const AKEI_MONTHS_AHEAD = 3;
@@ -218,6 +219,3 @@ function buildUpsertStatement(
     );
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

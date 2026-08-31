@@ -8,6 +8,7 @@ import { combineProgramInfo } from "../../backend/src/features/discover/events/K
 import { mapWithConcurrency } from "./concurrency.js";
 import { isRetryableBackfillError } from "./backfillRetry.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
+import { seoulDayString } from "./kstDate.js";
 
 // KOPIS pcseguidance와 TourAPI usetimefestival, 그리고 프로그램·출연진 정보
 // (KOPIS dtguidance/prfcast/prfcrew, TourAPI playtime/program/subevent)는 목록
@@ -135,7 +136,7 @@ export async function runFeeBackfill(
   if (sources.length === 0) return { ...result, reason: "no_credentials" };
 
   const nowIso = now.toISOString();
-  const today = kstToday(now);
+  const today = seoulDayString(now);
   const placeholders = sources.map(() => "?").join(",");
 
   Object.assign(result, await backlog(db, sources, today));
@@ -465,13 +466,6 @@ async function fetchTourDetail(
   const fee = await client.admissionFee(contentId);
   const program = await client.programInfo(contentId);
   return { fee, program };
-}
-
-// D1에 저장된 날짜는 KST 기준 "yyyy-MM-dd"다.
-function kstToday(now: Date): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
 }
 
 // discovery_items.source_item_id는 "tourapi:1100492" 형태로 저장된다.

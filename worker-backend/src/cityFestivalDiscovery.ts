@@ -13,6 +13,7 @@ import { normalizeCandidate } from "./cityFestivalNormalize.js";
 import type { NormalizedCityFestival } from "./cityFestivalNormalize.js";
 import { scoreCandidate } from "./cityFestivalScore.js";
 import type { Env } from "./index.js";
+import { delay } from "./concurrency.js";
 
 const CITY_FESTIVAL_INTER_SITE_DELAY_MS = 300;
 const CITY_FESTIVAL_FETCH_TIMEOUT_MS = 20000;
@@ -252,6 +253,3 @@ function djb2(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

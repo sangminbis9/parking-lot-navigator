@@ -19,3 +19,8 @@ export async function mapWithConcurrency<T, U>(
   await Promise.all(workers);
   return results;
 }
+
+/** ms만큼 쉰다. 스크래퍼가 원본 서버에 간격을 두거나 재시도를 미룰 때 쓴다. */
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

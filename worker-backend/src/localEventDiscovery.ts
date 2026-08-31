@@ -4,6 +4,7 @@ import {
   structureLocalEvent,
   AGE_CONDITIONAL_FREE_PATTERN,
 } from "../../backend/src/features/localEvents/localEventStructuring.js";
+import { distanceMeters } from "../../backend/src/services/geo.js";
 import { upsertLocalEvent } from "./localEvents.js";
 import { logAgentActivity } from "./agents/headAgent.js";
 
@@ -993,22 +994,6 @@ function normalizeName(value: string): string {
     .replace(/[()[\]{}"'`~!@#$%^&*_+=,./<>?:;|\\-]/g, "");
 }
 
-function distanceMeters(
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-): number {
-  const radius = 6371000;
-  const dLat = ((toLat - fromLat) * Math.PI) / 180;
-  const dLng = ((toLng - fromLng) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((fromLat * Math.PI) / 180) *
-      Math.cos((toLat * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 function extractBenefit(text: string): string | null {
   const conditional = text.match(AGE_CONDITIONAL_FREE_PATTERN);
