@@ -4,6 +4,7 @@ import { REGION_FALLBACK_COORDINATES } from "../../backend/src/features/discover
 import { mapWithConcurrency } from "./concurrency.js";
 import { toHttpsImageUrl } from "./imageUrl.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
+import { seoulDayString } from "./kstDate.js";
 import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
   currentDiscoveryChunkIndex,
@@ -814,12 +815,20 @@ async function queryDiscoveryRows(
       Math.max(limit + 500, limit),
     )
     .all<DiscoveryItemRow>();
-  return (rows.results ?? [])
-    .filter((row) => !isRegionFallbackCoordinate(row.lat, row.lng))
-    .filter((row) => distanceMeters(lat, lng, row.lat, row.lng) <= radiusMeters)
-    .filter((row) => rowPassesFilters(row, options))
-    .sort((a, b) => sortDiscoveryRows(a, b, lat, lng))
-    .slice(0, limit);
+  // 거리는 행마다 한 번만 재고 정렬은 그 값을 본다. sort 비교마다 haversine을 두 번씩
+  // 다시 돌리면 1,000행짜리 응답에서 2만 번 넘게 계산한다.
+  const candidates: Array<{ row: DiscoveryItemRow; distance: number }> = [];
+  for (const row of rows.results ?? []) {
+    if (isRegionFallbackCoordinate(row.lat, row.lng)) continue;
+    const distance = distanceMeters(lat, lng, row.lat, row.lng);
+    if (distance > radiusMeters) continue;
+    if (!rowPassesFilters(row, options)) continue;
+    candidates.push({ row, distance });
+  }
+  return candidates
+    .sort(sortDiscoveryRows)
+    .slice(0, limit)
+    .map((entry) => entry.row);
 }
 
 const DISCOVERY_UPSERT_BATCH_SIZE = 50;
@@ -1503,8 +1512,7 @@ function eventCategory(value: string | null): EventCategory {
 /// ended는 rowPassesFilters의 날짜 조건이 이미 걸러 내므로 DiscoverStatus에는 없다.
 function derivedStatus(row: DiscoveryItemRow): "ongoing" | "upcoming" {
   if (!row.start_date) return row.status ?? "upcoming";
-  const today = new Date().toISOString().slice(0, 10);
-  return row.start_date <= today ? "ongoing" : "upcoming";
+  return row.start_date <= today().seoulDay ? "ongoing" : "upcoming";
 }
 
 function rowPassesFilters(
@@ -1517,27 +1525,23 @@ function rowPassesFilters(
   if (!row.start_date || !row.end_date) return true;
   const end = Date.parse(row.end_date);
   if (!Number.isFinite(end)) return true;
-  const max = Date.now() + options.upcomingWithinDays * 24 * 60 * 60 * 1000;
-  const min = startOfToday() - (options.pastWithinDays ?? 0) * 24 * 60 * 60 * 1000;
+  const { nowMs, startOfTodayMs } = today();
+  const max = nowMs + options.upcomingWithinDays * 24 * 60 * 60 * 1000;
+  const min = startOfTodayMs - (options.pastWithinDays ?? 0) * 24 * 60 * 60 * 1000;
   return end >= min && Date.parse(row.start_date) <= max;
 }
 
 function sortDiscoveryRows(
-  a: DiscoveryItemRow,
-  b: DiscoveryItemRow,
-  lat: number,
-  lng: number,
+  a: { row: DiscoveryItemRow; distance: number },
+  b: { row: DiscoveryItemRow; distance: number },
 ): number {
-  const aStatus = derivedStatus(a);
-  const bStatus = derivedStatus(b);
+  const aStatus = derivedStatus(a.row);
+  const bStatus = derivedStatus(b.row);
   if (aStatus !== bStatus) {
     if (aStatus === "ongoing") return -1;
     if (bStatus === "ongoing") return 1;
   }
-  return (
-    distanceMeters(lat, lng, a.lat, a.lng) -
-    distanceMeters(lat, lng, b.lat, b.lng)
-  );
+  return a.distance - b.distance;
 }
 
 function dedupeItems<T extends DiscoveryItem>(items: T[]): T[] {
@@ -1710,8 +1714,26 @@ function parseJsonArray<T>(value: string | null): T[] {
   }
 }
 
-function startOfToday(): number {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+/// 조회 경로는 필터·정렬·응답 매핑이 행마다 "오늘"을 묻는다. 행마다 Date를 새로 만들면
+/// 1,000행짜리 응답 하나가 수만 번 할당하므로 1분만 캐시한다. 자정 경계에서 최대 1분
+/// 늦게 넘어가지만, 행사가 진행중인지 판정하는 데에는 영향이 없다.
+let cachedToday: {
+  at: number;
+  nowMs: number;
+  seoulDay: string;
+  startOfTodayMs: number;
+} | null = null;
+
+function today(): { nowMs: number; seoulDay: string; startOfTodayMs: number } {
+  const now = Date.now();
+  if (cachedToday && now - cachedToday.at < 60_000) return cachedToday;
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  cachedToday = {
+    at: now,
+    nowMs: now,
+    seoulDay: seoulDayString(new Date(now)),
+    startOfTodayMs: midnight.getTime(),
+  };
+  return cachedToday;
 }

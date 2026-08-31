@@ -21,6 +21,7 @@
 // 그 위에 apns-collapse-id를 얹어 기기 단에서 한 번 더 합쳐지게 한다.
 
 import { matchesRegions } from "./regionMatch.js";
+import { seoulDayString, seoulHour } from "./kstDate.js";
 import { type ApnsSender, isPermanentTokenFailure } from "./apns.js";
 
 export type NotificationType = "D30" | "D7" | "D1";
@@ -72,16 +73,7 @@ export type PendingDigest = {
 
 // ---------------------------------------------------------------- 날짜 유틸
 
-/** now를 Asia/Seoul 기준 "yyyy-MM-dd"로. 서버는 UTC로 돌지만 사용자 날짜는 KST다. */
-export function seoulDayString(now: Date): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-}
-
-export function seoulHour(now: Date): number {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).getUTCHours();
-}
+export { seoulDayString, seoulHour } from "./kstDate.js";
 
 export function addDays(day: string, delta: number): string {
   const [y, m, d] = day.split("-").map(Number);

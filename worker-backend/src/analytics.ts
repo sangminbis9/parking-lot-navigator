@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { seoulDayString } from "./kstDate.js";
 
 // 익명 사용 집계.
 //
@@ -47,10 +48,6 @@ export type AnalyticsBatch = z.infer<typeof analyticsBatchSchema>;
 
 export const ANALYTICS_RETENTION_DAYS = 180;
 
-function kstDay(now: Date): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 /** 허용 목록에 없는 이벤트나 라벨은 조용히 버린다. 앱 버전이 앞서가도 400을 내지 않는다. */
 function normalize(
   batch: AnalyticsBatch,
@@ -78,7 +75,7 @@ export async function recordAnalytics(
 ): Promise<number> {
   const entries = normalize(batch);
   if (entries.length === 0) return 0;
-  const day = kstDay(now);
+  const day = seoulDayString(now);
   const updatedAt = now.toISOString();
   // count/updated_at은 인덱스에 없으므로 갱신해도 본체 1행만 다시 쓴다.
   const statement = db.prepare(
@@ -100,7 +97,7 @@ export async function queryAnalyticsDaily(
   now: Date = new Date(),
 ): Promise<{ day: string; event: string; label: string; count: number }[]> {
   const span = Math.min(Math.max(days, 1), 90);
-  const from = kstDay(new Date(now.getTime() - (span - 1) * 86400000));
+  const from = seoulDayString(new Date(now.getTime() - (span - 1) * 86400000));
   const result = await db
     .prepare(
       `SELECT day, event, label, count FROM analytics_daily
@@ -120,7 +117,7 @@ export async function pruneOldAnalytics(
   db: D1Database,
   now: Date = new Date(),
 ): Promise<number> {
-  const cutoff = kstDay(
+  const cutoff = seoulDayString(
     new Date(now.getTime() - ANALYTICS_RETENTION_DAYS * 86400000),
   );
   const result = await db
