@@ -30,7 +30,7 @@ struct NotificationsInboxView: View {
     var body: some View {
         NavigationStack {
             content
-                .background(FestivalDesign.cream.ignoresSafeArea())
+                .background(FestivalDesign.background.ignoresSafeArea())
                 .navigationTitle("알림")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

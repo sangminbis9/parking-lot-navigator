@@ -1870,7 +1870,8 @@ private struct MapNotificationIcon: View {
         MapFloatingIcon(
             systemName: unreadCount > 0 ? "bell.fill" : "bell",
             tint: FestivalDesign.coral,
-            size: 44
+            size: 44,
+            foreground: .white
         )
         .overlay(alignment: .topTrailing) {
             if unreadCount > 0 {
@@ -1893,11 +1894,13 @@ private struct MapFloatingIcon: View {
     let systemName: String
     let tint: Color
     let size: CGFloat
+    /// 대비 계산 대신 정해진 색을 쓰고 싶을 때만 넘긴다. 기본은 채움색 대비로 고른다.
+    var foreground: Color?
 
     var body: some View {
         Image(systemName: systemName)
             .font(.festival(size: size * 0.38, weight: .bold))
-            .foregroundStyle(FestivalDesign.onFill(tint))
+            .foregroundStyle(foreground ?? FestivalDesign.onFill(tint))
             .frame(width: size, height: size)
             .background(Circle().fill(tint))
             .overlay(
