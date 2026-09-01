@@ -12,7 +12,10 @@ import {
 } from "../common/dateUtils.js";
 import { sortByStatusThenDistance } from "../common/sortDiscover.js";
 import { getGeocodeStore } from "../events/eventProviderUtils.js";
-import { nationalCultureMaxPages } from "./tourApiFestivalConfig.js";
+import {
+  nationalCultureMaxPages,
+  nationalCulturePageCycles,
+} from "./tourApiFestivalConfig.js";
 
 const NATIONAL_CULTURE_FESTIVAL_PATH =
   "/openapi/tn_pubr_public_cltur_fstvl_api";
@@ -90,6 +93,7 @@ export class NationalCultureFestivalProvider
 {
   private cachedItems: {
     expiresAt: number;
+    startPage: number;
     items: CachedNationalFestival[];
   } | null = null;
   private inFlightItems: Promise<CachedNationalFestival[]> | null = null;
@@ -98,6 +102,7 @@ export class NationalCultureFestivalProvider
     private readonly serviceKey: string,
     private readonly baseUrl: string,
     private readonly maxPages: number = nationalCultureMaxPages(),
+    private readonly pageCycles: number = nationalCulturePageCycles(),
   ) {
     super("public-data-culture-festival");
   }
@@ -137,17 +142,25 @@ export class NationalCultureFestivalProvider
 
   private async fetchCachedItems(): Promise<CachedNationalFestival[]> {
     const now = Date.now();
-    if (this.cachedItems && this.cachedItems.expiresAt > now) {
+    const startPage = this.startPage();
+    /// 캐시는 회전 구간별로 따로 잡는다. isolate가 몇 시간 살아남으면 구간이 바뀌어도
+    /// 옛 구간 캐시를 계속 돌려주게 되어 회전이 멈춘다.
+    if (
+      this.cachedItems &&
+      this.cachedItems.expiresAt > now &&
+      this.cachedItems.startPage === startPage
+    ) {
       return this.cachedItems.items;
     }
     if (this.inFlightItems) return this.inFlightItems;
 
     this.inFlightItems = this.fetchAllItems(
+      startPage,
       AbortSignal.timeout(SHARED_FETCH_TIMEOUT_MS),
     )
       .then((items) => {
         if (items.length > 0) {
-          this.cachedItems = { expiresAt: now + CACHE_TTL_MS, items };
+          this.cachedItems = { expiresAt: now + CACHE_TTL_MS, startPage, items };
         }
         return items;
       })
@@ -157,25 +170,31 @@ export class NationalCultureFestivalProvider
     return this.inFlightItems;
   }
 
+  /// maxPages * PAGE_SIZE가 전체 축제 수보다 작으면 항상 앞쪽 페이지만 읽게 되어
+  /// 뒤쪽 축제는 영원히 갱신되지 않는다. 회차마다 시작 페이지를 옮겨 전체를 순회한다.
+  private startPage(): number {
+    if (this.pageCycles <= 1) return 1;
+    const slot = Math.floor(Date.now() / 3_600_000) % this.pageCycles;
+    return slot * this.maxPages + 1;
+  }
+
   private async fetchAllItems(
+    startPage: number,
     signal?: AbortSignal,
   ): Promise<CachedNationalFestival[]> {
-    const first = await this.fetchPage(1, signal);
-    const totalCount = first.totalCount ?? first.items.length;
-    const requiredPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-    const totalPages = Math.min(this.maxPages, requiredPages);
-    if (requiredPages > totalPages) {
+    let window = await this.fetchPageWindow(startPage, signal);
+    if (window.rows.length === 0 && startPage > 1) {
+      /// 회전 구간이 실제 페이지 수를 넘어섰다. 빈 페이지 한 장만 버리고 앞에서 다시 읽는다.
+      window = await this.fetchPageWindow(1, signal);
+    }
+    const coverage = this.maxPages * this.pageCycles * PAGE_SIZE;
+    if (window.totalCount !== null && window.totalCount > coverage) {
       console.warn(
-        `public-data-culture-festival truncated_at_page=${totalPages} total_pages=${requiredPages} totalCount=${totalCount}; raise NATIONAL_CULTURE_MAX_PAGES to ingest more`,
+        `public-data-culture-festival coverage=${coverage} totalCount=${window.totalCount}; raise NATIONAL_CULTURE_PAGE_CYCLES to ingest more`,
       );
     }
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) =>
-        this.fetchPage(index + 2, signal),
-      ),
-    );
     const today = new Date().toISOString().slice(0, 10);
-    const rawItems = [...first.items, ...rest.flatMap((page) => page.items)];
+    const rawItems = window.rows;
     const cachedCoordinates = await lookupCachedCoordinates(rawItems);
     const results = await Promise.all(
       rawItems.map((row) =>
@@ -194,9 +213,29 @@ export class NationalCultureFestivalProvider
 
     const deduped = dedupeItems(normalized);
     console.info(
-      `public-data-culture-festival fetched=${rawItems.length} normalized=${normalized.length} deduped=${deduped.length} dropped_no_coord=${droppedNoCoord} dropped_past=${droppedPast}`,
+      `public-data-culture-festival start_page=${startPage} fetched=${rawItems.length} normalized=${normalized.length} deduped=${deduped.length} dropped_no_coord=${droppedNoCoord} dropped_past=${droppedPast}`,
     );
     return deduped;
+  }
+
+  /// 페이지를 동시에 던지면 응답이 전부 한 번에 메모리에 올라가 invocation이 죽는다.
+  /// 순차로 읽고, 마지막 페이지에 닿으면(짧은 페이지) 바로 멈춘다.
+  private async fetchPageWindow(
+    startPage: number,
+    signal?: AbortSignal,
+  ): Promise<{
+    rows: NationalCultureFestivalItem[];
+    totalCount: number | null;
+  }> {
+    const rows: NationalCultureFestivalItem[] = [];
+    let totalCount: number | null = null;
+    for (let offset = 0; offset < this.maxPages; offset += 1) {
+      const page = await this.fetchPage(startPage + offset, signal);
+      totalCount ??= page.totalCount;
+      rows.push(...page.items);
+      if (page.items.length < PAGE_SIZE) break;
+    }
+    return { rows, totalCount };
   }
 
   private async fetchPage(

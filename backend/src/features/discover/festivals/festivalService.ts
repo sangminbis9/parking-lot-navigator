@@ -41,9 +41,12 @@ export class FestivalService {
       activeProviders.map((provider) => provider.festivals(query)),
     );
     const items = dedupeFestivals(festivalResults.flat());
+    /// 빈 결과를 캐시할지는 이번에 실제로 호출한 provider만 보고 정한다.
+    /// 전체 health를 보면 allowlist 청크 sync에서 tourapi가 살아 있다는 이유로
+    /// 호출되지도 않은 provider의 전면 실패가 6시간짜리 정상 빈 응답으로 굳는다.
     if (
       items.length > 0 ||
-      this.health().some((provider) => provider.status !== "down")
+      activeProviders.every((provider) => provider.health().status !== "down")
     ) {
       cache.set(cacheKey, items, config.DISCOVER_CACHE_TTL_SECONDS);
     }

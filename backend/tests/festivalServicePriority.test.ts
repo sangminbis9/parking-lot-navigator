@@ -80,6 +80,41 @@ describe("FestivalService source priority", () => {
   });
 });
 
+describe("FestivalService empty-result caching", () => {
+  it("does not cache an empty answer when the provider it called is down", async () => {
+    let calls = 0;
+    const down: FestivalProvider = {
+      async festivals() {
+        calls += 1;
+        return [];
+      },
+      health(): ProviderHealth {
+        return {
+          name: "public-data-culture-festival",
+          status: "down",
+          lastSuccessAt: null,
+          lastError: "boom",
+          qualityScore: 0,
+          stale: true
+        };
+      }
+    };
+    const service = new FestivalService([down, providerForSource("tourapi")]);
+    const query: DiscoverQuery = {
+      lat: 37.1,
+      lng: 127.1,
+      radiusMeters: 12349,
+      upcomingWithinDays: 36500,
+      providerAllowlist: new Set(["public-data-culture-festival"])
+    };
+
+    await service.nearby(query);
+    await service.nearby(query);
+
+    expect(calls).toBe(2);
+  });
+});
+
 describe("createFestivalService extraProviders", () => {
   it("includes extra providers passed in, regardless of which provider-mode branch runs", async () => {
     const extra = providerForSource("city-scraped");
