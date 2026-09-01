@@ -1,5 +1,6 @@
 const DEFAULT_TOUR_FESTIVAL_MAX_PAGES = 20;
-const DEFAULT_NATIONAL_CULTURE_MAX_PAGES = 20;
+const DEFAULT_NATIONAL_CULTURE_MAX_PAGES = 2;
+const DEFAULT_NATIONAL_CULTURE_PAGE_CYCLES = 10;
 const DEFAULT_TOUR_ENRICH_MAX_ITEMS = 300;
 const DEFAULT_TOUR_AREA_FESTIVAL_MAX_PAGES = 3;
 const DEFAULT_TOUR_AREA_DATE_RESOLVE_MAX_ITEMS = 20;
@@ -17,10 +18,21 @@ export function tourFestivalMaxPages(): number {
   );
 }
 
+// 전국문화축제표준데이터는 1000행짜리 페이지를 여러 장 받아야 하는데, 한 회차에
+// 전부 받으면 응답이 동시에 메모리에 올라가고 JSON 파싱 비용도 한 invocation에
+// 몰려 Worker가 죽는다(2026-08-02 이후 이 provider는 한 건도 쓰지 못했다).
+// maxPages는 "회차당 읽을 페이지 수", pageCycles는 "전체를 몇 회차에 걸쳐 순회하는가"다.
 export function nationalCultureMaxPages(): number {
   return parsePositiveInt(
     process.env.NATIONAL_CULTURE_MAX_PAGES,
     DEFAULT_NATIONAL_CULTURE_MAX_PAGES,
+  );
+}
+
+export function nationalCulturePageCycles(): number {
+  return parsePositiveInt(
+    process.env.NATIONAL_CULTURE_PAGE_CYCLES,
+    DEFAULT_NATIONAL_CULTURE_PAGE_CYCLES,
   );
 }
 
