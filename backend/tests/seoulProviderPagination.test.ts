@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SeoulParkingMetadataProvider } from "../src/providers/SeoulParkingMetadataProvider.js";
 import { SeoulRealtimeParkingProvider } from "../src/providers/SeoulRealtimeParkingProvider.js";
 import type { AppConfig } from "../src/config/env.js";
 
@@ -77,6 +78,43 @@ describe("Seoul realtime provider pagination", () => {
 
     expect(records).toEqual([]);
     expect(provider.health().status).not.toBe("up");
+  });
+
+  it("fetches GetParkInfo once when both Seoul providers run in the same cycle", async () => {
+    const requestedUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        requestedUrls.push(url);
+        if (url.includes("/GetParkInfo/")) {
+          return Response.json({
+            GetParkInfo: {
+              list_total_count: 1001,
+              row: [
+                {
+                  PKLT_CD: url.includes("/1/1000/") ? "first" : "second",
+                  PKLT_NM: "Metadata Parking",
+                  LAT: 37.5665,
+                  LOT: 126.978,
+                  TPKCT: 10
+                }
+              ]
+            }
+          });
+        }
+        return Response.json({ GetParkingInfo: { list_total_count: 0, row: [] } });
+      })
+    );
+
+    const config = testConfig();
+    const [realtime, metadata] = await Promise.all([
+      new SeoulRealtimeParkingProvider(config).fetchNearby(37.5665, 126.978, { radiusMeters: 800 }),
+      new SeoulParkingMetadataProvider(config).fetchNearby(37.5665, 126.978, { radiusMeters: 800 })
+    ]);
+
+    expect(requestedUrls.filter((url) => url.includes("/GetParkInfo/"))).toHaveLength(2);
+    expect(realtime).toEqual([]);
+    expect(metadata.map((record) => record.sourceParkingId)).toEqual(["first", "second"]);
   });
 });
 

@@ -3,9 +3,8 @@ import type { ParkingProvider, RawParkingRecord } from "../types/provider.js";
 import type { AppConfig } from "../config/env.js";
 import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
+import { fetchSeoulParkInfoRows, type SeoulParkInfoRow } from "./seoulOpenData.js";
 
-const SEOUL_PAGE_SIZE = 1000;
-const SEOUL_MAX_ROWS = 10000;
 const SEOUL_CENTER = { lat: 37.5665, lng: 126.9780 };
 const SEOUL_SERVICE_RADIUS_METERS = 45000;
 
@@ -27,11 +26,7 @@ export class SeoulParkingMetadataProvider extends BaseProviderHealth implements 
     }
 
     try {
-      const rows = await fetchAllSeoulRows<SeoulMetadataResponse, SeoulMetadataRow>(
-        this.config,
-        "GetParkInfo",
-        (body) => body.GetParkInfo
-      );
+      const rows = await fetchSeoulParkInfoRows(this.config);
       const mapped = rows
         .map(mapMetadataRow)
         .filter((item): item is RawParkingRecord & { lat: number; lng: number } => Boolean(item?.lat && item.lng))
@@ -45,35 +40,11 @@ export class SeoulParkingMetadataProvider extends BaseProviderHealth implements 
   }
 }
 
-interface SeoulMetadataResponse {
-  GetParkInfo?: {
-    list_total_count?: number;
-    row?: SeoulMetadataRow[];
-  };
-}
-
 function intersectsSeoulServiceArea(lat: number, lng: number, radiusMeters: number): boolean {
   return distanceMeters(lat, lng, SEOUL_CENTER.lat, SEOUL_CENTER.lng) <= radiusMeters + SEOUL_SERVICE_RADIUS_METERS;
 }
 
-interface SeoulMetadataRow {
-  PKLT_CD?: string;
-  PKLT_NM?: string;
-  ADDR?: string;
-  LAT?: number;
-  LOT?: number;
-  TPKCT?: number;
-  WD_OPER_BGNG_TM?: string;
-  WD_OPER_END_TM?: string;
-  CHGD_FREE_NM?: string;
-  PRK_CRG?: number;
-  PRK_HM?: number;
-  ADD_CRG?: number;
-  ADD_UNIT_TM_MNT?: number;
-  PRK_NOW_INFO_PVSN_YN?: string;
-}
-
-function mapMetadataRow(row: SeoulMetadataRow): RawParkingRecord | null {
+function mapMetadataRow(row: SeoulParkInfoRow): RawParkingRecord | null {
   if (!row.PKLT_CD || !row.PKLT_NM) return null;
   return {
     source: "seoul-metadata",
@@ -93,49 +64,6 @@ function mapMetadataRow(row: SeoulMetadataRow): RawParkingRecord | null {
     isPrivate: false,
     rawSourcePayload: row
   };
-}
-
-async function fetchSeoulJson<T>(
-  config: AppConfig,
-  service: string,
-  start: number,
-  end: number
-): Promise<T> {
-  const url = `${config.SEOUL_OPEN_DATA_BASE_URL}/${config.SEOUL_OPEN_DATA_KEY}/json/${service}/${start}/${end}/`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`서울 열린데이터광장 호출 실패: ${response.status}`);
-  return (await response.json()) as T;
-}
-
-async function fetchAllSeoulRows<TBody, TRow>(
-  config: AppConfig,
-  service: string,
-  extract: (body: TBody) => { list_total_count?: number; row?: TRow[] } | undefined
-): Promise<TRow[]> {
-  const firstBody = await fetchSeoulJson<TBody>(config, service, 1, SEOUL_PAGE_SIZE);
-  const firstResult = extract(firstBody);
-  if (!firstResult) throw new Error(`서울 열린데이터광장 ${service} 응답 형식이 올바르지 않습니다.`);
-  const firstRows = firstResult.row ?? [];
-  const totalCount = Math.min(firstResult?.list_total_count ?? firstRows.length, SEOUL_MAX_ROWS);
-  if (totalCount <= SEOUL_PAGE_SIZE) return firstRows;
-
-  const ranges: Array<[number, number]> = [];
-  for (let start = SEOUL_PAGE_SIZE + 1; start <= totalCount; start += SEOUL_PAGE_SIZE) {
-    ranges.push([start, Math.min(start + SEOUL_PAGE_SIZE - 1, totalCount)]);
-  }
-
-  const remaining = await Promise.all(
-    ranges.map(async ([start, end]) => {
-      const body = await fetchSeoulJson<TBody>(config, service, start, end);
-      const page = extract(body);
-      if (!page?.row) {
-        throw new Error(`서울 열린데이터광장 ${service} ${start}-${end} 구간 응답에 row가 없습니다.`);
-      }
-      return page.row;
-    })
-  );
-
-  return [...firstRows, ...remaining.flat()];
 }
 
 function toNumber(value: unknown): number | null {
