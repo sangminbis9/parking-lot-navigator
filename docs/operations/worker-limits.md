@@ -1,6 +1,6 @@
 # Worker 계정 한도
 
-마지막 확인: 2026-08-29 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
+마지막 확인: 2026-09-01 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
 
 이 문서는 코드 설계를 직접 규정하는 플랫폼 한도를 한곳에 모은다. 배치 크기, cron
 배치, 쿼리 모양이 전부 여기서 나왔다. **한도를 올리기 전에 이 표를 먼저 본다.**
@@ -8,7 +8,7 @@
 | 한도 | 값 | 넘기면 벌어지는 일 | 이 한도에 묶인 코드 |
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
-| invocation당 CPU 시간 | 10ms | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | cron 핸들러 전부. 예전에는 태깅과 backfill이 `*/20` 한 invocation에 얹혀 있어 backfill이 회차당 4건 남짓만 처리하고 죽었다. 지금은 `*/5`에서 한 invocation에 한 작업만 둔다. 실측 2026-08-18: 24시간 892회 invocation 중 524회(59%)가 `exceededResources`로 죽었다 |
+| invocation당 리소스 한도 (`exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-01 실측) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이다. `*/5` backfill 슬롯은 거의 죽지 않는다. 아래 "무엇이 `exceededResources`로 죽는가" 참고 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | `wrangler.toml`의 5개 스케줄. 새 주기가 필요하면 기존 cron에 시간/분 가드를 얹는다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **한도 안에 들어올 것으로 보이나 아직 실측 전이다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배). 같은 날 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)를 연달아 넣어 **약 82,000/일**을 예상한다. 82,000은 **예상치이고 실측이 아니다** — 배포 후 만 하루가 지난 창에서 다시 재야 확정된다. 아래 "D1 행 쓰기 예산" 참고 |
@@ -16,10 +16,57 @@
 
 D1 쿼리는 subrequest 한도에 포함되지 않는다. Workers AI(`ai.run`) 호출은 포함된다.
 
-## CPU 한도가 만드는 고유한 실패 모양
+## 무엇이 `exceededResources`로 죽는가
 
-subrequest 초과는 예외를 던져서 잡히지만, CPU 초과는 **아무 흔적 없이 죽는다.**
-그래서 아래 두 가지를 코드 규칙으로 둔다.
+subrequest 초과는 예외를 던져서 잡히지만, `exceededResources` 킬은 **아무 흔적 없이
+죽는다.** 오랫동안 이 킬을 "invocation당 CPU 10ms 초과"로 적어 뒀는데, 2026-09-01
+실측이 그 설명을 뒤집었다.
+
+측정은 `workersInvocationsAdaptive`를 `datetimeMinute`으로 뽑아 분(minute)별로 가른
+것이다. cron 주기가 분에 새겨져 있어(`*/3`·`*/5`·`*/9`·`15`·`30 */3`) 코드에 계측을
+넣지 않고도 어느 스케줄이 죽는지 갈린다. 창은 2026-08-31T11:53Z ~ 2026-09-01T11:53Z
+24시간이다.
+
+| 분에 도는 job | 킬 비율 | 성공 invocation cpuP50 | 죽은 invocation cpuP50 |
+| --- | --- | --- | --- |
+| `*/3` 실시간 주차 sync만 (분 3·6·12·24·33·39·42·48·51·57) | 57~83% | 89~203ms | 11~20ms |
+| `*/9` discovery 청크가 겹치는 분 (0·9·18·27·36·45·54) | 19~60% | 18~141ms | 10~16ms |
+| `*/5` backfill만 (분 5·10·20·25·35·40·50·55) | 0~5.6% | 1.4~84ms | 10ms |
+| cron 없는 분 (앱 요청만) | 대체로 0% | 2.3~131ms | — |
+
+여기서 두 가지가 확정된다.
+
+- **CPU 10ms 하드 캡은 이 Worker에 걸려 있지 않다.** 성공한 invocation이 일상적으로
+  89~203ms CPU를 쓴다. 10ms에서 잘린다면 나올 수 없는 값이다.
+- **킬의 원인은 CPU가 아니다.** CPU 한도로 죽으면 죽은 쪽 CPU가 **천장에 붙어야** 하는데,
+  실측은 정반대다 — 죽은 invocation의 CPU(11~20ms)가 성공한 invocation(89~203ms)보다
+  훨씬 **낮다.** 자원을 다 쓰기 한참 전에 죽는다는 뜻이다.
+
+죽는 곳은 한 군데로 좁혀졌다: `*/3` 실시간 주차 sync다. `*/5` backfill(회차 45건, 항목당
+fetch 1건)은 거의 죽지 않고, discovery 청크와 앱 요청도 대체로 산다. (cron 없는 분과
+`*/5` 분의 성공 cpuP50이 넓게 흩어지는 건 같은 분에 섞인 앱 요청 때문이다.)
+
+남은 1순위 가설은 **메모리(128MB — 무료·유료 공통)**다. 실시간 sync는
+`CompositeParkingProvider.nearby()`가 8개 provider를 `Promise.all`로 동시에 돌리고,
+그중 `SeoulRealtimeParkingProvider`는 `GetParkingInfo`와 `GetParkInfo`를 각각 1000행짜리
+페이지 최대 10장씩 다시 `Promise.all`로 받는다. `SeoulParkingMetadataProvider`가 같은
+`GetParkInfo`를 한 번 더 받는다. 응답 본문과 파싱된 배열이 한 시점에 전부 힙에 살아 있고,
+`RawParkingRecord.rawSourcePayload`가 원본 행을 레코드마다 그대로 붙들고,
+`mergeRecord`가 그걸 `{ merged: [...] }`로 한 겹 더 감싼다 — 그런데 Worker의
+`realtimeParkingCache.ts`는 upsert에서 `raw_payload`에 **`null`을 바인딩한다.** 끝까지
+안 쓰는 값을 파이프라인 내내 들고 있는 셈이다. I/O 대기는 CPU로 안 잡히므로 이 지점에서
+죽으면 CPU가 낮게 찍히는 것도 설명된다.
+
+**아직 가설이다.** `exceededResources`는 CPU·메모리를 구분해 주지 않아서, 확정하려면
+실시간 sync의 최대 메모리를 실제로 줄여 보고 킬 비율이 떨어지는지 봐야 한다. 후보는
+(1) `fetchAllSeoulRows`의 페이지 `Promise.all`을 순차 루프로, (2) 두 provider가 각자 받는
+`GetParkInfo` 중복 제거, (3) Worker 경로에서 쓰지 않는 `rawSourcePayload` 미보관.
+
+참고로 **회차 45건 상한은 CPU가 아니라 subrequest 50건에서 나온 값이라 이 실측과
+무관하다**(위 표 첫 행). `*/5`의 분 슬롯 분할도 마찬가지로 한 invocation이 subrequest
+예산을 통째로 쓰게 하려던 것이고, 실측에서 그 슬롯들은 실제로 거의 죽지 않는다.
+
+조용한 죽음 때문에 아래 두 가지는 그대로 코드 규칙으로 둔다.
 
 - **배치 쓰기를 회차 끝에 몰지 않는다.** 루프를 다 돌고 나서 `db.batch()`를 한 번만
   하면, 중간에 죽었을 때 그 회차의 외부 호출 결과가 전부 사라진다. 실제로
@@ -188,6 +235,8 @@ pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote \
 ## 유료 플랜으로 풀리는 것
 
 Workers Paid($5/월) 전환 시 subrequest 50 → 1000, CPU 10ms → 30s(설정으로 최대 5분)로
+(단 메모리 128MB는 두 플랜이 같다 — 위 절의 `exceededResources` 킬이 메모리라면 유료
+전환으로 풀리지 않는다.)
 올라간다. 다만 무료 플랜에서도 **한 invocation에 한 작업만 두고 cron 주기를 당기면**
 같은 처리량을 얻는다 (2026-08-18, `*/20` 3분할 → `*/5` 4분할). 유료 전환은 그다음
 단계이고, 전환하면 다음이 함께 풀린다.
