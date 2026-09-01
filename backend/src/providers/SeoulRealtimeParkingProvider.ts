@@ -4,9 +4,8 @@ import type { AppConfig } from "../config/env.js";
 import { MemoryCache } from "../cache/memoryCache.js";
 import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
+import { fetchAllSeoulRows, fetchSeoulParkInfoRows, type SeoulParkInfoRow } from "./seoulOpenData.js";
 
-const SEOUL_PAGE_SIZE = 1000;
-const SEOUL_MAX_ROWS = 10000;
 const SEOUL_CENTER = { lat: 37.5665, lng: 126.9780 };
 const SEOUL_SERVICE_RADIUS_METERS = 45000;
 const KAKAO_GEOCODE_CONCURRENCY = 6;
@@ -31,16 +30,14 @@ export class SeoulRealtimeParkingProvider extends BaseProviderHealth implements 
     }
 
     try {
-      const rows = await fetchAllSeoulRows<SeoulRealtimeResponse, SeoulRealtimeRow>(
-        this.config,
-        "GetParkingInfo",
-        (body) => body.GetParkingInfo
-      );
-      const metadataRows = await fetchAllSeoulRows<SeoulMetadataResponse, SeoulMetadataRow>(
-        this.config,
-        "GetParkInfo",
-        (body) => body.GetParkInfo
-      );
+      const [rows, metadataRows] = await Promise.all([
+        fetchAllSeoulRows<SeoulRealtimeResponse, SeoulRealtimeRow>(
+          this.config,
+          "GetParkingInfo",
+          (body) => body.GetParkingInfo
+        ),
+        fetchSeoulParkInfoRows(this.config)
+      ]);
       const coordinatesByCode = new Map(
         metadataRows
           .map((row): [string, Coordinate] | null => {
@@ -74,19 +71,6 @@ interface SeoulRealtimeResponse {
     list_total_count?: number;
     row?: SeoulRealtimeRow[];
   };
-}
-
-interface SeoulMetadataResponse {
-  GetParkInfo?: {
-    list_total_count?: number;
-    row?: SeoulMetadataRow[];
-  };
-}
-
-interface SeoulMetadataRow {
-  PKLT_CD?: string;
-  LAT?: number;
-  LOT?: number;
 }
 
 interface SeoulRealtimeRow {
@@ -203,49 +187,6 @@ interface KakaoAddressResponse {
     x?: string;
     y?: string;
   }>;
-}
-
-async function fetchSeoulJson<T>(
-  config: AppConfig,
-  service: string,
-  start: number,
-  end: number
-): Promise<T> {
-  const url = `${config.SEOUL_OPEN_DATA_BASE_URL}/${config.SEOUL_OPEN_DATA_KEY}/json/${service}/${start}/${end}/`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`서울 열린데이터광장 호출 실패: ${response.status}`);
-  return (await response.json()) as T;
-}
-
-async function fetchAllSeoulRows<TBody, TRow>(
-  config: AppConfig,
-  service: string,
-  extract: (body: TBody) => { list_total_count?: number; row?: TRow[] } | undefined
-): Promise<TRow[]> {
-  const firstBody = await fetchSeoulJson<TBody>(config, service, 1, SEOUL_PAGE_SIZE);
-  const firstResult = extract(firstBody);
-  if (!firstResult) throw new Error(`서울 열린데이터광장 ${service} 응답 형식이 올바르지 않습니다.`);
-  const firstRows = firstResult.row ?? [];
-  const totalCount = Math.min(firstResult?.list_total_count ?? firstRows.length, SEOUL_MAX_ROWS);
-  if (totalCount <= SEOUL_PAGE_SIZE) return firstRows;
-
-  const ranges: Array<[number, number]> = [];
-  for (let start = SEOUL_PAGE_SIZE + 1; start <= totalCount; start += SEOUL_PAGE_SIZE) {
-    ranges.push([start, Math.min(start + SEOUL_PAGE_SIZE - 1, totalCount)]);
-  }
-
-  const remaining = await Promise.all(
-    ranges.map(async ([start, end]) => {
-      const body = await fetchSeoulJson<TBody>(config, service, start, end);
-      const page = extract(body);
-      if (!page?.row) {
-        throw new Error(`서울 열린데이터광장 ${service} ${start}-${end} 구간 응답에 row가 없습니다.`);
-      }
-      return page.row;
-    })
-  );
-
-  return [...firstRows, ...remaining.flat()];
 }
 
 function toNumber(value: unknown): number | null {
