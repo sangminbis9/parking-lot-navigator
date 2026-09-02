@@ -240,9 +240,47 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 
 - 마이그레이션: `0017_discovery_fee_checked_at.sql`(`fee_checked_at`) → `0024`(`program_checked_at`) → `0026_discovery_detail_backfill_state.sql`(`fee_filled_at` / `program_filled_at` / `detail_state` / `detail_retry_after` / `detail_attempts` + 대상 선정용 `idx_discovery_detail_backfill(source, detail_state, detail_retry_after)`). `fee_checked_at`·`program_checked_at`은 "마지막 시도 시각"으로만 남아 pipelineStats 대시보드가 읽는다 — 어떤 `WHERE` 선두에도 없으므로 그 둘을 받치던 인덱스는 `0027`이 지웠다.
 - **subrequest 예산이 이 파이프라인의 상한이다.** 이 계정의 Worker는 invocation 하나당 외부 fetch 50건까지만 가능하고(51번째부터 `Too many subrequests by single Worker invocation`), backfill은 항목당 fetch 1건을 쓴다. D1 쿼리는 이 한도에 포함되지 않는다. 그래서 회차 상한이 45건이고 `POST /admin/backfill-fees`의 `maxItems`도 45로 제한한다. 이 값을 올리면 초과분이 통째로 실패한다.
-- cron: `"*/5 * * * *"`의 분 슬롯(`floor(UTC분/5) % 4`)이 태깅·요금·좌표·사진을 나눠 갖는다. 한 invocation에 한 작업만 둬서 subrequest 50건 예산을 통째로 쓴다 — 요금은 슬롯 1, 하루 72회 × 45건. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
+- cron: `"*/5 * * * *"`의 슬롯(`floor(epoch밀리초/300000) % 5`)이 태깅·요금·좌표·사진·프로그램 크롤을 나눠 갖는다. 한 invocation에 한 작업만 둬서 subrequest 50건 예산을 통째로 쓴다 — 요금은 슬롯 1, 하루 57.6회 × 45건(슬롯이 넷이던 때는 72회였다). **분이 아니라 epoch 5분 칸으로 나눈다**: 한 시간은 5분 슬롯 12개라 `floor(UTC분/5) % 5`로 나누면 슬롯 0·1만 시간당 3회를 받고 나머지 셋은 2회가 된다. `"15 * * * *"`은 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 같은 invocation이라 50건 예산을 나눠 쓰게 되어 옮겼다. 계정 한도 전반은 `docs/operations/worker-limits.md` 참고.
 - 수동 실행: `POST /admin/backfill-fees?maxItems=<1..45>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 알려진 한계: `public-data-culture-festival`, `akei-trade-expo`, city 스크래핑 소스는 원본 데이터 자체에 요금 필드가 없어 `unknown`으로 남는다. 매핑할 값이 없는 것이지 버그가 아니다. 이 소스들은 애초에 detail backfill 대상(`kopis` / `tourapi` 계열)에 들어가지 않는다.
+
+## 프로그램 정보 웹 크롤 (`programCrawl.ts`)
+
+detail API가 없는 소스(`public-data-culture-festival` · `seoul_open_data` · `city-scraped`)는
+위 backfill 대상이 아니라 프로그램이 영영 비어 있었다(2026-09-02 기준 URL 있는 미채움 행 643건).
+이 소스들은 `source_url`에 주최측 공식 페이지가 들어 있으므로, 그 페이지를 직접 열어 프로그램을 뽑는다.
+
+- **대상 선정** — `program_filled_at IS NULL` + `source_url` 있음 + 아직 안 끝난 행사 +
+  `detail_state <> 'nodata'` + `detail_retry_after` 만료. 기존 `idx_discovery_detail_backfill`이
+  그대로 받친다. **컬럼도 인덱스도 새로 만들지 않는다** — `detail_state`/`detail_retry_after`/
+  `detail_attempts`를 요금 backfill과 공유하되, 소스 집합이 서로 겹치지 않아 안전하다.
+- **추출은 규칙 먼저, LLM은 남는 것만** — 프로그램/행사 일정/타임테이블 제목 아래 줄을 긁고
+  (`오시는 길`·`문의처` 같은 스톱 패턴에서 끊는다), 없으면 시각 패턴이 있는 줄만 모은다.
+  랜딩 페이지에서 못 찾으면 **같은 호스트의 프로그램 링크 1-hop까지만** 따라간다.
+  규칙이 실패한 항목만 Workers AI(`TAGGING_MODEL`)로 넘긴다 — Neuron 무료 한도(하루 10,000)를 아끼려는 것이다.
+- **LLM 답은 원문 대조로 거른다** — 답의 모든 줄이 공백·문장부호를 지운 뒤 페이지 본문의
+  부분 문자열이어야 하고, 아니면 통째로 버리고 그 행을 `empty`로 둔다(`isGrounded`).
+  출연자·시간을 지어내면 저장되지 않게 하는 장치다. 프롬프트도 "본문에 문자 그대로 있는 문장만,
+  없으면 null"로 못 박았다.
+- **못 찾으면 다시 큐에 넣는다** — `detail_state='empty'` + 행사가 가까울수록 짧은 backoff
+  (시작까지 30일 초과 7일 뒤 / 7~30일 2일 뒤 / 7일 이내 12시간 뒤). 프로그램은 대개 행사 직전에
+  공개되므로 임박한 행사를 자주 본다. 일시적 실패(5xx·타임아웃)는 `detail_state`를 건드리지 않고
+  `detail_retry_after`만 지수 backoff로 미루고, 404 등은 `nodata`로 영구 종료한다.
+- **쓰기** — `raw_payload`에 `json_set(raw_payload, '$.programInfo', ?)`로 넣는다. full sync가
+  `raw_payload`를 통째로 덮어써도 `mergeWithExistingEnrichment`가 거기서 복원하기 때문이다.
+- **예산을 정하는 것은 subrequest가 아니라 CPU다.** 이 파이프라인만 HTML 원문을 파싱하고,
+  그게 Worker에서 가장 비싼 작업이다. 처음엔 요금 backfill의 절반인 12건으로 잡았는데
+  (`12×2 + 8 = 32` subrequest, 예산 안), 2026-09-02 04:10 UTC 슬롯에서 회차가 통째로
+  `Exceeded CPU Limit`으로 죽었다 — 선점 UPDATE 12건만 남고 결과가 한 건도 안 쓰였다.
+  지금은 `PROGRAM_CRAWL_MAX_ITEMS` 기본 4, `PROGRAM_CRAWL_MAX_LLM_CALLS` 기본 4,
+  동시 2, `FLUSH_CHUNK` 2, 본문 상한 60KB다. 값을 올리기 전에 `wrangler tail`로
+  그 슬롯이 `Ok`인지부터 본다 — CPU 초과는 예외를 던지지 않아 로그에도 안 남는다.
+- cron: `"*/5 * * * *"` 슬롯 4(위 다섯 갈래). 수동 실행은
+  `POST /admin/crawl-programs?maxItems=<1..8>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- 크롤은 **공개 페이지를 있는 그대로** 받는다. 봇 탐지 우회 헤더·로그인 쿠키·비공식 API 역호출은 쓰지 않는다.
+- `akei-trade-expo`는 대상이 아니다 — `source_url`이 AKEI 게시판 상세 페이지라 프로그램이 없다.
+  주최측 홈페이지 URL을 따로 모으기 전에는 크롤해도 얻을 게 없다.
+- 회귀 테스트: `tests/programCrawl.test.ts`.
 
 ## D1 인덱스와 행 읽기·쓰기 예산
 
@@ -420,7 +458,7 @@ curl -X POST \
 
 - `POST /api/admin/local-events`, `PATCH /api/admin/local-events/:id`, `PATCH /api/admin/local-events/:id/status`
 - `POST /admin/sync-local-events`, `POST /admin/sync-city-festivals`, `POST /admin/sync-akei-trade-expos`, `POST /admin/sync-discovery`
-- `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40)
+- `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40), `POST /admin/crawl-programs` (`maxItems` 1..8)
 - `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`
 - `GET /discover/pipeline-stats` (파이프라인 대시보드), `GET /discover/providers/health`
 - `GET /api/admin/event-reports`, `PATCH /api/admin/event-reports/:id` (신고 처리 상태)
