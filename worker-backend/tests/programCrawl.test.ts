@@ -15,10 +15,12 @@ interface FakeStatement {
 function fakeDb(rows: unknown[]): {
   db: D1Database;
   written: () => FakeStatement[];
+  queries: string[];
 } {
   const batched: FakeStatement[][] = [];
+  const queries: string[] = [];
   const db = {
-    prepare: (sql: string) => ({
+    prepare: (sql: string) => (queries.push(sql), {
       bind: (...args: unknown[]) => ({
         sql,
         args,
@@ -34,7 +36,7 @@ function fakeDb(rows: unknown[]): {
     },
   } as unknown as D1Database;
   // 첫 batch는 선점 UPDATE라 결과 반영 statement와 갈라낸다.
-  return { db, written: () => batched.slice(1).flat() };
+  return { db, written: () => batched.slice(1).flat(), queries };
 }
 
 function row(overrides: Record<string, unknown> = {}) {
@@ -88,6 +90,37 @@ describe("program extraction rules", () => {
     expect(extractProgramText(text)).toBeNull();
   });
 
+  it("drops share buttons without losing the schedule under them", () => {
+    // 경기도 페이지는 공유 버튼이 본문 위에 있다. 여기서 끊으면 일정을 통째로 잃는다.
+    const text = htmlToText(`
+      <h3>행사 일정</h3>
+      <p>페이스북 공유</p><p>카카오톡 공유</p>
+      <p>제28회 파주예술제 상세보기 - 행사기간, 행사장소</p>
+      <p>개막공연: 2026. 7. 3.(금) 19:00</p>
+    `);
+
+    const program = extractProgramText(text);
+    expect(program).toContain("19:00");
+    expect(program).not.toContain("공유");
+    expect(program).not.toContain("상세보기");
+  });
+
+  it("stops before the fee and organizer block", () => {
+    // 수원시 상세 페이지가 프로그램 바로 아래 요금·주관기관을 붙여 둔다.
+    const text = htmlToText(`
+      <h3>주요 행사</h3>
+      <p>일시: 2026. 5. 2.(토) 19:00</p>
+      <p>출연진: 수원시립합창단</p>
+      <p>요금정보</p>
+      <p>주관기관</p>
+      <p>수원문화재단</p>
+    `);
+
+    const program = extractProgramText(text);
+    expect(program).toContain("19:00");
+    expect(program).not.toContain("수원문화재단");
+  });
+
   it("rejects a navigation menu sitting under a program heading", () => {
     // 2026-09-02 영등포문화재단 행이 이 모양으로 메뉴를 프로그램으로 저장했다.
     const text = htmlToText(`
@@ -131,6 +164,32 @@ describe("runProgramCrawl", () => {
     expect(update.sql).toContain("program_filled_at = ?");
     expect(update.sql).toContain("$.programInfo");
     expect(String(update.args[0])).toContain("10:00 개막식 및 축하공연");
+  });
+
+  it("identifies itself with a User-Agent", async () => {
+    // UA 없이 보내면 suwon.go.kr이 200으로 "보안 정책 차단 알림" 스텁을 준다.
+    // 본문이 없으니 매번 empty로 재큐잉되며 같은 행을 영원히 다시 긁는다.
+    const fetchMock = vi.fn(async () => page(PROGRAM_PAGE));
+    vi.stubGlobal("fetch", fetchMock);
+    const { db } = fakeDb([row()]);
+
+    await runProgramCrawl(db, {}, { now: new Date("2026-09-02T00:00:00Z") });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers["User-Agent"]).toContain("ParkingLotNavigatorBot");
+  });
+
+  it("skips rows whose source already carried programInfo", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(PROGRAM_PAGE)));
+    const { db, queries } = fakeDb([row()]);
+
+    await runProgramCrawl(db, {}, { now: new Date("2026-09-02T00:00:00Z") });
+
+    // 이 조건이 빠지면 seoul_open_data 행 41%를 이미 아는 정보에 쓰고,
+    // 원본 프로그램을 크롤 추출로 덮는다.
+    const select = queries.find((sql) => sql.includes("FROM discovery_items") && sql.includes("LIMIT"));
+    expect(select).toContain("json_extract(raw_payload, '$.programInfo') IS NULL");
   });
 
   it("requeues with an event-proximity backoff when nothing is found", async () => {

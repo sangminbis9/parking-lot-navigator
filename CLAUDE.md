@@ -247,10 +247,12 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 ## 프로그램 정보 웹 크롤 (`programCrawl.ts`)
 
 detail API가 없는 소스(`public-data-culture-festival` · `seoul_open_data` · `city-scraped`)는
-위 backfill 대상이 아니라 프로그램이 영영 비어 있었다(2026-09-02 기준 URL 있는 미채움 행 643건).
+위 backfill 대상이 아니라 프로그램이 영영 비어 있었다(2026-09-02 실측 backlog 330건 —
+URL이 있고 원본 `programInfo`도 없는 진행/예정 행).
 이 소스들은 `source_url`에 주최측 공식 페이지가 들어 있으므로, 그 페이지를 직접 열어 프로그램을 뽑는다.
 
-- **대상 선정** — `program_filled_at IS NULL` + `source_url` 있음 + 아직 안 끝난 행사 +
+- **대상 선정** — `program_filled_at IS NULL` + **`raw_payload.programInfo`가 비었을 것** +
+  `source_url` 있음 + 아직 안 끝난 행사 +
   `detail_state <> 'nodata'` + `detail_retry_after` 만료. 기존 `idx_discovery_detail_backfill`이
   그대로 받친다. **컬럼도 인덱스도 새로 만들지 않는다** — `detail_state`/`detail_retry_after`/
   `detail_attempts`를 요금 backfill과 공유하되, 소스 집합이 서로 겹치지 않아 안전하다.
@@ -278,6 +280,11 @@ detail API가 없는 소스(`public-data-culture-festival` · `seoul_open_data` 
 - cron: `"*/5 * * * *"` 슬롯 4(위 다섯 갈래). 수동 실행은
   `POST /admin/crawl-programs?maxItems=<1..8>` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
 - 크롤은 **공개 페이지를 있는 그대로** 받는다. 봇 탐지 우회 헤더·로그인 쿠키·비공식 API 역호출은 쓰지 않는다.
+  다만 **User-Agent로 신원은 밝힌다**(`ParkingLotNavigatorBot/1.0 (+<worker url>)`). Workers `fetch`는
+  UA를 붙이지 않는데, `suwon.go.kr` 같은 지자체 사이트는 UA 없는 요청에 **200으로**
+  "보안 정책 차단 알림" 1.2KB 스텁을 돌려준다(2026-09-02 실측 — 같은 URL이 UA만 있으면 34KB 전문).
+  본문이 없으니 추출은 정상적으로 `empty`가 되고, 그 행은 12시간마다 영원히 같은 스텁을 다시 긁는다.
+  브라우저를 흉내내는 것이 아니라 우리가 누구인지 적어 보내는 것이고, 실제로 그 UA로 전문이 온다.
 - `akei-trade-expo`는 대상이 아니다 — `source_url`이 AKEI 게시판 상세 페이지라 프로그램이 없다.
   주최측 홈페이지 URL을 따로 모으기 전에는 크롤해도 얻을 게 없다.
 - 회귀 테스트: `tests/programCrawl.test.ts`.
