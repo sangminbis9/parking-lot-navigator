@@ -279,8 +279,16 @@ export class NationalCultureFestivalProvider
         `National culture festival API error: ${body.response?.header?.resultMsg ?? code}`,
       );
     }
+    const items = extractItems(body);
+    if (items.length === 0) {
+      /// 200 + resultCode 정상인데 항목이 0건인 회차를 가르기 위한 진단.
+      /// 구독 만료면 안내 문구가, envelope 변경이면 낯선 키가 본문에 보인다.
+      console.warn(
+        `public-data-culture-festival empty page=${pageNo} body=${text.replace(/\s+/g, " ").slice(0, 300)}`,
+      );
+    }
     return {
-      items: extractItems(body),
+      items,
       totalCount: toNumber(body.response?.body?.totalCount),
     };
   }
