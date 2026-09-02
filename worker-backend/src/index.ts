@@ -38,6 +38,7 @@ import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
 import { runAkeiTradeExpoDiscovery } from "./akeiTradeExpoDiscovery.js";
 import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runFeeBackfill } from "./feeBackfill.js";
+import { runProgramCrawl } from "./programCrawl.js";
 import { runImageBackfill } from "./imageBackfill.js";
 import { runGeocodeBackfill } from "./geocodeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
@@ -109,6 +110,8 @@ export type Env = {
   KOPIS_API_KEY?: string;
   KOPIS_BASE_URL: string;
   FEE_BACKFILL_MAX_ITEMS?: string;
+  PROGRAM_CRAWL_MAX_ITEMS?: string;
+  PROGRAM_CRAWL_MAX_LLM_CALLS?: string;
   IMAGE_BACKFILL_MAX_ITEMS?: string;
   GEOCODE_BACKFILL_MAX_LOOKUPS?: string;
   KCISA_428_API_KEY?: string;
@@ -299,6 +302,13 @@ const cityFestivalDiscoverySyncSchema = z.object({
 
 const feeBackfillSchema = z.object({
   maxItems: z.coerce.number().int().min(1).max(45).optional(),
+});
+
+// 항목 하나가 랜딩 + 1-hop까지 최대 2건을 쓰므로 상한이 요금 backfill의 절반 이하다.
+// 상한을 정하는 것은 subrequest가 아니라 CPU다. 12건 회차가 통째로
+// `Exceeded CPU Limit`으로 죽은 뒤 회차 기본값을 4로 낮췄다.
+const programCrawlSchema = z.object({
+  maxItems: z.coerce.number().int().min(1).max(8).optional(),
 });
 
 // 조회 한 건이 subrequest 한 건이라 요금 backfill과 같은 상한을 쓴다.
@@ -1261,6 +1271,23 @@ app.post("/admin/backfill-fees", async (c) => {
   }
 });
 
+app.post("/admin/crawl-programs", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) {
+    return c.json({ error: "d1_not_configured" }, 503);
+  }
+  const query = programCrawlSchema.parse(queryObject(c.req.raw.url));
+  try {
+    const result = await runProgramCrawl(c.env.DB, c.env, {
+      maxItems: query.maxItems,
+    });
+    return c.json(result);
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 const upcomingNotificationSchema = z.object({
   maxPushes: z.coerce.number().int().min(1).max(45).optional(),
   plan: z.coerce.boolean().optional(),
@@ -1475,15 +1502,22 @@ export default {
       // 각 작업이 예전과 같은 하루 72회를 유지하되, 매 회차 CPU·subrequest
       // 예산을 통째로 쓴다. cron trigger 개수는 그대로 5개다.
       const scheduledAt = new Date(controller.scheduledTime);
-      const slot = Math.floor(scheduledAt.getUTCMinutes() / 5) % 4;
+      // 슬롯 5개: 태깅·요금·좌표·사진·프로그램 크롤. 다섯째를 넣으면서 나머지
+      // 넷은 하루 72회 → 58회로 줄었다. 프로그램 백로그(2026-09-02 기준 643건)가
+      // 빠지면 이 슬롯을 다시 걷어내 넷으로 돌린다.
+      // 시각(UTC분)이 아니라 epoch 5분 칸으로 나눈다. 한 시간은 5분 슬롯 12개라
+      // 분 기준 % 5는 슬롯 0·1만 시간당 3회를 받고 나머지는 2회가 된다.
+      const slot = Math.floor(scheduledAt.getTime() / 300_000) % 5;
       if (slot === 0) {
         ctx.waitUntil(runTaggingScheduled(env));
       } else if (slot === 1) {
         ctx.waitUntil(runFeeBackfillScheduled(env));
       } else if (slot === 2) {
         ctx.waitUntil(runGeocodeBackfillScheduled(env));
-      } else {
+      } else if (slot === 3) {
         ctx.waitUntil(runImageBackfillScheduled(env));
+      } else {
+        ctx.waitUntil(runProgramCrawlScheduled(env));
       }
       return;
     }
@@ -1539,6 +1573,16 @@ async function runFeeBackfillScheduled(env: Env): Promise<void> {
   } catch (error) {
     console.error("fee backfill failed", error);
     await notifyOpsFailure(env, "fee backfill", error);
+  }
+}
+
+async function runProgramCrawlScheduled(env: Env): Promise<void> {
+  try {
+    const result = await runProgramCrawl(env.DB!, env);
+    console.log("program crawl done", JSON.stringify(result));
+  } catch (error) {
+    console.error("program crawl failed", error);
+    await notifyOpsFailure(env, "program crawl", error);
   }
 }
 
