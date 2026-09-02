@@ -50,7 +50,11 @@ const PROGRAM_HEADING =
   /(프로그램|행사\s*일정|공연\s*일정|축제\s*일정|주요\s*행사|주요\s*내용|타임\s*테이블|타임테이블|시간표|세부\s*일정|운영\s*내용)/;
 /// 여기부터는 프로그램이 아니다. 본문이 끝났다고 보고 수집을 멈춘다.
 const PROGRAM_STOP =
-  /(오시는\s*길|찾아오시는|교통\s*안내|주차\s*안내|문의처|개인정보|저작권|Copyright|이용약관|SNS|바로가기|URL\s*주소복사|주소\s*복사|관심\s*있어요|공유하기|목록으로|인쇄하기)/i;
+  /(오시는\s*길|찾아오시는|교통\s*안내|주차\s*안내|문의처|개인정보|저작권|Copyright|이용약관|SNS|바로가기|URL\s*주소복사|주소\s*복사|관심\s*있어요|공유하기|목록으로|인쇄하기|요금\s*정보|관람\s*요금|주관\s*기관|주최\s*기관|홈페이지)/i;
+/// 프로그램 사이에 섞여 들어오는 사이트 UI 부스러기. 여기서 수집을 끊으면 그 아래
+/// 진짜 일정까지 잃으므로(공유 버튼이 본문 위에 있는 페이지가 많다) 줄만 버린다.
+const PROGRAM_SKIP_LINE =
+  /((페이스북|트위터|카카오톡|밴드|네이버)\s*공유|상세보기\s*-|장소보기|지도보기|등록\s*문의|첨부파일)/;
 /// 프로그램 한 줄임을 스스로 증명하는 모양(시각 표기).
 const TIME_LINE =
   /(\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*시\s*\d{0,2}\s*분?|오전\s*\d{1,2}|오후\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일)/;
@@ -123,12 +127,17 @@ export async function runProgramCrawl(
 
   result.backlog = await backlog(db, today);
 
+  // 원본 sync가 이미 프로그램을 준 행은 크롤하지 않는다. seoul_open_data는
+  // 공연시간/관람대상을 그대로 싣는 행이 41%(2026-09-02 실측 453/1112)라, 빼지 않으면
+  // 회차 4건 예산의 절반을 이미 아는 정보에 쓰고 원본을 더 나쁜 추출로 덮을 수 있다
+  // (영등포문화재단 행이 실제로 그렇게 덮였다).
   const rows = await db
     .prepare(
       `SELECT id, source, title, source_url, start_date, end_date, detail_attempts
          FROM discovery_items
         WHERE source IN (${placeholders})
           AND program_filled_at IS NULL
+          AND json_extract(raw_payload, '$.programInfo') IS NULL
           AND source_url IS NOT NULL
           AND source_url <> ''
           AND (end_date IS NULL OR end_date >= ?)
@@ -269,7 +278,16 @@ async function fetchPageText(
     url,
     {
       // 공개 페이지를 있는 그대로 받는다. 봇 탐지 우회 헤더나 쿠키는 쓰지 않는다.
-      headers: { Accept: "text/html,application/xhtml+xml" },
+      // 다만 신원은 밝힌다: Workers fetch는 User-Agent를 붙이지 않는데,
+      // suwon.go.kr 같은 지자체 사이트는 UA 없는 요청에 200으로 "보안 정책 차단 알림"
+      // 1.2KB 페이지를 돌려준다(2026-09-02 실측). 그러면 본문이 없으니 매번 `empty`로
+      // 재큐잉되며 영원히 같은 행을 다시 긁는다. 브라우저를 흉내내는 것이 아니라
+      // 우리가 누구인지 적어 보낸다 — 같은 페이지가 이 UA로도 34KB 전문으로 온다.
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent":
+          "ParkingLotNavigatorBot/1.0 (+https://parking-lot-navigator-api.parkingnav.workers.dev)",
+      },
       redirect: "follow",
     },
     FETCH_TIMEOUT_MS,
@@ -346,6 +364,7 @@ export function extractProgramText(text: string): string | null {
     for (const line of lines.slice(headingIndex + 1, headingIndex + 21)) {
       if (PROGRAM_STOP.test(line)) break;
       if (line.length <= 40 && PROGRAM_HEADING.test(line)) break;
+      if (PROGRAM_SKIP_LINE.test(line)) continue;
       collected.push(line);
     }
     // 시각·날짜가 한 줄도 없으면 프로그램이 아니다. 줄 수만 세면 "예매안내 /
@@ -357,7 +376,9 @@ export function extractProgramText(text: string): string | null {
     }
   }
 
-  const timed = lines.filter((line) => TIME_LINE.test(line) && line.length >= 6).slice(0, 12);
+  const timed = lines
+    .filter((line) => TIME_LINE.test(line) && line.length >= 6 && !PROGRAM_SKIP_LINE.test(line))
+    .slice(0, 12);
   if (timed.length >= 2) return capProgram(timed.join("\n"));
   return null;
 }
@@ -486,6 +507,7 @@ async function backlog(db: D1Database, today: string): Promise<number> {
          FROM discovery_items
         WHERE source IN (${placeholders})
           AND program_filled_at IS NULL
+          AND json_extract(raw_payload, '$.programInfo') IS NULL
           AND source_url IS NOT NULL
           AND source_url <> ''
           AND (end_date IS NULL OR end_date >= ?)
