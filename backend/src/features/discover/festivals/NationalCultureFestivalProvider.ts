@@ -25,23 +25,27 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 /// 나머지 center가 기다리던 공유 요청까지 abort시켜 전원이 빈손이 된다.
 const SHARED_FETCH_TIMEOUT_MS = 55_000;
 
-interface NationalCultureFestivalApiResponse {
-  response?: {
-    header?: {
-      resultCode?: string;
-      resultMsg?: string;
-    };
-    body?: {
-      items?:
-        | NationalCultureFestivalItem[]
-        | {
-            item?: NationalCultureFestivalItem[] | NationalCultureFestivalItem;
-          };
-      totalCount?: number | string;
-      pageNo?: number | string;
-      numOfRows?: number | string;
-    };
+interface NationalCultureFestivalEnvelope {
+  header?: {
+    resultCode?: string;
+    resultMsg?: string;
   };
+  body?: {
+    items?:
+      | NationalCultureFestivalItem[]
+      | {
+          item?: NationalCultureFestivalItem[] | NationalCultureFestivalItem;
+        };
+    totalCount?: number | string;
+    pageNo?: number | string;
+    numOfRows?: number | string;
+  } | null;
+}
+
+/// 2026-08 무렵 원본이 `response` 래퍼를 벗고 header/body를 최상위로 올렸다.
+/// 두 모양 다 받는다 — 래퍼만 보면 항목이 0건인데 예외도 안 나는 조용한 침묵이 된다.
+interface NationalCultureFestivalApiResponse extends NationalCultureFestivalEnvelope {
+  response?: NationalCultureFestivalEnvelope;
 }
 
 interface NationalCultureFestivalItem {
@@ -273,13 +277,19 @@ export class NationalCultureFestivalProvider
       );
     }
 
-    const code = body.response?.header?.resultCode;
+    const envelope = body.response ?? body;
+    const code = envelope.header?.resultCode;
+    /// 03(NODATA_ERROR)은 오류가 아니라 "이 페이지 너머엔 없다"다.
+    /// 던지면 회전 구간이 끝을 넘을 때마다 provider가 down으로 떨어진다.
+    if (code === "03") {
+      return { items: [], totalCount: toNumber(envelope.body?.totalCount) };
+    }
     if (code && code !== "00" && code !== "0") {
       throw new Error(
-        `National culture festival API error: ${body.response?.header?.resultMsg ?? code}`,
+        `National culture festival API error: ${envelope.header?.resultMsg ?? code}`,
       );
     }
-    const items = extractItems(body);
+    const items = extractItems(envelope);
     if (items.length === 0) {
       /// 200 + resultCode 정상인데 항목이 0건인 회차를 가르기 위한 진단.
       /// 구독 만료면 안내 문구가, envelope 변경이면 낯선 키가 본문에 보인다.
@@ -289,7 +299,7 @@ export class NationalCultureFestivalProvider
     }
     return {
       items,
-      totalCount: toNumber(body.response?.body?.totalCount),
+      totalCount: toNumber(envelope.body?.totalCount),
     };
   }
 }
@@ -411,9 +421,9 @@ function hasValidCoordinate(row: NationalCultureFestivalItem): boolean {
 }
 
 function extractItems(
-  body: NationalCultureFestivalApiResponse,
+  envelope: NationalCultureFestivalEnvelope,
 ): NationalCultureFestivalItem[] {
-  const items = body.response?.body?.items;
+  const items = envelope.body?.items;
   if (Array.isArray(items)) return items;
   const item = items?.item;
   if (Array.isArray(item)) return item;
