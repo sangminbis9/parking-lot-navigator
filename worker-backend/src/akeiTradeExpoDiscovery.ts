@@ -70,6 +70,97 @@ export interface AkeiTradeExpoDiscoveryResult {
   failedBatches: number;
 }
 
+export const AKEI_MAX_PAGES = AKEI_MAX_PAGES_PER_MONTH;
+
+/** 이번 회차에 훑을 월 목록. 스케줄러가 월별 1페이지 메시지를 만들 때 쓴다. */
+export function akeiTargetMonths(referenceDate: Date = new Date()): { year: number; month: number }[] {
+  const months: { year: number; month: number }[] = [];
+  for (let offset = 0; offset < AKEI_MONTHS_AHEAD; offset++) {
+    const target = new Date(
+      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + offset, 1),
+    );
+    months.push({ year: target.getUTCFullYear(), month: target.getUTCMonth() + 1 });
+  }
+  return months;
+}
+
+export interface AkeiTradeExpoPageResult {
+  processed: number;
+  published: number;
+  unmappedVenues: number;
+  failedBatches: number;
+  failed: boolean;
+  /** 이 페이지에 항목이 있어서 다음 페이지를 이어 볼 가치가 있는지. */
+  hasMore: boolean;
+}
+
+/**
+ * 월 하나의 페이지 하나만 처리한다. Queue 메시지 1건 = 목록 fetch 1건 +
+ * upsert batch 1건이라 CPU(cheerio 파싱)와 subrequest가 모두 한 페이지분으로 묶인다.
+ *
+ * `akei:<wrId>` PK + `ON CONFLICT DO UPDATE`라 같은 페이지 메시지가 두 번 와도
+ * 행이 중복되거나 깨지지 않는다(at-least-once 전달 안전).
+ */
+export async function runAkeiTradeExpoPage(
+  db: D1Database,
+  year: number,
+  month: number,
+  page: number,
+): Promise<AkeiTradeExpoPageResult> {
+  const monthLabel = `${year}-${String(month).padStart(2, "0")}`;
+  const url = `${AKEI_BASE_URL}/bbs/board.php?bo_table=schedule&searchYear=${year}&searchMonth=${String(month).padStart(2, "0")}&page=${page}`;
+  const fetched = await fetchAkeiPage(url);
+  if ("error" in fetched) {
+    console.error(`akei trade expo page failed month=${monthLabel} page=${page}`, fetched.error);
+    return { processed: 0, published: 0, unmappedVenues: 0, failedBatches: 0, failed: true, hasMore: false };
+  }
+
+  const candidates = parseAkeiListPage(fetched.html);
+  if (candidates.length === 0) {
+    return { processed: 0, published: 0, unmappedVenues: 0, failedBatches: 0, failed: false, hasMore: false };
+  }
+
+  const built = buildStatements(db, candidates, new Set(), new Date().toISOString());
+  const failedBatches = await upsertInBatches(db, built.statements);
+  return {
+    processed: built.processed,
+    published: built.published,
+    unmappedVenues: built.unmappedVenues,
+    failedBatches,
+    failed: false,
+    hasMore: true,
+  };
+}
+
+function buildStatements(
+  db: D1Database,
+  candidates: AkeiRawCandidate[],
+  seenIds: Set<string>,
+  scrapedAt: string,
+): { statements: D1PreparedStatement[]; processed: number; published: number; unmappedVenues: number } {
+  const statements: D1PreparedStatement[] = [];
+  let processed = 0;
+  let published = 0;
+  let unmappedVenues = 0;
+  for (const candidate of candidates) {
+    const id = `akei:${candidate.wrId}`;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    processed += 1;
+
+    const venue = resolveExhibitionVenue(candidate.venueText);
+    if (!venue) {
+      unmappedVenues += 1;
+      console.warn(`akei trade expo unmapped venue: ${candidate.venueText}`);
+      continue;
+    }
+
+    statements.push(buildUpsertStatement(db, candidate, venue, scrapedAt));
+    published += 1;
+  }
+  return { statements, processed, published, unmappedVenues };
+}
+
 export async function runAkeiTradeExpoDiscovery(
   db: D1Database,
   referenceDate: Date = new Date(),
@@ -104,22 +195,11 @@ export async function runAkeiTradeExpoDiscovery(
       const candidates = parseAkeiListPage(fetched.html);
       if (candidates.length === 0) break;
 
-      for (const candidate of candidates) {
-        const id = `akei:${candidate.wrId}`;
-        if (seenIds.has(id)) continue;
-        seenIds.add(id);
-        processed += 1;
-
-        const venue = resolveExhibitionVenue(candidate.venueText);
-        if (!venue) {
-          unmappedVenues += 1;
-          console.warn(`akei trade expo unmapped venue: ${candidate.venueText}`);
-          continue;
-        }
-
-        statements.push(buildUpsertStatement(db, candidate, venue, scrapedAt));
-        published += 1;
-      }
+      const built = buildStatements(db, candidates, seenIds, scrapedAt);
+      statements.push(...built.statements);
+      processed += built.processed;
+      published += built.published;
+      unmappedVenues += built.unmappedVenues;
 
       page += 1;
       await delay(AKEI_PAGE_DELAY_MS);

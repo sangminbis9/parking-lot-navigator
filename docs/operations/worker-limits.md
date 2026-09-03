@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
 | invocation당 리소스 한도 (`exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-01 실측) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이다. `*/5` backfill 슬롯은 거의 죽지 않는다. 아래 "무엇이 `exceededResources`로 죽는가" 참고 |
-| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | `wrangler.toml`의 5개 스케줄. 새 주기가 필요하면 기존 cron에 시간/분 가드를 얹는다 |
+| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 예전에는 다섯을 전부 써서 새 주기를 얹을 자리가 없었다. 지금은 `* * * * *` 하나뿐이고(1/5), 옛 다섯 주기는 `jobs.ts`의 분 가드로 재현한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **한도 안에 들어올 것으로 보이나 아직 실측 전이다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배). 같은 날 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)를 연달아 넣어 **약 82,000/일**을 예상한다. 82,000은 **예상치이고 실측이 아니다** — 배포 후 만 하루가 지난 창에서 다시 재야 확정된다. 아래 "D1 행 쓰기 예산" 참고 |
 | D1 prepared statement 바인딩 | 100 | 101번째 바인딩에서 쿼리가 실패한다. | `geocodeBackfill.ts`의 지역 대표 좌표 매칭(18좌표 × 4 + 1 = 73). `pipelineStats.ts`는 같은 조건을 리터럴로 박아 바인딩을 아예 안 쓴다 |
@@ -231,6 +231,44 @@ pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote \
 인덱스를 지울 때의 규칙은 `EXPLAIN QUERY PLAN`으로 **실제로 선택되지 않음**을 먼저 보이는 것이다.
 옵티마이저는 `ORDER BY`를 공짜로 만족시키는 인덱스를 더 선택적인 인덱스보다 앞세우므로,
 `idx_discovery_items_tagging(tagging_version)`처럼 만들어진 뒤 한 번도 안 골라진 인덱스가 생긴다.
+
+## Queue 메시지·operation 예산
+
+Cloudflare Queues 무료 제공량은 **하루 10,000 operations**다. 메시지 하나를 배달하는 데
+보통 write 1 + read 1 + delete 1 = **3 op**가 들고(64KB마다 1 op라 우리 메시지는 전부
+1 op 단위), **배치 크기는 op 수를 바꾸지 않는다** — `max_batch_size`를 키워도 절약이 없다.
+그래서 `wrangler.toml`은 `max_batch_size = 1`이다. 묶어서 아끼는 게 없으니, 대신 메시지마다
+CPU 10ms / subrequest 50건 예산을 온전히 준다.
+
+**실질 상한은 하루 약 3,333건**(10,000 ÷ 3)이다. 이 숫자가 "무엇을 메시지 1건으로
+쪼갤 수 있는가"를 전부 결정한다.
+
+| 종류 | 하루 메시지 | 근거 |
+| --- | --- | --- |
+| `discovery-chunk` | 168 | `분 % 9` — 시간당 7회 × 24 |
+| `tagging` / `fee-backfill` / `geocode-backfill` / `image-backfill` | 72 × 4 = 288 | `분 % 5`(288회)를 epoch 5분 칸 4분할 |
+| `program-select` | 144 | `분 % 10` |
+| `program-page` | 576 | 선정 회차마다 최대 `PROGRAM_CRAWL_MAX_ITEMS`(4)건 |
+| `program-subpage` + `program-ai` | 최대 1,152 | page 1건이 최악의 경우 둘을 차례로 낳는다 |
+| `notification-plan` + `notification-dispatch` | 24 + 48 | 정각 계획, 30분마다 발송(계획 회차는 자기 발송을 직접 넣는다) |
+| `local-events` | 24 | `분 === 15` |
+| `agent-head` + `agent-image` | 8 + 8 | `분 === 30 && 시 % 3 === 0` |
+| `city-festival-site` | 1–10 | 하루 1회 팬아웃, 청크 크기 10 |
+| `akei-page` | 최대 30 | 월 3개 × 최대 10페이지(빈 페이지에서 끊는다) |
+| `prune-sync-runs` + `prune-analytics` | 2 | 하루 1회 |
+
+- 고정분 **754건**
+- **최악 ≈ 2,482건 ≈ 7,446 ops/day (한도의 74%)** — program-page가 전부 subpage와 AI까지 가는 경우
+- **현실 ≈ 1,700건 ≈ 5,100 ops/day (한도의 51%)** — 상당수는 랜딩에서 끝나거나 링크가 없다
+
+`PROGRAM_CRAWL_MAX_ITEMS`가 이 예산에서 가장 민감한 손잡이다. **6보다 크게 올리면
+재시도 여유가 사라진다** — 소비자가 CPU로 죽으면 `max_retries = 2`만큼 재배달되고,
+그 재배달도 op를 쓴다.
+
+**실시간 주차는 Queue를 쓰지 않는다.** shard 4개 × 하루 480회 = 1,920건이면 그 하나로
+예산의 58%다. 대신 스케줄러 invocation 안에서 분마다 shard 하나씩 직접 돌린다
+(`jobs.ts`의 `realtimeShardIndex`). shard가 4개면 각 shard가 4분에 한 번 갱신되고
+(기존 3분에서 소폭 후퇴), Queue 비용은 0이며, 회차마다 CPU·subrequest 예산을 통째로 쓴다.
 
 ## 유료 플랜으로 풀리는 것
 

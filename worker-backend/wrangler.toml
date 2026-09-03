@@ -67,8 +67,26 @@ TAGGING_CONCURRENCY = "2"
 UPCOMING_NOTIFICATION_MAX_PUSHES = "40"
 APNS_BUNDLE_ID = "com.sangminbis9.ParkingLotNavigator"
 
+# cron 하나로 합쳤다. 계정당 cron trigger가 5개뿐이라 예전에는 그 다섯을 전부 썼고,
+# 새 스케줄을 얹을 자리가 없었다. 분 가드로 기존 빈도를 그대로 재현한다
+# (index.ts runMinuteScheduler 참고). 하루 1,440 invocation은 무료 한도 100,000의 1.4%다.
 [triggers]
-crons = ["*/3 * * * *", "*/9 * * * *", "15 * * * *", "30 */3 * * *", "*/5 * * * *"]
+crons = ["* * * * *"]
+
+# producer와 consumer가 같은 스크립트다(새 Worker 프로젝트를 만들지 않는다).
+[[queues.producers]]
+binding = "BACKGROUND_QUEUE"
+queue = "parkingnav-background"
+
+# max_batch_size = 1: op는 64KB 단위라 배치로 묶어도 줄지 않는다. 묶는 대신
+# 메시지마다 CPU 10ms / subrequest 50건 예산을 온전히 준다.
+# max_retries = 2: CPU 초과로 죽은 회차는 ack되지 않아 두 번까지 재배달되고,
+# 그래도 안 되면 버린다 — 프로그램 크롤은 D1의 15분 선점이 만료되며 자연히 다시 잡힌다.
+[[queues.consumers]]
+queue = "parkingnav-background"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 2
 
 [[d1_databases]]
 binding = "DB"

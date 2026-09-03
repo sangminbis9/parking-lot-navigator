@@ -5,7 +5,6 @@ import type { MapItem, DiscoverPerformancesResponse } from "@parking/shared-type
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import { timingSafeStringEqual } from "./security.js";
 import {
-  currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
   getFestivalBySourceItemId,
@@ -35,10 +34,23 @@ import {
   CITY_FESTIVAL_CHUNK_SIZE
 } from "./cityFestivalSchedule.js";
 import { CityScrapedFestivalProvider } from "./cityScrapedFestivalProvider.js";
-import { runAkeiTradeExpoDiscovery } from "./akeiTradeExpoDiscovery.js";
+import {
+  AKEI_MAX_PAGES,
+  runAkeiTradeExpoDiscovery,
+  runAkeiTradeExpoPage,
+} from "./akeiTradeExpoDiscovery.js";
 import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runFeeBackfill } from "./feeBackfill.js";
-import { runProgramCrawl } from "./programCrawl.js";
+import { runProgramCrawl, runProgramStage, selectProgramCrawlTargets } from "./programCrawl.js";
+import {
+  LOCAL_EVENT_CHUNK_COUNT,
+  currentLocalEventChunkIndex,
+  plannedJobs,
+  realtimeShardIndex,
+  sendJobs,
+  shouldPruneRealtime,
+  type BackgroundJob,
+} from "./jobs.js";
 import { runImageBackfill } from "./imageBackfill.js";
 import { runGeocodeBackfill } from "./geocodeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
@@ -138,6 +150,9 @@ export type Env = {
   APNS_PRIVATE_KEY?: string;
   APNS_BUNDLE_ID?: string;
   UPCOMING_NOTIFICATION_MAX_PUSHES?: string;
+  // background job queue (producer + consumer가 같은 스크립트다).
+  // 로컬 dev/테스트에서는 binding이 없을 수 있어 optional로 둔다 — sendJobs가 조용히 넘어간다.
+  BACKGROUND_QUEUE?: Queue<BackgroundJob>;
 };
 
 type BackendModules = {
@@ -163,8 +178,8 @@ type BackendRuntime = {
 
 const app = new Hono<{ Bindings: Env }>();
 let backendRuntime: Promise<BackendRuntime> | null = null;
-let realtimeProviderPromise: Promise<
-  BackendRuntime["realtimeParkingProvider"]
+let realtimeShardsPromise: Promise<
+  BackendRuntime["realtimeParkingProvider"][]
 > | null = null;
 let discoveryRuntimePromise: Promise<{
   festivalService: BackendRuntime["festivalService"];
@@ -321,7 +336,6 @@ const geocodeBackfillSchema = z.object({
   maxLookups: z.coerce.number().int().min(1).max(40).optional(),
 });
 
-const LOCAL_EVENT_CHUNK_COUNT = 12;
 
 const syncNationalParkingSchema = z.object({
   pageNo: z.coerce.number().int().min(1).default(1),
@@ -1415,114 +1429,106 @@ export default {
   ): Response | Promise<Response> {
     return app.fetch(request, env, ctx);
   },
+  /**
+   * cron은 "지금 무엇을 돌릴지 정하고 Queue로 넘기는" 일만 한다.
+   * 예외는 실시간 주차 하나뿐이다 — 하루 1,440회라 Queue 예산
+   * (10,000 operations/day, 메시지 하나당 write+read+delete 3 op)에 넣을 수 없어
+   * 이 invocation 안에서 shard 하나만 직접 돈다. Queue send는 네트워크 I/O라
+   * CPU를 거의 안 쓰므로 같은 10ms 예산에 둘이 함께 들어간다.
+   *
+   * cron을 `* * * * *` 하나로 합친 것은 계정당 cron trigger가 5개뿐인데
+   * 예전에는 그 다섯을 전부 쓰고 있었기 때문이다. 분 가드로 기존 빈도를
+   * 그대로 재현한다: `*​/3`→`minute % 3`, `*​/9`→`minute % 9`, `*​/5`→`minute % 5`,
+   * `15 * * * *`→`minute === 15`, `30 *​/3 * * *`→`minute === 30 && hour % 3 === 0`.
+   */
   async scheduled(
     controller: ScheduledController,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
     if (!env.DB) return;
-    if (controller.cron === "*/3 * * * *") {
-      ctx.waitUntil(syncRealtimeParkingScheduled(env));
-      // 다가오는 행사 알림은 전용 cron slot이 없다(계정 한도 5개를 이미 다 쓴다).
-      // 실시간 주차 동기화는 외부 fetch를 한두 건만 쓰므로 같은 invocation의
-      // subrequest 50건 예산에 여유가 있다. 30분마다 발송하고, 정각에는 계획도 함께 돈다.
-      const scheduledAt = new Date(controller.scheduledTime);
-      if (scheduledAt.getUTCMinutes() % 30 === 0) {
-        ctx.waitUntil(
-          runUpcomingNotificationsScheduled(env, {
-            plan: scheduledAt.getUTCMinutes() === 0,
-          }),
-        );
+    ctx.waitUntil(runMinuteScheduler(env, new Date(controller.scheduledTime)));
+  },
+  /**
+   * consumer는 producer와 같은 스크립트다(새 Worker 프로젝트를 만들지 않는다).
+   * `max_batch_size = 1`이라 메시지 하나가 invocation 하나를 통째로 받는다 —
+   * op 수는 64KB 단위라 배치로 묶어도 줄지 않으므로, 묶는 대신 각 메시지에
+   * 10ms CPU와 subrequest 50건 예산을 온전히 준다.
+   */
+  async queue(
+    batch: MessageBatch<BackgroundJob>,
+    env: Env,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
+    for (const message of batch.messages) {
+      if (!env.DB) {
+        // DB가 없으면 재시도해도 같은 결과다. 무한 재배달을 만들지 않는다.
+        message.ack();
+        continue;
       }
-      // 하루 1회짜리 스크래퍼 둘은 예전에 "15 * * * *"에 얹혀 있었는데, 그 invocation은
-      // 매시간 로컬 이벤트 sync(Naver/Kakao 호출 다수)와 subrequest 50건 예산을 나눠
-      // 쓴다. AKEI만 해도 3개월 × 최대 10페이지라 예산을 넘기면 첫 fetch부터 실패하고
-      // 아무것도 저장하지 못한다(실측: 8/24~8/29 6일 연속 scraped_at 무변화).
-      // 이 invocation은 실시간 주차 sync 한두 건만 쓰므로 여유가 있다. 21분은 알림이
-      // 도는 0/30분 슬롯과도 겹치지 않는다.
-      if (scheduledAt.getUTCMinutes() === 21) {
-        if (scheduledAt.getUTCHours() === 4) {
-          ctx.waitUntil(syncCityFestivalsScheduled(env, scheduledAt));
-        }
-        if (scheduledAt.getUTCHours() === 5) {
-          ctx.waitUntil(syncAkeiTradeExposScheduled(env, scheduledAt));
-        }
+      try {
+        await runBackgroundJob(env, message.body);
+        message.ack();
+      } catch (error) {
+        console.error(`background job failed type=${message.body?.type}`, error);
+        message.retry();
       }
-      return;
-    }
-    if (controller.cron === "*/9 * * * *") {
-      const scheduledAt = new Date(controller.scheduledTime);
-      ctx.waitUntil(
-        syncDiscoveryChunkScheduled(
-          env,
-          currentDiscoveryChunkIndex(scheduledAt),
-        ),
-      );
-      return;
-    }
-    if (controller.cron === "15 * * * *") {
-      const scheduledAt = new Date(controller.scheduledTime);
-      ctx.waitUntil(
-        syncLocalEventsScheduled(
-          env,
-          currentLocalEventChunkIndex(scheduledAt, LOCAL_EVENT_CHUNK_COUNT),
-        ),
-      );
-      // sync_runs 보관 정리도 같은 이유로 UTC 6시 가드를 얹어 하루 1회만 돈다.
-      // 하루 269행씩 늘어나므로 이 주기로 충분하다.
-      if (scheduledAt.getUTCHours() === 6 && env.DB) {
-        ctx.waitUntil(
-          pruneOldSyncRuns(env.DB).catch((error) => {
-            console.error("pruneOldSyncRuns failed", error);
-            return 0;
-          }),
-        );
-      }
-      // analytics_daily도 같은 하루 1회 슬롯에서 보관 기간(180일)만 남긴다.
-      if (scheduledAt.getUTCHours() === 6 && env.DB) {
-        ctx.waitUntil(
-          pruneOldAnalytics(env.DB).catch((error) => {
-            console.error("pruneOldAnalytics failed", error);
-            return 0;
-          }),
-        );
-      }
-      return;
-    }
-    if (controller.cron === "30 */3 * * *") {
-      ctx.waitUntil(runAgentOfficeScheduled(env));
-      return;
-    }
-    if (controller.cron === "*/5 * * * *") {
-      // 태깅과 backfill은 예전에 한 invocation에서 같이 돌았다. invocation당
-      // CPU 10ms·subrequest 50건을 둘이 나눠 쓰는 구조라, 앞서 도는 태깅이
-      // 예산을 대부분 먹고 backfill은 회차당 4건 남짓만 처리하다 죽었다
-      // (실측 2026-08-18: 지오코딩 88건/일, 사진 90건/일 — 설계치의 12~15%).
-      // 지금은 한 invocation에 한 작업만 둔다. 대신 cron 주기를 5분으로 당겨
-      // 각 작업이 예전과 같은 하루 72회를 유지하되, 매 회차 CPU·subrequest
-      // 예산을 통째로 쓴다. cron trigger 개수는 그대로 5개다.
-      const scheduledAt = new Date(controller.scheduledTime);
-      // 슬롯 5개: 태깅·요금·좌표·사진·프로그램 크롤. 다섯째를 넣으면서 나머지
-      // 넷은 하루 72회 → 58회로 줄었다. 프로그램 백로그(2026-09-02 기준 643건)가
-      // 빠지면 이 슬롯을 다시 걷어내 넷으로 돌린다.
-      // 시각(UTC분)이 아니라 epoch 5분 칸으로 나눈다. 한 시간은 5분 슬롯 12개라
-      // 분 기준 % 5는 슬롯 0·1만 시간당 3회를 받고 나머지는 2회가 된다.
-      const slot = Math.floor(scheduledAt.getTime() / 300_000) % 5;
-      if (slot === 0) {
-        ctx.waitUntil(runTaggingScheduled(env));
-      } else if (slot === 1) {
-        ctx.waitUntil(runFeeBackfillScheduled(env));
-      } else if (slot === 2) {
-        ctx.waitUntil(runGeocodeBackfillScheduled(env));
-      } else if (slot === 3) {
-        ctx.waitUntil(runImageBackfillScheduled(env));
-      } else {
-        ctx.waitUntil(runProgramCrawlScheduled(env));
-      }
-      return;
     }
   },
 };
+
+/**
+ * 분마다 도는 스케줄러. D1을 읽지 않고 시각만 보고 job을 만든다.
+ */
+async function runMinuteScheduler(env: Env, scheduledAt: Date): Promise<void> {
+  await Promise.all([
+    sendJobs(env, plannedJobs(scheduledAt)),
+    syncRealtimeParkingScheduled(env, scheduledAt),
+  ]);
+}
+
+async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
+  switch (job.type) {
+    case "discovery-chunk":
+      return syncDiscoveryChunkScheduled(env, job.chunkIndex);
+    case "local-events":
+      return syncLocalEventsScheduled(env, job.chunkIndex);
+    case "tagging":
+      return runTaggingScheduled(env);
+    case "fee-backfill":
+      return runFeeBackfillScheduled(env);
+    case "geocode-backfill":
+      return runGeocodeBackfillScheduled(env);
+    case "image-backfill":
+      return runImageBackfillScheduled(env);
+    case "program-select":
+      return runProgramSelectScheduled(env);
+    case "program-page":
+    case "program-subpage":
+    case "program-ai":
+      return runProgramStageScheduled(env, job);
+    case "akei-page":
+      return runAkeiPageScheduled(env, job);
+    case "city-festival-site":
+      return runCityFestivalSiteScheduled(env, job.siteId);
+    case "agent-head":
+      return runHeadReviewScheduled(env);
+    case "agent-image":
+      return runImageEnrichmentScheduled(env);
+    case "notification-plan":
+      return runNotificationPlanScheduled(env);
+    case "notification-dispatch":
+      return runUpcomingNotificationsScheduled(env, { plan: false });
+    case "prune-sync-runs": {
+      await pruneOldSyncRuns(env.DB!);
+      return;
+    }
+    case "prune-analytics": {
+      await pruneOldAnalytics(env.DB!);
+      return;
+    }
+  }
+}
 
 // Cron 작업 실패를 운영자에게 알린다. webhook URL이 없으면 조용히 통과하므로
 // secret 미설정 환경(로컬/테스트)에서도 안전하다. 알림 자체 실패도 sync를 죽이지 않는다.
@@ -1547,6 +1553,165 @@ async function notifyOpsFailure(
   } catch (notifyError) {
     console.error("ops alert webhook failed", notifyError);
   }
+}
+
+/**
+ * 프로그램 크롤 1단계: 대상 선정. D1만 만지고 외부 fetch가 없다.
+ * 고른 행마다 page 메시지 하나를 만들어 HTML 파싱을 각자 invocation으로 흩는다.
+ */
+async function runProgramSelectScheduled(env: Env): Promise<void> {
+  try {
+    const maxItems = Number(env.PROGRAM_CRAWL_MAX_ITEMS ?? "4");
+    const targets = await selectProgramCrawlTargets(env.DB!, { maxItems });
+    if (targets.length === 0) return;
+    await sendJobs(
+      env,
+      targets.map((target) => ({
+        type: "program-page" as const,
+        id: target.id,
+        url: target.url,
+      })),
+    );
+    console.log(`program select done selected=${targets.length}`);
+  } catch (error) {
+    console.error("program select failed", error);
+    await notifyOpsFailure(env, "program select", error);
+  }
+}
+
+/**
+ * 프로그램 크롤 2~4단계: 페이지 하나 / 하위 페이지 하나 / LLM 한 번.
+ * 한 메시지가 fetch 1건 + HTML 파싱 1회만 하므로 10ms 예산을 통째로 쓴다.
+ * 다음 단계가 필요하면 결과가 알려주고, 그것을 새 메시지로 넘긴다
+ * (같은 invocation에서 이어 돌리지 않는다 — 그게 예전 CPU 초과의 원인이었다).
+ */
+async function runProgramStageScheduled(
+  env: Env,
+  job: { type: "program-page" | "program-subpage" | "program-ai"; id: string; url: string },
+): Promise<void> {
+  const stage =
+    job.type === "program-page" ? "page" : job.type === "program-subpage" ? "subpage" : "ai";
+  try {
+    const result = await runProgramStage(env.DB!, env, { stage, id: job.id, url: job.url });
+    console.log(
+      `program ${stage} id=${job.id} outcome=${result.outcome} pages=${result.pagesFetched} llm=${result.llmCalls} rejected=${result.llmRejected}` +
+        (result.next ? ` next=${result.next.stage}` : ""),
+    );
+    if (result.next) {
+      await sendJobs(env, [
+        {
+          type: result.next.stage === "subpage" ? "program-subpage" : "program-ai",
+          id: result.next.id,
+          url: result.next.url,
+        },
+      ]);
+    }
+  } catch (error) {
+    console.error(`program ${stage} failed id=${job.id}`, error);
+    await notifyOpsFailure(env, `program ${stage}`, error);
+  }
+}
+
+/**
+ * AKEI 목록 한 페이지. 항목이 있으면 다음 페이지를 이어 넣는다(연속 메시지).
+ * 빈 페이지에서 멈추므로 월당 최대 AKEI_MAX_PAGES건이다.
+ */
+async function runAkeiPageScheduled(
+  env: Env,
+  job: { year: number; month: number; page: number },
+): Promise<void> {
+  const startedAt = new Date().toISOString();
+  const monthLabel = `${job.year}-${String(job.month).padStart(2, "0")}`;
+  try {
+    const result = await runAkeiTradeExpoPage(env.DB!, job.year, job.month, job.page);
+    await recordScraperRun(
+      env.DB,
+      "akei-trade-expo-scrape",
+      startedAt,
+      result.failed || result.failedBatches > 0 ? "failed" : "success",
+      { fetched: result.processed, upserted: result.published },
+      `month=${monthLabel} page=${job.page} failedBatches=${result.failedBatches} unmappedVenues=${result.unmappedVenues}`,
+      `${monthLabel}:${job.page}`,
+    );
+    if (result.hasMore && job.page < AKEI_MAX_PAGES) {
+      await sendJobs(env, [
+        { type: "akei-page", year: job.year, month: job.month, page: job.page + 1 },
+      ]);
+    }
+  } catch (error) {
+    console.error(`akei trade expo page failed month=${monthLabel} page=${job.page}`, error);
+    await recordScraperRun(
+      env.DB,
+      "akei-trade-expo-scrape",
+      startedAt,
+      "failed",
+      { fetched: 0, upserted: 0 },
+      String(error),
+      `${monthLabel}:${job.page}`,
+    );
+    await notifyOpsFailure(env, "akei trade expo page", error);
+  }
+}
+
+/**
+ * 도시 축제 사이트 하나. 예전에는 청크 10개를 한 invocation에서 돌아
+ * 느린 사이트 하나가 나머지 아홉을 같이 죽였다.
+ *
+ * 예산은 사이트 단위로 다시 잡는다: 청크 전체 기본값이 지오코딩 miss 30 /
+ * detail fetch 6이었으므로, 사이트당 3 / 1이면 하루 총량이 miss 30(동일),
+ * detail 10(6 → 10)이 된다.
+ */
+async function runCityFestivalSiteScheduled(env: Env, siteId: string): Promise<void> {
+  const site = CITY_FESTIVAL_SITES.find((candidate) => candidate.siteId === siteId);
+  if (!site) {
+    console.warn(`city festival site not found siteId=${siteId}`);
+    return;
+  }
+  const startedAt = new Date().toISOString();
+  try {
+    const result = await runCityFestivalDiscovery(env.DB!, env, [site], {
+      missBudget: 3,
+      detailFetchBudget: 1,
+    });
+    await recordScraperRun(
+      env.DB,
+      "city-festival-scrape",
+      startedAt,
+      result.failedSites.length > 0 ? "failed" : "success",
+      { fetched: result.processed, upserted: result.published },
+      `site=${siteId}` +
+        (result.failedSites.length > 0 ? ` failedSites=${result.failedSites.join(",")}` : ""),
+      siteId,
+    );
+  } catch (error) {
+    console.error(`city festival site failed siteId=${siteId}`, error);
+    await recordScraperRun(
+      env.DB,
+      "city-festival-scrape",
+      startedAt,
+      "failed",
+      { fetched: 0, upserted: 0 },
+      String(error),
+      siteId,
+    );
+    await notifyOpsFailure(env, "city festival site", error);
+  }
+}
+
+/**
+ * 계획만 하고 발송은 다음 메시지로 넘긴다. `runUpcomingNotifications(env, {plan:true})`는
+ * 계획과 발송을 한 invocation에서 하므로 여기서는 쓰지 않는다 —
+ * 계획은 D1만, 발송은 APNs subrequest 최대 40건이라 예산 성격이 다르다.
+ */
+async function runNotificationPlanScheduled(env: Env): Promise<void> {
+  try {
+    const planned = await planUpcomingNotifications(env.DB!);
+    console.log("upcoming notification plan done", JSON.stringify(planned));
+  } catch (error) {
+    console.error("upcoming notification plan failed", error);
+    await notifyOpsFailure(env, "upcoming notification plan", error);
+  }
+  await sendJobs(env, [{ type: "notification-dispatch" }]);
 }
 
 async function runTaggingScheduled(env: Env): Promise<void> {
@@ -1576,16 +1741,6 @@ async function runFeeBackfillScheduled(env: Env): Promise<void> {
   }
 }
 
-async function runProgramCrawlScheduled(env: Env): Promise<void> {
-  try {
-    const result = await runProgramCrawl(env.DB!, env);
-    console.log("program crawl done", JSON.stringify(result));
-  } catch (error) {
-    console.error("program crawl failed", error);
-    await notifyOpsFailure(env, "program crawl", error);
-  }
-}
-
 async function runImageBackfillScheduled(env: Env): Promise<void> {
   try {
     const result = await runImageBackfill(env.DB!, env);
@@ -1608,13 +1763,6 @@ async function runGeocodeBackfillScheduled(env: Env): Promise<void> {
     console.error("geocode backfill failed", error);
     await notifyOpsFailure(env, "geocode backfill", error);
   }
-}
-
-async function runAgentOfficeScheduled(env: Env): Promise<void> {
-  await Promise.all([
-    runHeadReviewScheduled(env),
-    runImageEnrichmentScheduled(env),
-  ]);
 }
 
 async function runHeadReviewScheduled(env: Env): Promise<void> {
@@ -1675,26 +1823,41 @@ async function runUpcomingNotificationsScheduled(
   }
 }
 
-async function syncRealtimeParkingScheduled(env: Env): Promise<void> {
+/**
+ * 회차마다 shard 하나만 동기화한다. 예전에는 provider 전부를 한 invocation에
+ * 몰아넣어 `Exceeded CPU Limit`으로 통째로 죽었다.
+ *
+ * shard 경계는 CompositeParkingProvider의 병합 단위를 따른다
+ * (createRealtimeProviders.ts 주석 참고) — 서울 4종은 좌표 병합 때문에 한 shard다.
+ *
+ * prune은 shard와 분리해 15분마다 한 번만 돈다. `pruneUnseenRealtimeParking`은
+ * 시간 기준(`last_seen_at < 90분 전`)이라 아직 안 돈 shard의 행을 지우지 않는다.
+ * shard가 넷이면 각 shard가 4분마다 갱신되므로 보존 90분에 22배 여유가 있다.
+ */
+async function syncRealtimeParkingScheduled(env: Env, scheduledAt: Date): Promise<void> {
   try {
-    const provider = await loadRealtimeProvider(env);
-    await syncRealtimeParkingCache(env.DB!, provider);
+    const shards = await loadRealtimeShards(env);
+    if (shards.length === 0) return;
+    const index = realtimeShardIndex(scheduledAt, shards.length);
+    await syncRealtimeParkingCache(env.DB!, shards[index], {
+      prune: shouldPruneRealtime(scheduledAt),
+    });
   } catch (error) {
     console.error("realtime parking sync failed", error);
     await notifyOpsFailure(env, "realtime parking sync", error);
   }
 }
 
-async function loadRealtimeProvider(
+async function loadRealtimeShards(
   env: Env,
-): Promise<BackendRuntime["realtimeParkingProvider"]> {
+): Promise<BackendRuntime["realtimeParkingProvider"][]> {
   syncProcessEnv(env);
-  realtimeProviderPromise ??= (async () => {
-    const { createRealtimeParkingProvider } =
+  realtimeShardsPromise ??= (async () => {
+    const { createRealtimeParkingProviderShards } =
       await import("../../backend/src/providers/createRealtimeProviders.js");
-    return createRealtimeParkingProvider();
+    return createRealtimeParkingProviderShards();
   })();
-  return realtimeProviderPromise;
+  return realtimeShardsPromise;
 }
 
 async function loadDiscoveryRuntime(env: Env): Promise<{
@@ -1794,6 +1957,8 @@ async function recordScraperRun(
   status: "success" | "failed",
   counts: { fetched: number; upserted: number },
   message: string | null,
+  /** 같은 회차가 여러 행(도시별·페이지별)으로 갈릴 때 id 충돌을 막는다. */
+  idSuffix?: string,
 ): Promise<void> {
   if (!db) return;
   try {
@@ -1803,7 +1968,7 @@ async function recordScraperRun(
          VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
       )
       .bind(
-        `${syncType}:${startedAt}`,
+        idSuffix ? `${syncType}:${startedAt}:${idSuffix}` : `${syncType}:${startedAt}`,
         syncType,
         startedAt,
         new Date().toISOString(),
@@ -1866,12 +2031,6 @@ async function syncAkeiTradeExposScheduled(env: Env, scheduledAt: Date): Promise
     await recordScraperRun(env.DB, "akei-trade-expo-scrape", startedAt, "failed", { fetched: 0, upserted: 0 }, String(error));
     await notifyOpsFailure(env, "akei trade expo discovery sync", error);
   }
-}
-
-function currentLocalEventChunkIndex(now: Date, chunkCount: number): number {
-  if (chunkCount <= 1) return 0;
-  const slot = Math.floor(now.getTime() / (3 * 60 * 60 * 1000));
-  return ((slot % chunkCount) + chunkCount) % chunkCount;
 }
 
 function queryObject(url: string): Record<string, string> {

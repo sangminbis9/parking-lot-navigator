@@ -5,6 +5,8 @@ import {
   isGrounded,
   programLink,
   runProgramCrawl,
+  runProgramStage,
+  selectProgramCrawlTargets,
 } from "../src/programCrawl.js";
 
 interface FakeStatement {
@@ -250,5 +252,281 @@ describe("runProgramCrawl", () => {
     expect(result.llmRejected).toBe(1);
     expect(result.llmFilled).toBe(0);
     expect(written()[0].sql).toContain("detail_state = 'empty'");
+  });
+});
+
+// --- 단계 분할 (Queue) ---
+// 예전에는 랜딩 fetch → 링크 1-hop → LLM을 한 invocation에서 이어 붙여
+// 회차가 통째로 `Exceeded CPU Limit`으로 죽었다. 지금은 단계마다 메시지 하나다.
+
+function stageDb(rows: Record<string, unknown>[]): {
+  db: D1Database;
+  writes: () => FakeStatement[];
+} {
+  const writes: FakeStatement[] = [];
+  const db = {
+    prepare: (sql: string) => ({
+      bind: (...args: unknown[]) => ({
+        sql,
+        args,
+        all: async () => ({
+          results: sql.includes("WHERE id = ?") ? rows.filter((r) => r.id === args[0]) : rows,
+        }),
+        run: async () => (writes.push({ sql, args }), {}),
+      }),
+    }),
+    batch: async (statements: FakeStatement[]) => (writes.push(...statements), []),
+  } as unknown as D1Database;
+  return { db, writes: () => writes };
+}
+
+function stageRow(overrides: Record<string, unknown> = {}) {
+  return { ...row(), program_filled_at: null, ...overrides };
+}
+
+const LANDING_WITH_LINK = `<html><body><h1>축제 안내</h1>
+  <a href="/sub/program.do">세부 일정</a></body></html>`;
+
+describe("runProgramStage", () => {
+  it("landing 페이지에서 찾으면 바로 저장하고 끝낸다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(PROGRAM_PAGE)));
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("filled");
+    expect(result.pagesFetched).toBe(1);
+    expect(writes()[0].sql).toContain("program_filled_at = ?");
+    expect(String(writes()[0].args[0])).toContain("10:00 개막식 및 축하공연");
+  });
+
+  it("landing이 비면 같은 호스트 링크를 다음 메시지로 넘기고 아무것도 쓰지 않는다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(LANDING_WITH_LINK)));
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("handed_off");
+    expect(result.next).toEqual({
+      stage: "subpage",
+      id: "row-1",
+      url: "https://festival.example/sub/program.do",
+    });
+    // 중간 상태를 쓰면 다음 단계의 판정과 어긋난다. 선점(15분)이 대신 버틴다.
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("second-hop에서 찾으면 저장한다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(PROGRAM_PAGE)));
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "subpage", id: "row-1", url: "https://festival.example/sub/program.do" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("filled");
+    expect(writes()[0].sql).toContain("$.programInfo");
+  });
+
+  it("second-hop도 비면 AI 단계를 다음 메시지로 넘긴다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page("<html><body>준비 중</body></html>")));
+    const ai = { run: vi.fn() };
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      { AI: ai as unknown as Ai },
+      { stage: "subpage", id: "row-1", url: "https://festival.example/sub/program.do" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("handed_off");
+    expect(result.next?.stage).toBe("ai");
+    expect(ai.run).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("AI 단계는 원문에 있는 답만 저장한다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(PROGRAM_PAGE)));
+    const ai = {
+      run: vi.fn(async () => ({
+        response: JSON.stringify({ programInfo: "10:00 개막식 및 축하공연" }),
+      })),
+    };
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      { AI: ai as unknown as Ai },
+      { stage: "ai", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("filled");
+    expect(result.llmCalls).toBe(1);
+    expect(result.llmRejected).toBe(0);
+    expect(String(writes()[0].args[0])).toContain("10:00 개막식 및 축하공연");
+  });
+
+  it("AI가 원문에 없는 출연진을 지어내면 버리고 다시 큐에 넣는다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page(PROGRAM_PAGE)));
+    const ai = {
+      run: vi.fn(async () => ({
+        response: JSON.stringify({ programInfo: "19:00 유명가수 초청공연" }),
+      })),
+    };
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      { AI: ai as unknown as Ai },
+      { stage: "ai", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("empty");
+    expect(result.llmRejected).toBe(1);
+    expect(writes()[0].sql).toContain("detail_state = 'empty'");
+    expect(writes()[0].sql).not.toContain("program_filled_at");
+  });
+
+  it("503은 확정하지 않고 backoff만 건다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 503 })));
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("transient");
+    expect(writes()[0].sql).toContain("detail_retry_after = ?");
+    expect(writes()[0].sql).not.toContain("detail_state");
+  });
+
+  it("404는 영구 종료한다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("nodata");
+    expect(writes()[0].sql).toContain("detail_state = 'nodata'");
+  });
+
+  it("이미 끝난 행사는 다시 보지 않도록 영구 종료한다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => page("<html><body>준비 중</body></html>")));
+    const { db, writes } = stageDb([
+      stageRow({ start_date: "2026-08-01", end_date: "2026-08-10" }),
+    ]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("nodata");
+    expect(writes()[0].sql).toContain("detail_state = 'nodata'");
+  });
+
+  it("중복 메시지는 페이지를 열지도 쓰지도 않는다", async () => {
+    // Queue는 at-least-once라 같은 메시지가 두 번 온다. 이미 채운 행을
+    // 다시 긁으면 subrequest와 D1 쓰기를 그냥 버린다.
+    const fetchMock = vi.fn(async () => page(PROGRAM_PAGE));
+    vi.stubGlobal("fetch", fetchMock);
+    const { db, writes } = stageDb([
+      stageRow({ program_filled_at: "2026-09-01T00:00:00.000Z" }),
+    ]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("skipped");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("본문 상한을 넘겨 읽지 않고 스트림을 끊는다", async () => {
+    // HTML 파싱이 이 파이프라인에서 가장 비싼 CPU 소비원이다. 상한(60KB)까지만
+    // 읽고 나머지는 받지 않아야 큰 페이지 하나가 회차를 죽이지 않는다.
+    const chunk = "x".repeat(10_000);
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= 30) {
+          controller.close();
+          return;
+        }
+        pulled += 1;
+        controller.enqueue(new TextEncoder().encode(chunk));
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { headers: { "content-type": "text/html" } })),
+    );
+    const { db } = stageDb([stageRow()]);
+
+    await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    // 60,000자 상한이라 10,000자 청크 6개면 충분하다. 300,000자를 다 읽으면 안 된다.
+    expect(pulled).toBeLessThanOrEqual(7);
+  });
+});
+
+describe("selectProgramCrawlTargets", () => {
+  it("fetch 없이 대상을 고르고 15분 선점을 건다", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { db, writes } = stageDb([
+      { id: "row-1", source_url: "https://festival.example/main" },
+    ]);
+
+    const now = new Date("2026-09-02T00:00:00Z");
+    const targets = await selectProgramCrawlTargets(db, { maxItems: 4, now });
+
+    expect(targets).toEqual([{ id: "row-1", url: "https://festival.example/main" }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const claim = writes()[0];
+    expect(claim.sql).toContain("detail_attempts = detail_attempts + 1");
+    expect(claim.args[0]).toBe(new Date(now.getTime() + 15 * 60_000).toISOString());
+  });
+
+  it("maxItems가 0이면 D1을 건드리지 않는다", async () => {
+    const { db, writes } = stageDb([]);
+
+    expect(await selectProgramCrawlTargets(db, { maxItems: 0 })).toEqual([]);
+    expect(writes()).toHaveLength(0);
   });
 });

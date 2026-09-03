@@ -241,6 +241,171 @@ export async function runProgramCrawl(
   return result;
 }
 
+// ── Queue 단계 실행 ────────────────────────────────────────────────────────
+// 위 runProgramCrawl은 한 invocation에서 "선점 → 랜딩 fetch → 링크 fetch → LLM"을
+// 전부 이어 붙인다. 그게 Free Worker의 10ms CPU를 넘겨 회차가 통째로 죽던 원인이라,
+// Queue 경로에서는 같은 일을 단계로 쪼개 각 단계가 자기 invocation의 CPU 예산을
+// 통째로 쓴다. 상태 컬럼(detail_state / detail_retry_after / detail_attempts /
+// program_filled_at)과 판정 규칙은 위와 **완전히 같은 함수**를 공유한다 —
+// admin endpoint(runProgramCrawl)와 Queue 경로가 서로 다른 정책을 갖지 않게 하려는 것이다.
+
+export interface ProgramCrawlTarget {
+  id: string;
+  url: string;
+}
+
+/**
+ * 대상 선정 + 선점만 한다. fetch를 하지 않으므로 subrequest 0건이고 CPU도 거의 안 쓴다.
+ * 선점(detail_retry_after = now + 15분)이 걸려 있어, 뒤이은 단계 메시지가 유실되거나
+ * CPU로 죽어도 그 행은 15분 뒤 자연히 다시 선정된다.
+ */
+export async function selectProgramCrawlTargets(
+  db: D1Database,
+  options: { maxItems: number; now?: Date },
+): Promise<ProgramCrawlTarget[]> {
+  const now = options.now ?? new Date();
+  if (options.maxItems <= 0) return [];
+  const nowIso = now.toISOString();
+  const today = seoulDayString(now);
+  const placeholders = CRAWL_SOURCES.map(() => "?").join(",");
+
+  const rows = await db
+    .prepare(
+      `SELECT id, source_url
+         FROM discovery_items
+        WHERE source IN (${placeholders})
+          AND program_filled_at IS NULL
+          AND json_extract(raw_payload, '$.programInfo') IS NULL
+          AND source_url IS NOT NULL
+          AND source_url <> ''
+          AND (end_date IS NULL OR end_date >= ?)
+          AND (detail_state IS NULL OR detail_state <> 'nodata')
+          AND (detail_retry_after IS NULL OR detail_retry_after <= ?)
+        ORDER BY detail_attempts ASC, start_date ASC
+        LIMIT ?`,
+    )
+    .bind(...CRAWL_SOURCES, today, nowIso, options.maxItems)
+    .all<{ id: string; source_url: string }>();
+
+  const targets = rows.results ?? [];
+  if (targets.length === 0) return [];
+
+  const claimUntil = plusMinutes(now, CLAIM_TTL_MINUTES);
+  await flush(
+    db,
+    targets.map((row) =>
+      db
+        .prepare(
+          `UPDATE discovery_items
+              SET detail_attempts = detail_attempts + 1,
+                  detail_retry_after = ?
+            WHERE id = ?`,
+        )
+        .bind(claimUntil, row.id),
+    ),
+  );
+
+  return targets.map((row) => ({ id: row.id, url: row.source_url }));
+}
+
+export type ProgramStage = "page" | "subpage" | "ai";
+
+export interface ProgramStageResult {
+  outcome: "filled" | "empty" | "nodata" | "transient" | "handed_off" | "skipped";
+  /** 다음 단계로 넘길 작업. 스케줄러가 Queue 메시지로 만든다. */
+  next?: { stage: "subpage" | "ai"; id: string; url: string };
+  pagesFetched: number;
+  llmCalls: number;
+  llmRejected: number;
+  error?: string;
+}
+
+/**
+ * 단계 하나 = 페이지 하나. 최대 fetch 1건 + D1 쓰기 1건이라
+ * subrequest도 CPU도 한 페이지분으로 묶인다.
+ *
+ * 같은 메시지가 두 번 와도(at-least-once) 안전하다: 이미 채워진 행은 `skipped`로
+ * 빠지고, 그 외에는 같은 URL을 다시 읽어 같은 결론을 낼 뿐이라 행이 깨지지 않는다.
+ */
+export async function runProgramStage(
+  db: D1Database,
+  env: ProgramCrawlEnv,
+  job: { stage: ProgramStage; id: string; url: string },
+  options: { now?: Date } = {},
+): Promise<ProgramStageResult> {
+  const now = options.now ?? new Date();
+  const nowIso = now.toISOString();
+  const today = seoulDayString(now);
+  const base: ProgramStageResult = {
+    outcome: "skipped",
+    pagesFetched: 0,
+    llmCalls: 0,
+    llmRejected: 0,
+  };
+
+  const loaded = await db
+    .prepare(
+      `SELECT id, source, title, source_url, start_date, end_date, detail_attempts,
+              program_filled_at
+         FROM discovery_items
+        WHERE id = ?`,
+    )
+    .bind(job.id)
+    .all<CrawlRow & { program_filled_at: string | null }>();
+  const row = loaded.results?.[0];
+  // 행이 사라졌거나(프루닝) 이미 프로그램이 채워졌으면(중복 메시지) 아무것도 하지 않는다.
+  if (!row || row.program_filled_at) return base;
+
+  let page: { html: string; text: string; url: URL };
+  try {
+    page = await fetchPageText(job.url);
+    base.pagesFetched = 1;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    base.error = message;
+    if (isRetryableBackfillError(message)) {
+      await db
+        .prepare(`UPDATE discovery_items SET detail_retry_after = ? WHERE id = ?`)
+        .bind(transientRetryAfter(now, row), row.id)
+        .run();
+      return { ...base, outcome: "transient" };
+    }
+    await terminalStatement(db, row.id, nowIso).run();
+    return { ...base, outcome: "nodata" };
+  }
+
+  if (job.stage !== "ai") {
+    const found = extractProgramText(page.text);
+    if (found) {
+      await outcomeStatement(db, row, found, now, nowIso, today).run();
+      return { ...base, outcome: "filled" };
+    }
+    if (job.stage === "page") {
+      const next = programLink(page.html, page.url);
+      // 다음 단계는 이 행의 선점(15분)을 그대로 쓴다. 여기서 D1에 쓰지 않는 이유가
+      // 그것이다 — 중간 상태를 만들면 다음 단계의 판정과 어긋난다.
+      if (next) return { ...base, outcome: "handed_off", next: { stage: "subpage", id: row.id, url: next } };
+    }
+    if (env.AI) {
+      return { ...base, outcome: "handed_off", next: { stage: "ai", id: row.id, url: page.url.href } };
+    }
+    await outcomeStatement(db, row, null, now, nowIso, today).run();
+    return { ...base, outcome: hasEnded(row, today) ? "nodata" : "empty" };
+  }
+
+  base.llmCalls = 1;
+  const extracted = await extractWithAi(env, row, page.text);
+  if (extracted === "rejected") base.llmRejected = 1;
+  const program = extracted === "rejected" ? null : extracted;
+  await outcomeStatement(db, row, program, now, nowIso, today).run();
+  if (program) return { ...base, outcome: "filled" };
+  return { ...base, outcome: hasEnded(row, today) ? "nodata" : "empty" };
+}
+
+export function programCrawlBacklog(db: D1Database, now: Date = new Date()): Promise<number> {
+  return backlog(db, seoulDayString(now));
+}
+
 /// 랜딩 페이지를 열고, 규칙이 빈손이면 프로그램처럼 보이는 링크 하나만 더 따라간다.
 async function crawlRow(
   row: CrawlRow,
@@ -302,8 +467,45 @@ async function fetchPageText(
   if (contentType && !/html|xml|text\/plain/i.test(contentType)) {
     throw new Error("program crawl NODATA: not a document");
   }
-  const html = (await response.text()).slice(0, MAX_HTML_CHARS);
+  const html = await readBoundedHtml(response);
   return { html, text: htmlToText(html), url: response.url ? new URL(response.url) : url };
+}
+
+/**
+ * 본문을 상한까지만 읽고 나머지는 버린다. 예전에는 `response.text()`로 전문을
+ * 메모리에 올린 뒤 잘랐는데, 34KB짜리 페이지가 아니라 수백KB짜리 지자체 페이지를
+ * 만나면 자르기 전에 이미 디코딩 비용을 다 치른다 — 이 파이프라인에서 가장 비싼
+ * CPU가 거기다. 상한에 닿으면 reader를 cancel해 나머지 바이트는 받지도 않는다.
+ *
+ * 단, `response.text()`는 Content-Type의 charset을 보고 디코딩한다. 한국 지자체
+ * 페이지는 EUC-KR이 흔해서, 스트림을 UTF-8로 못 박아 읽으면 본문이 깨진다.
+ * UTF-8이 아니라고 **선언한** 경우에만 예전 경로로 되돌린다.
+ */
+async function readBoundedHtml(response: Response): Promise<string> {
+  const charset = /charset\s*=\s*"?([\w-]+)/i
+    .exec(response.headers.get("content-type") ?? "")?.[1]
+    ?.toLowerCase();
+  const body = response.body;
+  if (!body || (charset && charset !== "utf-8" && charset !== "utf8")) {
+    return (await response.text()).slice(0, MAX_HTML_CHARS);
+  }
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let html = "";
+  try {
+    while (html.length < MAX_HTML_CHARS) {
+      const { done, value } = await reader.read();
+      if (done) {
+        html += decoder.decode();
+        break;
+      }
+      html += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    // 상한에서 끊은 경우 남은 바이트를 받지 않는다. 이미 끝난 스트림이면 no-op.
+    await reader.cancel().catch(() => {});
+  }
+  return html.length > MAX_HTML_CHARS ? html.slice(0, MAX_HTML_CHARS) : html;
 }
 
 /// 랜딩 페이지가 목록뿐일 때 프로그램 페이지로 들어가는 링크 하나. 같은 호스트만 따라간다.
