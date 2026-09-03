@@ -45,9 +45,21 @@ export interface RealtimeParkingCluster {
   congestionStatus: ParkingLot["congestionStatus"];
 }
 
+export interface RealtimeCacheSyncOptions {
+  /**
+   * 오래된 행 정리를 이 회차에 같이 돌릴지. provider를 shard로 쪼개면 한 shard가
+   * 준 항목만 last_seen_at이 갱신되지만, prune은 `last_seen_at < now - 90분`
+   * 이라는 **시간 기준**이라 아직 안 돈 shard의 행을 지우지 않는다. shard가
+   * 4개면 각 shard가 4분마다 한 바퀴 도므로 90분 보존과 비교해 22배 여유가 있다.
+   * 다만 매 분 돌리면 하루 1,440회가 되므로 호출부가 간격을 정한다.
+   */
+  prune?: boolean;
+}
+
 export async function syncRealtimeParkingCache(
   db: D1Database,
   provider: CompositeParkingProvider,
+  options: RealtimeCacheSyncOptions = {},
 ): Promise<RealtimeCacheSyncResult> {
   const generatedAt = new Date().toISOString();
   const items = (
@@ -65,7 +77,7 @@ export async function syncRealtimeParkingCache(
   );
   const skipped = items.length - validItems.length;
   const counts = await upsertRealtimeParkingItems(db, validItems, generatedAt);
-  const pruned = await pruneUnseenRealtimeParking(db, generatedAt);
+  const pruned = options.prune === false ? 0 : await pruneUnseenRealtimeParking(db, generatedAt);
 
   return {
     fetched: items.length,

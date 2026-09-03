@@ -41,10 +41,21 @@ export interface CityFestivalDiscoveryResult {
   failedSites: string[];
 }
 
+export interface CityFestivalDiscoveryOptions {
+  /**
+   * Kakao 지오코딩 miss 예산과 상세 페이지 fetch 예산. 사이트 하나를 Queue
+   * 메시지 하나로 돌릴 때 env 값(청크 10개 사이트 기준)을 그대로 쓰면 하루
+   * 총량이 사이트 수만큼 곱해진다. 호출부가 사이트당 몫으로 나눠 넘긴다.
+   */
+  missBudget?: number;
+  detailFetchBudget?: number;
+}
+
 export async function runCityFestivalDiscovery(
   db: D1Database,
   env: Env,
-  sites: CitySiteConfig[] = CITY_FESTIVAL_SITES
+  sites: CitySiteConfig[] = CITY_FESTIVAL_SITES,
+  options: CityFestivalDiscoveryOptions = {}
 ): Promise<CityFestivalDiscoveryResult> {
   setGeocodeStore(createD1GeocodeStore(db));
 
@@ -54,7 +65,8 @@ export async function runCityFestivalDiscovery(
 
   const rawMissBudgetInput = env.CITY_FESTIVAL_GEOCODE_MISS_BUDGET?.trim();
   const rawMissBudget = rawMissBudgetInput ? Number(rawMissBudgetInput) : DEFAULT_GEOCODE_MISS_BUDGET;
-  const missBudget = Number.isFinite(rawMissBudget) ? rawMissBudget : DEFAULT_GEOCODE_MISS_BUDGET;
+  const missBudget = options.missBudget
+    ?? (Number.isFinite(rawMissBudget) ? rawMissBudget : DEFAULT_GEOCODE_MISS_BUDGET);
   const resolver = new KakaoEventCoordinateResolver(env, { missBudget });
 
   const rawDetailFetchBudgetInput = env.CITY_FESTIVAL_DETAIL_FETCH_BUDGET?.trim();
@@ -62,7 +74,8 @@ export async function runCityFestivalDiscovery(
     ? Number(rawDetailFetchBudgetInput)
     : DEFAULT_DETAIL_FETCH_BUDGET;
   const detailFetchBudget = new DetailFetchBudget(
-    Number.isFinite(rawDetailFetchBudget) ? rawDetailFetchBudget : DEFAULT_DETAIL_FETCH_BUDGET,
+    options.detailFetchBudget
+      ?? (Number.isFinite(rawDetailFetchBudget) ? rawDetailFetchBudget : DEFAULT_DETAIL_FETCH_BUDGET),
     DETAIL_FETCH_PER_SITE_CAP
   );
 
