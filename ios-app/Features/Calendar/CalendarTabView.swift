@@ -614,7 +614,8 @@ private struct AgendaPanel<Filter: View, Content: View>: View {
 
     /// 드래그로 얼마나 더 끌어올렸는지(pt). 0이면 달력 바로 아래에서 시작한다.
     @State private var extraHeight: CGFloat = 0
-    @GestureState private var dragTranslation: CGFloat = 0
+    /// 드래그 시작 시점의 extraHeight. 손을 뗄 때까지 이 값에 이동량을 더해 쓴다.
+    @State private var dragBase: CGFloat?
 
     init(
         baseHeight: CGFloat,
@@ -629,7 +630,7 @@ private struct AgendaPanel<Filter: View, Content: View>: View {
     }
 
     var body: some View {
-        let extra = min(max(extraHeight - dragTranslation, 0), maxExtraHeight)
+        let extra = min(max(extraHeight, 0), maxExtraHeight)
         VStack(spacing: 0) {
             handle
             Divider()
@@ -665,13 +666,21 @@ private struct AgendaPanel<Filter: View, Content: View>: View {
         .padding(.horizontal, 12)
     }
 
+    // 좌표계를 .global로 잡는 것이 핵심이다. 기본값(.local)은 손잡이가 속한 뷰 기준인데,
+    // 그 뷰가 드래그 때문에 매 프레임 위로 움직인다 — 이동량이 자기 자신을 상쇄해
+    // 손을 늦게 따라오고 위아래로 떨린다. 화면 기준으로 재면 그 되먹임이 사라진다.
+    //
+    // 높이도 @GestureState가 아니라 @State에 바로 쓴다. GestureState는 손을 떼는 순간
+    // 먼저 0으로 돌아가서, 확정값이 반영되기 전 한 프레임이 원래 높이로 튄다.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 1)
-            .updating($dragTranslation) { value, state, _ in
-                state = value.translation.height
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { value in
+                let base = dragBase ?? extraHeight
+                if dragBase == nil { dragBase = base }
+                extraHeight = min(max(base - value.translation.height, 0), maxExtraHeight)
             }
-            .onEnded { value in
-                extraHeight = min(max(extraHeight - value.translation.height, 0), maxExtraHeight)
+            .onEnded { _ in
+                dragBase = nil
             }
     }
 }
