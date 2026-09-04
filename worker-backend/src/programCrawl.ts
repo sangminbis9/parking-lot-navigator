@@ -35,6 +35,8 @@ const FETCH_TIMEOUT_MS = 8_000;
 /// 본문을 통째로 정규식에 태우면 CPU 예산이 먼저 죽는다. 프로그램 안내는 대개
 /// 문서 앞쪽에 있어 이 상한으로 잘라도 잃는 것이 적다.
 const MAX_HTML_CHARS = 60_000;
+/// 상한에서 자를 위치를 앞당겨 볼 수 있는 최대 거리. 상한 자체는 그대로다.
+const TRUNCATE_LOOKBACK = 2_000;
 /// LLM에 넘길 본문 상한. 토큰 비용과 Neuron 예산(하루 10,000) 때문에 자른다.
 const MAX_LLM_CHARS = 6_000;
 const MAX_PROGRAM_CHARS = 800;
@@ -572,7 +574,7 @@ async function readBoundedHtml(response: Response): Promise<string> {
     ?.toLowerCase();
   const body = response.body;
   if (!body || (charset && charset !== "utf-8" && charset !== "utf8")) {
-    return (await response.text()).slice(0, MAX_HTML_CHARS);
+    return truncateHtml(await response.text());
   }
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -590,7 +592,34 @@ async function readBoundedHtml(response: Response): Promise<string> {
     // 상한에서 끊은 경우 남은 바이트를 받지 않는다. 이미 끝난 스트림이면 no-op.
     await reader.cancel().catch(() => {});
   }
-  return html.length > MAX_HTML_CHARS ? html.slice(0, MAX_HTML_CHARS) : html;
+  return truncateHtml(html);
+}
+
+/**
+ * 상한을 넘긴 본문을 자른다. 정확히 MAX_HTML_CHARS에서 끊으면 마지막 토큰이
+ * 한가운데서 깨진다 — 실측으로 `2026.9.18.`이 `026.9.18.`로 남아 날짜 인식이
+ * 통째로 어긋났다. 상한은 그대로 두고 **자를 위치만** 최대 TRUNCATE_LOOKBACK
+ * 만큼 앞당겨, 줄바꿈 > 닫힌 태그(`>`) > 공백 순으로 먼저 찾은 경계에서 끊는다.
+ * 그 범위 안에 경계가 없으면(구분자 없는 긴 토큰) 기존대로 상한에서 자른다.
+ *
+ * 상한 이하인 본문은 손대지 않으므로 기존 페이지의 추출 결과는 그대로다.
+ */
+export function truncateHtml(html: string): string {
+  if (html.length <= MAX_HTML_CHARS) return html;
+  const floor = Math.max(0, MAX_HTML_CHARS - TRUNCATE_LOOKBACK);
+  const tail = html.slice(floor, MAX_HTML_CHARS);
+  for (const index of [tail.lastIndexOf("\n"), tail.lastIndexOf(">"), lastWhitespaceIndex(tail)]) {
+    // 경계 문자까지 포함해서 남긴다 — 줄바꿈을 버리면 다음 줄과 붙어 버린다.
+    if (index >= 0) return html.slice(0, floor + index + 1);
+  }
+  return html.slice(0, MAX_HTML_CHARS);
+}
+
+function lastWhitespaceIndex(value: string): number {
+  for (let i = value.length - 1; i >= 0; i -= 1) {
+    if (/\s/.test(value[i])) return i;
+  }
+  return -1;
 }
 
 /// 랜딩 페이지가 목록뿐일 때 프로그램 페이지로 들어가는 링크 하나. 같은 호스트만 따라간다.

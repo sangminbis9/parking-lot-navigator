@@ -8,6 +8,7 @@ import {
   runProgramCrawl,
   runProgramStage,
   selectProgramCrawlTargets,
+  truncateHtml,
 } from "../src/programCrawl.js";
 
 interface FakeStatement {
@@ -776,5 +777,48 @@ describe("JS 리다이렉트 스텁", () => {
     expect(result.outcome).toBe("transient");
     expect(writes()[0].sql).toContain("detail_retry_after = ?");
     expect(writes()[0].sql).not.toContain("nodata");
+  });
+});
+
+describe("truncateHtml", () => {
+  const CAP = 60_000;
+
+  it("상한 이하 본문은 그대로 둔다", () => {
+    const small = "<p>프로그램 안내</p>\n2026.9.18. 개막공연";
+    expect(truncateHtml(small)).toBe(small);
+    const exact = "a".repeat(CAP);
+    expect(truncateHtml(exact)).toBe(exact);
+  });
+
+  it("경계에 걸린 날짜 줄은 통째로 빠지고 앞줄은 온전히 남는다", () => {
+    const head = "a".repeat(59_000) + "\n";
+    const line = "2026.9.18. 개막공연\n";
+    const result = truncateHtml(head + line.repeat(200));
+
+    expect(result.length).toBeLessThanOrEqual(CAP);
+    expect(result.endsWith("\n")).toBe(true);
+    // 잘린 반쪽 날짜(`026.9.18.`)가 남지 않는다.
+    const lines = result.split("\n").filter((l) => l.startsWith("2026") || l.startsWith("026"));
+    expect(lines.every((l) => l === "2026.9.18. 개막공연")).toBe(true);
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("줄바꿈이 없으면 닫힌 태그 경계에서 자른다", () => {
+    const result = truncateHtml("a".repeat(59_500) + ">" + "b".repeat(2_000));
+    expect(result.length).toBe(59_501);
+    expect(result.endsWith(">")).toBe(true);
+  });
+
+  it("줄바꿈도 태그도 없으면 공백 경계에서 자른다", () => {
+    const result = truncateHtml("a".repeat(59_500) + " " + "b".repeat(2_000));
+    expect(result.length).toBe(59_501);
+    expect(result.endsWith(" ")).toBe(true);
+  });
+
+  it("탐색 범위 안에 경계가 없으면 상한에서 자른다", () => {
+    expect(truncateHtml("a".repeat(70_000)).length).toBe(CAP);
+    // 경계가 있어도 상한보다 2,000자 넘게 앞이면 쓰지 않는다.
+    const farBoundary = "a".repeat(57_000) + "\n" + "b".repeat(5_000);
+    expect(truncateHtml(farBoundary).length).toBe(CAP);
   });
 });
