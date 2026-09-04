@@ -58,6 +58,31 @@ const PROGRAM_SKIP_LINE =
 /// 프로그램 한 줄임을 스스로 증명하는 모양(시각 표기).
 const TIME_LINE =
   /(\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*시\s*\d{0,2}\s*분?|오전\s*\d{1,2}|오후\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일)/;
+/// 점 표기 날짜(2026.9.3. / 2026.09.03.(목) / 9.6.(일)). 서울문화포털 공연 라인업처럼
+/// 시각 없이 날짜만 적는 프로그램표가 여기 걸린다. 다만 이 모양만으로는 프로그램이라
+/// 보지 않는다 — 게시판 작성일, 개요표의 행사시작일, 지자체 연간 일정표가 전부 같은 모양이다.
+const DOT_DATE_LINE =
+  /(\d{4}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}|\d{1,2}\s*\.\s*\d{1,2}\s*\.?\s*\(\s*[월화수목금토일]\s*\))/;
+/// 행사 개요표·게시판 메타의 라벨로 시작하는 줄. 날짜는 있지만 프로그램이 아니다.
+/// TIME_LINE 갈래에는 적용하지 않는다 — `일시: 2026. 5. 2.(토) 19:00`처럼 개요 라벨을
+/// 달고도 진짜 프로그램인 줄이 있어서, 약한 증거(DOT_DATE_LINE)에만 건다.
+const OVERVIEW_LABEL =
+  /^\s*(행사\s*(시작|종료)?일|기간|일시|시간|장소|주소|위치|주최|주관|후원|문의|전화|연락처|담당|등록일|작성일|수정일|조회수?|접수\s*기간|관람\s*시간|이용\s*시간|운영\s*시간|공연\s*시간|첨부)/;
+/// 이 행사의 프로그램이 아니라 "남의 행사 목록"임을 페이지 스스로 밝히는 제목.
+/// 지자체 관광 페이지의 연간 축제 일정표가 대표적이다(화성시 tour 페이지 실측).
+/// 문구는 좁게 유지한다 — `채용공고` 같은 단어는 서울문화포털처럼 nav 메뉴에만 있어도
+/// 걸려서 같은 페이지의 진짜 공연 라인업까지 죽인다(실측). 문서 종류 판정은
+/// 페이지 단어가 아니라 아래 줄 단위 구조 기준(isProgramEntryLine)이 맡는다.
+const NON_PROGRAM_PAGE =
+  /(연간\s*(행사|축제|일정)|행사\s*일정표|축제\s*일정표|월별\s*(행사|축제|일정)|행사\s*캘린더)/;
+/// 본문 텍스트가 이보다 짧으면 "스크립트 말고는 아무것도 없는 페이지"로 본다.
+/// htmlToText가 script/style을 통째로 지우므로, 이 값이 곧 "script 외 의미 있는 콘텐츠 없음"이다.
+const STUB_MAX_TEXT_CHARS = 200;
+/// JS 한 줄로 다른 주소로 튕기는 스텁. `window.`/`document.`/없음 세 접두사를 모두 받는다.
+const JS_REDIRECT_PATTERNS = [
+  /\blocation\s*\.\s*(?:href|replace)\s*(?:=|\(\s*)\s*["\']([^"\']+)["\']/i,
+  /\blocation\s*=\s*["\']([^"\']+)["\']/i,
+];
 
 interface CrawlRow {
   id: string;
@@ -356,10 +381,10 @@ export async function runProgramStage(
   // 행이 사라졌거나(프루닝) 이미 프로그램이 채워졌으면(중복 메시지) 아무것도 하지 않는다.
   if (!row || row.program_filled_at) return base;
 
-  let page: { html: string; text: string; url: URL };
+  let page: CrawledPage;
   try {
     page = await fetchPageText(job.url);
-    base.pagesFetched = 1;
+    base.pagesFetched = page.fetches;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     base.error = message;
@@ -411,7 +436,7 @@ async function crawlRow(
   row: CrawlRow,
 ): Promise<{ program: string | null; text: string | null; pages: number }> {
   const landing = await fetchPageText(row.source_url ?? "");
-  let pages = 1;
+  let pages = landing.fetches;
   const found = extractProgramText(landing.text);
   if (found) return { program: found, text: landing.text, pages };
 
@@ -419,7 +444,7 @@ async function crawlRow(
   if (!next) return { program: null, text: landing.text, pages };
 
   const sub = await fetchPageText(next);
-  pages += 1;
+  pages += sub.fetches;
   return {
     program: extractProgramText(sub.text),
     text: sub.text || landing.text,
@@ -427,9 +452,64 @@ async function crawlRow(
   };
 }
 
-async function fetchPageText(
-  rawUrl: string,
-): Promise<{ html: string; text: string; url: URL }> {
+interface CrawledPage {
+  html: string;
+  text: string;
+  url: URL;
+  /** 이 페이지를 얻는 데 쓴 fetch 수(=subrequest). 리다이렉트 스텁을 따라가면 2다. */
+  fetches: number;
+}
+
+/**
+ * 문서 하나를 열고, 그 문서가 "스크립트로 다른 주소로 튕기기만 하는 스텁"이면
+ * **한 번만** 따라간다. 체인은 만들지 않는다 — 따라간 결과에도 본문이 없으면
+ * 그 URL로 우리가 얻을 것이 없다고 보고 영구 종료한다.
+ *
+ * phcf.or.kr 루트는 HTTP 200으로 60바이트
+ * (`<script>document.location.href="/view/index.do"</script>`)를 돌려준다.
+ * 이걸 못 알아보면 본문이 없으니 매번 `empty`가 되고, 12시간~7일 backoff로
+ * 같은 60바이트를 영원히 다시 긁는다(표본 40건 중 3건이 이 한 호스트였다).
+ */
+async function fetchPageText(rawUrl: string): Promise<CrawledPage> {
+  const page = await fetchDocument(rawUrl);
+  const target = jsRedirectTarget(page);
+  if (!target) return page;
+  const hopped = await fetchDocument(target.href);
+  // 따라간 곳이 **또 스텁이거나 통째로 비어 있으면** 이 URL로는 정적 fetch로
+  // 얻을 것이 영영 없다. 여기서 끊지 않으면 회차마다 fetch를 2건씩 쓰면서
+  // 같은 결론을 반복한다. 본문이 짧기만 한 페이지는 여기서 끊지 않는다 —
+  // 짧아도 프로그램이 적혀 있으면 규칙 추출이 뽑아낸다.
+  if (hopped.text.length === 0 || jsRedirectTarget(hopped)) {
+    throw new Error("program crawl NODATA: redirect stub");
+  }
+  return { ...hopped, fetches: page.fetches + hopped.fetches };
+}
+
+/// 스텁의 목적지. **본문이 사실상 비어 있을 때만** 리다이렉트로 본다 — 평범한 페이지도
+/// 스크립트 안에 `location.href=`를 갖고 있어서, 패턴만 보면 멀쩡한 페이지를 튕긴다.
+export function jsRedirectTarget(page: { html: string; text: string; url: URL }): URL | null {
+  if (page.text.length > STUB_MAX_TEXT_CHARS) return null;
+  const self = new URL(page.url.href);
+  self.hash = "";
+  for (const pattern of JS_REDIRECT_PATTERNS) {
+    const raw = pattern.exec(page.html)?.[1];
+    if (!raw) continue;
+    let target: URL;
+    try {
+      target = new URL(decodeHtmlEntities(raw), page.url);
+    } catch {
+      continue;
+    }
+    if (target.protocol !== "http:" && target.protocol !== "https:") continue;
+    target.hash = "";
+    // 자기 자신으로 튕기는 스텁은 따라가 봐야 같은 응답이다.
+    if (target.href === self.href) continue;
+    return target;
+  }
+  return null;
+}
+
+async function fetchDocument(rawUrl: string): Promise<CrawledPage> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -468,7 +548,12 @@ async function fetchPageText(
     throw new Error("program crawl NODATA: not a document");
   }
   const html = await readBoundedHtml(response);
-  return { html, text: htmlToText(html), url: response.url ? new URL(response.url) : url };
+  return {
+    html,
+    text: htmlToText(html),
+    url: response.url ? new URL(response.url) : url,
+    fetches: 1,
+  };
 }
 
 /**
@@ -513,6 +598,8 @@ export function programLink(html: string, base: URL): string | null {
   // 라벨을 lazy quantifier(`[\s\S]{0,200}?`)로 잡으면 닫히지 않은 앵커에서
   // 백트래킹이 폭발한다. 여는 태그만 정규식으로 찾고 라벨은 indexOf로 자른다.
   const anchor = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi;
+  const self = new URL(base.href);
+  self.hash = "";
   for (const match of html.matchAll(anchor)) {
     const labelStart = (match.index ?? 0) + match[0].length;
     const close = html.indexOf("</a>", labelStart);
@@ -523,33 +610,70 @@ export function programLink(html: string, base: URL): string | null {
     if (!PROGRAM_HEADING.test(label)) continue;
     let candidate: URL;
     try {
-      candidate = new URL(match[1], base);
+      // href는 원본 HTML 그대로라 엔티티가 살아 있다. 풀지 않고 URL을 만들면
+      // `?bo_table=x&amp;wr_id=1`을 문자 그대로 요청해 다른 문서를 받는다.
+      candidate = new URL(decodeHtmlEntities(match[1]), base);
     } catch {
       continue;
     }
     if (candidate.host !== base.host) continue;
-    if (candidate.href === base.href) continue;
     if (candidate.protocol !== "http:" && candidate.protocol !== "https:") continue;
+    // `#`·`#program` 같은 문서 내부 앵커는 같은 HTML을 다시 받을 뿐이다.
+    // 우리는 JS를 실행하지 않으므로 SPA 프래그먼트도 마찬가지다.
+    candidate.hash = "";
+    if (candidate.href === self.href) continue;
     return candidate.href;
   }
   return null;
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  // 프로그램 줄에 실제로 섞여 들어오던 것들. 안 풀면 행사명이 `&lsquo;귀토&rsquo;`로 저장된다.
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+  middot: "\u00b7",
+  hellip: "\u2026",
+  ndash: "\u2013",
+  mdash: "\u2014",
+};
+
+/// 본문 정리와 링크 href 해석이 같은 디코더를 쓴다. 숫자 참조(`&#38;` / `&#x26;`)까지
+/// 한자리에서 처리하려고 replace 사슬 대신 치환 한 번으로 합쳤다.
+export function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body[0] === "#") {
+      const code =
+        body[1] === "x" || body[1] === "X"
+          ? Number.parseInt(body.slice(2), 16)
+          : Number.parseInt(body.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : whole;
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
+
 export function htmlToText(html: string): string {
-  return html
+  const stripped = html
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|tr|h[1-6]|section|article|td|th)\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, " ");
+  // 엔티티는 태그를 지운 뒤에 푼다. 먼저 풀면 `&lt;script&gt;`가 진짜 태그가 되어
+  // 그 다음 태그 제거에 걸린다.
+  return decodeHtmlEntities(stripped)
     .split("\n")
-    .map((line) => line.replace(/[ \t ]+/g, " ").trim())
+    .map((line) => line.replace(/[ \t\u00a0]+/g, " ").trim())
     .filter((line) => line.length > 0)
     .join("\n");
 }
@@ -582,7 +706,68 @@ export function extractProgramText(text: string): string | null {
     .filter((line) => TIME_LINE.test(line) && line.length >= 6 && !PROGRAM_SKIP_LINE.test(line))
     .slice(0, 12);
   if (timed.length >= 2) return capProgram(timed.join("\n"));
+
+  // 시각 없이 점 날짜만 적는 프로그램표(공연 라인업)를 위한 갈래. 증거가 TIME_LINE보다
+  // 약해서 문턱을 3줄로 올리고, 세 가지를 먼저 걷어낸다 —
+  //   (1) 페이지가 스스로 "연간/월별 일정표"나 "채용공고"라고 밝히면 이 행사의
+  //       프로그램이 아니다(NON_PROGRAM_PAGE).
+  //   (2) 개요표·게시판 메타 라벨로 시작하는 줄은 날짜만 같을 뿐 프로그램이 아니다.
+  //   (3) **날짜를 빼면 남는 글자가 거의 없는 줄**은 프로그램표가 아니라 날짜 목록이다.
+  //       이것이 이 갈래의 핵심 구조 기준이다 — 프로그램 한 줄에는 행사명과 장소가
+  //       남지만(`국립창극단 '귀토' | 2026.9.3.(목) | 해오름`), 지자체 연간 일정표는
+  //       `9. 5.(토) ~ 6.(일)`, 게시판 목록은 `관리자 | 2026.08.26`처럼 날짜를 빼면
+  //       비어 버린다. 키워드 한둘로 거르는 것보다 사이트 문구 변화에 덜 흔들린다.
+  // timed 문턱(>=2)은 건드리지 않는다 — 시각 한 줄짜리 페이지는 그대로 empty다.
+  if (!NON_PROGRAM_PAGE.test(text)) {
+    const dated = lines
+      .filter(
+        (line) =>
+          line.length >= 12 &&
+          isProgramEntryLine(line) &&
+          !PROGRAM_SKIP_LINE.test(line) &&
+          !OVERVIEW_LABEL.test(line),
+      )
+      .slice(0, 12);
+    if (dated.length >= 3) return capProgram(dated.join("\n"));
+  }
   return null;
+}
+
+/// 점 날짜가 있는 줄 하나가 "프로그램표의 한 항목"처럼 생겼는지. 점 날짜는 증거가 약해서
+/// (게시판 작성일·개요표·연간 일정표가 전부 같은 모양이다) 줄의 모양 자체로 세 가지를 본다.
+/// 셋 다 2026-09-04 표본 40건에서 실제로 오탐을 낸 모양을 그대로 겨눈다.
+function isProgramEntryLine(line: string): boolean {
+  const dates = [...line.matchAll(DOT_DATE_GLOBAL)];
+  if (dates.length === 0) return false;
+
+  // (1) 날짜를 빼면 남는 글자가 거의 없는 줄은 프로그램표가 아니라 날짜 목록이다.
+  //     프로그램 한 줄에는 행사명과 장소가 남지만(`국립창극단 '귀토' | 2026.9.3.(목) | 해오름`),
+  //     지자체 연간 일정표는 `9. 5.(토) ~ 6.(일)`, 게시판 목록은 `관리자 | 2026.08.26`이다.
+  if (letterCount(line.replace(WEEKDAY_PAREN, " ")) < 10) return false;
+
+  // (2) 마지막 날짜 뒤에 아무 말도 없으면 게시판 목록의 작성일 열이다
+  //     (`[공고] 제23회 … 프로그램 통합공모 공고 2026.07.30`). 프로그램표는 날짜 뒤에
+  //     장소·출연진이 이어진다.
+  const last = dates[dates.length - 1];
+  if (letterCount(line.slice(last.index + last[0].length)) < 4) return false;
+
+  // (3) 날짜 없는 짧은 라벨 뒤에 콜론이 오면 개요표·공고 절차표다
+  //     (`- 접수기간 : 2026. 08. 05.(수) ~ …`). 날짜가 라벨 안에 있으면
+  //     (`9.3.(목) 개막공연 : 사물놀이`) 프로그램 항목이므로 통과시킨다.
+  //     따옴표·괄호·구분자가 앞에 있으면 라벨이 아니라 작품 제목이다
+  //     (`- 태국 왕립무용단 '콘: 라미끼엔의 이야기' | …` 실측).
+  const label = /^([^:：\n‘’“”"'[\]|·]{0,24})[:：]/.exec(line)?.[1];
+  if (label !== undefined && !DOT_DATE_LINE.test(label)) return false;
+
+  return true;
+}
+
+const DOT_DATE_GLOBAL = new RegExp(DOT_DATE_LINE.source, "g");
+const WEEKDAY_PAREN = /\(\s*[월화수목금토일]\s*\)/g;
+
+/// 숫자·구두점을 뺀 글자 수. 날짜만 있는 줄과 설명이 붙은 줄을 가르는 데 쓴다.
+function letterCount(value: string): number {
+  return value.replace(/[^가-힣a-zA-Z]/g, "").length;
 }
 
 function capProgram(value: string): string | null {
