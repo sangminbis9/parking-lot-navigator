@@ -1,6 +1,6 @@
 # Worker 계정 한도
 
-마지막 확인: 2026-09-01 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
+마지막 확인: 2026-09-04 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
 
 이 문서는 코드 설계를 직접 규정하는 플랫폼 한도를 한곳에 모은다. 배치 크기, cron
 배치, 쿼리 모양이 전부 여기서 나왔다. **한도를 올리기 전에 이 표를 먼저 본다.**
@@ -8,7 +8,7 @@
 | 한도 | 값 | 넘기면 벌어지는 일 | 이 한도에 묶인 코드 |
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
-| invocation당 리소스 한도 (`exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-01 실측) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않는다. **`wrangler tail`에는 아무 흔적도 안 남는다** — isolate가 로그를 flush하기 전에 죽어서, 킬 도중에도 tail은 `ok`만 찍는다(실측 2026-08-18: 12분 tail 전부 `ok`). 킬은 GraphQL `workersInvocationsAdaptive`의 `status=exceededResources`로만 보인다. 진행 중이던 D1 쓰기는 손실. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이다. `*/5` backfill 슬롯은 거의 죽지 않는다. 아래 "무엇이 `exceededResources`로 죽는가" 참고 |
+| invocation당 리소스 한도 (`exceededCpu` / `exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-04 실측: scheduled invocation이 243ms를 쓰고 `ok`) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않고, 진행 중이던 D1 쓰기는 손실된다. **`wrangler tail --format json`의 `outcome` 필드에 `exceededCpu`로 찍힌다**(실측 2026-09-04, wrangler 4.92.0). 2026-08-18에는 tail이 킬 도중에도 `ok`만 찍어서 GraphQL `workersInvocationsAdaptive`로만 보였는데, 지금은 tail로 바로 관측된다 — 진단은 tail을 먼저 본다. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이었다. Queue 분할 배포(2026-09-04) 이후 관측 창에서는 킬이 사라졌다. 아래 "무엇이 리소스 한도로 죽는가" 참고 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 예전에는 다섯을 전부 써서 새 주기를 얹을 자리가 없었다. 지금은 `* * * * *` 하나뿐이고(1/5), 옛 다섯 주기는 `jobs.ts`의 분 가드로 재현한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **한도 안에 들어올 것으로 보이나 아직 실측 전이다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배). 같은 날 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)를 연달아 넣어 **약 82,000/일**을 예상한다. 82,000은 **예상치이고 실측이 아니다** — 배포 후 만 하루가 지난 창에서 다시 재야 확정된다. 아래 "D1 행 쓰기 예산" 참고 |
@@ -16,10 +16,10 @@
 
 D1 쿼리는 subrequest 한도에 포함되지 않는다. Workers AI(`ai.run`) 호출은 포함된다.
 
-## 무엇이 `exceededResources`로 죽는가
+## 무엇이 리소스 한도로 죽는가
 
-subrequest 초과는 예외를 던져서 잡히지만, `exceededResources` 킬은 **아무 흔적 없이
-죽는다.** 오랫동안 이 킬을 "invocation당 CPU 10ms 초과"로 적어 뒀는데, 2026-09-01
+subrequest 초과는 예외를 던져서 잡히지만, 리소스 한도 킬은 **코드 쪽에 아무 흔적도
+남기지 않는다.** 오랫동안 이 킬을 "invocation당 CPU 10ms 초과"로 적어 뒀는데, 2026-09-01
 실측이 그 설명을 뒤집었다.
 
 측정은 `workersInvocationsAdaptive`를 `datetimeMinute`으로 뽑아 분(minute)별로 가른
@@ -38,9 +38,13 @@ subrequest 초과는 예외를 던져서 잡히지만, `exceededResources` 킬�
 
 - **CPU 10ms 하드 캡은 이 Worker에 걸려 있지 않다.** 성공한 invocation이 일상적으로
   89~203ms CPU를 쓴다. 10ms에서 잘린다면 나올 수 없는 값이다.
-- **킬의 원인은 CPU가 아니다.** CPU 한도로 죽으면 죽은 쪽 CPU가 **천장에 붙어야** 하는데,
-  실측은 정반대다 — 죽은 invocation의 CPU(11~20ms)가 성공한 invocation(89~203ms)보다
-  훨씬 **낮다.** 자원을 다 쓰기 한참 전에 죽는다는 뜻이다.
+  다만 이 표의 "성공 cpuP50"은 **분 단위 집계라 같은 분에 섞인 앱 HTTP 요청이 함께 들어
+  있다** — cron invocation 자체가 그 값을 썼다는 증거는 못 된다. 이 결론을 실제로 받치는
+  것은 아래 2026-09-04 절의 invocation 단위 실측(scheduled 243ms `ok`)이다.
+- **죽은 쪽 CPU가 천장에 붙지 않는다.** CPU 한도로 죽으면 죽은 invocation의 CPU가
+  상한에 닿아야 하는데, 실측은 정반대다 — 죽은 쪽(11~20ms)이 산 쪽(89~203ms)보다 훨씬
+  **낮다.** 2026-09-04 tail 실측에서도 `exceededCpu`로 죽은 회차의 `cpuTime`이 10·10·19ms로
+  똑같이 낮았다. 플랫폼은 이 킬을 CPU로 분류하지만, 보고되는 CPU 값은 상한과 무관하다.
 
 죽는 곳은 한 군데로 좁혀졌다: `*/3` 실시간 주차 sync다. `*/5` backfill(회차 45건, 항목당
 fetch 1건)은 거의 죽지 않고, discovery 청크와 앱 요청도 대체로 산다. (cron 없는 분과
@@ -61,6 +65,44 @@ fetch 1건)은 거의 죽지 않고, discovery 청크와 앱 요청도 대체로
 실시간 sync의 최대 메모리를 실제로 줄여 보고 킬 비율이 떨어지는지 봐야 한다. 후보는
 (1) `fetchAllSeoulRows`의 페이지 `Promise.all`을 순차 루프로, (2) 두 provider가 각자 받는
 `GetParkInfo` 중복 제거, (3) Worker 경로에서 쓰지 않는 `rawSourcePayload` 미보관.
+
+### 2026-09-04 실측 — tail이 킬을 직접 보여준다, 그리고 Queue 분할이 킬을 없앴다
+
+`wrangler tail --format json`(wrangler 4.92.0)이 이제 `outcome` 필드에 킬을 그대로 찍는다.
+2026-08-18에 "tail은 킬 도중에도 `ok`만 찍는다"고 적었던 것은 더 이상 사실이 아니다.
+GraphQL을 뽑지 않고도 invocation 단위로 갈라 볼 수 있으니 **진단은 tail을 먼저 본다.**
+
+Queue 분할 배포(커밋 `536bd28`) **직전**, 옛 5-cron 구조에서 9분 창:
+
+| trigger | outcome | cpuTime | wallTime |
+| --- | --- | --- | --- |
+| `*/3` (실시간 주차) | **exceededCpu** | 10ms | 283ms |
+| `*/3` | **exceededCpu** | 10ms | 507ms |
+| `*/3` | **exceededCpu** | 19ms | 583ms |
+| `*/9` (discovery 청크) | ok | 8ms | 869ms |
+| `*/5` (backfill) | ok | 1ms | 172ms |
+| HTTP fetch | ok | 93ms / 127ms | — |
+
+배포 **직후** 같은 방식으로 10.5분(창 두 개, 27 invocation, 예외 0건):
+
+| 종류 | n | outcome | cpu min/med/max |
+| --- | --- | --- | --- |
+| cron `* * * * *` | 9 | ok | 5 / 80 / 157ms |
+| queue consumer | 13 | ok | 1 / 3 / 48ms |
+| HTTP fetch | 3 | ok | 6 / 13 / 134ms |
+| cron `*/3`·`*/5` (트리거 전파 잔여) | 2 | ok | 121 / 243ms |
+
+**`exceededCpu` 0건.** 그리고 scheduled invocation이 243ms를 쓰고도 살았다 — 10ms 캡이
+없다는 위 결론을 invocation 단위로 다시 확인한 셈이고, 앱 요청이 섞이지 않은 깨끗한 증거다.
+
+두 창은 각각 9분·10.5분짜리 **스팟 샘플이지 일일 비율이 아니다.** 킬이 완전히 사라졌다고
+단정하려면 하루치가 필요하다. 다만 배포 전 `*/3`은 관측한 3회가 전부 죽었고 배포 후에는
+27회 중 0회다.
+
+부수 효과로 `discover:events:kopis`가 배포 직후 첫 회차(2026-09-04T03:27:45Z)에서
+`success`로 닫혔다 — 직전 24시간은 success 2 / timeout 17이었고, 그 timeout의 절반은
+`reaped: stale running`(회차가 마감 전에 죽었다는 뜻)이었다. 제공자 청크마다 invocation을
+통째로 주는 설계의 예상 효과와 맞지만, 아직 표본 1건이다.
 
 참고로 **회차 45건 상한은 CPU가 아니라 subrequest 50건에서 나온 값이라 이 실측과
 무관하다**(위 표 첫 행). `*/5`의 분 슬롯 분할도 마찬가지로 한 invocation이 subrequest
