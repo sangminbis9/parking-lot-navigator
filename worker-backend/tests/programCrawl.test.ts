@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  decodeHtmlEntities,
   extractProgramText,
   htmlToText,
   isGrounded,
@@ -528,5 +529,252 @@ describe("selectProgramCrawlTargets", () => {
 
     expect(await selectProgramCrawlTargets(db, { maxItems: 0 })).toEqual([]);
     expect(writes()).toHaveLength(0);
+  });
+});
+
+// --- 링크 해석 (엔티티 · 프래그먼트) ---
+
+describe("programLink URL 해석", () => {
+  it("href의 &amp; / &#38; / &#x26;를 풀고 나서 URL을 만든다", () => {
+    // 풀지 않으면 `&amp;wr_id`를 문자 그대로 요청해 다른 문서(게시판 목록)를 받는다.
+    const base = new URL("https://festival.example/main");
+    for (const entity of ["&amp;", "&#38;", "&#x26;"]) {
+      const html = `<a href="/bbs/board.php?bo_table=bbs5_05${entity}wr_id=123">프로그램</a>`;
+      expect(programLink(html, base)).toBe(
+        "https://festival.example/bbs/board.php?bo_table=bbs5_05&wr_id=123",
+      );
+    }
+  });
+
+  it("문서 내부 앵커는 후보에서 빼고 진짜 하위 페이지만 고른다", () => {
+    const html = `<a href="#">프로그램</a>
+      <a href="#program">프로그램</a>
+      <a href="https://example.com/">프로그램</a>
+      <a href="/program">프로그램</a>`;
+
+    expect(programLink(html, new URL("https://example.com/"))).toBe("https://example.com/program");
+  });
+
+  it("프래그먼트만 있는 링크뿐이면 후보가 없다", () => {
+    const html = `<a href="https://example.com/#program">프로그램</a>`;
+
+    expect(programLink(html, new URL("https://example.com/"))).toBeNull();
+  });
+});
+
+describe("decodeHtmlEntities", () => {
+  it("이름·10진·16진 참조를 모두 푼다", () => {
+    expect(decodeHtmlEntities("a&amp;b&#38;c&#x26;d&nbsp;e")).toBe("a&b&c&d e");
+  });
+
+  it("모르는 참조는 그대로 둔다", () => {
+    expect(decodeHtmlEntities("&unknown;&#x110000;")).toBe("&unknown;&#x110000;");
+  });
+});
+
+// --- 점 표기 날짜와 연간 일정표 ---
+
+describe("점 날짜 프로그램표", () => {
+  it("시각 없이 점 날짜만 있는 공연 라인업을 뽑는다", () => {
+    // culture.seoul.go.kr 실측 모양. 40건 표본에서 규칙이 놓친 유일한 진짜 프로그램이었다.
+    const text = htmlToText(`<html><body>
+      <p>국립극장 페스티벌</p>
+      <p>국립창극단 '귀토' 2026.9.3.(목)-9.6.(일) 국립극장 해오름</p>
+      <p>국립무용단 '축제' 2026.9.10.(수)-9.13.(토) 국립극장 달오름</p>
+      <p>국립국악관현악단 '이음' 2026.09.20.(토) 국립극장 하늘</p>
+    </body></html>`);
+
+    const program = extractProgramText(text);
+    expect(program).toContain("귀토");
+    expect(program).toContain("2026.09.20.(토)");
+  });
+
+  it("연간 축제 일정표는 프로그램으로 잡지 않는다", () => {
+    // 이 행사의 프로그램이 아니라 남의 행사 목록이다(화성시 tour 페이지 실측 모양).
+    const text = htmlToText(`<html><body>
+      <h2>2026 축제일정표</h2>
+      <p>5.5.(화) 화성 효 마라톤 대회</p>
+      <p>6.13.(토) 봉담 어울림 축제</p>
+      <p>9.19.(토) 정조 효 문화제</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("개요표 라벨 줄만 있으면 잡지 않는다", () => {
+    const text = htmlToText(`<html><body>
+      <p>행사시작일 2026.9.3.(목)</p>
+      <p>행사종료일 2026.9.6.(일)</p>
+      <p>등록일 2026.08.01.</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("점 날짜가 두 줄뿐이면 잡지 않는다", () => {
+    const text = htmlToText(`<html><body>
+      <p>가야금 병창 공연 2026.9.3.(목) 대극장</p>
+      <p>사물놀이 한마당 2026.9.6.(일) 소극장</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("게시판 목록(줄 끝 작성일)은 잡지 않는다", () => {
+    // haemifest.com 실측 모양. 제목 길이는 충분하지만 날짜 뒤에 아무 말도 없다.
+    const text = htmlToText(`<html><body>
+      <p>[모집안내] 제23회 서산해미읍성축제 전통혼례체험 참가자 모집 2026.09.03</p>
+      <p>제23회 서산해미읍성축제 창·제작 작품공모 심사 결과 2026.09.01</p>
+      <p>제23회 서산해미읍성축제 프로그램 통합공모 심사 결과 2026.08.28</p>
+      <p>[공고] 제23회 서산해미읍성축제 프로그램 통합공모 공고 2026.07.30</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("공고 절차표(라벨 : 날짜)는 잡지 않는다", () => {
+    // 경산문화관광재단 채용공고 실측 모양. 날짜 앞뒤로 글자가 충분해도 라벨이 붙어 있다.
+    const text = htmlToText(`<html><body>
+      <p>- 서류심사 발표 : 2026. 08. 18.(화) 합격자 개별 통보</p>
+      <p>- 면접심사 : 2026. 08. 20.(목) 15시 경산문화관광재단 2층 회의실</p>
+      <p>- 최종합격자 발표 : 2026. 08. 25.(화) 합격자 개별 통보</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("날짜만 나열한 줄은 잡지 않는다", () => {
+    // 화성시 tour 실측 모양. 일정표 제목이 없어도 줄 모양만으로 걸러야 한다.
+    const text = htmlToText(`<html><body>
+      <p>봄 여름 가을 겨울 안내</p>
+      <p>5. 22.(금) ~ 25.(월)</p>
+      <p>9. 5.(토) ~ 6.(일)</p>
+      <p>10. 30.(금)~10. 31.(토)</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toBeNull();
+  });
+
+  it("작품 제목 안의 콜론은 라벨로 보지 않는다", () => {
+    const text = htmlToText(`<html><body>
+      <p>- 태국 왕립무용단 '콘: 라미끼엔의 이야기' | 2026.9.4.(금)-9.5.(토) | 국립극장 하늘</p>
+      <p>- 국립창극단 '귀토' | 2026.9.3.(목)-9.6.(일) | 국립극장 해오름</p>
+      <p>- 혜성컴퍼니 '백만사' | 2026.9.24.(목)-9.26.(금) | 국립극장 달오름</p>
+    </body></html>`);
+
+    expect(extractProgramText(text)).toContain("라미끼엔");
+  });
+});
+
+// --- JS 리다이렉트 스텁 ---
+
+// 응답을 URL별로 갈라 주는 mock. 등록되지 않은 URL은 404.
+function routedFetch(routes: Record<string, string>) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const body = routes[url];
+    return body === undefined ? new Response("", { status: 404 }) : page(body);
+  });
+}
+
+const REDIRECT_STUB_RELATIVE = `<script>document.location.href="/view/index.do"</script>`;
+const REDIRECT_STUB_ABSOLUTE = `<script>location.href = "https://festival.example/view/index.do"</script>`;
+const REDIRECT_STUB_REPLACE = `<script>window.location.replace('/view/index.do');</script>`;
+
+describe("JS 리다이렉트 스텁", () => {
+  for (const [label, stub] of [
+    ["상대 경로 document.location.href", REDIRECT_STUB_RELATIVE],
+    ["절대 경로 location.href", REDIRECT_STUB_ABSOLUTE],
+    ["location.replace()", REDIRECT_STUB_REPLACE],
+  ] as const) {
+    it(`${label}를 한 번 따라가 프로그램을 찾는다`, async () => {
+      const fetchMock = routedFetch({
+        "https://festival.example/main": stub,
+        "https://festival.example/view/index.do": PROGRAM_PAGE,
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { db, writes } = stageDb([stageRow()]);
+
+      const result = await runProgramStage(
+        db,
+        {},
+        { stage: "page", id: "row-1", url: "https://festival.example/main" },
+        { now: new Date("2026-09-02T00:00:00Z") },
+      );
+
+      expect(result.outcome).toBe("filled");
+      // subrequest 예산을 정직하게 센다 — 스텁을 따라가면 2건이다.
+      expect(result.pagesFetched).toBe(2);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(String(writes()[0].args[0])).toContain("10:00 개막식 및 축하공연");
+    });
+  }
+
+  it("본문이 있는 페이지는 리다이렉트 문자열이 있어도 따라가지 않는다", async () => {
+    const withScript = `<html><body>
+      <script>if (isMobile) location.href = "/m/index.do";</script>
+      <h2>행사 프로그램</h2>
+      <p>${"안내문 ".repeat(60)}</p>
+      <ul><li>10:00 개막식 및 축하공연</li><li>13:00 전통연희 마당놀이</li></ul>
+    </body></html>`;
+    const fetchMock = routedFetch({ "https://festival.example/main": withScript });
+    vi.stubGlobal("fetch", fetchMock);
+    const { db } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("filled");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("따라간 곳도 스텁이면 1-hop에서 멈추고 nodata로 닫는다", async () => {
+    // 체인을 따라가면 CPU·subrequest를 쓰면서도 결론이 같다. 여기서 영구 종료하지 않으면
+    // 같은 60바이트를 backoff 주기마다 영원히 다시 긁는다.
+    const fetchMock = routedFetch({
+      "https://festival.example/main": REDIRECT_STUB_RELATIVE,
+      "https://festival.example/view/index.do": `<script>location.href="/again.do"</script>`,
+      "https://festival.example/again.do": PROGRAM_PAGE,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("nodata");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(writes()[0].sql).toContain("detail_state = 'nodata'");
+  });
+
+  it("스텁 목적지가 일시적으로 죽으면 nodata가 아니라 backoff다", async () => {
+    // 실패 종류를 섞으면 잠깐 5xx를 뱉은 사이트가 영구 제외된다.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith("/main")
+        ? page(REDIRECT_STUB_RELATIVE)
+        : new Response("", { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { db, writes } = stageDb([stageRow()]);
+
+    const result = await runProgramStage(
+      db,
+      {},
+      { stage: "page", id: "row-1", url: "https://festival.example/main" },
+      { now: new Date("2026-09-02T00:00:00Z") },
+    );
+
+    expect(result.outcome).toBe("transient");
+    expect(writes()[0].sql).toContain("detail_retry_after = ?");
+    expect(writes()[0].sql).not.toContain("nodata");
   });
 });
