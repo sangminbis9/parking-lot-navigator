@@ -393,6 +393,9 @@ private struct DiscoverDetailEntry: Identifiable {
     let value: String
     /// 값 복사가 아니라 별도 동작이 있는 행(전화 걸기 등).
     var action: (url: URL, systemImage: String)? = nil
+    /// 여러 줄짜리 값(프로그램 상세)은 한 줄 사실과 같은 행 모양에 넣으면
+    /// 이모지 열에 눌려 읽히지 않는다. 카드 폭을 다 쓰는 블록으로 편다.
+    var isBlock: Bool = false
     var id: String { label }
 }
 
@@ -420,10 +423,17 @@ private struct DiscoverDescriptionCard: View {
                 .tint(FestivalDesign.navy)
             }
 
+            let items = entries
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    if index > 0 { rowSeparator }
-                    entryRow(entry)
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, entry in
+                    if index > 0 {
+                        rowSeparator(fullWidth: entry.isBlock || items[index - 1].isBlock)
+                    }
+                    if entry.isBlock {
+                        blockRow(entry)
+                    } else {
+                        entryRow(entry)
+                    }
                 }
             }
         }
@@ -471,7 +481,12 @@ private struct DiscoverDescriptionCard: View {
         // 공연(KOPIS)은 축제 소스가 아니지만 출연진·공연시간을 programInfo로 받는다.
         // 축제 전용 블록 밖에 두어 두 도메인 모두 노출한다.
         if let programInfo = clean(presentation.programInfo) {
-            items.append(DiscoverDetailEntry(emoji: "\u{1F4CB}", label: "프로그램 상세", value: programInfo))
+            items.append(DiscoverDetailEntry(
+                emoji: "\u{1F4CB}",
+                label: "프로그램 상세",
+                value: programInfo,
+                isBlock: true
+            ))
         }
         if let price = clean(presentation.price) {
             items.append(DiscoverDetailEntry(emoji: "\u{1F4B5}", label: "\u{AC00}\u{ACA9}", value: price))
@@ -487,11 +502,12 @@ private struct DiscoverDescriptionCard: View {
     }
 
     /// 구분선은 이모지 열을 비켜 값 텍스트 시작점에서 그어 목록이 한 줄로 정렬돼 보이게 한다.
-    private var rowSeparator: some View {
+    /// 블록 행은 이모지 열을 쓰지 않으므로 그 위아래 구분선만 카드 폭 전체로 긋는다.
+    private func rowSeparator(fullWidth: Bool) -> some View {
         Rectangle()
             .fill(FestivalDesign.creamDeep.opacity(0.45))
             .frame(height: 1)
-            .padding(.leading, emojiColumn + 10)
+            .padding(.leading, fullWidth ? 0 : emojiColumn + 10)
     }
 
     private func clean(_ value: String?) -> String? {
@@ -520,6 +536,57 @@ private struct DiscoverDescriptionCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { copy(value) }
+    }
+
+    /// 프로그램 상세처럼 줄 단위 목록으로 오는 값. 줄마다 점을 찍어 항목 경계를 보이게 하고,
+    /// 굵기를 낮춰 긴 글이 제목처럼 읽히지 않게 한다. 한 문단짜리 값은 그대로 문단으로 둔다.
+    private func blockRow(_ entry: DiscoverDetailEntry) -> some View {
+        let lines = programLines(entry.value)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(entry.emoji)
+                    .font(.festival(.caption))
+                    .accessibilityHidden(true)
+                Text(entry.label)
+                    .font(.festival(.caption, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+            }
+            if lines.count > 1 {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(FestivalDesign.navy.opacity(0.35))
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 7)
+                            Text(line)
+                                .font(.festival(.subheadline))
+                                .foregroundStyle(FestivalDesign.navy)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            } else {
+                Text(entry.value)
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.navy)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { copy(entry.value) }
+    }
+
+    private func programLines(_ value: String) -> [String] {
+        value
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func entryRow(_ entry: DiscoverDetailEntry) -> some View {

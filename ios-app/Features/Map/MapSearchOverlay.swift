@@ -181,12 +181,12 @@ struct MapSearchOverlay: View {
         if recentItems.isEmpty {
             emptyState(
                 symbol: "clock.arrow.circlepath",
-                title: "\u{CD5C}\u{AE3C} \u{CC3E}\u{C544}\u{BCF8} \u{D589}\u{C0AC}\u{AC00} \u{C544}\u{C9C1} \u{C5C6}\u{C5B4}\u{C694}", // 최근 찾아본 행사가 아직 없어요
+                title: "\u{CD5C}\u{ADFC} \u{CC3E}\u{C544}\u{BCF8} \u{D589}\u{C0AC}\u{AC00} \u{C544}\u{C9C1} \u{C5C6}\u{C5B4}\u{C694}", // 최근 찾아본 행사가 아직 없어요
                 message: "\u{C9C0}\u{B3C4}\u{C5D0}\u{C11C} \u{D589}\u{C0AC}\u{B098} \u{AC00}\u{AC8C} \u{C774}\u{BCA4}\u{D2B8}\u{B97C} \u{C5F4}\u{C5B4}\u{BCF4}\u{BA74} \u{C5EC}\u{AE30}\u{C5D0} \u{CE74}\u{B4DC}\u{B85C} \u{C313}\u{C5EC}\u{C694}" // 지도에서 행사나 가게 이벤트를 열어보면 여기에 카드로 쌓여요
             )
         } else {
             HStack {
-                sectionTitle("\u{CD5C}\u{AE3C} \u{CC3E}\u{C544}\u{BCF8}") // 최근 찾아본
+                sectionTitle("\u{CD5C}\u{ADFC} \u{CC3E}\u{C544}\u{BCF8}") // 최근 찾아본
                 Spacer()
                 Button(action: onClearRecents) {
                     Text("\u{C9C0}\u{C6B0}\u{AE30}") // 지우기
