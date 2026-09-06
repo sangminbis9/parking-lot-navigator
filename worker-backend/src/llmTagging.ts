@@ -152,13 +152,21 @@ async function fetchFestivalRows(
   const backfill = mode === "backfill";
   const where = backfill
     ? "type = 'festival'"
-    : `type = 'festival' AND (tagging_version = 0
-           OR (tagging_version = -1 AND (tagged_at IS NULL OR tagged_at < ?)))`;
+    : `type = 'festival' AND tagging_version <= 0
+         AND (tagging_version = 0
+           OR (tagged_at IS NULL OR tagged_at < ?))`;
   const binds = backfill ? [limit] : [fallbackRetryCutoff(), limit];
+  // 증분 모드는 인덱스를 못 박는다. 옵티마이저는 ORDER BY를 공짜로 만족시키는
+  // idx_discovery_items_last_seen(type=?)을 고르는데, 그러면 type='festival'인
+  // 7,686행 전체를 훑는다(2026-09-06 실측: 회차당 7,685행 × 66회 = 507,272행/일).
+  // idx_discovery_tagging_pending은 tagging_version <= 0인 1,784행만 본다 —
+  // 정렬은 잃지만 읽는 행이 4분의 1이다. backfill 모드는 어차피 전체가 대상이라
+  // 그대로 둔다.
+  const indexedBy = backfill ? "" : " INDEXED BY idx_discovery_tagging_pending";
   const rs = await db
     .prepare(
       `SELECT id, title, subtitle, category_text, source, tags_json
-       FROM discovery_items
+       FROM discovery_items${indexedBy}
        WHERE ${where}
        ORDER BY last_seen_at DESC
        LIMIT ?`,

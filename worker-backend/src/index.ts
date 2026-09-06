@@ -1278,6 +1278,9 @@ app.post("/admin/backfill-fees", async (c) => {
   try {
     const result = await runFeeBackfill(c.env.DB, c.env, {
       maxItems: query.maxItems,
+      // cron 회차는 적체 집계를 건너뛴다(fee source 전체를 훑는 보고용 값).
+      // 수동 호출은 그 숫자를 보려고 부르는 것이라 여기서만 켠다.
+      includeBacklog: true,
     });
     return c.json(result);
   } catch (error) {

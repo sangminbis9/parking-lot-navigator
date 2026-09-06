@@ -1,7 +1,7 @@
 import { fetchWithTimeout } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { callAiJson } from "./agents/workersAiClient.js";
 import { mapWithConcurrency } from "./concurrency.js";
-import { isRetryableBackfillError } from "./backfillRetry.js";
+import { FUTURE_END_DATE_EXPR, isRetryableBackfillError } from "./backfillRetry.js";
 import { seoulDayString } from "./kstDate.js";
 
 // public-data-culture-festival / seoul_open_data / city-scraped는 원본 목록에도
@@ -167,7 +167,7 @@ export async function runProgramCrawl(
           AND json_extract(raw_payload, '$.programInfo') IS NULL
           AND source_url IS NOT NULL
           AND source_url <> ''
-          AND (end_date IS NULL OR end_date >= ?)
+          AND ${FUTURE_END_DATE_EXPR} >= ?
           AND (detail_state IS NULL OR detail_state <> 'nodata')
           AND (detail_retry_after IS NULL OR detail_retry_after <= ?)
         ORDER BY detail_attempts ASC, start_date ASC
@@ -305,7 +305,7 @@ export async function selectProgramCrawlTargets(
           AND json_extract(raw_payload, '$.programInfo') IS NULL
           AND source_url IS NOT NULL
           AND source_url <> ''
-          AND (end_date IS NULL OR end_date >= ?)
+          AND ${FUTURE_END_DATE_EXPR} >= ?
           AND (detail_state IS NULL OR detail_state <> 'nodata')
           AND (detail_retry_after IS NULL OR detail_retry_after <= ?)
         ORDER BY detail_attempts ASC, start_date ASC
@@ -926,7 +926,7 @@ async function backlog(db: D1Database, today: string): Promise<number> {
           AND json_extract(raw_payload, '$.programInfo') IS NULL
           AND source_url IS NOT NULL
           AND source_url <> ''
-          AND (end_date IS NULL OR end_date >= ?)
+          AND ${FUTURE_END_DATE_EXPR} >= ?
           AND (detail_state IS NULL OR detail_state <> 'nodata')`,
     )
     .bind(...CRAWL_SOURCES, today)

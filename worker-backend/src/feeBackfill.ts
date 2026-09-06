@@ -6,7 +6,7 @@ import {
 } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { combineProgramInfo } from "../../backend/src/features/discover/events/KopisEventProvider.js";
 import { mapWithConcurrency } from "./concurrency.js";
-import { isRetryableBackfillError } from "./backfillRetry.js";
+import { FUTURE_END_DATE_EXPR, isRetryableBackfillError } from "./backfillRetry.js";
 import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 import { seoulDayString } from "./kstDate.js";
 
@@ -85,10 +85,15 @@ export interface FeeBackfillResult {
   bySource: Record<string, SourceCounters>;
   /** 실패가 몰릴 때 원인을 로그 없이 응답만으로 가릴 수 있게 남기는 표본. */
   errors?: string[];
-  /** 아직 요금을 못 채운 진행/예정 행 수. */
-  feeBacklog: number;
-  /** 아직 프로그램 정보를 못 채운 진행/예정 행 수. */
-  programBacklog: number;
+  /**
+   * 아직 요금을 못 채운 진행/예정 행 수. `includeBacklog`를 켠 회차에만 센다.
+   * 이 집계는 fee source 전체(2026-09-06 실측 5,621행)를 훑는데, 대상 선정과
+   * 달리 아무도 읽지 않는 보고용 값이라 cron 회차에서는 세지 않는다 —
+   * 하루 62회 × 5,627행 = 348,874행 읽기가 여기서 나왔다.
+   */
+  feeBacklog?: number;
+  /** 아직 프로그램 정보를 못 채운 진행/예정 행 수. `feeBacklog`와 같은 조건. */
+  programBacklog?: number;
   /**
    * scanned가 0일 때 그 이유. "처리할 행이 없음"과 "자격증명이 없어 아무것도
    * 못 함"을 로그만 보고 구분할 수 있어야 한다.
@@ -110,7 +115,7 @@ export interface FeeBackfillEnv {
 export async function runFeeBackfill(
   db: D1Database,
   env: FeeBackfillEnv,
-  options: { maxItems?: number; now?: Date } = {},
+  options: { maxItems?: number; now?: Date; includeBacklog?: boolean } = {},
 ): Promise<FeeBackfillResult> {
   const now = options.now ?? new Date();
   const maxItems = options.maxItems ?? maxItemsFromEnv(env);
@@ -129,8 +134,6 @@ export async function runFeeBackfill(
     permanentNoData: 0,
     transientFailed: 0,
     bySource: {},
-    feeBacklog: 0,
-    programBacklog: 0,
   };
   if (maxItems <= 0) return { ...result, reason: "max_items_zero" };
   if (sources.length === 0) return { ...result, reason: "no_credentials" };
@@ -139,7 +142,9 @@ export async function runFeeBackfill(
   const today = seoulDayString(now);
   const placeholders = sources.map(() => "?").join(",");
 
-  Object.assign(result, await backlog(db, sources, today));
+  if (options.includeBacklog) {
+    Object.assign(result, await backlog(db, sources, today));
+  }
 
   // 아직 필요한 필드가 남아 있고, 영구 제외가 아니고, 재시도 시각이 지난 행만.
   // 종료된 행사는 앱에 보이지 않으므로 예산을 쓰지 않는다.
@@ -150,7 +155,7 @@ export async function runFeeBackfill(
               fee_filled_at, program_filled_at, detail_attempts
          FROM discovery_items
         WHERE source IN (${placeholders})
-          AND (end_date IS NULL OR end_date >= ?)
+          AND ${FUTURE_END_DATE_EXPR} >= ?
           AND (fee_filled_at IS NULL OR program_filled_at IS NULL)
           AND (detail_state IS NULL OR detail_state <> 'nodata')
           AND (detail_retry_after IS NULL OR detail_retry_after <= ?)
@@ -366,7 +371,7 @@ async function backlog(
          SUM(CASE WHEN program_filled_at IS NULL THEN 1 ELSE 0 END) AS programBacklog
        FROM discovery_items
       WHERE source IN (${placeholders})
-        AND (end_date IS NULL OR end_date >= ?)
+        AND ${FUTURE_END_DATE_EXPR} >= ?
         AND (detail_state IS NULL OR detail_state <> 'nodata')`,
     )
     .bind(...sources, today)

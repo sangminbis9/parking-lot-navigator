@@ -5,6 +5,7 @@ import {
 } from "../../backend/src/features/discover/events/eventProviderUtils.js";
 import { CITY_FESTIVAL_SITES } from "./cityFestivalSites.js";
 import { createD1GeocodeStore } from "./geocodeStore.js";
+import { seoulDayString } from "./kstDate.js";
 
 // 시/군 게시판 스크래핑은 장소 문구가 있어도 Kakao 조회에 실패하면 그 사이트의
 // 시청 좌표(fallbackLat/fallbackLng)로 떨어진다. 실측(2026-08-14) 결과 950건 중
@@ -112,17 +113,20 @@ async function backfillCityFestivals(
   maxLookups: number,
   result: GeocodeBackfillResult
 ): Promise<void> {
+  // date('now')를 그대로 쓰면 인덱스 범위 제약으로 못 쓴다(비결정 함수).
+  // 다른 backfill과 같이 KST 기준 오늘을 바인딩한다.
+  const today = seoulDayString(new Date());
   const rows = await db
     .prepare(
       `SELECT id, site_id, title, venue, address, lat, lng
          FROM city_festivals
         WHERE geocode_checked_at IS NULL
+          AND end_date >= ?
           AND (COALESCE(venue, '') <> '' OR COALESCE(address, '') <> '')
-          AND end_date >= date('now')
         ORDER BY start_date ASC
         LIMIT ?`
     )
-    .bind(maxLookups * CANDIDATE_ROW_MULTIPLIER)
+    .bind(today, maxLookups * CANDIDATE_ROW_MULTIPLIER)
     .all<CityFestivalGeocodeRow>();
   const candidates = rows.results ?? [];
   if (candidates.length === 0) return;
@@ -213,18 +217,19 @@ async function backfillDiscoveryItems(
     coordinate.lng,
     DISCOVERY_FALLBACK_EPSILON_DEGREES
   ]);
+  const today = seoulDayString(new Date());
   const rows = await db
     .prepare(
       `SELECT id, title, venue_name, address, lat, lng
          FROM discovery_items
         WHERE geocode_checked_at IS NULL
+          AND end_date >= ?
           AND COALESCE(venue_name, '') <> ''
-          AND end_date >= date('now')
           AND (${fallbackMatch})
         ORDER BY start_date ASC
         LIMIT ?`
     )
-    .bind(...fallbackBindings, maxLookups * CANDIDATE_ROW_MULTIPLIER)
+    .bind(today, ...fallbackBindings, maxLookups * CANDIDATE_ROW_MULTIPLIER)
     .all<DiscoveryGeocodeRow>();
   const targets = rows.results ?? [];
   if (targets.length === 0) return;
