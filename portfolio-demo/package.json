@@ -1,0 +1,14 @@
+{
+  "name": "eventda-portfolio-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "이벤트다 포트폴리오 소개 영상 렌더러 (HTML 타임라인 + Chromium 프레임 캡처 + ffmpeg 인코딩)",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright-core": "^1.49.1"
+  }
+}
