@@ -7,7 +7,6 @@ protocol APIClientProtocol {
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int, pastWithinDays: Int) async throws -> [Festival]
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent]
     func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent])
-    func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws
     func providerHealth() async throws -> [ProviderHealth]
     func discoveryProviderHealth() async throws -> [ProviderHealth]
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent]
@@ -119,35 +118,6 @@ final class APIClient: APIClientProtocol {
         ]
         let response: DiscoverPerformancesResponse = try await get(components.url!)
         return (festivals: response.festivals, events: response.events)
-    }
-
-    func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws {
-        struct Payload: Encodable {
-            let deviceId: String
-            let queryText: String
-            let destinationId: String
-            let destinationName: String
-            let address: String
-            let lat: Double
-            let lng: Double
-            let normalizedCategory: String?
-            let rawCategory: String?
-            let provider: String
-        }
-
-        let payload = Payload(
-            deviceId: deviceId,
-            queryText: queryText,
-            destinationId: destination.id,
-            destinationName: destination.name,
-            address: destination.address,
-            lat: destination.lat,
-            lng: destination.lng,
-            normalizedCategory: destination.normalizedCategory,
-            rawCategory: destination.rawCategory,
-            provider: destination.source
-        )
-        try await post(endpoint("analytics/search-history"), body: payload)
     }
 
     func providerHealth() async throws -> [ProviderHealth] {
@@ -307,7 +277,6 @@ final class MockAPIClient: APIClientProtocol {
         )
     }
 
-    func recordSearchHistory(destination: Destination, queryText: String, deviceId: String) async throws {}
 
     func providerHealth() async throws -> [ProviderHealth] {
         [ProviderHealth(name: "mock", status: "up", lastSuccessAt: ISO8601DateFormatter().string(from: Date()), lastError: nil, qualityScore: 1, stale: false)]

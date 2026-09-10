@@ -81,14 +81,12 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func select(_ destination: Destination) async {
-        let selectedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         exploreMode = .parking
         selectedDiscoverParkingContext = false
         selectedDestination = destination
         destinations = []
         selectedParkingLot = nil
         parkingLots = []
-        recordSelection(destination, queryText: selectedQuery)
         await loadParkingLots(for: destination)
         if showsRealtimeParkingLayer {
             await loadRealtimeParkingLayer()
@@ -409,17 +407,6 @@ final class MapHomeViewModel: ObservableObject {
 
     private func viewportDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
         max(viewport.radiusMeters, localDiscoverRadiusMeters)
-    }
-
-    private func recordSelection(_ destination: Destination, queryText: String) {
-        let deviceId = AnonymousDeviceStore.deviceID()
-        Task {
-            do {
-                try await apiClient.recordSearchHistory(destination: destination, queryText: queryText, deviceId: deviceId)
-            } catch {
-                AppLogger.networking.warning("search history record failed: \(error.localizedDescription)")
-            }
-        }
     }
 
     func isDestinationParking(_ parkingLot: ParkingLot, for destination: Destination) -> Bool {

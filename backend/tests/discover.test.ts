@@ -68,33 +68,4 @@ describe("discover APIs", () => {
     expect(markerTypes).toContain("local_event");
     await app.close();
   });
-
-  it("records selected destinations without storing raw typed search streams", async () => {
-    const app = await createApp();
-    const created = await app.inject({
-      method: "POST",
-      url: "/analytics/search-history",
-      payload: {
-        deviceId: "test-device-123",
-        queryText: "서울역",
-        destinationId: "dest-seoul-station",
-        destinationName: "서울역",
-        address: "서울 중구 한강대로 405",
-        lat: 37.5547,
-        lng: 126.9706,
-        rawCategory: "교통 > 기차역",
-        provider: "kakao-local"
-      }
-    });
-    expect(created.statusCode).toBe(201);
-    expect(created.json().normalizedCategory).toBe("station");
-
-    const stats = await app.inject({
-      method: "GET",
-      url: "/analytics/search-history/stats?deviceId=test-device-123"
-    });
-    expect(stats.statusCode).toBe(200);
-    expect(stats.json().topCategories[0].category).toBe("station");
-    await app.close();
-  });
 });

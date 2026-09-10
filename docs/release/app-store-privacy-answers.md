@@ -1,8 +1,8 @@
 # App Store Connect — App Privacy 입력 가이드
 
-대상: 이벤트다 (`ParkingLotNavigator`) iOS 1.0 (build 294)
+대상: 이벤트다 (`ParkingLotNavigator`) iOS 1.0 (build 295)
 작성일: 2026-09-10
-기준 커밋: `master` HEAD (`e0cbb7c` 이후)
+기준 커밋: `master` HEAD (`513fb14` 이후 — Search History 서버 전송 제거 반영)
 
 근거 파일 (이 문서의 모든 항목은 아래 코드에서 실제로 확인한 것만 적었다):
 
@@ -13,11 +13,10 @@
 | Push entitlement | `ios-app/project.yml` (`APS_ENVIRONMENT`), `ios-app/Resources/ParkingLotNavigatorApp.entitlements` |
 | 익명 기기 식별자 | `ios-app/Core/Storage/LocalStores.swift` (`AnonymousDeviceStore`) |
 | 익명 사용 집계 | `ios-app/Core/Services/AnalyticsService.swift` |
-| 검색 기록 전송 | `ios-app/Core/Networking/APIClient.swift` (`recordSearchHistory`), `ios-app/Features/Map/MapHomeViewModel.swift:414` |
 | 오류 신고 본문 | `ios-app/Core/Models/EventReport.swift`, `ios-app/Features/ParkingResults/EventReportSheet.swift` |
 | 공유 확장 | `ios-app/Integrations/ShareExtension/ShareViewController.swift`, `ios-app/Core/Storage/LocalStores.swift` (`SharedDestinationStore`) |
 | 백그라운드 모드·위치 권한 | `ios-app/Resources/AppInfo.plist` |
-| 서버 수신·보관 | `worker-backend/src/index.ts`, `backend/src/features/analytics/searchHistoryService.ts`, `backend/src/features/analytics/SearchHistoryRepository.ts` |
+| 서버 수신·보관 | `worker-backend/src/index.ts`, `worker-backend/src/notificationRegistration.ts`, `worker-backend/src/analytics.ts` |
 | 공개 개인정보처리방침 | `worker-backend/src/legal/routes.ts` (`/legal/privacy`) |
 
 실제 입력은 App Store Connect 웹 UI에서 진행한다. 이 문서는 그 화면에서 고를 항목을 그대로 옮겨 적을 수 있게 정리한 것이다.
@@ -33,9 +32,9 @@
 | "알림은 전부 로컬 알림이며 APNs/서버 푸시를 사용하지 않는다" | `AppDelegate.application(_:didFinishLaunchingWithOptions:)`가 알림 권한이 있으면 `registerForRemoteNotifications()`를 호출한다. Debug/Release 모두 `APS_ENVIRONMENT` entitlement가 있다. | 삭제하고 §3-2로 대체 |
 | "디바이스 푸시 토큰을 수집/전송하지 않는다" | `didRegisterForRemoteNotificationsWithDeviceToken`이 토큰을 hex로 만들어 App Group `UserDefaults`에 저장하고, `NotificationRegistrationService`가 `POST /api/notifications/register`로 서버에 보낸다. | 삭제하고 §3-2로 대체 |
 | Analytics 관련 항목 없음 / "Other Usage Data: No" | `AnalyticsService`가 정해진 13개 이벤트의 **횟수**를 모아 `POST /api/analytics`로 보낸다. | §3-3 신설 (Usage Data → Product Interaction = Yes) |
-| "Search History: No" | `recordSearchHistory`가 검색어·목적지명·주소·목적지 좌표를 익명 기기 식별자와 함께 `POST /analytics/search-history`로 보내고, 서버가 보관한다. | §3-4 신설 (Search History = Yes). 매니페스트에도 항목 추가 |
+| "Search History: No" | 2026-09-10 갱신 시점에는 `recordSearchHistory`가 검색어·목적지명·주소·목적지 좌표를 익명 기기 식별자와 함께 `POST /analytics/search-history`로 보내고 있었다. 그 뒤 전송·수신·보관 코드를 앱·Worker·backend에서 모두 제거했다. | **다시 No.** 매니페스트의 `NSPrivacyCollectedDataTypeSearchHistory` 항목도 삭제 (§4 참고) |
 | "Diagnostics → Crash Data / Performance Data: Yes (Sentry/Crashlytics 도입 시)" | 저장소 어디에도 Sentry·Crashlytics·Firebase 등 진단 SDK가 없다. SPM 의존성은 `KakaoMapsSDK`, `KakaoOpenSDK` 둘뿐이다. | **No**로 변경 (§4) |
-| "User Content → Other User Content (공유 확장)" | 공유 확장은 받은 텍스트를 App Group `UserDefaults`에만 저장하고 앱이 소비하면 지운다. 외부 전송이 없다. 실제로 서버에 올라가는 사용자 작성 내용은 **행사 오류 신고의 선택 메모**다. | 사유를 오류 신고로 정정 (§3-5) |
+| "User Content → Other User Content (공유 확장)" | 공유 확장은 받은 텍스트를 App Group `UserDefaults`에만 저장하고 앱이 소비하면 지운다. 외부 전송이 없다. 실제로 서버에 올라가는 사용자 작성 내용은 **행사 오류 신고의 선택 메모**다. | 사유를 오류 신고로 정정 (§3-4) |
 | 머천트 Purchases / Email / User ID 를 조건 없이 Yes·Linked | 앱은 설정 화면에서 웹 머천트 페이지로 나가는 `Link` 하나만 갖는다(`SettingsView.swift`). 인앱 OAuth·인앱 결제 코드가 없고, 결제는 아직 개시되지 않았다(`wrangler.toml`의 `TOSS_CLIENT_KEY`는 토스 공개 문서용 테스트 키). | 조건부 항목으로 §5에 분리 |
 
 ---
@@ -44,7 +43,7 @@
 
 **"Do you or your third-party partners collect data from this app?"** → **Yes**
 
-앱이 서버로 보내고 서버가 요청 처리 이후까지 보관하는 값이 실제로 있다(APNs 토큰과 익명 기기 식별자, 사용 집계 카운터, 검색 기록, 오류 신고 메모). Apple 기준의 "collect"는 단말 밖으로 전송하고 요청 처리에 필요한 시간을 넘겨 보관하는 것이므로 Yes다.
+앱이 서버로 보내고 서버가 요청 처리 이후까지 보관하는 값이 실제로 있다(APNs 토큰과 익명 기기 식별자, 사용 집계 카운터, 오류 신고 메모). Apple 기준의 "collect"는 단말 밖으로 전송하고 요청 처리에 필요한 시간을 넘겨 보관하는 것이므로 Yes다.
 
 ---
 
@@ -58,13 +57,13 @@
 
 그래서 이 문서의 모든 항목은 **Data Not Linked to You**(사용자 신원에 연결하지 않음)로 답한다. 근거는 "수집한 값 중 특정 개인을 지목할 수 있는 것이 하나도 없고, 그 값들을 사람 신원과 이어 붙일 계정 체계 자체가 없다"는 점이다.
 
-> 이 판단이 뒤집히는 조건: 앱에 계정이 생기거나, 머천트 계정과 위 기기 식별자를 서버에서 조인하는 코드가 생기면 그 순간부터 해당 항목은 전부 **Linked = Yes**로 바꿔야 한다. `analytics/search-history` 스키마에는 이미 선택 필드로 `userId`가 있으므로(`worker-backend/src/index.ts:365`), 그 필드를 채우는 코드가 생기면 §3-4는 즉시 Linked = Yes가 된다.
+> 이 판단이 뒤집히는 조건: 앱에 계정이 생기거나, 머천트 계정과 위 기기 식별자를 서버에서 조인하는 코드가 생기면 그 순간부터 해당 항목은 전부 **Linked = Yes**로 바꿔야 한다. 현재 서버 스키마 어디에도 `userId` 필드가 남아 있지 않다(검색 기록 스키마와 함께 삭제).
 
 ---
 
 ## 3. App Store Connect에서 **선택할** 데이터 유형
 
-App Store Connect → 앱 개인정보 → "앱이 수집하는 데이터"에서 아래 5개만 체크한다. 각 항목마다 (1) 고를 데이터 유형, (2) 수집 목적, (3) 사용자 신원 연결 여부, (4) 추적 사용 여부, (5) 세부 옵션을 적었다.
+App Store Connect → 앱 개인정보 → "앱이 수집하는 데이터"에서 아래 4개만 체크한다. 각 항목마다 (1) 고를 데이터 유형, (2) 수집 목적, (3) 사용자 신원 연결 여부, (4) 추적 사용 여부, (5) 세부 옵션을 적었다.
 
 ### 3-1. Location → Precise Location (정확한 위치)
 
@@ -78,7 +77,18 @@ App Store Connect → 앱 개인정보 → "앱이 수집하는 데이터"에서
 
 무엇을 보내는가: 사용자가 위치 권한을 허용한 경우의 현재 좌표를 주변 주차장·축제·공연 조회 요청의 쿼리 파라미터(`lat`, `lng`, `radiusMeters`)로 보낸다. 권한 키는 `NSLocationWhenInUseUsageDescription` 하나뿐이고(`AppInfo.plist`), Always 권한 키가 없다.
 
-D1에 좌표를 사용자 단위로 쌓는 코드는 없다. 요청 처리용으로만 쓰이므로 Apple 기준의 "collect"에 해당하지 않는다고 볼 여지도 있지만, 매니페스트가 이미 수집으로 선언하고 있고 과소 신고가 훨씬 위험하므로 **Yes로 선언한다**.
+**요청 좌표가 어디에도 저장되지 않는다는 근거** (2026-09-10 코드 전수 확인):
+
+- Worker의 `INSERT INTO` 대상 테이블은 `agent_activity`, `akei_trade_expos`, `analytics_daily`, `city_festivals`, `discovery_items`, `event_reports`, `geocode_cache`, `local_events`, `merchants`, `notification_devices`, `parking_lots`, `realtime_parking_status`, `sync_runs` 열세 개다. 이 중 요청의 `lat`/`lng`를 바인딩하는 문장은 하나도 없다.
+- 요청 좌표는 `queryFestivalsFromCache` / 주변 조회·클러스터 핸들러의 **읽기 조건**으로만 들어가고, 응답 본문에 `destination: { lat, lng, radiusMeters }`로 되돌아 나올 뿐이다.
+- `geocode_cache`는 사용자 좌표가 아니라 **행사 주소·장소명 문자열**(`query` 컬럼)로 키를 잡는다(`worker-backend/src/geocodeStore.ts`). 채우는 경로는 admin 로컬 이벤트 생성과 cron 지오코딩 backfill뿐이다.
+- `notification_devices`에는 좌표 컬럼 자체가 없다(`device_id`, `apns_token`, 지역 키 문자열, 카테고리, 방해 금지 시간). 관심 지역은 `"서울|중구"` 같은 행정구역 문자열이지 좌표가 아니다.
+- `POST /api/analytics`는 allowlist에 있는 이벤트·라벨만 받고, `api_error`는 요청 URL을 라벨로 쓰지 않는다 — 좌표가 들어갈 자리가 없다.
+- `app.onError`는 `console.error(error)`만 하고 요청 URL을 찍지 않는다.
+
+**그럼에도 Yes로 선언한다.** 이유는 하나다: `worker-backend/wrangler.toml`의 `[observability] enabled = true`, `head_sampling_rate = 1`이 Workers Logs에 **요청 URL을 포함한 invocation 로그를 보존**한다. 주변 조회 요청 URL에는 `lat`/`lng`가 쿼리 파라미터로 들어 있으므로, 애플리케이션 DB에는 없어도 플랫폼 로그에는 요청 처리 시간을 넘겨 남는다. Apple의 "request 처리보다 오래 보관되면 collection" 기준을 그대로 적용하면 이것은 collection에 해당한다. 매니페스트와 App Store Connect 양쪽 모두 **Precise Location = Yes / Linked No / Tracking No / App Functionality**를 유지하는 것이 맞다.
+
+관측 로그를 끄고(`enabled = false`) 좌표를 body로 옮기는 등 로그에서 좌표를 빼면 그때 다시 판단할 수 있지만, 운영 디버깅을 잃는 대가이고 과소 신고 위험이 훨씬 크므로 지금은 바꾸지 않는다.
 
 ### 3-2. Identifiers → Device ID (기기 ID)
 
@@ -119,29 +129,7 @@ Apple의 Device ID 정의는 IDFA뿐 아니라 "앱이 생성한 기기 단위 �
 
 전송은 fire-and-forget이고 실패하면 조용히 버린다. UI 테스트(`-uiTesting`) 실행 시에는 아예 꺼진다.
 
-### 3-4. Search History (검색 기록)
-
-| 질문 | 답 |
-| --- | --- |
-| 선택할 데이터 유형 | **Search History** (Location·Usage Data와 별개인 최상위 카테고리) |
-| 수집 목적 | **Analytics** 하나만 |
-| 사용자 신원과 연결 | **아니요** (계정이 없고, 저장되는 식별자는 앱이 만든 익명 UUID뿐) |
-| 추적에 사용 | **아니요** |
-| 세부 옵션 | 목적은 Analytics만. App Functionality를 함께 고르지 않는다 — 앱은 이 데이터를 다시 읽지 않는다(조회 API를 호출하는 코드가 없다) |
-
-무엇을 보내는가: 지도에서 검색 결과를 선택하면 `MapHomeViewModel.recordSelection`이 `POST /analytics/search-history`로 아래를 보낸다.
-
-- `deviceId` — 익명 UUID (`AnonymousDeviceStore.deviceID()`)
-- `queryText` — 사용자가 입력한 검색어 원문
-- `destinationId`, `destinationName`, `address` — 선택한 장소의 식별자·이름·주소
-- `lat`, `lng` — **선택한 목적지의 좌표** (사용자의 현재 위치가 아니다)
-- `normalizedCategory`, `rawCategory`, `provider` — 장소 분류와 출처
-
-서버는 `searchHistoryService.create()`에서 검색어를 120자로 자른 뒤 `selectedAt` 시각과 함께 저장한다. 저장소는 D1이 아니라 `InMemorySearchHistoryRepository`(최대 10,000건, Worker isolate 메모리)다. isolate가 재활용되면 사라지지만, **설계상 요청 처리 이후까지 보관하고 조회할 수 있게 만들어 둔 것**이므로 Apple 기준으로는 수집이다.
-
-이 항목은 이전 문서에서 "No"로 잘못 답하고 있었고, 매니페스트에도 빠져 있었다. 이번에 둘 다 채웠다. **§7의 미결 항목 두 가지(개인정보처리방침 문구, 공개 조회 엔드포인트)를 먼저 정리하는 것을 권장한다.**
-
-### 3-5. User Content → Other User Content (기타 사용자 콘텐츠)
+### 3-4. User Content → Other User Content (기타 사용자 콘텐츠)
 
 | 질문 | 답 |
 | --- | --- |
@@ -170,12 +158,13 @@ Apple의 Device ID 정의는 IDFA뿐 아니라 "앱이 생성한 기기 단위 �
 | Contacts | 연락처 프레임워크 미사용 |
 | User Content → Photos or Videos / Audio Data / Emails or Text Messages / Gameplay Content / Customer Support | 앱이 사진·오디오·메시지를 읽거나 보내지 않는다 |
 | Browsing History | 웹 브라우징 이력을 만들지도 보내지도 않는다 |
+| **Search History** | **검색어·선택한 목적지를 서버로 보내던 `POST /analytics/search-history` 전송을 앱·Worker·backend에서 모두 제거했다.** 지도 검색의 "최근 찾아본" 목록은 기기 `UserDefaults`에만 남는 로컬 기능이라 수집이 아니다 |
 | Identifiers → User ID | 계정이 없다 (§5 참고) |
 | Purchases → Purchase History | 인앱 구매·인앱 결제 없음 (§5 참고) |
 | Usage Data → Advertising Data / Other Usage Data | 광고 SDK 없음. 집계는 §3-3의 Product Interaction 하나로 끝난다 |
 | **Diagnostics → Crash Data / Performance Data / Other Diagnostic Data** | **저장소에 Sentry·Crashlytics·Firebase 등 어떤 진단 SDK도 없다.** SPM 의존성은 `KakaoMapsSDK`, `KakaoOpenSDK` 둘뿐이고, 크래시·성능 지표를 서버로 보내는 코드가 없다. 이전 문서가 "도입 시"를 전제로 Yes로 적어 둔 것이라 실제와 달랐다 |
 | Location → Coarse Location | 좌표를 흐리게 만들어 보내는 경로가 없다. 정확한 위치 한 항목으로 답한다 |
-| Other Data | 위 5개 밖에 해당하는 전송이 없다 |
+| Other Data | 위 4개 밖에 해당하는 전송이 없다 |
 
 Apple이 제공하는 진단 데이터(App Store Connect의 Xcode Organizer 지표)는 개발자가 앱에서 수집하는 것이 아니므로 이 질문지의 대상이 아니다.
 
@@ -220,23 +209,18 @@ App Store Connect 답변과 앱에 동봉되는 매니페스트가 어긋나면 
 | 3-1 Precise Location | `NSPrivacyCollectedDataTypePreciseLocation` | false | false | AppFunctionality |
 | 3-2 Device ID | `NSPrivacyCollectedDataTypeDeviceID` | false | false | AppFunctionality |
 | 3-3 Product Interaction | `NSPrivacyCollectedDataTypeProductInteraction` | false | false | Analytics |
-| 3-4 Search History | `NSPrivacyCollectedDataTypeSearchHistory` | false | false | Analytics |
-| 3-5 Other User Content | `NSPrivacyCollectedDataTypeOtherUserContent` | false | false | AppFunctionality |
+| 3-4 Other User Content | `NSPrivacyCollectedDataTypeOtherUserContent` | false | false | AppFunctionality |
 
 `NSPrivacyTracking = false`는 §6과 일치한다. 매니페스트는 앱 타깃의 `Resources` 디렉터리에 들어 있어(`project.yml:35`) 앱 번들에 동봉된다. 공유 확장과 위젯 타깃은 `Resources`를 소스에 넣지 않으므로 각자의 매니페스트가 없는데, 두 확장 모두 네트워크 전송이 없어 별도 신고 대상이 아니다.
 
 접근 API 사유(`NSPrivacyAccessedAPITypes`)도 현재 코드와 맞는다: `UserDefaults` CA92.1(앱·App Group 저장), FileTimestamp C617.1, SystemBootTime 35F9.1, DiskSpace E174.1.
 
-### 아직 남은 불일치 — 코드 수정이 필요해 이번 작업 범위 밖으로 둔 것
+### 이전 갱신에서 남겨 두었던 불일치 — 이번에 해소함
 
-이번 요청은 문서 갱신이라 기능 코드는 건드리지 않았다. 아래 두 가지는 **출시 전에 별도로 처리해야 한다.**
+2026-09-10 문서 갱신 때 코드 수정이 필요해 미뤄 두었던 두 가지를 이번에 코드로 처리했다.
 
-1. **`/legal/privacy`(공개 개인정보처리방침)에 검색 기록 수집이 빠져 있다.** `worker-backend/src/legal/routes.ts`의 "1. 수집하는 개인정보 항목"에는 위치·기기 정보·공유 콘텐츠·머천트 계정·결제·알림 수신 정보·익명 사용 통계·오류 신고까지 있는데, 검색어와 선택한 목적지를 보관한다는 문장이 없다. 더 나아가 같은 문서의 "위치정보: 단말 외부에 영구 저장하지 않으며, 요청 처리 시 1회성으로 사용 후 폐기합니다"는 목적지 좌표를 익명 기기 식별자와 함께 보관하는 현재 동작과 정면으로 어긋난다. 처리 방향은 둘 중 하나다.
-   - (권장) `MapHomeViewModel.swift:414`의 `recordSelection` 호출을 빼서 전송을 멈춘다. 앱의 "최근 찾아본" 목록은 기기 로컬 저장이라 영향이 없고, 이 문서의 §3-4와 매니페스트의 `NSPrivacyCollectedDataTypeSearchHistory` 항목을 함께 지우면 된다.
-   - 전송을 유지한다면 `/legal/privacy`에 수집 항목·목적·보관 기간을 추가하고, 위 위치 문구를 실제 동작에 맞게 고친다.
-2. **`GET /analytics/search-history`와 `/analytics/search-history/stats`가 인증 없이 열려 있다.** `worker-backend/src/index.ts:526`, `:535`가 `Authorization` 검사 없이 등록돼 있고, `listQuerySchema`(`:380`)의 `deviceId`가 선택 필드라 필터 없이도 저장된 기록을 통째로 받아올 수 있다. 관리자 토큰(`SYNC_ADMIN_TOKEN`) 뒤로 옮기거나, 위 1번에서 전송 자체를 없애면 함께 해소된다.
-
----
+1. **`/legal/privacy`(공개 개인정보처리방침)와 검색 기록 전송의 충돌** — 방침의 "위치정보: 단말 외부에 영구 저장하지 않으며, 요청 처리 시 1회성으로 사용 후 폐기합니다"가 목적지 좌표를 익명 기기 식별자와 함께 보관하는 동작과 어긋났다. 권장안대로 **전송 자체를 제거**했다. 방침은 애초에 검색 기록을 수집 항목으로 적은 적이 없고, 전송이 사라진 지금 위 문구가 다시 사실이 되므로 `worker-backend/src/legal/routes.ts`는 **고칠 것이 없다.**
+2. **인증 없이 열려 있던 `GET /analytics/search-history`와 `/analytics/search-history/stats`** — 두 라우트를 `POST /analytics/search-history`와 함께 삭제했다. Worker에 남은 인증 없는 조회 엔드포인트는 `/discover/pipeline-stats`, `/agent-office/activity`, `/discover/providers/health`, `/parking/providers/health` 넷인데 모두 앱 화면이 직접 호출하는 기능이고, 개인 데이터가 아닌 집계 수치만 돌려준다. 예외 문자열이 섞일 수 있는 두 곳(`pipeline-stats`의 `sync_runs.message`, `discover/providers/health`의 provider 메시지)은 admin 토큰이 없으면 이미 가려진다.
 
 ## 8. 데이터 보호 관련 사실 (참고)
 

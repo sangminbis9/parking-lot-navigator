@@ -166,8 +166,6 @@ type BackendModules = {
   createRealtimeParkingProvider: typeof import("../../backend/src/providers/createProviders.js").createRealtimeParkingProvider;
   createFestivalService: typeof import("../../backend/src/features/discover/festivals/festivalService.js").createFestivalService;
   createEventService: typeof import("../../backend/src/features/discover/events/eventService.js").createEventService;
-  SearchHistoryService: typeof import("../../backend/src/features/analytics/searchHistoryService.js").SearchHistoryService;
-  searchHistoryRepository: typeof import("../../backend/src/features/analytics/SearchHistoryRepository.js").searchHistoryRepository;
 };
 
 type BackendRuntime = {
@@ -178,7 +176,6 @@ type BackendRuntime = {
   >;
   festivalService: ReturnType<BackendModules["createFestivalService"]>;
   eventService: ReturnType<BackendModules["createEventService"]>;
-  searchHistoryService: InstanceType<BackendModules["SearchHistoryService"]>;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -348,39 +345,6 @@ const syncNationalParkingSchema = z.object({
   dryRun: optionalBoolean,
 });
 
-const placeCategorySchema = z.enum([
-  "restaurant",
-  "cafe",
-  "tourist_spot",
-  "shopping",
-  "hospital",
-  "office",
-  "market",
-  "station",
-  "hotel",
-  "school",
-  "other",
-]);
-
-const createSearchHistorySchema = z.object({
-  deviceId: z.string().min(8).max(128),
-  userId: z.string().max(128).nullable().optional(),
-  queryText: z.string().min(1).max(200),
-  destinationId: z.string().max(200).nullable().optional(),
-  destinationName: z.string().min(1).max(200),
-  address: z.string().max(300),
-  lat: z.number(),
-  lng: z.number(),
-  selectedAt: z.string().datetime().optional(),
-  normalizedCategory: placeCategorySchema.optional(),
-  rawCategory: z.string().max(300).nullable().optional(),
-  provider: z.string().max(80).nullable().optional(),
-});
-
-const listQuerySchema = z.object({
-  deviceId: z.string().min(8).max(128).optional(),
-});
-
 // 앱이 쓰는 공개 API에만 CORS를 연다. admin 경로는 Bearer 토큰으로 보호되지만,
 // 브라우저에서 임의 origin이 응답 본문을 읽을 이유가 없으므로 CORS 헤더를 주지 않는다.
 const publicCors = cors();
@@ -514,28 +478,6 @@ app.post("/admin/sync-realtime-parking", async (c) => {
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
   }
-});
-
-app.post("/analytics/search-history", async (c) => {
-  const body = createSearchHistorySchema.parse(await c.req.json());
-  const backend = await loadBackend(c.env);
-  const record = await backend.searchHistoryService.create(body);
-  return c.json(record, 201);
-});
-
-app.get("/analytics/search-history", async (c) => {
-  const query = listQuerySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
-  return c.json({
-    items: await backend.searchHistoryService.list(query.deviceId),
-    generatedAt: new Date().toISOString(),
-  });
-});
-
-app.get("/analytics/search-history/stats", async (c) => {
-  const query = listQuerySchema.parse(queryObject(c.req.raw.url));
-  const backend = await loadBackend(c.env);
-  return c.json(await backend.searchHistoryService.stats(query.deviceId));
 });
 
 app.get("/discover/festivals", async (c) => {
@@ -2136,16 +2078,12 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
     { createCompositeParkingProvider, createRealtimeParkingProvider },
     { createFestivalService },
     { createEventService },
-    { SearchHistoryService },
-    { searchHistoryRepository },
     { setGeocodeStore },
   ] = await Promise.all([
     import("../../backend/src/services/destinationSearch.js"),
     import("../../backend/src/providers/createProviders.js"),
     import("../../backend/src/features/discover/festivals/festivalService.js"),
     import("../../backend/src/features/discover/events/eventService.js"),
-    import("../../backend/src/features/analytics/searchHistoryService.js"),
-    import("../../backend/src/features/analytics/SearchHistoryRepository.js"),
     import("../../backend/src/features/discover/events/eventProviderUtils.js"),
   ]);
 
@@ -2165,7 +2103,6 @@ async function importBackend(env: Env): Promise<BackendRuntime> {
         : [],
     ),
     eventService: createEventService(),
-    searchHistoryService: new SearchHistoryService(searchHistoryRepository),
   };
 }
 
