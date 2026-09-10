@@ -755,13 +755,40 @@ describe("dispatchPendingNotifications", () => {
     });
     const sender = okSender();
     await planUpcomingNotifications(db, OCT_1);
-    // 2026-10-01T18:00:00Z = KST 03:00
+    // 2026-10-01T18:00:00Z = KST 03:00. 전역 발송 창은 꺼서 기기별 방해 금지만 본다.
     const result = await dispatchPendingNotifications(db, sender, {
       now: new Date("2026-10-01T18:00:00Z"),
+      sendWindow: null,
     });
     expect(result.skippedQuietHours).toBe(1);
     expect(sender.send).not.toHaveBeenCalled();
     expect([...digests.values()][0].sent_at).toBeNull();
+  });
+
+  it("전역 발송 창 밖(00시 KST)이면 아무것도 보내지 않고 대기 행을 남긴다", async () => {
+    const { db, digests } = fakeDb({
+      festivals: [festivalRow({ start_date: "2026-10-31" })],
+      devices: [deviceRow({})],
+    });
+    const sender = okSender();
+    await planUpcomingNotifications(db, OCT_1);
+
+    // KST 달력 날짜가 넘어가는 15:00 UTC = 00:00 KST. 계획 job이 곧바로 발송을
+    // 넣는 그 회차가 예전에 새벽 알림을 만들었다.
+    const midnight = await dispatchPendingNotifications(db, sender, {
+      now: new Date("2026-10-01T15:00:00Z"),
+    });
+    expect(midnight.skippedSendWindow).toBe(true);
+    expect(midnight.sent).toBe(0);
+    expect(sender.send).not.toHaveBeenCalled();
+    expect([...digests.values()][0].sent_at).toBeNull();
+
+    // 창이 열리는 회차(2026-10-02T00:00:00Z = KST 09:00)에 그대로 나간다.
+    const opened = await dispatchPendingNotifications(db, sender, {
+      now: new Date("2026-10-02T00:00:00Z"),
+    });
+    expect(opened.skippedSendWindow).toBe(false);
+    expect(opened.sent).toBe(1);
   });
 
   it("만료된 토큰이면 토큰만 비우고 대기 행은 남긴다", async () => {

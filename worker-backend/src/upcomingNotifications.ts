@@ -92,6 +92,28 @@ export function targetDates(
   }));
 }
 
+/**
+ * 발송을 허용하는 KST 시간대(시작 포함, 끝 제외). 기본 09~21시.
+ *
+ * 계획(plan)은 UTC 정각마다 도는데 KST 달력 날짜는 15:00 UTC에 넘어간다. 그래서
+ * 그 회차가 그날 몫의 새 묶음을 만들고, 계획 job이 끝나면서 곧바로 발송 job을 넣기
+ * 때문에 push가 **00시 KST 직후**에 나갔다. 기기별 방해 금지 시간은 기본값이 꺼짐이라
+ * 아무것도 막지 못했다. 발송 자체에 전역 시간 창을 두어 그 시각에는 보내지 않는다 —
+ * 묶음은 `sent_at IS NULL`로 남아 창이 열리는 회차에 그대로 나간다.
+ */
+export const DEFAULT_SEND_START_HOUR = 9;
+export const DEFAULT_SEND_END_HOUR = 21;
+
+export function isWithinSendWindow(
+  hour: number,
+  startHour: number,
+  endHour: number,
+): boolean {
+  if (startHour === endHour) return true; // 창을 사실상 끄는 설정
+  if (startHour < endHour) return hour >= startHour && hour < endHour;
+  return hour >= startHour || hour < endHour;
+}
+
 export function isWithinQuietHours(
   hour: number,
   startHour: number,
@@ -424,6 +446,8 @@ export type DispatchOptions = {
   now?: Date;
   /** 이 회차의 선점 식별자. 테스트에서 두 회차를 구분하려고 주입한다. */
   claimId?: string;
+  /** 전역 발송 시간 창(KST). `null`이면 창을 무시한다 — admin 수동 실행용. */
+  sendWindow?: { startHour: number; endHour: number } | null;
 };
 
 export type DispatchResult = {
@@ -438,6 +462,8 @@ export type DispatchResult = {
   deliveryUnknown: number;
   /** 계획 후 대상 행사가 사라진 묶음. 보낼 게 없으므로 발송 완료로 닫는다. */
   skippedEmpty: number;
+  /** 전역 발송 시간 창 밖이라 이번 회차는 아무것도 보내지 않았다. */
+  skippedSendWindow: boolean;
 };
 
 /**
@@ -475,7 +501,21 @@ export async function dispatchPendingNotifications(
     skippedClaimed: 0,
     deliveryUnknown: 0,
     skippedEmpty: 0,
+    skippedSendWindow: false,
   };
+
+  // 창 밖이면 D1을 읽지도 않고 나간다. 대기 행은 그대로 남는다.
+  const sendWindow =
+    options.sendWindow === undefined
+      ? { startHour: DEFAULT_SEND_START_HOUR, endHour: DEFAULT_SEND_END_HOUR }
+      : options.sendWindow;
+  if (
+    sendWindow &&
+    !isWithinSendWindow(seoulHour(now), sendWindow.startHour, sendWindow.endHour)
+  ) {
+    result.skippedSendWindow = true;
+    return result;
+  }
 
   const nowIso = now.toISOString();
   const staleBefore = new Date(now.getTime() - CLAIM_TTL_MS).toISOString();

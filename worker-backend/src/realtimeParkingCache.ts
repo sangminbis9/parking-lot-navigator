@@ -174,10 +174,18 @@ function realtimeMaterialChanged(
   );
 }
 
+/// 근사 좌표(주소 지오코딩 폴백)로는 이미 저장된 좌표를 고치지 않는다.
+/// 서울 realtime/metadata provider는 같은 GetParkInfo를 각자 읽는데, 그 응답이
+/// 한 회차 부실하면 두 provider가 동시에 정확 좌표를 잃고 mergeCoordinates가
+/// 고를 비근사 후보 자체가 없어져 Kakao 폴백이 이긴다. 그러면 다음 회차에
+/// 원래 좌표로 돌아오면서 같은 행이 좌표 UPDATE를 두 번 쓴다 — 2026-09-01
+/// 실측 하루 4,397회의 버스트가 이것이다. 폴백 좌표는 신규 행을 만들 때만
+/// 쓰고(그 행은 좌표가 아예 없는 것보다 낫다), 기존 행 수정에는 쓰지 않는다.
 function realtimeCoordinateChanged(
   existing: ExistingRealtimeRow,
   item: ParkingLot,
 ): boolean {
+  if (item.coordinateIsApproximate) return false;
   return (
     Math.abs(existing.lat - item.lat) > REALTIME_COORD_EPSILON ||
     Math.abs(existing.lng - item.lng) > REALTIME_COORD_EPSILON

@@ -40,6 +40,7 @@ export function normalizeParkingRecord(
     address: raw.address ?? "주소 정보 없음",
     lat: raw.lat,
     lng: raw.lng,
+    coordinateIsApproximate: raw.coordinateIsApproximate ?? false,
     distanceFromDestinationMeters: distanceMeters(destinationLat, destinationLng, raw.lat, raw.lng),
     totalCapacity,
     availableSpaces,

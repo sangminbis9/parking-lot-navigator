@@ -202,6 +202,14 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - **카테고리** — 비면 전체, 값이 있으면 그 카테고리만. 지역과 AND.
 - **cron** — `"*/3 * * * *"` 안에서 `minute % 30 === 0`일 때 발송, `minute === 0`일 때 계획.
   수동 실행은 `POST /admin/run-upcoming-notifications` (`Authorization: Bearer $SYNC_ADMIN_TOKEN`).
+- **발송 시간 창** — cron 가드는 UTC 분/시로 도는데 KST 달력 날짜는 **15:00 UTC**에 넘어간다.
+  그래서 그 회차의 계획이 그날 몫 묶음을 처음 만들고, `runNotificationPlanScheduled`가
+  끝나면서 발송 job을 바로 넣기 때문에 push가 **00시 KST 직후**에 나갔다. 기기별 방해 금지
+  시간은 migration `0023`에서 기본값이 꺼짐(`DEFAULT 0`)이라 아무것도 막지 못했다.
+  지금은 `dispatchPendingNotifications`가 전역 시간 창(`UPCOMING_NOTIFICATION_SEND_START_HOUR`
+  기본 9 / `UPCOMING_NOTIFICATION_SEND_END_HOUR` 기본 21, KST·시작 포함·끝 제외) 밖이면
+  D1을 읽지도 않고 `skippedSendWindow`로 빠진다. 묶음은 `sent_at IS NULL`로 남아 창이 열리는
+  첫 회차에 그대로 나간다. admin 수동 실행은 창을 무시한다(`ignoreSendWindow`).
 - **쓰기 예산** — 저장 단위를 바꾼 이유가 이것이다. 옛 `notification_sends`는 인덱스 3개
   (PK autoindex + `_pending` + `_claim`)라 계획 행 1건이 D1 쓰기 4행이었고, 2026-08-28 실측으로
   `discovery_items`의 미래 행사가 3,712건 / 서로 다른 시작일 125일(하루 평균 29.7건)이라

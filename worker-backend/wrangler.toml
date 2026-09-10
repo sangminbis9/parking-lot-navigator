@@ -65,6 +65,10 @@ TAGGING_CONCURRENCY = "2"
 # 다가오는 행사 알림 한 회차 APNs 호출 상한. 항목당 외부 fetch 1건이고 invocation당
 # 50건 한도라 40을 넘기지 않는다. 못 보낸 대기 행은 다음 회차에 그대로 다시 잡힌다.
 UPCOMING_NOTIFICATION_MAX_PUSHES = "40"
+# 발송을 허용하는 KST 시간대(시작 포함, 끝 제외). 계획 cron은 UTC 정각마다 도는데
+# KST 달력 날짜가 15:00 UTC에 넘어가므로, 창이 없으면 그날 몫 알림이 00시 KST에 나간다.
+UPCOMING_NOTIFICATION_SEND_START_HOUR = "9"
+UPCOMING_NOTIFICATION_SEND_END_HOUR = "21"
 APNS_BUNDLE_ID = "com.sangminbis9.ParkingLotNavigator"
 
 # cron 하나로 합쳤다. 계정당 cron trigger가 5개뿐이라 예전에는 그 다섯을 전부 썼고,

@@ -81,6 +81,8 @@ import { queryPipelineStats } from "./pipelineStats.js";
 import { apnsConfigFromEnv, createApnsSender } from "./apns.js";
 import {
   dispatchPendingNotifications,
+  DEFAULT_SEND_END_HOUR,
+  DEFAULT_SEND_START_HOUR,
   planUpcomingNotifications,
 } from "./upcomingNotifications.js";
 import { registerNotificationDevice } from "./notificationRegistration.js";
@@ -150,6 +152,9 @@ export type Env = {
   APNS_PRIVATE_KEY?: string;
   APNS_BUNDLE_ID?: string;
   UPCOMING_NOTIFICATION_MAX_PUSHES?: string;
+  /** 발송을 허용하는 KST 시간대(시작 포함, 끝 제외). 기본 9 / 21. */
+  UPCOMING_NOTIFICATION_SEND_START_HOUR?: string;
+  UPCOMING_NOTIFICATION_SEND_END_HOUR?: string;
   // background job queue (producer + consumer가 같은 스크립트다).
   // 로컬 dev/테스트에서는 binding이 없을 수 있어 optional로 둔다 — sendJobs가 조용히 넘어간다.
   BACKGROUND_QUEUE?: Queue<BackgroundJob>;
@@ -1319,6 +1324,7 @@ app.post("/admin/run-upcoming-notifications", async (c) => {
     const result = await runUpcomingNotifications(c.env, {
       plan: query.plan ?? true,
       maxPushes: query.maxPushes,
+      ignoreSendWindow: true,
     });
     return c.json(result);
   } catch (error) {
@@ -1787,12 +1793,39 @@ async function runImageEnrichmentScheduled(env: Env): Promise<void> {
 }
 
 /**
+ * 발송을 허용하는 KST 시간 창. 값이 없거나 숫자가 아니면 기본값(09~21시)을 쓴다.
+ * admin 수동 실행은 창을 무시한다 — 새벽에 테스트로 한 발 쏴 보는 길을 막지 않는다.
+ */
+function sendWindowFromEnv(
+  env: Env,
+  ignore?: boolean,
+): { startHour: number; endHour: number } | null {
+  if (ignore) return null;
+  const hour = (raw: string | undefined, fallback: number): number => {
+    const value = Number(raw);
+    return Number.isInteger(value) && value >= 0 && value <= 23
+      ? value
+      : fallback;
+  };
+  return {
+    startHour: hour(
+      env.UPCOMING_NOTIFICATION_SEND_START_HOUR,
+      DEFAULT_SEND_START_HOUR,
+    ),
+    endHour: hour(
+      env.UPCOMING_NOTIFICATION_SEND_END_HOUR,
+      DEFAULT_SEND_END_HOUR,
+    ),
+  };
+}
+
+/**
  * 계획(D1만) + 발송(APNs)을 한 번에 돈다. APNs 설정이 없으면 계획만 하고 조용히 넘어간다 —
  * 대기 행은 남아 있으므로 설정을 채운 뒤 다음 회차에 그대로 나간다.
  */
 async function runUpcomingNotifications(
   env: Env,
-  options: { plan: boolean; maxPushes?: number },
+  options: { plan: boolean; maxPushes?: number; ignoreSendWindow?: boolean },
 ): Promise<Record<string, unknown>> {
   const db = env.DB!;
   const planned = options.plan
@@ -1809,7 +1842,7 @@ async function runUpcomingNotifications(
   const dispatched = await dispatchPendingNotifications(
     db,
     createApnsSender(config),
-    { maxPushes },
+    { maxPushes, sendWindow: sendWindowFromEnv(env, options.ignoreSendWindow) },
   );
   return { planned, dispatched };
 }

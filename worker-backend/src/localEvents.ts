@@ -7,6 +7,7 @@ import type {
   MapItem,
 } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
+import { seoulDayString } from "./kstDate.js";
 import {
   inferLocalEventType,
   structureLocalEvent,
@@ -521,7 +522,7 @@ function parseCursor(value: string | undefined): number {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return seoulDayString(new Date());
 }
 
 function isMissingLocalEventsTable(error: unknown): boolean {

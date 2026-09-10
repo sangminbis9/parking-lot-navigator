@@ -106,6 +106,26 @@ describe("syncRealtimeParkingCache 조건부 쓰기", () => {
     expect(row.last_seen_at).toBe(new Date(T0 + 3 * MINUTE).toISOString());
   });
 
+  it("근사 좌표(지오코딩 폴백)로는 이미 저장된 좌표를 고치지 않는다", async () => {
+    const fake = db();
+    await syncRealtimeParkingCache(fake.asD1(), providerOf(() => [lot()]));
+    fake.reset();
+
+    // 원본 응답이 한 회차 부실해 Kakao 폴백 좌표가 이긴 상황.
+    vi.setSystemTime(T0 + 3 * MINUTE);
+    const result = await syncRealtimeParkingCache(
+      fake.asD1(),
+      providerOf(() => [
+        lot({ lat: 36.36, lng: 127.39, coordinateIsApproximate: true }),
+      ]),
+    );
+
+    expect(result.coordinate).toBe(0);
+    const row = fake.rows.get("daejeon-realtime:1")!;
+    expect(row.lat).toBe(36.35);
+    expect(row.lng).toBe(127.38);
+  });
+
   it("값이 30분간 그대로면 heartbeat 한 건으로 last_seen_at을 민다", async () => {
     const fake = db();
     await syncRealtimeParkingCache(fake.asD1(), providerOf(() => [lot()]));

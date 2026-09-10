@@ -3,6 +3,7 @@ import { fetchWithTimeout } from "../../backend/src/features/discover/events/eve
 import { mapWithConcurrency } from "./concurrency.js";
 import { isRetryableBackfillError } from "./backfillRetry.js";
 import { toHttpsImageUrl } from "./imageUrl.js";
+import { seoulDayString } from "./kstDate.js";
 
 // 목록 API는 대표 사진 한 장(TourAPI firstimage, KOPIS poster)만 준다. 갤러리
 // 전체는 항목별 detail 호출로만 얻을 수 있어 sync 중에 전부 부를 수 없다.
@@ -86,7 +87,9 @@ export async function runImageBackfill(
   if (sources.length === 0 || maxItems <= 0) return result;
 
   const now = options.now ?? new Date();
-  const today = now.toISOString().slice(0, 10);
+  // 다른 backfill과 같이 KST 기준 오늘을 쓴다. UTC로 자르면 00~09시(KST)
+  // 구간에서 하루 전 날짜가 나와 이미 끝난 행사를 후보에 남긴다.
+  const today = seoulDayString(now);
   const recheckBefore = new Date(
     now.getTime() - RECHECK_AFTER_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();

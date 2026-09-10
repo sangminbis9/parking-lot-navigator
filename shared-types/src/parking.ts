@@ -28,6 +28,12 @@ export interface ParkingLot {
   address: string;
   lat: number;
   lng: number;
+  /**
+   * 좌표가 원본 제공값이 아니라 주소 지오코딩으로 채운 근사치일 때 true.
+   * 지번 주소 중심점이라 원본과 수십~수백 m 어긋나므로, 캐시가 이미 가진
+   * 정확 좌표를 이 값으로 덮어쓰지 않게 하는 데 쓴다.
+   */
+  coordinateIsApproximate?: boolean;
   distanceFromDestinationMeters: number;
   totalCapacity: number | null;
   availableSpaces: number | null;

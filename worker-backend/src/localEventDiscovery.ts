@@ -7,6 +7,7 @@ import {
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { upsertLocalEvent } from "./localEvents.js";
 import { logAgentActivity } from "./agents/headAgent.js";
+import { seoulDayString } from "./kstDate.js";
 
 export interface LocalEventDiscoveryEnv {
   LOCAL_EVENT_PROVIDER_ENABLED?: string;
@@ -1205,8 +1206,11 @@ function truncate(value: string, length: number): string {
   return value.length <= length ? value : value.slice(0, length);
 }
 
+// 수집은 매시 15분(UTC)에 돈다. UTC로 자르면 15:00~23:59 UTC 구간에서
+// 이미 KST로 다음 날인데 어제 날짜가 나와, 시작일 fallback과 isPast 판정이
+// 하루씩 어긋난다.
 function today(now: Date): string {
-  return now.toISOString().slice(0, 10);
+  return seoulDayString(now);
 }
 
 function formatDate(year: number, month: number, day: number): string {

@@ -37,7 +37,8 @@ const MAX_REGION_DRIFT_METERS = 80_000;
 // 이 계정의 Worker는 invocation당 CPU 한도가 좁아 태깅과 같은 cron에 얹힌 이 회차가
 // 중간에 "Exceeded CPU Limit"으로 죽는다. 문장을 전부 모아 마지막에 한 번만 batch하면
 // 그때까지 쓴 Kakao 호출이 통째로 날아가므로, 이만큼 쌓일 때마다 나눠 쓴다.
-const DISCOVERY_FLUSH_SIZE = 5;
+// 시/군 축제와 discovery_items 양쪽이 같은 예산·같은 invocation을 쓰므로 값도 공유한다.
+const FLUSH_SIZE = 5;
 
 interface DiscoveryGeocodeRow {
   id: string;
@@ -156,10 +157,13 @@ async function backfillCityFestivals(
   const statements: D1PreparedStatement[] = [];
   // 이미 지오코딩된 행은 조회 없이 표시만 해서 다음 회차 후보에서 빠지게 한다.
   for (const row of candidates) {
-    if (!targets.includes(row)) statements.push(markChecked(db, row.id, checkedAt));
+    if (targets.includes(row)) continue;
+    if (statements.length >= FLUSH_SIZE) await db.batch(statements.splice(0));
+    statements.push(markChecked(db, row.id, checkedAt));
   }
 
   for (const row of targets) {
+    if (statements.length >= FLUSH_SIZE) await db.batch(statements.splice(0));
     if (resolver.remainingMissBudget() <= 0) {
       result.budgetExhausted = true;
       break;
@@ -246,7 +250,7 @@ async function backfillDiscoveryItems(
   const checkedAt = new Date().toISOString();
   const statements: D1PreparedStatement[] = [];
   for (const row of targets) {
-    if (statements.length >= DISCOVERY_FLUSH_SIZE) {
+    if (statements.length >= FLUSH_SIZE) {
       await db.batch(statements.splice(0));
     }
     if (resolver.remainingMissBudget() <= 0) {
