@@ -47,6 +47,21 @@
       </array>
     </dict>
     <dict>
+      <!-- 검색 기록: 선택한 목적지와 검색어를 익명 기기 식별자와 함께 서버가 보관한다.
+           앱은 이 기록을 다시 읽지 않는다(전송만 있고 조회 호출이 없다).
+           전송을 없애면 이 항목도 함께 지운다. -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeSearchHistory</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+    <dict>
       <!-- 행사 정보 오류 신고의 선택 메모. 신고자 식별 정보는 저장하지 않는다. -->
       <key>NSPrivacyCollectedDataType</key>
       <string>NSPrivacyCollectedDataTypeOtherUserContent</string>
