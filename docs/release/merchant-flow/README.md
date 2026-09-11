@@ -2,16 +2,18 @@
 
 매장 사장님이 이벤트를 등록하는 과정을 화면 순서대로 남긴 것이다. 캡처일 2026-09-12.
 
-**App Store 제출용이 아니다.** 이 흐름은 iOS 화면이 아니라 Cloudflare Worker가 서버에서 그려주는
-웹 페이지(`worker-backend/src/merchant/`)이고, 앱에서는 설정 탭의 사장님 카드가
-`Link(destination:)`으로 **외부 Safari를 여는 것**뿐이다(`ios-app/Features/Settings/SettingsView.swift:140`).
-App Store 스크린샷은 앱 자체 화면이어야 하므로 여기 이미지는 제출에 쓸 수 없다.
+**App Store 제출용이 아니다.** 첫 장(`00`)만 앱 화면이고, `01`부터는 iOS 화면이 아니라
+Cloudflare Worker가 서버에서 그려주는 웹 페이지(`worker-backend/src/merchant/`)다.
+앱에서는 설정 탭의 사장님 카드가 `Link(destination:)`으로 **외부 Safari를 여는 것**뿐이다
+(`ios-app/Features/Settings/SettingsView.swift:140`).
+App Store 스크린샷은 앱 자체 화면이어야 하므로 `01`~`06`은 제출에 쓸 수 없다.
 제출용은 `docs/release/screenshots/`에 따로 있다. 이 디렉터리의 용도는 문서·안내·온보딩이다.
 
 ## 화면 순서
 
 | 파일 | 화면 | 경로 |
 | --- | --- | --- |
+| `00-app-settings-entry.png` | 앱 설정 탭 — 아래 웹 흐름으로 들어가는 앱 안의 유일한 진입점 | iOS 설정 탭 (`SettingsView`) |
 | `01-landing.png` | 랜딩 — 가격 안내와 네이버/카카오 로그인 | `GET /merchant` |
 | `02-dashboard.png` | 대시보드 — 등록한 이벤트 목록(게시 중 / 결제 대기) | `GET /merchant/dashboard` |
 | `03-event-form.png` | 새 이벤트 등록 폼(빈 상태) | `GET /merchant/event/new` |
@@ -19,7 +21,11 @@ App Store 스크린샷은 앱 자체 화면이어야 하므로 여기 이미지�
 | `05-free-claim.png` | 오픈 기념 무료 등록 확인 | `GET /merchant/event/:id/pay` |
 | `06-dashboard-after.png` | 등록 완료 후 대시보드 — 결제 대기가 게시 중으로 바뀐다 | `POST /merchant/event/:id/claim-free` 후 리다이렉트 |
 
-모두 1170×2532(390×844 CSS px, `deviceScaleFactor: 3`), 로케일 `ko-KR`, 타임존 `Asia/Seoul`.
+`01`~`06`은 모두 1170×2532(390×844 CSS px, `deviceScaleFactor: 3`), 로케일 `ko-KR`, 타임존 `Asia/Seoul`.
+`00`만 출처가 다르다 — `.github/workflows/ios-screenshots.yml`을 수동 실행해 macOS 러너의
+iPhone 16 Pro Max 시뮬레이터에서 뽑은 1320×2868 앱 화면이다(run `34620150756`, master `07fce47`).
+앱 화면이라 규격 자체는 App Store 6.9" 요건을 만족하지만, 설정 탭은 제품의 매력을 보여주는 장면이
+아니므로 제출용 5장(`docs/release/screenshots/`)에는 넣지 않았다.
 
 ## 결제 화면이 없는 이유
 
@@ -58,3 +64,10 @@ macOS도 실기기도 필요 없다. 로컬 D1 + `wrangler dev --local` + headle
   건너뛴 것은 지오코딩 한 단계뿐이다.
 
 데모 데이터는 로컬 D1에만 있고 production에는 넣지 않았다.
+
+## 앱 진입점(`00`) 다시 뽑는 법
+
+이 한 장만 경로가 다르다. iOS 화면이라 로컬에서는 못 찍는다 —
+GitHub Actions → **App Store Screenshots** → **Run workflow**로 돌리면
+`AppStoreScreenshotTests`가 설정 탭까지 캡처한다(`07-settings` / `08-settings-scrolled`).
+`08`은 스크롤 후 화면이고 Debug 빌드에서만 보이는 개발자 카드가 들어 있어 문서에는 담지 않았다.
