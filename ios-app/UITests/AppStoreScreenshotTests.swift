@@ -22,9 +22,10 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     /// 서버 응답을 그대로 쓰기 때문에 목록이 그려질 시간을 넉넉히 준다.
-    private func capture(_ name: String) {
+    private func capture(_ name: String, settle: TimeInterval = 2.0) {
         // 레이아웃이 자리를 잡고 이미지가 도착할 여유를 준다.
-        Thread.sleep(forTimeInterval: 2.0)
+        // 지도 타일과 캘린더 어젠다는 네트워크를 더 타므로 호출부가 여유를 늘려 준다.
+        Thread.sleep(forTimeInterval: settle)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
@@ -47,9 +48,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         app = XCUIApplication()
         app.launch()
 
-        // 1. 지도 — 첫 화면이다. 지도 타일과 핀이 올라올 때까지 기다린다.
+        // 1. 지도 — 첫 화면이다. 탭 바는 즉시 뜨지만 지도 타일은 그 뒤에 도착한다.
+        // 1회차(2026-09-11)에서 핀은 그려졌는데 타일만 빈 화면이었다.
         if element("tab-map").waitForExistence(timeout: 40) {
-            capture("01-map")
+            capture("01-map", settle: 15.0)
         }
 
         // 2. 행사 목록
@@ -78,8 +80,7 @@ final class AppStoreScreenshotTests: XCTestCase {
 
         // 5. 캘린더
         if openTab("tab-calendar") {
-            Thread.sleep(forTimeInterval: 3.0)
-            capture("05-calendar")
+            capture("05-calendar", settle: 12.0)
         }
 
         // 6. 즐겨찾기 — 새 시뮬레이터라 비어 있을 수 있다. 쓸지는 사람이 고른다.
