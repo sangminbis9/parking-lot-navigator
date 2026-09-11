@@ -1,0 +1,156 @@
+name: App Store Screenshots
+
+# 로컬에 Mac이 없어 시뮬레이터를 띄울 수 없다. 이 워크플로가 macOS 러너에서
+# 스크린샷 UI 테스트만 돌리고 PNG를 아티팩트로 올린다. 수동 실행 전용이다.
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: '캡처할 시뮬레이터 (6.9" 필수 규격)'
+        required: true
+        default: 'iPhone 16 Pro Max'
+        type: choice
+        options:
+          - 'iPhone 16 Pro Max'
+          - 'iPhone 15 Pro Max'
+      appearance:
+        description: '라이트 / 다크'
+        required: true
+        default: 'light'
+        type: choice
+        options:
+          - light
+          - dark
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
+      XCODE_SCHEME: ParkingLotNavigator
+      # 스크린샷에는 실제 행사가 떠야 하므로 production API를 쓴다. 읽기 전용 호출뿐이다.
+      API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
+      APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
+      SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
+      APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
+      NAVIGATION_PROVIDER: mock
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate iOS config
+        shell: bash
+        env:
+          KAKAO_NATIVE_APP_KEY: ${{ secrets.KAKAO_NATIVE_APP_KEY }}
+        run: |
+          # 키가 없으면 지도 타일이 안 그려진다. 나머지 화면은 그대로 찍히므로 멈추지는 않는다.
+          if [ -z "$KAKAO_NATIVE_APP_KEY" ]; then
+            echo "::warning::KAKAO_NATIVE_APP_KEY secret이 없다. 지도 스크린샷(01-map)은 빈 화면으로 나온다."
+            KAKAO_NATIVE_APP_KEY="ci-placeholder"
+          fi
+          XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          cat > ios-app/Config/Debug.xcconfig <<CONF
+          API_BASE_URL = $XCCONFIG_API_BASE_URL
+          APP_BUNDLE_ID = $APP_BUNDLE_ID
+          SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
+          APP_GROUP_ID = $APP_GROUP_ID
+          KAKAO_NATIVE_APP_KEY = $KAKAO_NATIVE_APP_KEY
+          NAVIGATION_PROVIDER = $NAVIGATION_PROVIDER
+          CONF
+          cp ios-app/Config/Debug.xcconfig ios-app/Config/Release.xcconfig
+
+      - name: Generate Xcode project
+        working-directory: ios-app
+        run: xcodegen generate
+
+      - name: Boot simulator and clean up the status bar
+        id: sim
+        shell: bash
+        run: |
+          DEVICE="${{ inputs.device }}"
+          UDID=$(xcrun simctl list devices available --json \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((x['udid'] for rt in d for x in d[rt] if x['name']=='$DEVICE'),''))")
+          if [ -z "$UDID" ]; then
+            echo "::error::러너에 '$DEVICE'가 없다. 사용 가능한 기기:"
+            xcrun simctl list devices available | rg iPhone
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          # 스크린샷에 실제 시각·배터리 잔량이 박히면 심사에서 지저분하다. Apple 관례대로 9:41 고정.
+          xcrun simctl status_bar "$UDID" override \
+            --time "09:41" \
+            --batteryState charged --batteryLevel 100 \
+            --cellularMode active --cellularBars 4 \
+            --dataNetwork wifi --wifiMode active --wifiBars 3
+          xcrun simctl ui "$UDID" appearance ${{ inputs.appearance }}
+
+      - name: Capture screenshots
+        shell: bash
+        run: |
+          rm -rf build/Screenshots.xcresult
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:ParkingLotNavigatorUITests/AppStoreScreenshotTests \
+            -resultBundlePath build/Screenshots.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
+            INFOPLIST_OUTPUT_FORMAT=XML \
+            test
+
+      - name: Export PNGs from the result bundle
+        shell: bash
+        run: |
+          mkdir -p screenshots
+          # Xcode 16의 새 문법을 먼저 쓰고, 안 되면 legacy로 떨어진다.
+          xcrun xcresulttool export attachments \
+            --path build/Screenshots.xcresult \
+            --output-path screenshots \
+          || xcrun xcresulttool export attachments --legacy \
+            --path build/Screenshots.xcresult \
+            --output-path screenshots
+          # manifest.json의 suggestedHumanReadableName으로 파일명을 되돌린다.
+          python3 - <<'PY'
+          import json, os, shutil, glob
+          root = "screenshots"
+          manifests = glob.glob(os.path.join(root, "**", "manifest.json"), recursive=True)
+          renamed = 0
+          for m in manifests:
+              base = os.path.dirname(m)
+              for entry in json.load(open(m)):
+                  for att in entry.get("attachments", []):
+                      src = os.path.join(base, att.get("exportedFileName", ""))
+                      name = att.get("suggestedHumanReadableName") or ""
+                      if name and os.path.exists(src):
+                          shutil.move(src, os.path.join(root, name if name.endswith(".png") else name + ".png"))
+                          renamed += 1
+          print(f"이름 복원: {renamed}장")
+          PY
+          echo "=== 캡처 결과 ==="
+          for f in screenshots/*.png; do
+            [ -e "$f" ] || continue
+            echo "$f $(sips -g pixelWidth -g pixelHeight "$f" | tr '\n' ' ')"
+          done
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appstore-screenshots-${{ inputs.device }}-${{ inputs.appearance }}
+          path: screenshots/*.png
+          if-no-files-found: error
