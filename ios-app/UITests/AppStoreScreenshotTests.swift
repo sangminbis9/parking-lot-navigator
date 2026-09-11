@@ -87,5 +87,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         if openTab("tab-favorites") {
             capture("06-favorites")
         }
+
+        // 7. 설정 — 사장님 이벤트 등록 카드가 여기 있다(앱 안의 유일한 진입점).
+        // 카드가 접히는 위치는 기기 높이에 따라 달라지므로 위와 아래를 각각 한 장씩 남긴다.
+        if openTab("tab-settings") {
+            capture("07-settings")
+            app.swipeUp()
+            capture("08-settings-scrolled")
+        }
     }
 }
