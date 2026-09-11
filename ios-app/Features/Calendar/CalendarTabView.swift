@@ -78,7 +78,8 @@ struct CalendarTabView: View {
         .background(FestivalDesign.background)
         .task {
             AnalyticsService.shared.track(.calendarOpen)
-            locationProvider.request()
+            // 탭을 연 것만으로는 권한 팝업을 띄우지 않는다. 이미 허용된 경우에만 위치를 받는다.
+            locationProvider.startIfAuthorized()
             await reload()
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
             await performanceViewModel.load(coordinate: coord)
@@ -253,11 +254,11 @@ struct CalendarTabView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 monthSummary(byDay: byDay)
                 if case .failed(let message) = viewModel.state {
-                    Text(message)
-                        .font(.festival(size: 12))
-                        .foregroundStyle(FestivalDesign.coralText)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
+                    // 실패를 빈 목록처럼 보여 주면 사용자가 "행사가 없다"고 오해한다. 원인과 재시도를 같이 준다.
+                    FailureStateView(message: message) {
+                        Task { await reload() }
+                    }
+                    .padding(.bottom, 12)
                 } else {
                     festivalSection(byDay: byDay)
                 }
@@ -345,6 +346,20 @@ struct CalendarTabView: View {
         .padding(.bottom, 12)
     }
 
+    private func sectionFailure(message: String, retry: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text(message)
+                .font(.festival(size: 12))
+                .foregroundStyle(FestivalDesign.coralText)
+            Button("다시 시도", action: retry)
+                .font(.festival(size: 12, weight: .bold))
+                .buttonStyle(.plain)
+                .foregroundStyle(FestivalDesign.tealText)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+    }
+
     private var performanceSection: some View {
         let dayFormatter = CalendarViewModel.dayFormatter
         let items: [PerformanceItem] = {
@@ -373,7 +388,12 @@ struct CalendarTabView: View {
             }
             .padding(.horizontal, 16)
 
-            if items.isEmpty && !performanceViewModel.isLoading {
+            if let message = performanceViewModel.errorMessage, items.isEmpty {
+                sectionFailure(message: message) {
+                    let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
+                    Task { await performanceViewModel.load(coordinate: coord) }
+                }
+            } else if items.isEmpty && !performanceViewModel.isLoading {
                 Text("선택한 날짜에 근처 공연이 없습니다")
                     .font(.festival(size: 12))
                     .foregroundStyle(FestivalDesign.secondaryText)
@@ -419,7 +439,12 @@ struct CalendarTabView: View {
             }
             .padding(.horizontal, 16)
 
-            if items.isEmpty && !storeEventViewModel.isLoading {
+            if let message = storeEventViewModel.errorMessage, items.isEmpty {
+                sectionFailure(message: message) {
+                    let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
+                    Task { await storeEventViewModel.load(coordinate: coord) }
+                }
+            } else if items.isEmpty && !storeEventViewModel.isLoading {
                 Text("선택한 날짜에 근처 가게 이벤트가 없습니다")
                     .font(.festival(size: 12))
                     .foregroundStyle(FestivalDesign.secondaryText)

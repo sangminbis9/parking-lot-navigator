@@ -306,32 +306,39 @@ final class MapHomeViewModel: ObservableObject {
 
         var failedLoads = 0
         var attemptedLoads = 0
+        var firstFailure: Error?
 
         // 결과는 한 번에 반영한다. 하나씩 넣으면 그때마다 핀 파이프라인이 처음부터 다시 돈다.
         if let festivalOutcome {
             attemptedLoads += 1
             switch festivalOutcome {
             case .success(let items): festivals = items
-            case .failure: failedLoads += 1
+            case .failure(let error):
+                failedLoads += 1
+                firstFailure = firstFailure ?? error
             }
         }
         if let eventOutcome {
             attemptedLoads += 1
             switch eventOutcome {
             case .success(let items): events = items
-            case .failure: failedLoads += 1
+            case .failure(let error):
+                failedLoads += 1
+                firstFailure = firstFailure ?? error
             }
         }
         if let performanceOutcome {
             attemptedLoads += 1
             switch performanceOutcome {
             case .success(let items): performances = items
-            case .failure: failedLoads += 1
+            case .failure(let error):
+                failedLoads += 1
+                firstFailure = firstFailure ?? error
             }
         }
 
-        if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads {
-            errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+        if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads, let firstFailure {
+            errorMessage = NetworkErrorMessage.text(for: firstFailure, subject: "탐색 정보")
         }
         if showsSpinner { isLoadingDiscover = false }
     }
@@ -349,7 +356,7 @@ final class MapHomeViewModel: ObservableObject {
                 events = try await discoverEvents(viewport: viewport)
             }
         } catch {
-            errorMessage = "탐색 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+            errorMessage = NetworkErrorMessage.text(for: error, subject: "탐색 정보")
         }
         isLoadingDiscover = false
     }

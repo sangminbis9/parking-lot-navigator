@@ -183,13 +183,20 @@ final class APIClient: APIClientProtocol {
     }
 
     private func post<T: Encodable>(_ url: URL, body: T) async throws {
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(body)
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+        } catch {
+            // 기기 등록과 오류 신고가 여기로 온다. 실패해도 화면에는 안 보이므로 로그가 유일한 흔적이다.
+            AppLogger.networking.error("API post failed: \(error.localizedDescription)")
+            AnalyticsService.shared.track(.apiError, label: "other")
+            throw error
         }
     }
 }

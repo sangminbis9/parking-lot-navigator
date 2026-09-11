@@ -30,7 +30,9 @@ final class CalendarViewModel: ObservableObject {
 
     func load(coordinate: (lat: Double, lng: Double)?, filter: FestivalFilter) async {
         state = .loading
-        let coord = coordinate ?? (lat: 37.5663, lng: 126.9779)
+        // 위치가 없으면 마지막 위치 → 저장된 지역 → 서울 순. 전국 서비스인데 늘 서울에서 시작하지 않는다.
+        let fallback = FallbackLocation.resolve()
+        let coord = coordinate ?? (lat: fallback.lat, lng: fallback.lng)
         do {
             let raw = try await apiClient.nearbyFestivals(
                 lat: coord.lat,
@@ -42,7 +44,7 @@ final class CalendarViewModel: ObservableObject {
             await apply(festivals: raw, filter: filter)
             state = .loaded
         } catch {
-            state = .failed("축제 정보를 불러오지 못했어요")
+            state = .failed(NetworkErrorMessage.text(for: error, subject: "축제 정보"))
         }
     }
 

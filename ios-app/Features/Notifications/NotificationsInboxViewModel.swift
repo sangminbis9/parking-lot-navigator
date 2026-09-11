@@ -76,7 +76,8 @@ final class NotificationsInboxViewModel: ObservableObject {
                 apply(id: item.id) { $0.festival = cached }
                 return
             }
-            if let festival = try? await apiClient.festival(id: item.eventId) {
+            do {
+                let festival = try await apiClient.festival(id: item.eventId)
                 apply(id: item.id) { $0.festival = festival }
                 store.updateSnapshot(
                     id: item.id,
@@ -84,12 +85,15 @@ final class NotificationsInboxViewModel: ObservableObject {
                     venueName: festival.venueName,
                     imageUrl: festival.primaryImageUrl
                 )
-            } else {
+            } catch {
+                // 행사가 지워진 것과 네트워크가 끊긴 것이 같은 화면으로 보인다. 구분은 로그에만 남긴다.
+                AppLogger.networking.error("알림함 축제 상세 실패: \(error.localizedDescription, privacy: .public)")
                 apply(id: item.id) { $0.isUnavailable = true }
             }
             return
         }
-        if let event = try? await apiClient.localEvent(id: item.eventId) {
+        do {
+            let event = try await apiClient.localEvent(id: item.eventId)
             apply(id: item.id) { $0.event = event }
             store.updateSnapshot(
                 id: item.id,
@@ -97,7 +101,8 @@ final class NotificationsInboxViewModel: ObservableObject {
                 venueName: event.venueName ?? event.storeName,
                 imageUrl: event.primaryImageUrl
             )
-        } else {
+        } catch {
+            AppLogger.networking.error("알림함 이벤트 상세 실패: \(error.localizedDescription, privacy: .public)")
             apply(id: item.id) { $0.isUnavailable = true }
         }
     }

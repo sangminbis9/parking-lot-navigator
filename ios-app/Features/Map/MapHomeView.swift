@@ -40,6 +40,8 @@ struct MapHomeView: View {
     /// 첫 조회 응답과 그 핀이 다 자리 잡았는지. 그 전까지는 로딩 표시를 내리지 않는다.
     @State private var hasSettledAfterInitialLoad = false
     @State private var presentingFestivalFilter = false
+    /// 위치 없이 볼 때 지도의 기준이 된 지역 이름. 안내 문구가 "서울"로 고정되지 않게 한다.
+    @State private var fallbackLocationLabel = FallbackLocation.seoul.label
     /// 레이어 토글 높이. SF Symbol마다 높이가 달라 토글이 들쭉날쭉해 보이는 걸 막는다.
     @ScaledMetric(relativeTo: .caption) private var layerToggleHeight: CGFloat = 32
     @State private var discoverListQuery = ""
@@ -219,7 +221,9 @@ struct MapHomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task {
             AnalyticsService.shared.track(.mapLoaded)
-            locationProvider.request()
+            // 첫 실행에 시스템 권한 팝업을 띄우지 않는다. 팝업은 안내를 보고 사용자가 눌렀을 때만 뜬다.
+            locationProvider.startIfAuthorized()
+            applyFallbackCenterIfNeeded()
             await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
             lastDiscoverRefreshViewport = mapViewport
             centerOnInitialDiscoverPinIfNeeded()
@@ -771,36 +775,96 @@ struct MapHomeView: View {
         locationProvider.authorizationStatus == .denied || locationProvider.authorizationStatus == .restricted
     }
 
+    private var isLocationUndetermined: Bool {
+        locationProvider.authorizationStatus == .notDetermined
+    }
+
+    /// 아직 위치를 쓸 수 없으면 마지막 위치 → 저장된 지역 → 서울 순으로 시작 지점을 정한다.
+    /// 권한이 이미 허용된 사용자는 곧 실제 좌표가 도착하므로 건드리지 않는다.
+    private func applyFallbackCenterIfNeeded() {
+        guard locationProvider.coordinate == nil, !isLocationAuthorized else { return }
+        let fallback = FallbackLocation.resolve()
+        let coordinate = CLLocationCoordinate2D(latitude: fallback.lat, longitude: fallback.lng)
+        fallbackLocationLabel = fallback.label
+        mapCenter = coordinate
+        mapViewport = MapViewport(
+            center: coordinate,
+            zoomLevel: mapViewport.zoomLevel,
+            radiusMeters: mapViewport.radiusMeters
+        )
+    }
+
+    private var isLocationAuthorized: Bool {
+        locationProvider.authorizationStatus == .authorizedWhenInUse
+            || locationProvider.authorizationStatus == .authorizedAlways
+    }
+
     private func openLocationSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
     }
 
-    /// 권한이 없으면 지도는 서울에서 시작한다. 그 사실을 감추지 않고 해결 경로를 같이 준다.
+    /// 위치를 아직 못 정했으면 시스템 팝업 대신 이 안내가 먼저 뜬다.
+    /// 권한이 막혔으면 지금 어느 지역 기준으로 보고 있는지 밝히고 해결 경로를 같이 준다.
+    /// 어느 쪽이든 "지역 선택"으로 전국 어디든 직접 골라 볼 수 있어 앱이 막히지 않는다.
     @ViewBuilder
     private var locationPermissionNotice: some View {
-        if isLocationDenied {
-            HStack(spacing: 8) {
-                Image(systemName: "location.slash")
-                    .font(.festival(.caption, weight: .bold))
-                    .foregroundStyle(FestivalDesign.coralText)
-                Text("위치 권한이 꺼져 있어 서울 기준으로 보고 있어요")
+        if isLocationUndetermined {
+            locationNoticeCard(
+                icon: "location.circle",
+                message: "내 주변 행사를 보려면 위치가 필요해요. 켜지 않아도 \(fallbackLocationLabel) 기준으로 둘러볼 수 있어요.",
+                primaryTitle: "내 주변 행사 보기",
+                primaryAction: {
+                    shouldCenterOnNextLocation = true
+                    locationProvider.request()
+                },
+                identifier: "location-primer"
+            )
+        } else if isLocationDenied {
+            locationNoticeCard(
+                icon: "location.slash",
+                message: "위치 권한이 꺼져 있어 \(fallbackLocationLabel) 기준으로 보고 있어요",
+                primaryTitle: "설정 열기",
+                primaryAction: { openLocationSettings() },
+                identifier: "location-denied-notice"
+            )
+        }
+    }
+
+    private func locationNoticeCard(
+        icon: String,
+        message: String,
+        primaryTitle: String,
+        primaryAction: @escaping () -> Void,
+        identifier: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.festival(.caption, weight: .bold))
+                .foregroundStyle(FestivalDesign.coralText)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
                     .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.navy)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
-                Button("설정 열기") {
-                    openLocationSettings()
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Button(primaryTitle, action: primaryAction)
+                        .font(.festival(.caption, weight: .bold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(FestivalDesign.tealText)
+                    Button("지역 선택") { presentingFestivalFilter = true }
+                        .font(.festival(.caption, weight: .bold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(FestivalDesign.secondaryText)
                 }
-                .font(.festival(.caption, weight: .bold))
-                .buttonStyle(.plain)
-                .foregroundStyle(FestivalDesign.tealText)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(FestivalDesign.cream.opacity(0.7))
-            .clipShape(FestivalDesign.controlShape)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(FestivalDesign.cream.opacity(0.7))
+        .clipShape(FestivalDesign.controlShape)
+        .accessibilityIdentifier(identifier)
     }
 
     /// 검색 바는 자리만 지키고, 실제 입력은 같은 위치에서 열리는 검색 화면이 받는다.

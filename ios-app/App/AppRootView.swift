@@ -192,8 +192,11 @@ struct AppRootView: View {
                 // 서버 푸시는 id만 싣는다. 캐시에 없으면 상세를 받아 와서 연다.
                 openTab(.discover).path.removeAll()
                 Task { @MainActor in
-                    if let festival = try? await apiClient.festival(id: id) {
-                        openDiscover(festival)
+                    do {
+                        openDiscover(try await apiClient.festival(id: id))
+                    } catch {
+                        // 알림을 눌렀는데 아무 일도 안 일어나는 경우다. 최소한 흔적은 남긴다.
+                        AppLogger.navigation.error("푸시 축제 상세 열기 실패: \(error.localizedDescription, privacy: .public)")
                     }
                 }
             }
@@ -203,8 +206,10 @@ struct AppRootView: View {
             DeepLinkRouter.shared.pendingLocalEventId = nil
             openTab(.discover).path.removeAll()
             Task { @MainActor in
-                if let event = try? await apiClient.localEvent(id: id) {
-                    openDiscover(event)
+                do {
+                    openDiscover(try await apiClient.localEvent(id: id))
+                } catch {
+                    AppLogger.navigation.error("푸시 이벤트 상세 열기 실패: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

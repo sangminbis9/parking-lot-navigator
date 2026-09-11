@@ -15,8 +15,9 @@ final class PerformanceViewModel: ObservableObject {
     }
 
     func load(coordinate: (lat: Double, lng: Double)?) async {
-        let lat = coordinate?.lat ?? 37.5665
-        let lng = coordinate?.lng ?? 126.9780
+        let fallback = FallbackLocation.resolve()
+        let lat = coordinate?.lat ?? fallback.lat
+        let lng = coordinate?.lng ?? fallback.lng
         isLoading = true
         errorMessage = nil
         do {
@@ -30,7 +31,7 @@ final class PerformanceViewModel: ObservableObject {
             let eventItems = result.events.map { PerformanceItem.event($0) }
             performances = (festivalItems + eventItems).sorted { $0.startDate < $1.startDate }
         } catch {
-            errorMessage = "공연 정보를 불러오지 못했습니다."
+            errorMessage = NetworkErrorMessage.text(for: error, subject: "공연 정보")
         }
         isLoading = false
     }

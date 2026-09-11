@@ -15,15 +15,16 @@ final class StoreEventViewModel: ObservableObject {
     }
 
     func load(coordinate: (lat: Double, lng: Double)?) async {
-        let lat = coordinate?.lat ?? 37.5665
-        let lng = coordinate?.lng ?? 126.9780
+        let fallback = FallbackLocation.resolve()
+        let lat = coordinate?.lat ?? fallback.lat
+        let lng = coordinate?.lng ?? fallback.lng
         isLoading = true
         errorMessage = nil
         do {
             let loaded = try await apiClient.nearbyEvents(lat: lat, lng: lng, radiusMeters: radiusMeters)
             events = loaded.sorted { $0.startDate < $1.startDate }
         } catch {
-            errorMessage = "가게 이벤트를 불러오지 못했습니다."
+            errorMessage = NetworkErrorMessage.text(for: error, subject: "가게 이벤트")
         }
         isLoading = false
     }

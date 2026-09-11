@@ -1,6 +1,11 @@
 # Worker 계정 한도
 
-마지막 확인: 2026-09-04 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
+마지막 확인: 2026-09-11 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
+
+2026-09-11 재검증 범위: cron 슬롯 사용량·Queue operation 예산·subrequest 상한을 현재
+`src/jobs.ts` / `src/index.ts` / `wrangler.toml` 코드 기준으로 다시 대조했고 아래 표·절의
+숫자가 그대로 맞는 것을 확인했다. **D1 일일 행 쓰기만 아직 `실측 필요` 상태다** — 이유와
+절차는 "D1 행 쓰기 24시간 실측 절차" 참고.
 
 이 문서는 코드 설계를 직접 규정하는 플랫폼 한도를 한곳에 모은다. 배치 크기, cron
 배치, 쿼리 모양이 전부 여기서 나왔다. **한도를 올리기 전에 이 표를 먼저 본다.**
@@ -11,7 +16,7 @@
 | invocation당 리소스 한도 (`exceededCpu` / `exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-04 실측: scheduled invocation이 243ms를 쓰고 `ok`) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않고, 진행 중이던 D1 쓰기는 손실된다. **`wrangler tail --format json`의 `outcome` 필드에 `exceededCpu`로 찍힌다**(실측 2026-09-04, wrangler 4.92.0). 2026-08-18에는 tail이 킬 도중에도 `ok`만 찍어서 GraphQL `workersInvocationsAdaptive`로만 보였는데, 지금은 tail로 바로 관측된다 — 진단은 tail을 먼저 본다. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이었다. Queue 분할 배포(2026-09-04) 이후 관측 창에서는 킬이 사라졌다. 아래 "무엇이 리소스 한도로 죽는가" 참고 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 예전에는 다섯을 전부 써서 새 주기를 얹을 자리가 없었다. 지금은 `* * * * *` 하나뿐이고(1/5), 옛 다섯 주기는 `jobs.ts`의 분 가드로 재현한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
-| D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **한도 안에 들어올 것으로 보이나 아직 실측 전이다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배). 같은 날 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)를 연달아 넣어 **약 82,000/일**을 예상한다. 82,000은 **예상치이고 실측이 아니다** — 배포 후 만 하루가 지난 창에서 다시 재야 확정된다. 아래 "D1 행 쓰기 예산" 참고 |
+| D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **`실측 필요` — 깨끗한 24시간 창을 아직 못 쟀다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배)에서 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)로 내려왔다. 가장 최근 측정은 2026-09-01T09:47Z 24시간 창의 **58,513행(한도의 59%)**인데, 그 창은 **앞 5.7시간이 조건부 쓰기 배포(2026-08-31T15:29Z) 전**이라 완전히 깨끗하지 않다. 배포 후 구간만으로 이뤄진 창을 다시 재기 전에는 확정치로 쓰지 않는다. 아래 "D1 행 쓰기 예산" 참고 |
 | D1 prepared statement 바인딩 | 100 | 101번째 바인딩에서 쿼리가 실패한다. | `geocodeBackfill.ts`의 지역 대표 좌표 매칭(18좌표 × 4 + 1 = 73). `pipelineStats.ts`는 같은 조건을 리터럴로 박아 바인딩을 아예 안 쓴다 |
 
 D1 쿼리는 subrequest 한도에 포함되지 않는다. Workers AI(`ai.run`) 호출은 포함된다.
@@ -244,28 +249,68 @@ CPU·subrequest와 달리 D1 행 읽기는 **한 쿼리가 조용히 수백만 �
 더한 값이다. discovery는 하루 안에 다시 들어오는 행 3,101건(2026-08-29 D1 실측)에
 heartbeat 24시간 × 3행 = 9,303행과 실제 변경분을 더한 값이다.
 
-**목표(80,000행/일) 대비:** 예상 82,000행은 목표를 근소하게 넘고 한도 100,000의 82%다.
-남은 최대 항목은 realtime heartbeat 41,568행이고, 더 줄이려면 heartbeat 간격을 늘려야 하는데
-그러면 위 순서 계약(heartbeat < 조회 신선도 45분)이 깨져 살아 있는 주차장이 앱에서 사라진다.
-조회 신선도 자체를 45분 → 60분으로 늘리는 건 사용자에게 보이는 신선도를 깎는 것이라
-숫자를 맞추려고 몰래 할 일이 아니다 — 필요해지면 별도 결정으로 다룬다.
+**2026-09-01T09:47Z 관측(부분적으로 더러운 창): 상위 10개 합계 58,513행(한도의 59%).**
+예상 82,000보다 낮게 나왔다. 내역은 realtime heartbeat UPDATE 29,610행(51%), 좌표 UPDATE
+8,794행, realtime INSERT 7,380행, discovery heartbeat 6,597행 순이다. **이 숫자를 확정치로
+쓰지 않는다** — 창의 앞 5.7시간이 조건부 쓰기 배포(2026-08-31T15:29Z) 전이라 배포 후 구간만
+쌓인 24시간이 아니다. 더 낮게 나올 수도, 버스트가 몰려 더 높게 나올 수도 있다.
+
+**목표(80,000행/일) 대비:** 남은 최대 항목은 realtime heartbeat이고, 더 줄이려면 heartbeat
+간격을 늘려야 하는데 그러면 위 순서 계약(heartbeat < 조회 신선도 45분)이 깨져 살아 있는
+주차장이 앱에서 사라진다. 조회 신선도 자체를 45분 → 60분으로 늘리는 건 사용자에게 보이는
+신선도를 깎는 것이라 숫자를 맞추려고 몰래 할 일이 아니다 — 필요해지면 별도 결정으로 다룬다.
+
+### D1 행 쓰기 24시간 실측 절차
+
+`실측 필요` 상태를 닫으려면 아래를 그대로 한다. **마지막 관련 배포 이후 24시간이 완전히
+지난 뒤**에 재야 한다(현재 기준선: 조건부 쓰기 2026-08-31T15:29Z, realtime shard 분할
+2026-09-04). 그 전에 잰 창은 배포 전 구간이 섞여 하루치로 환산할 수 없다.
+
+```bash
+npx wrangler d1 insights parking-lot-navigator --sort-by writes --limit 10
+npx wrangler d1 insights parking-lot-navigator --sort-by reads  --limit 10
+```
+
+`--timePeriod` 기본값이 1일(24시간)이다. 출력의 `rowsWritten` 열을 전부 더한 값이 그 창의
+상위 10개 합계이고, 100,000과 비교한다. 읽기도 같은 방식으로 5,000,000과 비교한다.
+
+**2026-09-11 현재 이 명령이 실패한다.**
+
+```
+Authentication error [code: 10000]
+```
+
+wrangler가 OAuth 로그인 토큰으로 `/accounts/<id>/d1/database/<id>` insights 경로를 부를 때
+나온다. 그 토큰의 스코프에는 `d1:write`·`workers:write`는 있어도 analytics 읽기가 없다.
+insights는 계정 analytics GraphQL을 타므로 **Account Analytics Read 권한이 있는 API 토큰**이
+필요하다. Cloudflare 대시보드에서 그 권한의 토큰을 만든 뒤:
+
+```bash
+CLOUDFLARE_API_TOKEN=<token> npx wrangler d1 insights parking-lot-navigator --sort-by writes --limit 10
+```
+
+토큰 값은 로그·문서·커밋에 남기지 않는다. 대시보드의 D1 → 데이터베이스 → Metrics 화면에서도
+같은 24시간 rows written/read를 눈으로 볼 수 있고, 그쪽은 추가 토큰이 필요 없다.
 
 회귀 방지는 테스트에 있다. `worker-backend/tests/fakeD1.ts`가 쓰기 문장 수를 직접 세고,
 `discoveryConditionalWrite.test.ts`(같은 항목 100건 × 10 sync = 1,000이 아니라 100),
 `realtimeConditionalWrite.test.ts`(같은 주차장 500건 × 20 sync = 10,000이 아니라 1,000),
 `taggingFallbackBackoff.test.ts`가 각각 잠근다.
 
-앞으로 늘어날 쪽은 알림 계획이다. `notification_sends`는 인덱스 3개라 계획 행 1건이 4행 쓰기이고,
-계획은 기기 × 행사 조합이라 기기 수에 정비례한다. 2026-08-28 기준 미래 행사 3,712건 /
-서로 다른 시작일 125일(하루 평균 29.7건)이므로 D-30·D-7·D-1을 합치면 기기당 하루 약 90건 =
-360행이다. 기기 100대면 하루 36,000행으로 예산의 3분의 1이 알림만으로 나간다. 지금은
-등록 기기가 적어 위 표에 안 잡히지만, 배포 후 기기 수가 늘면 이 항목이 먼저 커진다.
+앞으로 늘어날 쪽은 알림 계획이다. 옛 `notification_sends`는 인덱스 3개라 계획 행 1건이 4행
+쓰기였고, 계획이 기기 × 행사 조합이라 기기 수에 정비례했다 — 2026-08-28 기준 미래 행사
+3,712건 / 서로 다른 시작일 125일(하루 평균 29.7건)이라 기기당 하루 약 90건 = 360행,
+기기 100대면 36,000행으로 예산의 3분의 1이 알림만으로 나갔다. migration `0029`가 저장 단위를
+`notification_digests`(PK `(device_id, send_day, notification_type)`, **보조 인덱스 없음**)로
+바꿔 계획 행 1건 = 2행이고 기기당 하루 최대 3건(D-30/D-7/D-1)이다 — 기기 100대에 하루 약
+600행이고, 행사가 하루 몇 건이든 계획 쓰기는 그대로다. 이 테이블에 인덱스를 하나라도
+추가하면 그 이득이 바로 깎인다. 지금은 등록 기기가 적어 위 표에 안 잡힌다.
 
 `0027_d1_read_budget_indexes.sql`은 쓰기 쪽에서 `discovery_items` 인덱스를 명시 13개 → 9개로
 줄였다(추가 1, 삭제 5). 적용 확인:
 
 ```bash
-pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote \
+npx wrangler d1 execute parking-lot-navigator --remote \
   --command "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='discovery_items'"
 # 11 = 명시 9 + UNIQUE autoindex 2  (2026-08-28 확인)
 ```

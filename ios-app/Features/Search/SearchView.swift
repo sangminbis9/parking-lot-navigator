@@ -307,9 +307,34 @@ struct SearchView: View {
     }
 
     /// 위치 권한이 없으면 거리순이 실제 거리가 아니게 된다. 그 사실과 해결 경로를 같이 알린다.
+    /// 아직 권한을 묻지 않은 상태에서는 시스템 팝업 대신 이 안내가 먼저 뜬다.
     @ViewBuilder
     private var locationNotice: some View {
-        if locationProvider.authorizationStatus == .denied || locationProvider.authorizationStatus == .restricted {
+        if locationProvider.authorizationStatus == .notDetermined {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "location.circle")
+                    .font(.festival(.caption, weight: .bold))
+                    .foregroundStyle(FestivalDesign.coralText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("내 주변 순으로 볼까요?")
+                        .font(.festival(.caption, weight: .bold))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text("지금은 진행중 우선으로 보여 주고 있어요. 위치를 켜지 않아도 필터에서 지역을 고를 수 있어요.")
+                        .font(.festival(.caption2))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button("위치 켜기") { locationProvider.request() }
+                    .font(.festival(.caption, weight: .bold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(FestivalDesign.tealText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(FestivalDesign.cream.opacity(0.7))
+            .clipShape(FestivalDesign.controlShape)
+        } else if locationProvider.authorizationStatus == .denied || locationProvider.authorizationStatus == .restricted {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "location.slash")
                     .font(.festival(.caption, weight: .bold))
@@ -517,7 +542,7 @@ struct SearchView: View {
             guard !Task.isCancelled else { return }
             // 뒤에서 갱신하다 실패한 경우에는 이미 보여 주던 목록을 에러 카드로 덮지 않는다.
             if festivals.isEmpty && events.isEmpty {
-                errorMessage = "축제와 이벤트 정보를 불러오지 못했습니다."
+                errorMessage = NetworkErrorMessage.text(for: error, subject: "축제와 이벤트 정보")
             }
         }
         guard !Task.isCancelled else { return }
@@ -1295,10 +1320,18 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         let status = manager.authorizationStatus
         authorizationStatus = status
+        // 화면이 뜬 것만으로는 권한 팝업을 띄우지 않는다. 이미 허용된 경우에만 위치를 받는다.
         if status == .authorizedWhenInUse || status == .authorizedAlways {
             manager.requestLocation()
-        } else if status == .notDetermined {
+        }
+    }
+
+    /// 사용자가 "내 주변 순으로 보기"를 눌렀을 때만 부른다. 권한 팝업이 여기서만 뜬다.
+    func request() {
+        if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
+        } else {
+            manager.requestLocation()
         }
     }
 
@@ -1315,7 +1348,9 @@ private final class UserLocationProvider: NSObject, ObservableObject, CLLocation
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        AppLogger.app.error("검색 화면 위치 수신 실패: \(error.localizedDescription, privacy: .public)")
+    }
 }
 
 struct DestinationRow: View {
