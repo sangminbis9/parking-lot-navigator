@@ -1,6 +1,6 @@
 # App Store 제출 체크리스트
 
-마지막 재검토: 2026-09-11 (`master` @ `99f2fc2` + 미커밋 출시 준비 작업분, iOS 빌드번호 296).
+마지막 재검토: 2026-09-11 (`master` @ `67ac768`, iOS 빌드번호 296 — 컴파일·TestFlight 검증 완료).
 판정은 전부 실제 코드·설정·production 응답에서 확인한 것이고, 저장소 밖 사실(스토어 입력, 계약, 실기기 동작)은 "사용자 확인 필요"로 남겼다.
 항목별 근거와 우선순위는 `docs/release/deployment-readiness-report.md` 참고.
 
@@ -15,20 +15,21 @@
 - [x] **개인정보 처리방침 게시** — `GET /legal/privacy` HTTP 200 (2026-09-11 실측). `/legal/terms`, `/legal/refund-policy`도 200.
 - [x] **Privacy Manifest** — `Resources/PrivacyInfo.xcprivacy` 존재. `99f2fc2`로 검색 기록 서버 수집이 제거돼 App Privacy 답변과 코드가 일치한다. 외부 크래시 SDK가 없으므로 "크래시 데이터 미수집" 선언도 정합.
 - [x] **암호화 수출 규정** — `ITSAppUsesNonExemptEncryption`(`AppInfo.plist:26`) 선언됨.
+- [x] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있어 저장소로는 못 본다. **TestFlight 업로드가 성공했다는 것은 Release xcconfig의 Bundle ID가 ASC에 등록된 App ID와 일치하고 프로비저닝도 맞는다는 뜻**이므로 이 항목은 닫힌다.
+- [x] **iOS 빌드 / TestFlight** — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다.
+- [x] **App Store Connect App Privacy 입력** — 질문지 + Privacy Policy URL 입력 완료 (2026-09-11, 사용자 확인). 답변 근거는 readiness report 1장에 248줄로 남아 있다.
 
 ## 미완료 (제출 전 필요)
 
-- [ ] **앱 스크린샷과 설명 준비** — 산출물이 아직 없다. **지금 제출을 막는 유일한 항목.** 6.7"/6.5" 5장 이상, 첫 2장에 지도와 행사 상세가 들어가야 한다.
-- [ ] **App Store Connect 입력** — App Privacy 질문지 제출, Privacy Policy URL 입력. 답변 초안은 readiness report 1장에 있다.
+- [ ] **앱 스크린샷과 설명 준비** — 산출물이 아직 없다. **지금 제출을 막는 유일한 항목.** 6.7"/6.5" 5장 이상, 첫 2장에 지도와 행사 상세가 들어가야 한다. TestFlight 빌드가 실기기에서 도는 상태라 그 화면을 그대로 캡처하면 된다.
 - [ ] **외부 데이터 출처와 실시간 정보 한계 고지** — **앱 안 어디에도 출처 표기가 없다**(`rg -n "data.go.kr|KOPIS|한국관광공사" ios-app -g '*.swift'` → 0건). 이전 판의 "Settings에 표기 존재" 서술은 사실과 달랐다. 최소한 Settings에 한 줄이 필요하다.
 - [ ] **환불·취소 정책 앱 내 링크** — 페이지는 배포됐지만 Settings는 개인정보 처리방침·이용약관만 링크한다(`SettingsView.swift:193-194`). 결제를 켜는 시점에는 필수.
 
-## 사용자 확인 필요 (코드로 판정 불가)
+## 사용자 확인 필요 (저장소로 판정 불가)
 
-- [ ] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있다. ASC에 등록된 App ID와 Release xcconfig 값이 같은지 직접 확인할 것.
 - [ ] **Kakao Mobility SDK 상용 사용 권한 확인** — `KakaoSDKNavi`(kakao-ios-sdk 2.27.2)를 길안내에 쓴다. SDK 연동 여부가 아니라 상용 서비스 이용 조건·표기 의무가 충족되는지가 남은 질문이다.
 - [ ] **심사용 데모 모드 또는 테스트 계정 준비** — 로그인이 없는 앱이라 계정은 불필요해 보이지만, 위치 권한 없이도 전국 행사를 볼 수 있다는 점을 심사 메모에 적어 두는 편이 안전하다.
-- [ ] **실기기 확인** — VoiceOver, 다크모드, 위치 권한 거부 흐름, 서버 푸시 수신(production APNs).
+- [ ] **실기기 세부 확인** — VoiceOver, 다크모드, 위치 권한 거부 흐름, 서버 푸시 수신(production APNs). TestFlight 실행 확인은 앱이 뜨는 데까지이고 이 넷은 별개다. 특히 서버 푸시는 TestFlight 빌드가 Release 설정이라 `aps-environment = production`으로 도는데, 이 경로는 아직 실측 기록이 없다.
 - [ ] **공유 확장 설명 작성** — `ParkingShareExtension`이 스토어 설명에 언급될 필요가 있는지 판단.
 
 ## 이번 출시에서 의도적으로 하지 않는 것

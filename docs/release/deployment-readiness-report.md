@@ -1,8 +1,8 @@
 # 이벤트다 배포 준비 점검 보고서
 
-- 작성일: 2026-05-25 (최초) · 2026-05-31 · 2026-07-25 · 2026-09-11 readiness-review 재검사 갱신
+- 작성일: 2026-05-25 (최초) · 2026-05-31 · 2026-07-25 · 2026-09-11 readiness-review 재검사 갱신 · 2026-09-11 TestFlight 검증 반영
 - 작성자: 운영 분석 (Claude)
-- 대상 브랜치/커밋: `master` @ 99f2fc2 + 미커밋 출시 준비 작업분 (iOS 빌드번호 296)
+- 대상 브랜치/커밋: `master` @ 67ac768 (iOS 빌드번호 296, TestFlight 업로드·실행 확인 완료)
 - 대상 범위: iOS 앱 (`ios-app/`), Worker 백엔드 (`worker-backend/`), 머천트/결제 흐름, 운영 문서, 데이터 파이프라인
 - 보고서 목적: App Store 출시 직전에 발견되는 P0 차단 요소와, 출시 이후 30~90일 안에 보강해야 할 운영·상업·기술 항목을 분야별로 정리하여 의사결정 자료로 사용
 
@@ -10,21 +10,22 @@
 
 ## 0. Executive Summary
 
-이벤트다는 데이터 수집 파이프라인(공공 API 활용률 100% 도달), Worker 기반 운영 API, 머천트 결제 흐름(Toss 위젯), iOS SwiftUI 클라이언트가 모두 기본 동작하는 상태입니다. 2026-09-11 재검사 기준으로 **기술적 출시 차단 요소는 대부분 해소**되었고, 남은 🔴는 코드가 아니라 **스토어 산출물(스크린샷)과 사업자 절차(Toss 라이브 키·사업자등록)** 쪽에 몰려 있습니다.
+이벤트다는 데이터 수집 파이프라인(공공 API 활용률 100% 도달), Worker 기반 운영 API, 머천트 결제 흐름(Toss 위젯), iOS SwiftUI 클라이언트가 모두 기본 동작하는 상태입니다. 2026-09-11 재검사 기준으로 **기술적 출시 차단 요소는 해소**되었고, build 296이 실제로 컴파일되어 **TestFlight 업로드·실행까지 확인**되었습니다. **지금 App Store 제출을 막는 것은 스크린샷 하나뿐입니다.** Toss 라이브 키·사업자등록은 결제를 켜는 시점의 차단 요소이고, 결제를 끈 채 제출하면 이번 심사와 무관합니다.
 
 2026-09-11 재검사에서 확인된 상태(모두 코드/설정/실행 근거 기준):
 
 1. ✅ 해결 — `PrivacyInfo.xcprivacy` 존재 + 1st-party 정합성 유지. App Privacy 답변 문서는 248줄로 확장되어 검색 기록 서버 수집 제거(`99f2fc2`)까지 반영됨
-2. ✅ 해결 — 법무 페이지 3종이 production에 배포되어 응답함(`/legal/privacy`·`/legal/terms`·`/legal/refund-policy` 모두 HTTP 200, 2026-09-11 확인). 남은 일은 ASC에 URL 입력(사용자)과 사업자등록 후 보호책임자란 갱신
+2. ✅ 해결 — 법무 페이지 3종이 production에 배포되어 응답함(`/legal/privacy`·`/legal/terms`·`/legal/refund-policy` 모두 HTTP 200, 2026-09-11 확인). **ASC App Privacy 입력도 완료**(2026-09-11, 사용자 확인). 남은 일은 사업자등록 후 보호책임자란 갱신뿐
 3. 🟡 하향 조정 — iOS 외부 Crash SDK(Sentry/Crashlytics)는 **이번 출시 범위에서 도입하지 않기로 결정**(사용자 지시). 대신 조용히 삼켜지던 실패 경로 4곳에 `AppLogger` 로깅을 넣고 `try!`·위험한 force unwrap이 없음을 확인했다. 출시 후 조기 도입 항목으로 남긴다
 4. ✅ 해결 — Worker Cron 실패 알림(`notifyOpsFailure`) 코드가 production에 배포됨. Workers 관측(`observability.enabled = true`, `head_sampling_rate = 1`)도 켜져 있다. `OPS_ALERT_WEBHOOK_URL` secret 설정 여부는 코드로 확인 불가 — 사용자 확인 필요
 5. 🔴 미해결 — App Store 스크린샷 5장 없음(`docs/release/`에 이미지 산출물 없음). 제출 자체를 막는 유일한 산출물 항목
+6. ✅ 해결 — build 296 컴파일 성공, TestFlight 업로드·실행 확인(2026-09-11, 사용자). 이전 회차에서 "WSL2 환경이라 iOS 빌드 검증 불가"로 열려 있던 항목이 닫혔다. 다만 TestFlight 실행 확인은 앱이 뜬다는 것이지 접근성·다크모드·권한 거부 흐름을 개별 검증했다는 뜻은 아니다
 
 이번 재검사에서 새로 🟢로 넘어간 것들: 서버 APNs 푸시(`notification_digests` 기반) 구현·운영, 다크모드 구현(`AppRootView.swift:119`), 익명 사용 집계(`analytics_daily`, migration `0030`), Settings 문의하기 채널, CI 게이트(`deploy-worker.yml`이 typecheck → worker test → backend test → migration → deploy → smoke 순으로 체인), Worker/D1 무료 한도 대응(조건부 쓰기·인덱스 정리).
 
 이번 작업으로 새로 고친 UX: 첫 실행 즉시 뜨던 위치 권한 팝업을 사용자 액션 뒤로 미뤘고, 위치가 없을 때 서울시청으로 고정되던 기본 좌표를 `FallbackLocation`(마지막 위치 → 저장 지역 → 서울)으로 바꿨으며, 네트워크 실패를 연결 실패·응답 지연·서버 오류·데이터 없음으로 구분해 재시도 버튼과 함께 보여준다.
 
-남은 실질 차단 요소는 **스크린샷(🔴)**, **Toss 라이브 키/사업자등록(🔴, 수익화 시점)**, 그리고 데이터 품질 쪽의 **로컬 매장 이벤트 밀도 부족(🟡)**입니다. D1 일일 행 쓰기 24시간 실측은 아직 `실측 필요` 상태입니다(`docs/operations/worker-limits.md`).
+남은 실질 차단 요소는 **스크린샷(🔴)** 하나이고, 그 밖에 **Toss 라이브 키/사업자등록(🔴, 수익화 시점 한정)**, 데이터 품질 쪽의 **로컬 매장 이벤트 밀도 부족(🟡)**, **앱 내 데이터 출처 표기 부재(🟡)**가 남아 있습니다. D1 일일 행 쓰기 24시간 실측은 아직 `실측 필요` 상태입니다(`docs/operations/worker-limits.md`).
 
 ---
 
@@ -46,6 +47,7 @@
 
 ## 변경 로그
 
+- 2026-09-11 (@67ac768, TestFlight 검증 반영): 해결 2건(iOS build 296 컴파일 + TestFlight 업로드·실행 확인 — 이전 회차의 "WSL2라 빌드 검증 불가" 항목이 닫힘, ASC App Privacy 입력 완료). P0 표에서 2·3번 행이 닫히고 실제 차단 요소가 스크린샷 1건으로 줄었다. 출처: 사용자 보고(저장소로는 확인 불가한 항목).
 - 2026-09-11 (@99f2fc2 + 미커밋분): 해결 9건(법무 페이지 production 배포 확인, 서버 APNs 푸시, 다크모드, 익명 분석, 사용자 피드백 채널, CI 게이트, Workers 관측 활성화, 위치 권한 요청 타이밍, 네트워크 오류 구분 UX), 상태변경 6건(iOS Crash SDK 🔴→🟡 사용자 결정으로 이번 출시 범위 제외, CORS admin 경로 제외로 부분 개선, App Privacy 답변 122→248줄, iOS 테스트 1→3파일, accessibilityLabel 4/67→12/100 파일, 빌드번호 189→296), 정정 3건(데이터 출처 표기가 실제로는 앱에 없음 — 기존 "표기 존재" 서술이 사실과 달랐음, backend pre-existing tsc 에러가 2건이 아니라 연쇄 에러 포함 다수, CI가 "tsc만 통과하면 배포"라는 서술이 더 이상 사실 아님), 신규 5건(행사 콘텐츠 밀도 진단 결과, 로컬 매장 이벤트 밀도 부족, 위치 권한 거부 기본 상태, 레거시 명칭 rename 부채, 로컬 저장 기능 클라우드 동기화 보류 결정). 검증: worker-backend typecheck 통과, worker-backend 테스트 310개 통과, backend 테스트 73개 통과.
 - 2026-07-25 (@5a73b9f): 해결 2건(축제 cross-provider dedup을 title+haversine 거리+날짜range 겹침 기준으로 정교화, 머천트 결제 폼 필수 약관동의 체크박스), 상태 갱신 2건(로컬 발견 알림 시스템이 카테고리/지역/반경 커스터마이즈까지 구현됨을 반영 — 서버 APNs는 여전히 백로그, 즐겨찾기 기능 존재는 확인했으나 iCloud 동기화는 없음 재확인), 재확인 후 변화 없음(iOS 크래시 트래킹·CORS 미제한·rate limit 없음·Kakao Mobility SDK 미연동·온보딩 없음·다크모드 미대응·접근성 라벨 4/67 파일·D1 자동백업 없음·backend pre-existing tsc 에러 2건 그대로·Toss 테스트 키·사업자등록 대기). iOS 빌드번호 161→189, backend 테스트 43→44개 통과, worker typecheck 통과 재확인.
 - 2026-05-31 (@b76c8a7): 해결 3건(PrivacyInfo.xcprivacy 존재, 위치권한 문구 갱신, legal 페이지 콘텐츠 구현), 부분해결 3건(개인정보처리방침·약관·환불 라우트 코드 완료=배포/ASC 입력만 남음, 데이터 출처 표기 일부), 상태변경 1건(iOS 빌드번호 134→160), 신규 1건(PrivacyInfo가 CrashData 수집을 선언했으나 크래시 SDK 미연동 — 정합성 필요). worker typecheck 통과 확인.
@@ -113,7 +115,7 @@
 | 위젯 / Live Activity              | Medium `UpcomingFestivalsWidget` 출시 (2026-05-26) | 🟢 v1    | 다가오는 축제 3개 카드. Small/Large/Lock Screen/StandBy 위젯은 v1.1 후보                             |
 | 다국어                            | 한국어 only                                        | 🟢 보류  | KR 한정이면 OK. 영어 추가 시 외국인 관광객 시장 확장 가능                                            |
 | 다크모드                          | 구현됨(2026-09-11 확인) — `AppRootView.swift:119`가 `.preferredColorScheme(themeStore.isDarkMode ? .dark : .light)`, 토글은 `SettingsView.swift:330`, 팔레트는 `FestivalDesign.swift` | 🟢 OK    | **"시스템 설정 따름" 옵션이 없다** — 수동 토글 2택뿐이라 OS 다크모드를 켠 사용자도 앱은 라이트로 시작한다. 3택(시스템/라이트/다크)으로 넓히는 것을 권장(출시 후 가능) |
-| 접근성 (Dynamic Type / VoiceOver) | 약함 — `accessibilityLabel`이 Swift 100개 파일 중 12개에만 있음(2026-09-11 실측, 이전 4/67) | 🟡 P1    | 지도 핀·필터 칩·카드에 label 보강, Dynamic Type Large까지 레이아웃 검증. 실기기 VoiceOver 통과는 코드로 확인 불가 — **사용자 확인 필요** |
+| 접근성 (Dynamic Type / VoiceOver) | 약함 — `accessibilityLabel`이 Swift 100개 파일 중 12개에만 있음(2026-09-11 실측, 이전 4/67) | 🟡 P1    | 지도 핀·필터 칩·카드에 label 보강, Dynamic Type Large까지 레이아웃 검증. TestFlight 빌드는 실기기에서 실행 확인됐지만 VoiceOver 통과 여부는 별개다 — **사용자 확인 필요** |
 | 공유 확장 → 목적지 변환           | 구현됨                                             | 🟢 OK    | 카카오맵/네이버지도/카카오톡 공유 텍스트 케이스별 테스트                                             |
 | AgentOffice (LLM head review) UI  | 구현됨                                             | 🟠 P2    | 사용자에게 "AI가 자동 검수합니다" 고지(생성형 AI 사용 표기) — Apple 4.0 가이드라인                   |
 
@@ -169,6 +171,7 @@
 
 | 항목                          | 현재 상태                                                                  | 우선순위 | 권장 조치                                                                          |
 | ----------------------------- | -------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| iOS 빌드 검증                 | **통과** — build 296이 컴파일되고 TestFlight 업로드·실행까지 확인됨(2026-09-11, 사용자 보고). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다 | 🟢 OK    | 빌드 자체는 닫혔다. 남은 것은 접근성·다크모드·권한 거부 흐름의 개별 실기기 확인 |
 | iOS 단위 테스트               | 3개 파일 — `ParkingLotNavigatorTests.swift`, `NotificationInboxTests.swift`, `NotificationRegionKeyTests.swift`(2026-09-11 실측, 이전 "1개 추정") | 🟡 P1    | 여전히 얇다. `FallbackLocation`·`NetworkErrorMessage`·`DeepLinkRouter`·APIClient 디코딩에 테스트 추가 권장. 시뮬레이터 빌드 워크플로(`ios-simulator-build.yml`)는 이미 있다 |
 | 테스트 통과 현황              | worker-backend 36파일 310개 통과, backend 23파일 73개 통과, worker-backend typecheck 통과 (2026-09-11 실행) | 🟢 OK    | 유지                                                                               |
 | backend pre-existing tsc 에러 | **2건이 아니라 그 이상**(2026-09-11 정정). 뿌리는 2건이다 — `tests/seoulProviderPagination.test.ts(122,3)` TS2739(`KOPIS_BASE_URL`·`KCISA_BASE_URL` 누락), `tests/workerLocalEvents.test.ts(2,57)` TS6059(rootDir 밖 import). 그런데 후자가 `worker-backend/src/localEvents.ts`를 backend 컴파일 범위로 끌어들여 TS6059·TS2552(`D1Database`)·TS2304(`D1Result`)·TS7006 등 연쇄 에러를 만든다 | 🟡 P1    | `workerLocalEvents.test.ts`의 cross-package import를 걷어내면 연쇄 에러가 통째로 사라진다. **worker-backend 쪽 typecheck는 깨끗하다**(exit 0) — 배포 경로에는 영향이 없다 |
@@ -200,16 +203,17 @@
 
 ## 10. 즉시 차단 P0 정리
 
-> 2026-09-11 재검사 기준. 이전 판의 5개 중 3개가 닫혔고 1개는 사용자 결정으로 우선순위가 내려갔다. **지금 제출을 실제로 막는 것은 App Store 스크린샷 하나뿐이다.** Toss 라이브 키·사업자등록은 결제를 켜는 시점의 차단 요소이고, 결제 없이 출시하면 이번 제출을 막지 않는다.
+> 2026-09-11 기준(TestFlight 검증 반영). 이전 판의 5개 중 4개가 닫혔고 1개는 사용자 결정으로 우선순위가 내려갔다. **지금 제출을 실제로 막는 것은 App Store 스크린샷 하나뿐이다.** Toss 라이브 키·사업자등록은 결제를 켜는 시점의 차단 요소이고, 결제를 끈 채 출시하면 이번 제출을 막지 않는다.
 
 | #   | 항목                                         | 현재 상태                   | 남은 산출물                                                |
 | --- | -------------------------------------------- | --------------------------- | --------------------------------------------------------- |
 | 1 | `PrivacyInfo.xcprivacy` | ✅ 해결 — `ios-app/Resources/PrivacyInfo.xcprivacy` 존재, 1st-party 정합성 정리 완료. `99f2fc2`로 검색 기록 서버 수집이 사라져 App Privacy 답변과 코드가 일치한다 | 없음 |
-| 2 | 개인정보처리방침 호스팅 URL | ✅ 배포 완료 — `GET /legal/privacy` HTTP 200 (2026-09-11 실측) | ASC "App Privacy → Privacy Policy URL"에 입력(**사용자**) |
+| 2 | 개인정보처리방침 호스팅 URL + ASC 입력 | ✅ 완료 — `GET /legal/privacy` HTTP 200 (2026-09-11 실측), ASC App Privacy 입력 완료 (2026-09-11, 사용자 확인) | 없음 |
 | 3 | 이용약관 + 환불·취소 정책 | ✅ 배포 완료 — `/legal/terms`, `/legal/refund-policy` 모두 HTTP 200 | 앱 Settings에 **환불·취소 정책 링크가 없다**(개인정보 처리방침·이용약관만 있음). 결제를 켜는 시점에는 필수 |
 | 4 | iOS 크래시 트래킹 | 🟡 P1 — 이번 출시 범위에서 도입하지 않기로 결정(2026-09-11, 사용자 지시). 외부 SDK가 없으므로 PrivacyInfo의 "크래시 데이터 미수집" 선언과 정합 | 출시 후 Sentry/Crashlytics 검토. 그동안은 `AppLogger` + Workers Logs가 유일한 관측 수단 |
-| 5 | App Store 스크린샷 | 🔴 **P0 — 유일한 실제 차단 요소** | 6.7"/6.5" 5장 이상. 지도 + 행사 상세 + 캘린더가 첫 화면에 들어가야 한다(사용자/디자인) |
+| 5 | App Store 스크린샷 | 🔴 **P0 — 유일하게 남은 차단 요소** | 6.7"/6.5" 5장 이상. 지도 + 행사 상세 + 캘린더가 첫 화면에 들어가야 한다(사용자/디자인). TestFlight 빌드가 실기기에서 도는 상태이므로 그 화면을 그대로 캡처하면 된다 |
 | 6 | Toss 라이브 키 + 사업자등록 | 🔴 P0 (**수익화 시점 한정**) — `wrangler.toml:60`이 아직 `test_gck_docs_...` 문서용 테스트 키 | 결제 기능을 켠 채 제출하면 심사에서 막힌다. 결제 없이 출시하면 이번 제출과 무관 |
+| 7 | iOS 빌드 / TestFlight | ✅ 완료 — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자) | 없음 |
 
 ---
 
@@ -217,11 +221,16 @@
 
 제출 직전 (남은 것)
 
-- App Store 스크린샷 5장 + 소개 문구 확정 — **유일한 P0**
-- ASC에 개인정보처리방침 URL 입력, App Privacy 질문지 제출
+- App Store 스크린샷 5장 + 소개 문구 확정 — **유일한 P0**. TestFlight 빌드가 실기기에서 도는 상태라 그 화면을 캡처하면 된다
 - `OPS_ALERT_WEBHOOK_URL` secret이 실제로 설정돼 있는지 확인 (`npx wrangler secret list`)
-- 실기기 VoiceOver / 다크모드 / 위치 권한 거부 흐름 손으로 한 번
+- 실기기 VoiceOver / 다크모드 / 위치 권한 거부 흐름 손으로 한 번 — TestFlight 실행 확인은 앱이 뜬다는 것까지이고 이 셋은 별개다
 - Kakao Mobility SDK 상용 사용 조건, 심사용 데모 계정 필요 여부 확인
+- 앱 내 데이터 출처 표기 한 줄 추가 — 공공데이터 기반 앱에서 리젝 사유가 될 수 있다
+
+완료됨 (2026-09-11)
+
+- iOS build 296 컴파일 + TestFlight 업로드·실행 확인
+- ASC App Privacy 입력
 
 출시 직후 30일
 
