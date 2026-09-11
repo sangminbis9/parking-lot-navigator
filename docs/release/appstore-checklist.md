@@ -18,10 +18,11 @@
 - [x] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있어 저장소로는 못 본다. **TestFlight 업로드가 성공했다는 것은 Release xcconfig의 Bundle ID가 ASC에 등록된 App ID와 일치하고 프로비저닝도 맞는다는 뜻**이므로 이 항목은 닫힌다.
 - [x] **iOS 빌드 / TestFlight** — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다.
 - [x] **App Store Connect App Privacy 입력** — 질문지 + Privacy Policy URL 입력 완료 (2026-09-11, 사용자 확인). 답변 근거는 readiness report 1장에 248줄로 남아 있다.
+- [x] **앱 스크린샷 확보** — `docs/release/screenshots/`에 6.9" 규격 5장(1320×2868, 8-bit RGB, sRGB, 알파 없음). `.github/workflows/ios-screenshots.yml`을 수동 실행해 macOS 러너 시뮬레이터에서 뽑았다(run `34614345570`, master `8054ae5`, 2026-09-11). 현재 필수 규격은 **6.9" 1장 이상**이고 6.5"는 6.9"를 내지 않을 때만 필요하다 — 이전 판의 `6.7"/6.5" 각 5장` 서술은 현재 Apple 요구사항과 다르다. 다만 `02-discover`·`03-detail`에 KOPIS 원본 데이터 문제(10년 넘는 기간 표기, 빈 주소)가 그대로 보인다 — 자세한 내용은 `docs/release/screenshots/README.md`.
 
 ## 미완료 (제출 전 필요)
 
-- [ ] **앱 스크린샷과 설명 준비** — 산출물이 아직 없다. **지금 제출을 막는 유일한 항목.** 필수 규격은 **6.9" 1장 이상**(1320×2868 / 1290×2796 / 1260×2736, sRGB PNG·JPEG, 투명도 불가)이고 6.5"는 6.9"를 내지 않을 때만 필요하다 — 이전 판의 `6.7"/6.5" 각 5장` 서술은 현재 Apple 요구사항과 다르다(2026-09-11 확인). 첫 2장에 지도와 행사 상세를 둔다. 캡처는 `.github/workflows/ios-screenshots.yml`을 수동 실행해 macOS 러너에서 뽑는다(로컬 Mac 불필요).
+- [ ] **앱 소개 문구(이름·부제·설명·키워드) 작성** — 스크린샷은 확보됐고 문구는 아직 없다. **지금 제출을 막는 유일한 항목.**
 - [ ] **외부 데이터 출처와 실시간 정보 한계 고지** — **앱 안 어디에도 출처 표기가 없다**(`rg -n "data.go.kr|KOPIS|한국관광공사" ios-app -g '*.swift'` → 0건). 이전 판의 "Settings에 표기 존재" 서술은 사실과 달랐다. 최소한 Settings에 한 줄이 필요하다.
 - [ ] **환불·취소 정책 앱 내 링크** — 페이지는 배포됐지만 Settings는 개인정보 처리방침·이용약관만 링크한다(`SettingsView.swift:193-194`). 결제를 켜는 시점에는 필수.
 
