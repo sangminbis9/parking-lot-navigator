@@ -2,15 +2,17 @@
 
 마지막 업데이트: 2026-09-13
 
-## 2026-09-13 행사 스냅샷 전환 (검증 브랜치 푸시 / 운영 미배포)
+## 2026-09-13 행사 스냅샷 전환 (Worker 배포 / 첫 발행은 D1 한도로 차단)
 
 - D1 읽기 한도 장애 대응: 일일 R2 스냅샷 생성, 공개 파일 API, 앱 디스크 저장·로컬 공간 조회를 구현했다. 주차 실시간 경로는 유지한다.
 - Worker 38개 파일 / 328개 테스트 및 TypeScript 검사 통과. Codemagic에서 iOS 컴파일·단위 테스트 92개 통과. 핵심 UI 테스트 4개 통과, 실제 행사 목록이 필요한 상세/즐겨찾기 1개 skip. 실기기·운영 데이터 검증은 남았다.
 - Wrangler dry-run 번들 검사 통과. 오래된 무시된 JS 생성물 2개를 `tmp/stale-source-js-backup-20260913/`에 보존하고, TS를 가리는 생성물이 있으면 배포를 차단하는 검사 추가.
-- 실제 R2 버킷 생성, Worker 배포, 첫 스냅샷 발행, CDN 도메인 설정 및 TestFlight 배포는 미수행이다. 아래 기존 기록을 이번 변경의 배포 상태로 해석하지 않는다.
+- R2 `discovery-snapshots` 생성(APAC, Standard, 비공개) 및 Worker `7e4f6977-9822-4c2d-85ea-1534ff072c53` 배포 완료. 사용자 승인으로 기존 Worker 파일 전달 주소를 우선 사용한다. R2 커스텀 도메인은 설정하지 않았다.
 - 상세 동작/위험/배포 순서: [행사 스냅샷 운영 문서](architecture/discovery-snapshots.md).
-- 배포 준비: 사용자 커밋·푸시 승인 후 `codex/discovery-snapshot-rollout`에서 검증한다. TestFlight workflow에 전체 운영 스냅샷 해시/크기/건수/48시간 신선도 검사를 추가했다. 시뮬레이터 미존재 시 테스트를 성공으로 건너뛰지 않는다. Cloudflare CLI 재인증과 CDN 도메인 선택은 확인 중이다.
-- `301145c` 커밋을 해당 검증 브랜치에 푸시했다. `master`는 변경하지 않았다. [Codemagic 시뮬레이터 빌드](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa57dd96c12c2db73677831) 성공 (`TEST SUCCEEDED`). 운영 manifest는 현재 HTTP 404다. 별도 캡처 도구인 AppStoreScreenshotTests는 다음 일반 CI부터 제외한다.
+- 배포 준비: 사용자 커밋·푸시 승인 후 `codex/discovery-snapshot-rollout`에서 검증한다. TestFlight workflow에 전체 운영 스냅샷 해시/크기/건수/48시간 신선도 검사를 추가했다. 시뮬레이터 미존재 시 테스트를 성공으로 건너뛰지 않는다. Cloudflare CLI 재인증 완료(AI·tail 추가 권한 제외).
+- 구현 `301145c`, CI/문서 `af9f391`을 검증 브랜치에 푸시했다. `master`는 변경하지 않았다. [Codemagic 시뮬레이터 빌드](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa57dd96c12c2db73677831) 성공 (`TEST SUCCEEDED`). 별도 캡처 도구인 AppStoreScreenshotTests는 다음 일반 CI부터 제외한다.
+- 01:45 KST Queue에서 첫 발행 요청. 버전 `f423b5e1-d0b8-48e7-9ffa-30ef27b6bc22`는 128개/1파일 처리 후 D1 무료 일일 읽기 한도 초과로 실패했다(재시도 로그 확인). 미완성 manifest는 공개하지 않았다. `/health` 200, 공개 manifest 503 + no-store, 내부 build.json 경로 404 검증. TestFlight 업로드는 보류했다. CLI 한 행 조회 성공만으로 Worker D1 한도 해제를 판단하면 안 된다.
+- 09:00 KST 한도 초기화 이후 재발행 및 전체 파일 검증 필요. 배포된 기존 일정은 10:07 자동 시작, 10:17/10:37 복구 확인이다. 성공을 확인한 후 master 반영/기존 CI 및 TestFlight를 진행한다. 유료 플랜 변경은 하지 않았다.
 
 ## 프로젝트
 

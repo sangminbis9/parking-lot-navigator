@@ -1,6 +1,6 @@
 # 일일 행사 스냅샷 / 앱 로컬 조회
 
-작성: 2026-09-13. 상태: `codex/discovery-snapshot-rollout` 검증 브랜치 푸시, 운영 미배포, iOS 기기 검증 전.
+작성: 2026-09-13. 상태: 검증 브랜치 푸시 및 Worker 배포 완료. 첫 데이터는 D1 일일 한도로 중단, iOS 실기기 검증·TestFlight 보류.
 
 ## 목적과 범위
 
@@ -52,12 +52,14 @@ D1 무료 일일 읽기 한도 초과로 행사 API가 500을 반환했다. 기�
 
 ## 배포 순서 — 반드시 서버 먼저
 
-1. 별도 R2 `discovery-snapshots` 버킷을 만들고 `DISCOVERY_SNAPSHOTS` 바인딩을 연결한다. wrangler.toml에 정의만 추가했으며 실제 리소스는 생성하지 않았다. D1 신규 마이그레이션은 필요 없다.
+1. 별도 R2 `discovery-snapshots` 버킷을 만들고 `DISCOVERY_SNAPSHOTS` 바인딩을 연결한다. 실제 버킷(APAC/Standard/비공개) 생성과 Worker `7e4f6977-9822-4c2d-85ea-1534ff072c53` 배포 완료. D1 신규 마이그레이션은 필요 없다.
 2. Worker를 배포하고 관리자 토큰으로 수동 재발행을 요청한다. 큐가 DB 한도 때문에 실패하면 한도 초기화 후 다시 실행한다. 새 앱을 먼저 배포하지 않는다.
 3. `snapshot_published` 로그의 rowsRead/count/parts, manifest 시간, 각 파일 HTTP 200/해시/실제 바이트를 확인한다. `snapshot_failed`는 error.message와 cause를 남긴다.
 4. 실제 사용자 규모를 위해 R2 커스텀 도메인 + JSON 캐시 규칙을 설정한다. `/discovery/v1/manifest.json`과 `/discovery/v1/parts/*`만 공개하고 build.json 등 그 외 경로는 차단한다. R2 목록 조회를 앱에 열지 않는다. r2.dev는 운영 배포 주소로 쓰지 않는다.
 5. Codemagic 환경 변수 `DISCOVERY_SNAPSHOT_BASE_URL=https://<실제-CDN-도메인>/discovery/v1`을 설정한다. 미설정이면 Worker 파일 전달 경로로 동작하지만 Worker 요청 한도는 여전히 소비하므로 큰 규모의 최종 운영 구성으로 간주하지 않는다.
-6. XcodeGen/Codemagic에서 iOS unit tests와 빌드를 실행하고 TestFlight에서 아래 검증을 수행한다. 이후 앱을 배포한다. 현재 사용자 승인으로 검증 브랜치만 커밋·푸시했으며 운영 배포/유료 플랜 변경은 하지 않았다.
+6. XcodeGen/Codemagic에서 iOS unit tests와 빌드를 실행하고 TestFlight에서 아래 검증을 수행한다. 이후 앱을 배포한다. 현재 검증 브랜치 커밋·푸시 및 Worker 배포까지 완료했으며 유료 플랜 변경은 하지 않았다.
+
+2026-09-13 01:45 KST 첫 발행 요청은 128개/1파일 저장 후 `D1_ERROR: ... free tier daily row read limit`으로 중단됐다. 공개 manifest는 503/no-store, 내부 build.json은 404로 안전하게 유지된다. 한도 초기화(09:00 KST) 후 재발행 및 전체 검증이 필요하다. 자동 일정은 10:07 시작이다. 사용자 승인에 따라 우선 Worker 파일 주소를 사용하고 R2 직접 CDN 도메인은 보류했다.
 
 ## 운영 비용·남은 제한
 

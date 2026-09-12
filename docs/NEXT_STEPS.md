@@ -4,12 +4,12 @@
 
 ## 우선 작업: 스냅샷 배포 (2026-09-13)
 
-1. 운영자: `discovery-snapshots` R2 버킷 생성 → Worker 배포 → 인증된 `/admin/publish-discovery-snapshot` 호출 → manifest 및 모든 파일 검증. 새 D1 마이그레이션은 없다.
-2. 운영자: 실제 CDN 커스텀 도메인/JSON 캐시 규칙 설정 및 Codemagic `DISCOVERY_SNAPSHOT_BASE_URL` 지정. 아직 도메인은 정하지 않았으며 Worker 대체 경로는 구현되어 있다.
+1. R2 생성/Worker 배포 완료. 첫 발행은 128개 처리 후 D1 무료 일일 읽기 한도로 중단. 09:00 KST 초기화 후 재발행 → manifest 및 모든 파일 검증. 자동 일정은 10:07 시작/10:17·10:37 복구 확인. 새 D1 마이그레이션은 없다.
+2. 사용자 승인으로 기존 Worker 주소를 우선 사용한다. 별도 `DISCOVERY_SNAPSHOT_BASE_URL` 없이 동작한다. R2 커스텀 도메인/CDN 직접 제공은 추후 확장 항목이며 Worker 요청 한도는 아직 남는다.
 3. Mac/Codemagic: iOS 테스트·빌드 및 실기기 최초 다운로드 크기/시간/메모리, 오프라인/삭제/공연/주차/위젯 회귀 확인 후 TestFlight 배포.
 4. 운영 관찰: 새 앱 지도 탐색 D1 읽기 0 확인, 구버전 앱·수집 작업 D1 사용량 분리, R2 저장량/Queue 여유 감시. 서버 해시 파일 GC는 활성 파일 보존 설계 후 별도 구현한다.
 
-`301145c`를 `codex/discovery-snapshot-rollout`에 커밋·푸시했다. Codemagic 시뮬레이터 빌드 `6aa57dd96c12c2db73677831` 성공: 단위 92개, 핵심 UI 4개 통과 / 행사 상세·즐겨찾기 1개 skip. 운영 배포는 아직 하지 않았다. Cloudflare CLI 재인증 승인 및 CDN 주소 선택을 기다리고 있다. [구체적인 배포 절차와 한계](architecture/discovery-snapshots.md)를 따른다. 이하의 기존 배포 기록은 이전 시점의 기록이다.
+구현 `301145c`, CI/문서 `af9f391`을 `codex/discovery-snapshot-rollout`에 커밋·푸시했다. Codemagic 시뮬레이터 빌드 `6aa57dd96c12c2db73677831` 성공: 단위 92개, 핵심 UI 4개 통과 / 행사 상세·즐겨찾기 1개 skip. Worker `7e4f6977-9822-4c2d-85ea-1534ff072c53`은 운영 배포됐지만 첫 완성 데이터가 없어 TestFlight를 보류했다. CLI 인증 복구 완료, 유료 업그레이드 없음. master 반영 전 기존 배포 workflow의 D1 smoke/수집 워밍업 비용도 확인한다. [구체적인 배포 절차와 한계](architecture/discovery-snapshots.md)를 따른다. 이하의 기존 배포 기록은 이전 시점의 기록이다.
 
 ## 현재 상태
 
