@@ -35,6 +35,10 @@ struct SettingsView: View {
         AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/terms")
     }
 
+    private var refundPolicyURL: URL {
+        AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/refund-policy")
+    }
+
     private var supportURL: URL {
         AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/support")
     }
@@ -173,8 +177,20 @@ struct SettingsView: View {
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("행사·공연 제공처 — 한국관광공사 TourAPI, 예술경영지원센터 공연예술통합전산망(KOPIS), 한국문화정보원 문화포털, 한국전시주최자협회(AKEI), 서울 열린데이터광장, 공공데이터포털(data.go.kr), 각 지방자치단체 누리집")
+                .font(.festival(.caption))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
             Text("주차장 정보와 잔여 면수는 제공처가 갱신하는 시점에 따라 현장과 다를 수 있으니 참고용으로 확인해 주세요.")
                 .font(.festival(.subheadline))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("주차장 제공처 — 공공데이터포털 전국 주차장 정보, 서울 열린데이터광장 실시간 주차 정보, 한국교통안전공단, 한국공항공사, 인천국제공항공사, 카카오")
+                .font(.festival(.caption))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("가게 이벤트는 네이버 검색 오픈 API로 공개된 블로그 글에서 모으거나, 사장님이 직접 등록한 정보입니다.")
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Text("잘못된 행사 정보를 발견하면 행사 상세 화면의 \u{201C}정보에 문제가 있나요?\u{201D}로 알려주세요.")
@@ -196,6 +212,7 @@ struct SettingsView: View {
 
             linkRow(icon: "hand.raised.fill", title: "개인정보 처리방침", url: privacyPolicyURL)
             linkRow(icon: "doc.text.fill", title: "이용약관", url: termsURL)
+            linkRow(icon: "arrow.uturn.backward.circle.fill", title: "환불·취소 정책", url: refundPolicyURL)
             linkRow(icon: "lifepreserver.fill", title: "고객지원", url: supportURL)
             if let supportMailURL {
                 linkRow(icon: "envelope.fill", title: "문의하기", url: supportMailURL)
