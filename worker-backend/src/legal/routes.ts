@@ -65,7 +65,7 @@ const PRIVACY_HTML = `<!doctype html>
   <h2>6. 개인정보 보호책임자</h2>
   <ul>
     <li>운영주체: (사업자 등록 후 갱신 예정)</li>
-    <li>문의: <code>privacy@eventda.app</code></li>
+    <li>문의: <code>sangminbis9@gmail.com</code></li>
   </ul>
 
   <h2>7. 고지의 의무</h2>
@@ -167,7 +167,59 @@ const REFUND_HTML = `<!doctype html>
   </ul>
 
   <h2>5. 문의</h2>
-  <p>환불·취소 문의: <code>merchant@eventda.app</code></p>
+  <p>환불·취소 문의: <code>sangminbis9@gmail.com</code></p>
+</body>
+</html>`;
+
+const SUPPORT_HTML = `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>이벤트다 고객지원</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif; max-width: 760px; margin: 32px auto; padding: 0 20px; line-height: 1.7; color: #1f2933; }
+    h1 { font-size: 1.6rem; margin-bottom: 0.2em; }
+    h2 { font-size: 1.15rem; margin-top: 2em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em; }
+    h3 { font-size: 1rem; margin-top: 1.4em; margin-bottom: 0.3em; }
+    p, li { font-size: 0.98rem; }
+    code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
+    .meta { color: #64748b; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>이벤트다 고객지원</h1>
+  <p class="meta">최종 갱신: 2026-09-12</p>
+
+  <p>이벤트다는 내 주변의 축제·공연·박람회와 가게 이벤트를 지도와 달력으로 보여주고, 행사장 주변 주차장을 함께 추천하는 앱입니다. 로그인 없이 사용할 수 있습니다.</p>
+
+  <h2>문의</h2>
+  <p>이메일: <code>sangminbis9@gmail.com</code></p>
+  <p>문의하실 때 앱 버전(설정 탭 → 정보 → 앱 버전), 사용 중인 iPhone 모델과 iOS 버전, 문제가 생긴 화면을 함께 적어 주시면 확인이 빠릅니다. 답변은 영업일 기준 2~3일 안에 드립니다.</p>
+
+  <h2>자주 묻는 질문</h2>
+
+  <h3>위치 권한을 허용하지 않으면 쓸 수 없나요?</h3>
+  <p>아닙니다. 위치 권한을 주지 않아도 전국의 행사를 볼 수 있습니다. 권한이 없으면 마지막으로 알던 위치, 필터에서 고른 지역, 서울 순서로 기준점을 잡습니다. 위치 권한은 iOS 설정 → 이벤트다에서 언제든 바꿀 수 있습니다.</p>
+
+  <h3>행사 정보가 실제와 다릅니다.</h3>
+  <p>행사 정보는 공공기관과 공식 제공처의 공개 데이터를 모아 보여주는 것이라, 원본이 갱신되기 전까지는 실제와 차이가 있을 수 있습니다. 행사 상세 화면 아래의 <strong>정보에 문제가 있나요?</strong>를 눌러 신고해 주시면 확인 후 반영합니다. 방문 전에는 주최측 공지를 한 번 더 확인해 주세요.</p>
+
+  <h3>알림을 끄거나 저장된 기기 토큰을 지우고 싶습니다.</h3>
+  <p>알림은 설정 탭에서 항목별로 끌 수 있습니다. 알림을 받기 위해 저장된 기기 토큰의 삭제를 원하시면 위 문의 이메일로 요청해 주세요. 앱을 삭제하면 즐겨찾기와 설정 등 기기에 저장된 정보는 함께 지워집니다.</p>
+
+  <h3>가게 이벤트를 등록하고 싶습니다.</h3>
+  <p>설정 탭의 <strong>내 가게 운영</strong> 카드에서 가맹점 페이지로 이동해 네이버 또는 카카오 계정으로 로그인한 뒤 등록할 수 있습니다. 등록한 이벤트는 검토를 거쳐 앱에 노출됩니다.</p>
+
+  <h3>결제와 환불은 어떻게 되나요?</h3>
+  <p>일반 이용자의 결제는 없습니다. 가맹점 이벤트 게시 상품의 환불 기준은 <a href="/legal/refund-policy">환불·취소 정책</a>을 참고해 주세요.</p>
+
+  <h2>관련 문서</h2>
+  <ul>
+    <li><a href="/legal/privacy">개인정보처리방침</a></li>
+    <li><a href="/legal/terms">이용약관</a></li>
+    <li><a href="/legal/refund-policy">환불·취소 정책</a></li>
+  </ul>
 </body>
 </html>`;
 
@@ -176,5 +228,6 @@ export function createLegalApp(): Hono {
   legal.get("/privacy", (c) => c.html(PRIVACY_HTML));
   legal.get("/terms", (c) => c.html(TERMS_HTML));
   legal.get("/refund-policy", (c) => c.html(REFUND_HTML));
+  legal.get("/support", (c) => c.html(SUPPORT_HTML));
   return legal;
 }

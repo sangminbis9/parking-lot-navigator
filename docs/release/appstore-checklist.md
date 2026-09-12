@@ -1,6 +1,6 @@
 # App Store 제출 체크리스트
 
-마지막 재검토: 2026-09-12 (`master` @ `4573080`, iOS 빌드번호 296 — 컴파일·TestFlight 검증 완료).
+마지막 재검토: 2026-09-12 (`master` @ `ef3d4dc`, iOS 빌드번호 297 — 296이 컴파일·TestFlight 검증 완료, 297은 미검증).
 판정은 전부 실제 코드·설정·production 응답에서 확인한 것이고, 저장소 밖 사실(스토어 입력, 계약, 실기기 동작)은 "사용자 확인 필요"로 남겼다.
 항목별 근거와 우선순위는 `docs/release/deployment-readiness-report.md` 참고.
 
@@ -18,6 +18,9 @@
 - [x] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있어 저장소로는 못 본다. **TestFlight 업로드가 성공했다는 것은 Release xcconfig의 Bundle ID가 ASC에 등록된 App ID와 일치하고 프로비저닝도 맞는다는 뜻**이므로 이 항목은 닫힌다.
 - [x] **iOS 빌드 / TestFlight** — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다.
 - [x] **App Store Connect App Privacy 입력** — 질문지 + Privacy Policy URL 입력 완료 (2026-09-11, 사용자 확인). 답변 근거는 readiness report 1장에 248줄로 남아 있다.
+- [x] **지원 URL(Support URL) 확보** — `GET /legal/support` 페이지를 새로 만들었다(`worker-backend/src/legal/routes.ts`). App Store Connect 지원 URL 입력값:
+  `https://parking-lot-navigator-api.parkingnav.workers.dev/legal/support`. 앱 소개·문의 이메일·FAQ(위치 권한 거부, 정보 오류 신고, 알림 토큰 삭제, 가게 이벤트 등록, 환불)·관련 문서 링크를 담았다. 설정 탭에도 **고객지원** 링크를 추가했다(`SettingsView.swift`). Worker deploy 완료, `GET /legal/support` HTTP 200 실측(2026-09-12).
+- [x] **문의 이메일 실주소로 교체** — 기존 `privacy@eventda.app` / `merchant@eventda.app`은 **`eventda.app` 도메인 자체가 미등록(DNS NXDOMAIN, 2026-09-12 실측)**이라 메일이 반송되는 죽은 주소였다. 세 곳(`SettingsView.swift`의 문의하기 mailto, 개인정보처리방침 문의처, 환불·취소 문의)을 모두 `sangminbis9@gmail.com`으로 바꿨다(사용자 지정). 배포본에서 `/legal/privacy`·`/legal/refund-policy`의 `eventda.app` 잔존 0건, 새 주소 각 1건 확인.
 - [x] **앱 스크린샷 확보 — 규격 충족** — `docs/release/screenshots/iPhone-resized/` 7장이 **1242×2688(6.5" 디스플레이)**, `docs/release/screenshots/iPad-resized/` 7장이 **2064×2752(13" 디스플레이)**다 (2026-09-12, 사용자가 직접 편집·리사이즈). 6.9"를 올리지 않으면 6.5"가 아이폰 필수 슬롯이고, 이 앱은 `TARGETED_DEVICE_FAMILY`를 지정하지 않아 아이패드도 지원하므로 13"도 필수다 — 두 필수 슬롯이 모두 채워졌다. 최상위 941×1672 7장은 편집 원본이라 제출용이 아니다. 알파 채널 없음 확인. 자세한 내용은 `docs/release/screenshots/README.md`.
 
 ## 미완료 (제출 전 필요)

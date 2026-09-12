@@ -35,9 +35,13 @@ struct SettingsView: View {
         AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/terms")
     }
 
-    // 개인정보 처리방침에 이미 공개된 주소다. 여기서 새로 만들지 않는다.
+    private var supportURL: URL {
+        AppConfiguration.current.apiBaseURL.appendingPathComponent("legal/support")
+    }
+
+    // 개인정보 처리방침·고객지원 페이지에 이미 공개된 주소다. 여기서 새로 만들지 않는다.
     private var supportMailURL: URL? {
-        URL(string: "mailto:privacy@eventda.app")
+        URL(string: "mailto:sangminbis9@gmail.com")
     }
 
     private var appVersionText: String {
@@ -192,6 +196,7 @@ struct SettingsView: View {
 
             linkRow(icon: "hand.raised.fill", title: "개인정보 처리방침", url: privacyPolicyURL)
             linkRow(icon: "doc.text.fill", title: "이용약관", url: termsURL)
+            linkRow(icon: "lifepreserver.fill", title: "고객지원", url: supportURL)
             if let supportMailURL {
                 linkRow(icon: "envelope.fill", title: "문의하기", url: supportMailURL)
             }
