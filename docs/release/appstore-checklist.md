@@ -1,6 +1,6 @@
 # App Store 제출 체크리스트
 
-마지막 재검토: 2026-09-11 (`master` @ `67ac768`, iOS 빌드번호 296 — 컴파일·TestFlight 검증 완료).
+마지막 재검토: 2026-09-12 (`master` @ `4573080`, iOS 빌드번호 296 — 컴파일·TestFlight 검증 완료).
 판정은 전부 실제 코드·설정·production 응답에서 확인한 것이고, 저장소 밖 사실(스토어 입력, 계약, 실기기 동작)은 "사용자 확인 필요"로 남겼다.
 항목별 근거와 우선순위는 `docs/release/deployment-readiness-report.md` 참고.
 
@@ -18,11 +18,11 @@
 - [x] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있어 저장소로는 못 본다. **TestFlight 업로드가 성공했다는 것은 Release xcconfig의 Bundle ID가 ASC에 등록된 App ID와 일치하고 프로비저닝도 맞는다는 뜻**이므로 이 항목은 닫힌다.
 - [x] **iOS 빌드 / TestFlight** — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다.
 - [x] **App Store Connect App Privacy 입력** — 질문지 + Privacy Policy URL 입력 완료 (2026-09-11, 사용자 확인). 답변 근거는 readiness report 1장에 248줄로 남아 있다.
+- [x] **앱 스크린샷 확보 — 규격 충족** — `docs/release/screenshots/iPhone-resized/` 7장이 **1242×2688(6.5" 디스플레이)**, `docs/release/screenshots/iPad-resized/` 7장이 **2064×2752(13" 디스플레이)**다 (2026-09-12, 사용자가 직접 편집·리사이즈). 6.9"를 올리지 않으면 6.5"가 아이폰 필수 슬롯이고, 이 앱은 `TARGETED_DEVICE_FAMILY`를 지정하지 않아 아이패드도 지원하므로 13"도 필수다 — 두 필수 슬롯이 모두 채워졌다. 최상위 941×1672 7장은 편집 원본이라 제출용이 아니다. 알파 채널 없음 확인. 자세한 내용은 `docs/release/screenshots/README.md`.
 
 ## 미완료 (제출 전 필요)
 
-- [ ] **앱 소개 문구(이름·부제·설명·키워드) 작성** — 아직 없다. 스크린샷 규격 문제와 함께 제출을 막는 항목이다.
-- [ ] **앱 스크린샷 규격 미달 — 다시 내보내야 함** — `docs/release/screenshots/`의 7장은 사용자가 직접 편집한 마케팅용 캡처인데 모두 **941×1672**다. App Store Connect 6.9" 슬롯은 **1290×2796 또는 1320×2868**만 받으므로 그대로 올리면 거부된다. 가로세로 비도 달라 단순 확대로는 맞지 않는다 — 편집 원본을 그 규격으로 다시 내보내야 한다. 필수 규격은 **6.9" 1장 이상**이고 6.5"는 6.9"를 내지 않을 때만 필요하다. 앱 화면 원본이 필요하면 `.github/workflows/ios-screenshots.yml`을 수동 실행하면 1320×2868로 나온다. 자세한 내용은 `docs/release/screenshots/README.md`.
+- [ ] **앱 소개 문구(이름·부제·설명·키워드) 작성** — 아직 없다. 스크린샷 규격이 해소돼서 **지금 제출을 막는 유일한 항목이다.**
 - [ ] **외부 데이터 출처와 실시간 정보 한계 고지 — 절반만 됨** — Settings에 **데이터 안내** 카드가 있고(`SettingsView.swift:165-179`, `docs/release/merchant-flow/00-app-settings-entry.png`에서 확인), "행사 정보는 공공기관 및 공식 제공처 데이터를 기반으로 제공됩니다… 실제 정보와 차이가 있을 수 있습니다"로 **한계 고지는 되어 있다**. 남은 것은 **제공처 이름 표기**다 — `rg -n "data.go.kr|KOPIS|한국관광공사" ios-app -g '*.swift'` → 0건. 이전 판의 "앱 안 어디에도 출처 표기가 없다"는 과한 서술이었다.
 - [ ] **환불·취소 정책 앱 내 링크** — 페이지는 배포됐지만 Settings는 개인정보 처리방침·이용약관만 링크한다(`SettingsView.swift:193-194`). 결제를 켜는 시점에는 필수.
 
