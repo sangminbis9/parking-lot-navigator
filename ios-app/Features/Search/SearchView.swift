@@ -2,6 +2,44 @@ import CoreLocation
 import SwiftUI
 import UIKit
 
+/// 축제·이벤트 동시 조회의 판단 규칙. `SearchView`의 `@State`에서 떼어 둬야
+/// 실패 조합(축제만 / 이벤트만 / 둘 다)과 중복 로드 방지를 테스트로 못 박을 수 있다.
+enum DiscoverLoad {
+    enum Outcome: Equatable {
+        /// 최소 한쪽은 받았다. 한쪽만 실패했으면 목록 위에 짧은 안내를 띄운다.
+        case loaded(partialNotice: String?)
+        /// 둘 다 실패했지만 이미 보여 주던 목록이 있다. 에러 화면으로 덮지 않는다.
+        case failedWithExistingItems(notice: String)
+        /// 둘 다 실패했고 보여 줄 것도 없다. 이때만 전체 오류 화면이다.
+        case failed
+    }
+
+    static func outcome(festivalsLoaded: Bool, eventsLoaded: Bool, hasExistingItems: Bool) -> Outcome {
+        if festivalsLoaded || eventsLoaded {
+            let notice = (festivalsLoaded && eventsLoaded) ? nil : "일부 정보를 불러오지 못했습니다"
+            return .loaded(partialNotice: notice)
+        }
+        return hasExistingItems ? .failedWithExistingItems(notice: "최신 정보를 불러오지 못했습니다") : .failed
+    }
+
+    /// .onAppear와 탭 전환이 잇달아 같은 전국 조회를 시작하는 것을 막는다.
+    /// 강제 재시도는 진행 중인 조회가 있어도 통과한다.
+    static func shouldStart(force: Bool, hasItems: Bool, isStale: Bool, isInFlight: Bool) -> Bool {
+        guard force || !hasItems || isStale else { return false }
+        return force || !isInFlight
+    }
+
+    /// 공연 이벤트를 기존 목록 뒤에 합친다. 새로 붙는 것이 없으면 nil - 목록을 건드리지 않는다.
+    static func merging(_ events: [FreeEvent], performanceEvents: [FreeEvent]) -> [FreeEvent]? {
+        var seenIds = Set(events.map(\.id))
+        var merged = events
+        for event in performanceEvents where seenIds.insert(event.id).inserted {
+            merged.append(event)
+        }
+        return merged.count == events.count ? nil : merged
+    }
+}
+
 struct SearchView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var router: Router
@@ -15,6 +53,9 @@ struct SearchView: View {
     /// 마지막 성공 시각. 탭을 다시 열어도 이만큼 지나기 전에는 다시 부르지 않는다.
     @State private var lastLoadedAt: Date?
     @State private var errorMessage: String?
+    /// 축제·이벤트 중 한쪽만 실패했을 때 목록 위에 띄우는 짧은 안내. 전체 실패와 구분한다.
+    @State private var partialLoadNotice: String?
+    @State private var isLoadInFlight = false
     @State private var selectedKind: DiscoverTabKind = .all
     // 위치를 아직 모를 때 거리순은 사용자와의 거리가 아니라 전국 중심 기준 거리라 의미가 없다.
     @State private var sort: DiscoverTabSort = .ongoing
@@ -69,6 +110,24 @@ struct SearchView: View {
                             startDiscoverLoad(force: true)
                         }
                         .festivalCard()
+                    }
+
+                    if let partialLoadNotice {
+                        HStack(spacing: 8) {
+                            Text(partialLoadNotice)
+                                .font(.festival(.caption))
+                                .foregroundStyle(FestivalDesign.secondaryText)
+                            Spacer(minLength: 8)
+                            Button("다시 시도") {
+                                startDiscoverLoad(force: true)
+                            }
+                            .font(.festival(.caption, weight: .semibold))
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("discover-partial-retry")
+                        }
+                        .padding(12)
+                        .festivalCard()
+                        .accessibilityIdentifier("discover-partial-notice")
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -481,11 +540,16 @@ struct SearchView: View {
         guard tabRouter.selectedTab == .discover else { return }
         let hasItems = !(festivals.isEmpty && events.isEmpty)
         let isStale = lastLoadedAt.map { Date().timeIntervalSince($0) > staleInterval } ?? true
-        guard force || !hasItems || isStale else { return }
+        // .onAppear와 탭 전환이 잇달아 같은 전국 조회를 시작해, 받는 중이던 수 MB 응답을
+        // 취소하고 처음부터 다시 받는 일이 있었다. 강제 재시도가 아니면 진행 중인 조회를 그대로 둔다.
+        guard DiscoverLoad.shouldStart(force: force, hasItems: hasItems, isStale: isStale, isInFlight: isLoadInFlight) else { return }
         loadTask?.cancel()
+        isLoadInFlight = true
         loadTask = Task { @MainActor in
             // 이미 목록이 있으면 화면을 비우지 않고 뒤에서만 갱신한다.
             await loadDiscoverItems(showsSpinner: force || !hasItems)
+            // 강제 재시도가 앞 작업을 취소한 경우에는 새 작업의 플래그를 내리면 안 된다.
+            if !Task.isCancelled { isLoadInFlight = false }
         }
     }
 
@@ -501,52 +565,84 @@ struct SearchView: View {
     private func loadDiscoverItems(showsSpinner: Bool) async {
         if showsSpinner { isLoading = true }
         errorMessage = nil
+        partialLoadNotice = nil
+
+        async let festivalItems = apiClient.nearbyFestivals(
+            lat: koreaCenter.latitude,
+            lng: koreaCenter.longitude,
+            radiusMeters: discoverRadiusMeters,
+            upcomingWithinDays: 365
+        )
+        async let eventItems = apiClient.nearbyEvents(
+            lat: koreaCenter.latitude,
+            lng: koreaCenter.longitude,
+            radiusMeters: discoverRadiusMeters
+        )
+        // 공연 분류는 KOPIS 공연을 포함해야 지도 공연 레이어와 같은 목록이 된다.
+        // 셋 중 가장 느린 호출이라 축제·이벤트를 먼저 그린 뒤 도착하는 대로 합친다.
+        async let performanceItems = apiClient.nearbyPerformances(
+            lat: koreaCenter.latitude,
+            lng: koreaCenter.longitude,
+            radiusMeters: discoverRadiusMeters,
+            upcomingWithinDays: 365
+        )
+
+        // 한쪽이 실패해도 나머지는 살린다. 예전에는 둘 중 하나만 실패해도 탭 전체가 오류 화면이 됐다.
+        var loadedFestivals: [Festival]?
+        var loadedEvents: [FreeEvent]?
+        var failure: Error?
         do {
-            async let festivalItems = apiClient.nearbyFestivals(
-                lat: koreaCenter.latitude,
-                lng: koreaCenter.longitude,
-                radiusMeters: discoverRadiusMeters,
-                upcomingWithinDays: 365
-            )
-            async let eventItems = apiClient.nearbyEvents(
-                lat: koreaCenter.latitude,
-                lng: koreaCenter.longitude,
-                radiusMeters: discoverRadiusMeters
-            )
-            // 공연 분류는 KOPIS 공연을 포함해야 지도 공연 레이어와 같은 목록이 된다.
-            // 실패해도 축제·이벤트 목록은 살려야 하므로 이 호출만 옵셔널로 받는다.
-            async let performanceItems = apiClient.nearbyPerformances(
-                lat: koreaCenter.latitude,
-                lng: koreaCenter.longitude,
-                radiusMeters: discoverRadiusMeters,
-                upcomingWithinDays: 365
-            )
-            let loadedFestivals = try await festivalItems
-            let loadedEvents = try await eventItems
-            let loadedPerformances = try? await performanceItems
-            guard !Task.isCancelled, tabRouter.selectedTab == .discover else { return }
-            festivals = loadedFestivals
-            // 음악·공연 축제는 /api/festivals에도 들어 있어 이벤트만 합친다.
-            var mergedEvents = loadedEvents
-            if let performanceEvents = loadedPerformances?.events {
-                var seenIds = Set(loadedEvents.map(\.id))
-                for event in performanceEvents where seenIds.insert(event.id).inserted {
-                    mergedEvents.append(event)
-                }
-            }
-            events = mergedEvents
-            lastLoadedAt = Date()
-            resetVisibleItems()
-            rebuildAllItems()
+            loadedFestivals = try await festivalItems
         } catch {
-            guard !Task.isCancelled else { return }
-            // 뒤에서 갱신하다 실패한 경우에는 이미 보여 주던 목록을 에러 카드로 덮지 않는다.
-            if festivals.isEmpty && events.isEmpty {
-                errorMessage = NetworkErrorMessage.text(for: error, subject: "축제와 이벤트 정보")
-            }
+            failure = error
         }
-        guard !Task.isCancelled else { return }
+        do {
+            loadedEvents = try await eventItems
+        } catch {
+            if failure == nil { failure = error }
+        }
+
+        guard !Task.isCancelled, tabRouter.selectedTab == .discover else { return }
+
+        let outcome = DiscoverLoad.outcome(
+            festivalsLoaded: loadedFestivals != nil,
+            eventsLoaded: loadedEvents != nil,
+            hasExistingItems: !(festivals.isEmpty && events.isEmpty)
+        )
+        switch outcome {
+        case .failed:
+            errorMessage = NetworkErrorMessage.text(for: failure ?? URLError(.unknown), subject: "축제와 이벤트 정보")
+            isLoading = false
+            _ = try? await performanceItems
+            return
+        case .failedWithExistingItems(let notice):
+            // 뒤에서 갱신하다 실패한 경우에는 이미 보여 주던 목록을 에러 카드로 덮지 않는다.
+            partialLoadNotice = notice
+            isLoading = false
+            _ = try? await performanceItems
+            return
+        case .loaded(let notice):
+            partialLoadNotice = notice
+        }
+
+        if let loadedFestivals { festivals = loadedFestivals }
+        if let loadedEvents { events = loadedEvents }
+        // 한쪽이라도 받았으면 갱신 시각을 남긴다. 탭을 오갈 때마다 전국 조회를 다시 때리지 않기 위해서다.
+        lastLoadedAt = Date()
+        resetVisibleItems()
+        rebuildAllItems()
+        // 공연을 기다리느라 화면 전체를 잡아 두지 않는다.
         isLoading = false
+
+        // 음악·공연 축제는 /api/festivals에도 들어 있어 이벤트만 합친다.
+        // 공연만 실패하면 목록은 그대로 두고 안내도 띄우지 않는다 - 보조 병합이라 나머지가 온전하다.
+        let loadedPerformances = try? await performanceItems
+        guard !Task.isCancelled, tabRouter.selectedTab == .discover else { return }
+        guard let performanceEvents = loadedPerformances?.events, !performanceEvents.isEmpty else { return }
+        guard let mergedEvents = DiscoverLoad.merging(events, performanceEvents: performanceEvents) else { return }
+        events = mergedEvents
+        // 여기서는 resetVisibleItems()를 부르지 않는다. 보던 위치를 지키기 위해서다.
+        rebuildAllItems()
     }
 }
 

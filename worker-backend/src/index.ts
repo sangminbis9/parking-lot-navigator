@@ -551,27 +551,30 @@ app.get("/api/festivals/:id", async (c) => {
   return c.json({ item, generatedAt: new Date().toISOString() });
 });
 
-app.get("/api/performances", async (c) => {
-  if (!c.env.DB) return c.json({ error: "DB not configured" }, 503);
-  const query = discoverQuerySchema.safeParse(queryObject(c.req.raw.url));
-  if (!query.success) return c.json({ error: "Invalid query" }, 400);
-  const { lat, lng, radiusMeters, upcomingWithinDays } = query.data;
-  const options: DiscoveryQueryOptions = {
-    radiusMeters: radiusMeters ?? 50_000,
-    upcomingWithinDays: upcomingWithinDays ?? 365,
-  };
-  const { festivals, events } = await queryPerformancesFromCache(
-    c.env.DB,
-    lat,
-    lng,
-    options,
-  );
-  return c.json({
-    festivals,
-    events,
-    generatedAt: new Date().toISOString(),
-  } satisfies DiscoverPerformancesResponse);
-});
+// 축제·로컬 이벤트와 달리 여기만 엣지 캐시가 없어서, 1.6MB 응답을 요청마다 D1에서 다시
+// 만들어 직렬화했다. 앱은 셋을 동시에 부르므로 이 호출이 늘 가장 느린 축이었다.
+app.get("/api/performances", async (c) =>
+  edgeCached(c.req.url, c.executionCtx, 60, async () => {
+    if (!c.env.DB) return c.json({ error: "DB not configured" }, 503);
+    const query = discoverQuerySchema.safeParse(queryObject(c.req.raw.url));
+    if (!query.success) return c.json({ error: "Invalid query" }, 400);
+    const { lat, lng, radiusMeters, upcomingWithinDays } = query.data;
+    const options: DiscoveryQueryOptions = {
+      radiusMeters: radiusMeters ?? 50_000,
+      upcomingWithinDays: upcomingWithinDays ?? 365,
+    };
+    const { festivals, events } = await queryPerformancesFromCache(
+      c.env.DB,
+      lat,
+      lng,
+      options,
+    );
+    return c.json({
+      festivals,
+      events,
+      generatedAt: new Date().toISOString(),
+    } satisfies DiscoverPerformancesResponse);
+  }));
 
 app.get("/api/local-events", async (c) =>
   edgeCached(c.req.url, c.executionCtx, 60, async () => {

@@ -1,5 +1,37 @@
 import Foundation
 
+/// 로그와 익명 집계에 남길 endpoint 이름. 요청 URL에는 좌표가 들어 있어 경로 대신 이 라벨만 남긴다.
+enum APIEndpointLabel: String {
+    case festivals
+    case localEvents = "local-events"
+    case performances
+    case parking
+    case other
+
+    /// Worker `ANALYTICS_EVENTS.api_error` 허용 목록 값. 로그 표기와 철자가 달라 따로 둔다.
+    var analyticsLabel: String {
+        switch self {
+        case .festivals: return "festival"
+        case .localEvents: return "local_event"
+        case .performances: return "performance"
+        case .parking: return "parking"
+        case .other: return "other"
+        }
+    }
+}
+
+/// 2xx가 아닌 응답. 예전에는 전부 `URLError(.badServerResponse)`로 뭉개서 어느 endpoint가
+/// 몇 번으로 실패했는지 알 수 없었다. 서버 본문은 담지 않는다 - 사용자에게 보일 일이 없다.
+struct APIHTTPError: Error {
+    let endpoint: APIEndpointLabel
+    let statusCode: Int
+
+    /// 잠깐 뒤 다시 해 볼 만한 상태 코드. 일반 4xx는 다시 해도 같은 답이 온다.
+    var isRetryable: Bool {
+        statusCode == 429 || (500..<600).contains(statusCode)
+    }
+}
+
 protocol APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
@@ -58,7 +90,7 @@ final class APIClient: APIClientProtocol {
     func searchDestination(query: String) async throws -> [Destination] {
         var components = URLComponents(url: endpoint("search/destination"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "q", value: query)]
-        let response: DestinationSearchResponse = try await get(components.url!)
+        let response: DestinationSearchResponse = try await get(components.url!, endpoint: .other)
         return response.items
     }
 
@@ -69,7 +101,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
         ]
-        let response: ParkingNearbyResponse = try await get(components.url!)
+        let response: ParkingNearbyResponse = try await get(components.url!, endpoint: .parking)
         return response.items
     }
 
@@ -80,7 +112,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
         ]
-        let response: ParkingNearbyResponse = try await get(components.url!)
+        let response: ParkingNearbyResponse = try await get(components.url!, endpoint: .parking)
         return response.items
     }
 
@@ -93,7 +125,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays)),
             URLQueryItem(name: "pastWithinDays", value: String(pastWithinDays))
         ]
-        let response: DiscoverFestivalsResponse = try await get(components.url!)
+        let response: DiscoverFestivalsResponse = try await get(components.url!, endpoint: .festivals)
         return response.items
     }
 
@@ -104,7 +136,7 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
         ]
-        let response: DiscoverEventsResponse = try await get(components.url!)
+        let response: DiscoverEventsResponse = try await get(components.url!, endpoint: .localEvents)
         return response.items
     }
 
@@ -116,31 +148,31 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
             URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays))
         ]
-        let response: DiscoverPerformancesResponse = try await get(components.url!)
+        let response: DiscoverPerformancesResponse = try await get(components.url!, endpoint: .performances)
         return (festivals: response.festivals, events: response.events)
     }
 
     func providerHealth() async throws -> [ProviderHealth] {
-        let response: ProviderHealthResponse = try await get(endpoint("parking/providers/health"))
+        let response: ProviderHealthResponse = try await get(endpoint("parking/providers/health"), endpoint: .other)
         return response.providers
     }
 
     func discoveryProviderHealth() async throws -> [ProviderHealth] {
-        let response: ProviderHealthResponse = try await get(endpoint("discover/providers/health"))
+        let response: ProviderHealthResponse = try await get(endpoint("discover/providers/health"), endpoint: .other)
         return response.providers
     }
 
     func pipelineStats() async throws -> PipelineStats {
-        try await get(endpoint("discover/pipeline-stats"))
+        try await get(endpoint("discover/pipeline-stats"), endpoint: .other)
     }
 
     func festival(id: String) async throws -> Festival {
-        let response: DiscoverFestivalDetailResponse = try await get(endpoint("api/festivals/\(id)"))
+        let response: DiscoverFestivalDetailResponse = try await get(endpoint("api/festivals/\(id)"), endpoint: .festivals)
         return response.item
     }
 
     func localEvent(id: String) async throws -> FreeEvent {
-        let response: DiscoverEventDetailResponse = try await get(endpoint("api/local-events/\(id)"))
+        let response: DiscoverEventDetailResponse = try await get(endpoint("api/local-events/\(id)"), endpoint: .localEvents)
         return response.item
     }
 
@@ -159,7 +191,7 @@ final class APIClient: APIClientProtocol {
             items.append(URLQueryItem(name: "since", value: since))
         }
         components.queryItems = items
-        let response: AgentActivityResponse = try await get(components.url!)
+        let response: AgentActivityResponse = try await get(components.url!, endpoint: .other)
         return response.items
     }
 
@@ -167,19 +199,67 @@ final class APIClient: APIClientProtocol {
         baseURL.appendingPathComponent(path)
     }
 
-    private func get<T: Decodable>(_ url: URL) async throws -> T {
+    /// 일시적 실패에 한 번만 다시 시도한다. GET 전용이고, 재시도해도 답이 같은 실패
+    /// (일반 4xx, 디코딩 실패, 취소, 오프라인)는 그대로 던진다.
+    private func get<T: Decodable>(_ url: URL, endpoint label: APIEndpointLabel) async throws -> T {
         do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                throw URLError(.badServerResponse)
-            }
-            return try JSONDecoder().decode(T.self, from: data)
+            return try await performGet(url, endpoint: label)
         } catch {
-            AppLogger.networking.error("API call failed: \(error.localizedDescription)")
-            // 실패한 경로가 아니라 실패했다는 사실만 센다. URL에는 좌표가 들어 있다.
-            AnalyticsService.shared.track(.apiError, label: "other")
-            throw error
+            let firstError = error
+            guard Self.isTransient(firstError) else {
+                report(firstError, endpoint: label)
+                throw firstError
+            }
+            do {
+                try await Task.sleep(nanoseconds: Self.retryDelayNanoseconds)
+                return try await performGet(url, endpoint: label)
+            } catch {
+                report(error, endpoint: label)
+                throw error
+            }
         }
+    }
+
+    private func performGet<T: Decodable>(_ url: URL, endpoint label: APIEndpointLabel) async throws -> T {
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIHTTPError(endpoint: label, statusCode: http.statusCode)
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private static let retryDelayNanoseconds: UInt64 = 400_000_000
+
+    private static func isTransient(_ error: Error) -> Bool {
+        if let http = error as? APIHTTPError { return http.isRetryable }
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// 좌표가 들어 있는 URL은 절대 남기지 않는다. endpoint 라벨과 상태 코드만 남긴다.
+    private func report(_ error: Error, endpoint label: APIEndpointLabel) {
+        if let http = error as? APIHTTPError {
+            AppLogger.networking.error(
+                "API call failed endpoint=\(label.rawValue, privacy: .public) status=\(http.statusCode, privacy: .public)"
+            )
+        } else if let urlError = error as? URLError {
+            AppLogger.networking.error(
+                "API call failed endpoint=\(label.rawValue, privacy: .public) urlErrorCode=\(urlError.code.rawValue, privacy: .public)"
+            )
+        } else {
+            AppLogger.networking.error(
+                "API call failed endpoint=\(label.rawValue, privacy: .public) decodeOrOther"
+            )
+        }
+        AnalyticsService.shared.track(.apiError, label: label.analyticsLabel)
     }
 
     private func post<T: Encodable>(_ url: URL, body: T) async throws {
