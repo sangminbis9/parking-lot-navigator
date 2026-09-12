@@ -780,9 +780,10 @@ struct MapHomeView: View {
     }
 
     /// 아직 위치를 쓸 수 없으면 마지막 위치 → 저장된 지역 → 서울 순으로 시작 지점을 정한다.
-    /// 권한이 이미 허용된 사용자는 곧 실제 좌표가 도착하므로 건드리지 않는다.
+    /// 권한이 이미 허용됐더라도 GPS 좌표는 몇 초 뒤에나 도착한다. 그동안 서울 기본값으로
+    /// 첫 조회를 하면 사용자 주변에는 핀이 한 개도 없는 상태로 로딩이 끝난다.
     private func applyFallbackCenterIfNeeded() {
-        guard locationProvider.coordinate == nil, !isLocationAuthorized else { return }
+        guard locationProvider.coordinate == nil else { return }
         let fallback = FallbackLocation.resolve()
         let coordinate = CLLocationCoordinate2D(latitude: fallback.lat, longitude: fallback.lng)
         fallbackLocationLabel = fallback.label
@@ -1269,9 +1270,20 @@ struct MapHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
     }
 
+    /// 카메라와 함께 조회·클리핑 기준인 mapViewport도 옮긴다.
+    /// 프로그램으로 옮긴 카메라는 카카오맵의 카메라 정지 이벤트를 만들지 않아,
+    /// 여기서 갱신하지 않으면 사용자가 지도를 드래그할 때까지 기준점이 이전 위치에 머문다.
+    /// 반경은 다음 카메라 정지 때 실제 값으로 덮이므로 직전 값을 그대로 쓴다.
     private func moveMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
         mapCenter = coordinate
         mapZoomLevel = zoomLevel
+        let viewport = MapViewport(
+            center: coordinate,
+            zoomLevel: zoomLevel,
+            radiusMeters: mapViewport.radiusMeters
+        )
+        mapViewport = viewport
+        scheduleVisibleDiscoverRefresh(for: viewport)
     }
 
     private func focusMap(to coordinate: CLLocationCoordinate2D, zoomLevel: Int) {
@@ -1600,8 +1612,11 @@ struct MapHomeView: View {
         )
     }
 
+    /// 위치를 쓸 수 없는 사용자를 위해 첫 응답의 행사 쪽으로 지도를 옮긴다.
+    /// 권한이 있는 사용자는 곧 실제 좌표가 도착하므로 건드리지 않는다 —
+    /// 여기서 didAutoCenterOnLocation을 써 버리면 그 좌표가 와도 내 위치로 못 간다.
     private func centerOnInitialDiscoverPinIfNeeded() {
-        guard !didAutoCenterOnLocation else { return }
+        guard !didAutoCenterOnLocation, !isLocationAuthorized else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
         if viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true
