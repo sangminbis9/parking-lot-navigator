@@ -2,6 +2,10 @@
 
 Last updated: 2026-05-26
 
+## Discovery snapshot rollout — 2026-09-13 (not deployed)
+
+새 행사 경로는 R2 버킷/첫 스냅샷을 준비한 뒤 앱을 배포해야 한다. 인증된 `POST /admin/publish-discovery-snapshot`, 공개 `GET /api/discovery-snapshot/manifest.json` 및 해시 파일 경로를 추가했다. [배포/복구/기기 검증 절차](architecture/discovery-snapshots.md)를 먼저 따른다. 기존 API는 구버전 호환용으로 남아 있다.
+
 ## Production API
 
 - Worker URL: `https://parking-lot-navigator-api.parkingnav.workers.dev`

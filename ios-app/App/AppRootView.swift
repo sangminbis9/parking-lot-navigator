@@ -141,6 +141,9 @@ struct AppRootView: View {
         .onChange(of: festivalFilterModel.filter) { _ in
             festivalSync.sync(coordinate: nil)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotChanged).receive(on: RunLoop.main)) { _ in
+            festivalSync.sync(coordinate: nil)
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 festivalSync.syncIfStale(coordinate: nil)

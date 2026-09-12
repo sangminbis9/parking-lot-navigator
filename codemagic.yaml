@@ -38,9 +38,11 @@ workflows:
       - name: iOS 설정 파일 생성
         script: |
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          XCCONFIG_SNAPSHOT_BASE_URL=$(printf '%s' "${DISCOVERY_SNAPSHOT_BASE_URL:-}" | sed 's#://#:/\$()/#')
           APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-105}}}"
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
+          DISCOVERY_SNAPSHOT_BASE_URL = $XCCONFIG_SNAPSHOT_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID
@@ -68,8 +70,8 @@ workflows:
         script: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; ids=[x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']]; print(ids[0] if ids else '')")
           if [ -z "$DEVICE_ID" ]; then
-            echo "사용 가능한 iPhone 시뮬레이터가 없어 UI 테스트를 건너뜁니다."
-            exit 0
+            echo "사용 가능한 iPhone 시뮬레이터가 없어 검증에 실패했습니다."
+            exit 1
           fi
           xcodebuild \
             -project "$XCODE_PROJECT" \
@@ -106,6 +108,8 @@ workflows:
         API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
         NAVIGATION_PROVIDER: kakao
     scripts:
+      - name: 운영 행사 스냅샷 전체 검증
+        script: node worker-backend/scripts/verify-discovery-snapshot.mjs
       - name: Node 의존성 설치
         script: npm install
       - name: 백엔드 테스트
@@ -115,9 +119,11 @@ workflows:
       - name: iOS Release 설정 파일 생성
         script: |
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          XCCONFIG_SNAPSHOT_BASE_URL=$(printf '%s' "${DISCOVERY_SNAPSHOT_BASE_URL:-}" | sed 's#://#:/\$()/#')
           APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-105}}}"
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
+          DISCOVERY_SNAPSHOT_BASE_URL = $XCCONFIG_SNAPSHOT_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID

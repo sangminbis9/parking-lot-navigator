@@ -107,7 +107,7 @@ struct SearchView: View {
 
                     if let errorMessage {
                         FailureStateView(message: errorMessage) {
-                            startDiscoverLoad(force: true)
+                            retryDiscoverDownload()
                         }
                         .festivalCard()
                     }
@@ -119,7 +119,7 @@ struct SearchView: View {
                                 .foregroundStyle(FestivalDesign.secondaryText)
                             Spacer(minLength: 8)
                             Button("다시 시도") {
-                                startDiscoverLoad(force: true)
+                                retryDiscoverDownload()
                             }
                             .font(.festival(.caption, weight: .semibold))
                             .buttonStyle(.plain)
@@ -213,6 +213,9 @@ struct SearchView: View {
             .onAppear {
                 applyPendingDiscoverFilter()
                 startDiscoverLoad()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotChanged).receive(on: RunLoop.main)) { _ in
+                startDiscoverLoad(force: true)
             }
             .onChange(of: tabRouter.selectedTab) { selectedTab in
                 guard selectedTab == .discover else { return }
@@ -534,6 +537,19 @@ struct SearchView: View {
 
     private func uniqueValues(_ values: [String]) -> [String] {
         Array(Set(values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+    }
+
+    private func retryDiscoverDownload() {
+        guard tabRouter.selectedTab == .discover else { return }
+        loadTask?.cancel()
+        isLoadInFlight = true
+        isLoading = festivals.isEmpty && events.isEmpty
+        loadTask = Task {
+            try? await apiClient.refreshDiscoverySnapshot()
+            guard !Task.isCancelled else { return }
+            await loadDiscoverItems(showsSpinner: false)
+            if !Task.isCancelled { isLoadInFlight = false }
+        }
     }
 
     private func startDiscoverLoad(force: Bool = false) {

@@ -1,5 +1,9 @@
 # Worker 계정 한도
 
+## 2026-09-13 추가: 행사 스냅샷 (미배포)
+
+일일 스냅샷 생성으로 Queue 회차가 추가된다. 원본 discovery N행, local M행이면 정상 생성은 대략 `floor(N/128)+floor(M/128)+4`개 메시지(시작/두 테이블 종료 확인/공개 포함)와 재개 확인 2개를 추가한다. 재시도·관리자 재발행은 별도다. 아래 기존 예산표는 이 추가분을 포함하지 않으므로 운영 행 수로 다시 계산해야 한다. 공개 지도 조회는 새 앱에 한해 D1 대신 R2/CDN을 이용한다. [설계·한계·검증](../architecture/discovery-snapshots.md).
+
 마지막 확인: 2026-09-11 (프로덕션 `parking-lot-navigator-api`, Cloudflare Workers 무료 플랜)
 
 2026-09-11 재검증 범위: cron 슬롯 사용량·Queue operation 예산·subrequest 상한을 현재

@@ -28,12 +28,12 @@ struct Festival: Codable, Hashable, Identifiable {
     let description: String?
     let startDate: String
     let endDate: String
-    let status: DiscoverStatus
+    var status: DiscoverStatus
     let venueName: String?
     let address: String
     let lat: Double
     let lng: Double
-    let distanceMeters: Int
+    var distanceMeters: Int
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
@@ -161,7 +161,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     let address: String
     let lat: Double
     let lng: Double
-    let distanceMeters: Int
+    var distanceMeters: Int
     let source: String
     let sourceUrl: String?
     let imageUrl: String?
@@ -322,7 +322,7 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     /// 앱에 온 이벤트는 시작 전인 것만 예정이고 나머지는 진행 중이다.
     var timelineStatus: DiscoverStatus {
         guard status != .expired else { return .upcoming }
-        let today = String(Date().formatted(.iso8601.year().month().day()).prefix(10))
+        let today = Self.koreanDay(Date())
         if !startDate.isEmpty && startDate > today {
             return .upcoming
         }
@@ -334,6 +334,13 @@ struct FreeEvent: Codable, Hashable, Identifiable {
             return "\(startDate) - \(endDate)"
         }
         return startDate
+    }
+
+    private static func koreanDay(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 9 * 3600)!
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
     }
 }
 

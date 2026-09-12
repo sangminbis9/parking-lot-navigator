@@ -54,7 +54,8 @@ final class APIClientRetryTests: XCTestCase {
         configuration.protocolClasses = [StubURLProtocol.self]
         client = APIClient(
             baseURL: URL(string: "https://example.invalid")!,
-            session: URLSession(configuration: configuration)
+            session: URLSession(configuration: configuration),
+            usesDiscoverySnapshots: false
         )
     }
 

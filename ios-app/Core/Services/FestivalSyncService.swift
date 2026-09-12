@@ -48,6 +48,9 @@ final class FestivalSyncService: ObservableObject {
 
     /// 백그라운드 refresh처럼 완료를 기다려야 하는 호출부용. `sync`와 달리 반환 시점에 캐시가 갱신돼 있다.
     func syncNow(coordinate: (lat: Double, lng: Double)?) async {
+        // Background refresh must await the shared download; returning stale data
+        // immediately would let iOS suspend the app before the new release commits.
+        try? await apiClient.refreshDiscoverySnapshot()
         await performSync(coordinate: coordinate)
     }
 

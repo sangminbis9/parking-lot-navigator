@@ -7,6 +7,9 @@ import Foundation
 enum NetworkErrorMessage {
     /// - Parameter subject: "축제 정보", "주변 주차장"처럼 무엇을 못 불러왔는지. 조사는 여기서 붙인다.
     static func text(for error: Error, subject: String) -> String {
+        if let snapshotError = error as? DiscoverySnapshotError {
+            return snapshotError.localizedDescription
+        }
         let object = subject + objectParticle(after: subject)
         guard let urlError = error as? URLError else {
             // 디코딩 실패처럼 응답 자체가 이상한 경우. 원인은 서버 쪽이다.

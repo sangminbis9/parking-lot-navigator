@@ -6,6 +6,18 @@ struct AppConfiguration {
     let kakaoNativeAppKey: String
     let navigationProvider: String
 
+    /// A custom-domain R2/CDN URL avoids spending a Worker invocation per file.
+    /// Until configured, the Worker exposes exactly the same static contract.
+    var discoverySnapshotBaseURL: URL {
+        if ProcessInfo.processInfo.environment["UITEST_API_BASE_URL"] == nil,
+           let value = Bundle.main.infoDictionary?["DISCOVERY_SNAPSHOT_BASE_URL"] as? String,
+           let url = URL(string: Self.normalizedAPIBaseURLString(value.trimmingCharacters(in: .whitespacesAndNewlines))),
+           url.scheme == "https", url.host != nil, !value.contains("$(") {
+            return url
+        }
+        return apiBaseURL.appendingPathComponent("api/discovery-snapshot", isDirectory: true)
+    }
+
     static var current: AppConfiguration {
         let info = Bundle.main.infoDictionary ?? [:]
         // UI 테스트에서 네트워크 실패 화면을 재현할 때만 쓰는 대체 주소.

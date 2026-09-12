@@ -119,7 +119,8 @@ interface SyncDiscoverQuery {
   signal?: AbortSignal;
 }
 
-interface DiscoveryItemRow {
+export interface DiscoveryItemRow {
+  last_seen_at: string;
   id: string;
   type: DiscoveryType;
   source: string;
@@ -786,7 +787,7 @@ function centersForKind(
 // 좌표를 못 구한 항목은 수집 단계에서 지역 대표 좌표(예: 서울 37.5665/126.978)로 저장된다.
 // 실제 위치가 아니므로 지도에서는 한 점에 수천 개가 겹치고 거리 정렬도 의미가 없어진다.
 // 지오코딩이 좌표를 채우면 자동으로 다시 노출되도록, 삭제 대신 응답에서만 제외한다.
-function isRegionFallbackCoordinate(lat: number, lng: number): boolean {
+export function isRegionFallbackCoordinate(lat: number, lng: number): boolean {
   return REGION_FALLBACK_COORDINATES.some(
     (coordinate) =>
       Math.abs(coordinate.lat - lat) < 1e-7 && Math.abs(coordinate.lng - lng) < 1e-7,
@@ -1400,7 +1401,7 @@ export async function pruneStaleDiscovery(
   return result.meta.changes ?? 0;
 }
 
-function mapFestivalRow(
+export function mapFestivalRow(
   row: DiscoveryItemRow,
   lat: number,
   lng: number,
@@ -1486,7 +1487,7 @@ function textFromRaw(value: unknown): string | null {
   return text.length > 0 ? text : null;
 }
 
-function mapEventRow(
+export function mapEventRow(
   row: DiscoveryItemRow,
   lat: number,
   lng: number,

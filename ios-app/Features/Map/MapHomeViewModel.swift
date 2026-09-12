@@ -32,6 +32,7 @@ final class MapHomeViewModel: ObservableObject {
     @Published private(set) var isFetchingDiscover = false
     @Published var isLoadingRealtimeParking = false
     @Published var errorMessage: String?
+    @Published var snapshotStatusText: String?
 
     /// 지도 핀 파이프라인 memoization 키. 배열을 통째로 비교하는 건 비싸서 "몇 번째 대입인지"만 센다.
     /// 핀 소스가 되는 배열이 새로 대입될 때마다 올라간다.
@@ -360,7 +361,7 @@ final class MapHomeViewModel: ObservableObject {
             }
         }
 
-        if showsError && failedLoads > 0, let firstFailure {
+        if failedLoads > 0 && (showsError || (festivals.isEmpty && events.isEmpty && performances.isEmpty)), let firstFailure {
             errorMessage = NetworkErrorMessage.text(for: firstFailure, subject: "탐색 정보")
         }
         let loaded = attemptedLoads > 0 && failedLoads == 0

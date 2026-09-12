@@ -100,6 +100,14 @@ struct CalendarTabView: View {
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
             festivalSync.sync(coordinate: coord)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotChanged).receive(on: RunLoop.main)) { _ in
+            Task {
+                await reload()
+                let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }
+                await performanceViewModel.load(coordinate: coord)
+                await storeEventViewModel.load(coordinate: coord)
+            }
+        }
         .onChange(of: locationProvider.coordinate?.latitude) { _ in
             Task { await reload() }
             let coord = locationProvider.coordinate.map { (lat: $0.latitude, lng: $0.longitude) }

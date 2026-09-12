@@ -1,5 +1,7 @@
 API_BASE_URL = https:/$()/parking-lot-navigator-api.parkingnav.workers.dev
 APP_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator
+// Optional: https:/$()/events.your-domain/discovery/v1 (R2 custom domain + cache rule)
+DISCOVERY_SNAPSHOT_BASE_URL =
 SHARE_EXTENSION_BUNDLE_ID = com.sangminbis9.ParkingLotNavigator.ShareExtension
 APP_GROUP_ID = group.com.sangminbis9.ParkingLotNavigator
 KAKAO_NATIVE_APP_KEY = 운영용_Kakao_Native_App_Key

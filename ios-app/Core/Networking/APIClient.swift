@@ -33,6 +33,7 @@ struct APIHTTPError: Error {
 }
 
 protocol APIClientProtocol {
+    func refreshDiscoverySnapshot() async throws
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
     func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
@@ -73,6 +74,7 @@ struct NotificationDeviceRegistration: Encodable, Equatable {
 }
 
 extension APIClientProtocol {
+    func refreshDiscoverySnapshot() async throws {}
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
         try await nearbyFestivals(lat: lat, lng: lng, radiusMeters: radiusMeters, upcomingWithinDays: upcomingWithinDays, pastWithinDays: 0)
     }
@@ -81,10 +83,21 @@ extension APIClientProtocol {
 final class APIClient: APIClientProtocol {
     private let baseURL: URL
     private let session: URLSession
+    private let snapshotStore: DiscoverySnapshotStore?
 
-    init(baseURL: URL = AppConfiguration.current.apiBaseURL, session: URLSession = .shared) {
+    init(baseURL: URL = AppConfiguration.current.apiBaseURL, session: URLSession = .shared,
+         usesDiscoverySnapshots: Bool = true, snapshotStore: DiscoverySnapshotStore? = nil) {
         self.baseURL = baseURL
         self.session = session
+        self.snapshotStore = usesDiscoverySnapshots
+            ? (snapshotStore ?? (baseURL == AppConfiguration.current.apiBaseURL && session === URLSession.shared
+                ? DiscoverySnapshotStore.shared
+                : DiscoverySnapshotStore(baseURL: baseURL.appendingPathComponent("api/discovery-snapshot", isDirectory: true), session: session)))
+            : nil
+    }
+
+    func refreshDiscoverySnapshot() async throws {
+        if let snapshotStore { _ = try await snapshotStore.refreshNow() }
     }
 
     func searchDestination(query: String) async throws -> [Destination] {
@@ -117,6 +130,9 @@ final class APIClient: APIClientProtocol {
     }
 
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int, pastWithinDays: Int) async throws -> [Festival] {
+        if let snapshotStore {
+            return try await snapshotStore.festivals(lat: lat, lng: lng, radius: radiusMeters, upcoming: upcomingWithinDays, past: pastWithinDays)
+        }
         var components = URLComponents(url: endpoint("api/festivals"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
@@ -130,6 +146,7 @@ final class APIClient: APIClientProtocol {
     }
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
+        if let snapshotStore { return try await snapshotStore.events(lat: lat, lng: lng, radius: radiusMeters) }
         var components = URLComponents(url: endpoint("api/local-events"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
@@ -146,6 +163,9 @@ final class APIClient: APIClientProtocol {
     }
 
     func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent]) {
+        if let snapshotStore {
+            return try await snapshotStore.performances(lat: lat, lng: lng, radius: radiusMeters, upcoming: upcomingWithinDays)
+        }
         var components = URLComponents(url: endpoint("api/performances"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "lat", value: String(lat)),
@@ -213,11 +233,13 @@ final class APIClient: APIClientProtocol {
     }
 
     func festival(id: String) async throws -> Festival {
+        if let snapshotStore, let saved = try? await snapshotStore.festival(id: id) { return saved }
         let response: DiscoverFestivalDetailResponse = try await get(endpoint("api/festivals/\(id)"), endpoint: .festivals)
         return response.item
     }
 
     func localEvent(id: String) async throws -> FreeEvent {
+        if let snapshotStore, let saved = try? await snapshotStore.event(id: id) { return saved }
         let response: DiscoverEventDetailResponse = try await get(endpoint("api/local-events/\(id)"), endpoint: .localEvents)
         return response.item
     }

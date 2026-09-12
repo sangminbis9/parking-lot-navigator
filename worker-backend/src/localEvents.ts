@@ -25,7 +25,7 @@ export interface LocalEventQueryOptions {
   status?: LocalEventStatus;
 }
 
-interface LocalEventRow {
+export interface LocalEventRow {
   id: string;
   title: string;
   description: string | null;
@@ -437,7 +437,7 @@ async function insertLocalEvent(
     .run();
 }
 
-function mapLocalEventRow(
+export function mapLocalEventRow(
   row: LocalEventRow,
   lat: number,
   lng: number,

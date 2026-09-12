@@ -1,0 +1,182 @@
+import Foundation
+import XCTest
+@testable import ParkingLotNavigator
+
+final class DiscoverySnapshotTests: XCTestCase {
+    private let now = ISO8601DateFormatter().date(from: "2026-09-13T01:00:00Z")!
+    private var directories: [URL] = []
+
+    override func tearDown() {
+        for directory in directories { try? FileManager.default.removeItem(at: directory) }
+        directories = []
+        super.tearDown()
+    }
+    private func directory() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("snapshot-test-\(UUID().uuidString)")
+        directories.append(url)
+        return url
+    }
+    private func festival(_ id: String, lat: Double = 37.41, lng: Double = 126.64,
+                          start: String = "2026-09-13", end: String = "2026-09-30") -> Festival {
+        Festival(id: id, title: id, subtitle: nil, startDate: start, endDate: end, status: .upcoming,
+                 venueName: nil, address: "인천", lat: lat, lng: lng, distanceMeters: 999999,
+                 source: "test", sourceUrl: nil, imageUrl: nil, tags: [])
+    }
+    private func release(_ items: [Festival], generated: String = "2026-09-13T00:00:00.000Z") throws -> (Data, [String: Data]) {
+        var files: [String: Data] = [:]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var descriptors: [DiscoverySnapshotManifest.Part] = []
+        for start in stride(from: 0, to: items.count, by: 128) {
+            let part = DiscoverySnapshotPart(schemaVersion: 1, festivals: Array(items[start..<min(items.count, start + 128)]), performanceEvents: [], localEvents: [])
+            let data = try encoder.encode(part)
+            let hash = DiscoverySnapshotStore.hash(data)
+            files["\(hash).json"] = data
+            descriptors.append(.init(sha256: hash, bytes: data.count, count: part.festivals.count))
+        }
+        let manifest = DiscoverySnapshotManifest(schemaVersion: 1, version: UUID().uuidString,
+            generatedAt: generated, parts: descriptors, count: items.count)
+        return (try JSONEncoder().encode(manifest), files)
+    }
+    private func store(_ directory: URL, transport: SnapshotTestTransport) -> DiscoverySnapshotStore {
+        DiscoverySnapshotStore(baseURL: URL(string: "https://snapshot.test/discovery/v1/")!, directory: directory,
+            now: { self.now }, loader: { url, limit, etag in try await transport.load(url, limit: limit, etag: etag) })
+    }
+
+    func testManyPinsAndMapPanningDoNotMakeNewNetworkRequests() async throws {
+        let items = (0..<750).map { festival("id-\($0)") } + [festival("busan", lat: 35.18, lng: 129.07)]
+        let release = try release(items)
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let store = store(directory(), transport: transport)
+        let nearby = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(nearby.count, 750)
+        XCTAssertTrue(nearby.allSatisfy { $0.distanceMeters == 0 && $0.status == .ongoing })
+        let before = await transport.requests
+        let busan = try await store.festivals(lat: 35.18, lng: 129.07, radius: 20000, upcoming: 365)
+        XCTAssertEqual(busan.map(\.id), ["busan"])
+        let after = await transport.requests
+        XCTAssertEqual(before, after)
+    }
+
+    func testConcurrentLayersShareOneDownloadAndCancellationDoesNotCancelOtherConsumers() async throws {
+        let release = try release([festival("one")])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let store = store(directory(), transport: transport)
+        let cancelled = Task { try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365) }
+        cancelled.cancel()
+        async let events = store.events(lat: 37.41, lng: 126.64, radius: 20000)
+        async let festivals = store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        let (_, items) = try await (events, festivals)
+        _ = try? await cancelled.value
+        XCTAssertEqual(items.count, 1)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.filter { $0 == "manifest.json" }.count, 1)
+        XCTAssertEqual(requests.count, 2)
+    }
+
+    func testDiskCacheSurvivesRelaunchAndServerFailure() async throws {
+        let release = try release([festival("saved")])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let directory = directory()
+        let first = store(directory, transport: transport)
+        _ = try await first.refreshNow()
+        await transport.setOffline(true)
+        let second = store(directory, transport: transport)
+        let saved = try await second.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(saved.map(\.id), ["saved"])
+        do { _ = try await second.refreshNow(); XCTFail("offline refresh must fail") } catch {}
+        let stillSaved = try await second.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(stillSaved.map(\.id), ["saved"])
+    }
+
+    func testFailedPartNeverReplacesManifestAndCompletedUpdateRemovesDeletedPins() async throws {
+        let old = try release([festival("removed"), festival("kept")])
+        let next = try release([festival("kept")], generated: "2026-09-13T01:00:00.000Z")
+        let transport = SnapshotTestTransport(manifest: old.0, parts: old.1)
+        let directory = directory()
+        let store = store(directory, transport: transport)
+        _ = try await store.refreshNow()
+        await transport.replace(manifest: next.0, parts: [:])
+        do { _ = try await store.refreshNow(); XCTFail("missing part must fail") } catch {}
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("manifest.json")), old.0)
+        let retained = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(retained.count, 2)
+        await transport.replace(manifest: next.0, parts: next.1)
+        _ = try await store.refreshNow()
+        let current = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(current.map(\.id), ["kept"])
+    }
+
+    func testUnchangedPartsAreReusedAcrossNewManifestVersions() async throws {
+        let old = try release([festival("same")])
+        let next = try release([festival("same")], generated: "2026-09-13T01:00:00.000Z")
+        let transport = SnapshotTestTransport(manifest: old.0, parts: old.1)
+        let store = store(directory(), transport: transport)
+        _ = try await store.refreshNow()
+        await transport.replace(manifest: next.0, parts: [:])
+        _ = try await store.refreshNow()
+        let requests = await transport.requests
+        XCTAssertEqual(requests.filter { $0 != "manifest.json" }.count, 1)
+    }
+
+    func testDigestAndCountValidationRejectsBrokenData() throws {
+        let release = try release([festival("one")])
+        let manifest = try JSONDecoder().decode(DiscoverySnapshotManifest.self, from: release.0)
+        let descriptor = manifest.parts[0]
+        XCTAssertThrowsError(try DiscoverySnapshotStore.decodePart(Data("corrupted".utf8), descriptor: descriptor))
+        let bytes = release.1["\(descriptor.sha256).json"]!
+        XCTAssertThrowsError(try DiscoverySnapshotStore.decodePart(bytes, descriptor: .init(sha256: descriptor.sha256, bytes: bytes.count, count: 2)))
+    }
+
+    func testEmptyReleaseAndUnknownSchemaAreDistinguishable() async throws {
+        let release = try release([])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: [:])
+        let store = store(directory(), transport: transport)
+        let empty = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertTrue(empty.isEmpty)
+        let invalid = DiscoverySnapshotManifest(schemaVersion: 2, version: UUID().uuidString, generatedAt: "2026-09-13T00:00:00Z", parts: [], count: 0)
+        XCTAssertThrowsError(try invalid.validate())
+    }
+
+    func testOfflineFirstUseHasCooldownInsteadOfPanRetryStorm() async throws {
+        let release = try release([])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: [:])
+        await transport.setOffline(true)
+        let store = store(directory(), transport: transport)
+        for _ in 0..<10 {
+            do { _ = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365); XCTFail("must fail") } catch {}
+        }
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
+    func testKoreanMidnightExpirationUnknownDatesAndSpatialCellBoundary() {
+        let index = DiscoverySnapshotIndex(parts: [.init(schemaVersion: 1, festivals: [
+            festival("ended", end: "2026-09-12"), festival("today"),
+            festival("unknown", start: "", end: ""), festival("edge", lat: 37.50001),
+        ], performanceEvents: [], localEvents: [])])
+        let atMidnight = ISO8601DateFormatter().date(from: "2026-09-12T15:00:00Z")!
+        let current = index.festivals(lat: 37.49999, lng: 126.64, radius: 20000, upcoming: 365, past: 0, now: atMidnight)
+        XCTAssertEqual(Set(current.map(\.id)), ["today", "unknown", "edge"])
+        XCTAssertEqual(current.first(where: { $0.id == "today" })?.status, .ongoing)
+        let past = index.festivals(lat: 37.49999, lng: 126.64, radius: 20000, upcoming: 365, past: 1, now: atMidnight)
+        XCTAssertEqual(past.count, 4)
+    }
+}
+
+private actor SnapshotTestTransport {
+    private var manifest: Data
+    private var parts: [String: Data]
+    private var offline = false
+    private(set) var requests: [String] = []
+    init(manifest: Data, parts: [String: Data]) { self.manifest = manifest; self.parts = parts }
+    func replace(manifest: Data, parts: [String: Data]) { self.manifest = manifest; self.parts = parts }
+    func setOffline(_ value: Bool) { offline = value }
+    func load(_ url: URL, limit: Int, etag: String?) throws -> DiscoverySnapshotDownload {
+        requests.append(url.lastPathComponent)
+        if offline { throw URLError(.notConnectedToInternet) }
+        if url.lastPathComponent == "manifest.json" { return .init(data: manifest, statusCode: 200, etag: nil) }
+        guard let data = parts[url.lastPathComponent] else { return .init(data: Data(), statusCode: 404, etag: nil) }
+        return .init(data: data, statusCode: 200, etag: nil)
+    }
+}

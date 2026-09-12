@@ -88,9 +88,11 @@ import {
   planUpcomingNotifications,
 } from "./upcomingNotifications.js";
 import { registerNotificationDevice } from "./notificationRegistration.js";
+import { runSnapshotJob, serveSnapshot } from "./discoverySnapshot.js";
 
 export type Env = {
   DB?: D1Database;
+  DISCOVERY_SNAPSHOTS?: R2Bucket;
   SYNC_ADMIN_TOKEN?: string;
   NODE_ENV: string;
   LOG_LEVEL: string;
@@ -525,6 +527,37 @@ async function edgeCached(
   }
   return res;
 }
+
+// Canonical shared cache key: no user coordinates, query strings or cookies.
+app.get("/api/discovery-snapshot/*", async (c) => {
+  const url = new URL(c.req.url);
+  url.search = "";
+  const key = new Request(url.toString());
+  const cache = (caches as CacheStorage & { default: Cache }).default;
+  const hit = await cache.match(key);
+  if (hit) {
+    if (c.req.header("If-None-Match") === hit.headers.get("ETag")) {
+      return new Response(null, { status: 304, headers: hit.headers });
+    }
+    return hit;
+  }
+  const response = await serveSnapshot(c.req.raw, c.env.DISCOVERY_SNAPSHOTS);
+  if (response.status === 200) c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
+
+app.post("/admin/publish-discovery-snapshot", async (c) => {
+  const auth = authorizeAdminSync(c.req.raw, c.env);
+  if (auth) return auth;
+  if (!c.env.DISCOVERY_SNAPSHOTS || !c.env.BACKGROUND_QUEUE || !c.env.DB) {
+    return c.json({ error: "snapshot_bindings_not_configured" }, 503);
+  }
+  // Queue-only; no large D1 export in a public request. Manual run also supports
+  // same-day cancellation/correction releases without an App Store update.
+  await c.env.BACKGROUND_QUEUE.send({ type: "discovery-snapshot", force: true,
+    allowEmpty: c.req.query("allowEmpty") === "true" });
+  return c.json({ status: "queued" }, 202);
+});
 
 app.get("/api/festivals", async (c) =>
   edgeCached(c.req.url, c.executionCtx, 60, async () => {
@@ -1429,6 +1462,11 @@ export default {
         await runBackgroundJob(env, message.body);
         message.ack();
       } catch (error) {
+        if (message.body?.type === "discovery-snapshot") {
+          console.error(JSON.stringify({ event: "snapshot_failed", version: message.body.version,
+            message: error instanceof Error ? error.message : String(error),
+            cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined }));
+        }
         console.error(`background job failed type=${message.body?.type}`, error);
         message.retry();
       }
@@ -1448,6 +1486,9 @@ async function runMinuteScheduler(env: Env, scheduledAt: Date): Promise<void> {
 
 async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
   switch (job.type) {
+    case "discovery-snapshot":
+      if (!env.DISCOVERY_SNAPSHOTS) return; // staged rollout before binding exists
+      return runSnapshotJob(env, job);
     case "discovery-chunk":
       return syncDiscoveryChunkScheduled(env, job.chunkIndex);
     case "local-events":

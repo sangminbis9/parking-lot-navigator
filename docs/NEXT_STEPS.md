@@ -1,6 +1,15 @@
 # 다음 단계
 
-마지막 업데이트: 2026-08-28
+마지막 업데이트: 2026-09-13
+
+## 우선 작업: 스냅샷 배포 (2026-09-13)
+
+1. 운영자: `discovery-snapshots` R2 버킷 생성 → Worker 배포 → 인증된 `/admin/publish-discovery-snapshot` 호출 → manifest 및 모든 파일 검증. 새 D1 마이그레이션은 없다.
+2. 운영자: 실제 CDN 커스텀 도메인/JSON 캐시 규칙 설정 및 Codemagic `DISCOVERY_SNAPSHOT_BASE_URL` 지정. 아직 도메인은 정하지 않았으며 Worker 대체 경로는 구현되어 있다.
+3. Mac/Codemagic: iOS 테스트·빌드 및 실기기 최초 다운로드 크기/시간/메모리, 오프라인/삭제/공연/주차/위젯 회귀 확인 후 TestFlight 배포.
+4. 운영 관찰: 새 앱 지도 탐색 D1 읽기 0 확인, 구버전 앱·수집 작업 D1 사용량 분리, R2 저장량/Queue 여유 감시. 서버 해시 파일 GC는 활성 파일 보존 설계 후 별도 구현한다.
+
+코드는 로컬 변경 상태이며 커밋/푸시/실제 배포하지 않았다. [구체적인 배포 절차와 한계](architecture/discovery-snapshots.md)를 따른다. 이하의 기존 배포 기록은 이전 시점의 기록이다.
 
 ## 현재 상태
 

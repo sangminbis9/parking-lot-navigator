@@ -181,6 +181,15 @@ struct MapHomeView: View {
                         }
                     )
                 VStack(spacing: 10) {
+                    if let status = viewModel.snapshotStatusText {
+                        Text(status)
+                            .font(.caption2)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.regularMaterial, in: Capsule())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .allowsHitTesting(false)
+                    }
                     if let errorMessage = viewModel.errorMessage {
                         inlineError(errorMessage)
                     }
@@ -252,6 +261,7 @@ struct MapHomeView: View {
             hasSettledAfterInitialLoad = true
         }
         .onChange(of: scenePhase) { phase in
+            if phase == .active { refreshSnapshotViewport() }
             // 백그라운드로 나갈 때 미리 켜 둔다. 복귀 직후엔 메인 스레드가 밀려 이때 켜면 그려지지 않는다.
             if phase == .background {
                 isResumingMap = true
@@ -264,6 +274,25 @@ struct MapHomeView: View {
             discoverRefreshTask?.cancel()
             viewportLoadingID = nil
             stopHologramAnchorTracking()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotChanged).receive(on: RunLoop.main)) { _ in
+            refreshSnapshotViewport()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotStatusChanged).receive(on: RunLoop.main)) { notification in
+            guard let text = notification.userInfo?["generatedAt"] as? String,
+                  let date = DiscoverySnapshotStore.date(text) else { return }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
+            formatter.dateFormat = "M/d HH:mm"
+            let failed = notification.userInfo?["failed"] as? Bool ?? false
+            let updating = notification.userInfo?["updating"] as? Bool ?? false
+            let stale = Date().timeIntervalSince(date) > 36 * 3600
+            let suffix = failed || stale ? " · 저장된 행사 표시 중" : updating ? " · 업데이트 중" : ""
+            viewModel.snapshotStatusText = "행사 \(formatter.string(from: date)) 기준\(suffix)"
+        }
+        .onReceive(Timer.publish(every: 15 * 60, on: .main, in: .common).autoconnect()) { _ in
+            if scenePhase == .active { refreshSnapshotViewport() }
         }
         .sheet(isPresented: $presentingFestivalFilter) {
             FilterSheetView(filterModel: festivalFilterModel)
@@ -335,6 +364,17 @@ struct MapHomeView: View {
             photoGeneration: pinPhotos.loadedGeneration
         )
         return pinCache.pins(key) { buildPins() }
+    }
+
+    private func refreshSnapshotViewport() {
+        guard scenePhase == .active, tabRouter.selectedTab == .map else { return }
+        discoverRefreshTask?.cancel()
+        discoverRefreshTask = Task {
+            let viewport = mapViewport
+            let loaded = await viewModel.loadDiscoverLayers(viewport: viewport, filter: festivalFilterModel.filter, showsSpinner: false)
+            guard !Task.isCancelled else { return }
+            lastDiscoverRefreshViewport = loaded ? viewport : nil
+        }
     }
 
     private func buildPins() -> [MapPinItem] {
