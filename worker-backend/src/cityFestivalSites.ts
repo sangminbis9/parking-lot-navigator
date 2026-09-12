@@ -947,6 +947,35 @@ export const CITY_FESTIVAL_SITES: CitySiteConfig[] = [
     customParser: "incheon-itour-festival"
   })),
 
+  // wave 15 보완(인천경제자유구역, IFEZ): 송도·영종·청라는 인천시가 아니라
+  // 인천경제자유구역청이 주관하는 행사가 따로 있고, 그 행사는 위 인천관광공사
+  // 포털(itour.incheon.go.kr)에 등록되지 않는 경우가 있다 — 2026 IFEZ 글로벌
+  // 페스티벌 'I♥FEsta'가 그 사례로, IFEZ 공식 보도자료(2026-09-02)와 아래
+  // 축제/행사 게시판에는 있는데 인천투어에는 없었다(2026-09-12 production D1
+  // 실측: city_festivals·discovery_items 어디에도 없음). 기존 인천투어 11개
+  // 사이트는 그대로 두고 보완 소스로 하나 더 붙인다.
+  //
+  // robots.txt(2026-09-12 실측)는 `User-agent: *` / `Allow: /`에
+  // Disallow가 /promote/promo/, /journaleng/jrnl/, /journal/jrnl/ 셋뿐이라
+  // /main/ 경로는 허용된다.
+  //
+  // 목록 한 페이지(10건)가 등록 역순이라 다가오는 행사가 항상 맨 앞에 온다.
+  // 목록에 기간·장소가 모두 있어 상세 페이지를 추가로 열지 않는다
+  // (detail fetch 예산 소모 0).
+  //
+  // 알려진 한계: 이 게시판에는 주소 필드가 없어 address는 항상 null이고
+  // 좌표는 장소명 지오코딩에 의존한다. 또 게시판 등록이 보도자료보다 늦어,
+  // 보도자료에만 공개된 시점의 행사는 여기서 아직 잡히지 않는다.
+  {
+    siteId: "ifez-culture-event",
+    cityName: "인천광역시",
+    listUrl: "https://www.ifez.go.kr/main/culture/event/list.do",
+    fallbackLat: 37.3894,
+    fallbackLng: 126.639,
+    robotsCheckedAt: "2026-09-12",
+    customParser: "ifez-culture-event"
+  },
+
   // wave 16(광주광역시): 서울(wave 12)/인천(wave 15)처럼 통합 포털 하나로 5개
   // 구(동구/서구/남구/북구/광산구)를 전부 커버할 수 있는지부터 확인했다
   // (2026-07-31 실측). 광주관광포털 tour.gwangju.go.kr의 "축제와 이벤트"

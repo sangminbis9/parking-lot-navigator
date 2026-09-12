@@ -20,6 +20,7 @@ import { parseSokchoCulture } from "./sokchoCulture.js";
 import { parseBsjungguAnnualSchedule } from "./bsjungguAnnualSchedule.js";
 import { parseDalseoDscf } from "./dalseoDscf.js";
 import { parseIncheonItourFestival } from "./incheonItourFestival.js";
+import { parseIfezCultureEvent } from "./ifezCultureEvent.js";
 
 export type CustomParserFn = (
   html: string,
@@ -50,5 +51,6 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "sokcho-culture": parseSokchoCulture,
   "bsjunggu-annual-schedule": parseBsjungguAnnualSchedule,
   "dalseo-dscf": parseDalseoDscf,
-  "incheon-itour-festival": parseIncheonItourFestival
+  "incheon-itour-festival": parseIncheonItourFestival,
+  "ifez-culture-event": parseIfezCultureEvent
 };
