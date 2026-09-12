@@ -77,6 +77,7 @@ workflows:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "id=$DEVICE_ID" \
+            -skip-testing:ParkingLotNavigatorUITests/AppStoreScreenshotTests \
             CODE_SIGNING_ALLOWED=NO \
             APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
             INFOPLIST_OUTPUT_FORMAT=XML \

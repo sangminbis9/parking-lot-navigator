@@ -1,6 +1,6 @@
 # 일일 행사 스냅샷 / 앱 로컬 조회
 
-작성: 2026-09-13. 상태: 로컬 구현, 운영 미배포, iOS 기기 검증 전.
+작성: 2026-09-13. 상태: `codex/discovery-snapshot-rollout` 검증 브랜치 푸시, 운영 미배포, iOS 기기 검증 전.
 
 ## 목적과 범위
 
@@ -57,7 +57,7 @@ D1 무료 일일 읽기 한도 초과로 행사 API가 500을 반환했다. 기�
 3. `snapshot_published` 로그의 rowsRead/count/parts, manifest 시간, 각 파일 HTTP 200/해시/실제 바이트를 확인한다. `snapshot_failed`는 error.message와 cause를 남긴다.
 4. 실제 사용자 규모를 위해 R2 커스텀 도메인 + JSON 캐시 규칙을 설정한다. `/discovery/v1/manifest.json`과 `/discovery/v1/parts/*`만 공개하고 build.json 등 그 외 경로는 차단한다. R2 목록 조회를 앱에 열지 않는다. r2.dev는 운영 배포 주소로 쓰지 않는다.
 5. Codemagic 환경 변수 `DISCOVERY_SNAPSHOT_BASE_URL=https://<실제-CDN-도메인>/discovery/v1`을 설정한다. 미설정이면 Worker 파일 전달 경로로 동작하지만 Worker 요청 한도는 여전히 소비하므로 큰 규모의 최종 운영 구성으로 간주하지 않는다.
-6. XcodeGen/Codemagic에서 iOS unit tests와 빌드를 실행하고 TestFlight에서 아래 검증을 수행한다. 이후 앱을 배포한다. 이 작업에서는 배포/커밋/푸시/유료 플랜 변경을 하지 않았다.
+6. XcodeGen/Codemagic에서 iOS unit tests와 빌드를 실행하고 TestFlight에서 아래 검증을 수행한다. 이후 앱을 배포한다. 현재 사용자 승인으로 검증 브랜치만 커밋·푸시했으며 운영 배포/유료 플랜 변경은 하지 않았다.
 
 ## 운영 비용·남은 제한
 
@@ -77,6 +77,7 @@ D1 무료 일일 읽기 한도 초과로 행사 API가 500을 반환했다. 기�
 - Wrangler 실제 배포 없는 번들 검사(`deploy --dry-run`) 통과: gzip 약 287 KiB. 버킷이 실제로 존재하는지/운영 CPU·메모리 한도를 만족하는지까지 증명하는 검사는 아니다.
 - 테스트: 기존 600개 상한 초과, 필터로 비는 첫 페이지 이후 항목, PK 검색 계획, Queue 재전송/CAS, 공개 전 실패, D1 장애 중 파일 제공, 삭제 반영, 동일 해시 재사용, 비공개 경로, 당일 재발행.
 - iOS 회귀 테스트 추가: 750개 핀/다른 지역 이동 시 추가 통신 없음, 동시 요청 합치기, 취소 격리, 재실행 오프라인, 중간 파일 실패 시 기존 manifest 유지, 삭제 반영, 해시/건수 오류, 빈 정상 결과, 재시도 억제, KST 자정/공간 경계.
-- iOS 테스트/실기기 실행은 Windows 환경이라 미실행. TestFlight 필수: 최초 설치·저속 통신·앱 종료 후 재개·업데이트 중 지도 이동·새 버전 삭제/취소·공연/박람회/지역 행사 필터·날짜 변경·실시간 주차·위젯·동작 줄이기·마스코트 표시 종료.
+- Codemagic 빌드 `6aa57dd96c12c2db73677831`에서 iOS 컴파일 및 단위 테스트 92개 통과. 핵심 UI 5개 중 4개 통과, 서버 행사 목록이 필요한 상세/즐겨찾기 1개 skip. 캡처 도구 1개도 실행됐으나 검증으로 집계하지 않으며 다음 일반 CI부터 제외한다.
+- 실기기·전국 운영 데이터 검증은 미수행. TestFlight 필수: 최초 설치·저속 통신·앱 종료 후 재개·업데이트 중 지도 이동·새 버전 삭제/취소·공연/박람회/지역 행사 필터·날짜 변경·실시간 주차·위젯·동작 줄이기·마스코트 표시 종료.
 
 참고: [Cloudflare R2 CDN](https://developers.cloudflare.com/cache/interaction-cloudflare-products/r2/), [Workers 운영 가이드](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [R2 조건부 쓰기](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/), [iOS 백그라운드 갱신](https://developer.apple.com/documentation/backgroundtasks/choosing-background-strategies-for-your-app).

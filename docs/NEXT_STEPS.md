@@ -9,7 +9,7 @@
 3. Mac/Codemagic: iOS 테스트·빌드 및 실기기 최초 다운로드 크기/시간/메모리, 오프라인/삭제/공연/주차/위젯 회귀 확인 후 TestFlight 배포.
 4. 운영 관찰: 새 앱 지도 탐색 D1 읽기 0 확인, 구버전 앱·수집 작업 D1 사용량 분리, R2 저장량/Queue 여유 감시. 서버 해시 파일 GC는 활성 파일 보존 설계 후 별도 구현한다.
 
-코드는 로컬 변경 상태이며 커밋/푸시/실제 배포하지 않았다. [구체적인 배포 절차와 한계](architecture/discovery-snapshots.md)를 따른다. 이하의 기존 배포 기록은 이전 시점의 기록이다.
+`301145c`를 `codex/discovery-snapshot-rollout`에 커밋·푸시했다. Codemagic 시뮬레이터 빌드 `6aa57dd96c12c2db73677831` 성공: 단위 92개, 핵심 UI 4개 통과 / 행사 상세·즐겨찾기 1개 skip. 운영 배포는 아직 하지 않았다. Cloudflare CLI 재인증 승인 및 CDN 주소 선택을 기다리고 있다. [구체적인 배포 절차와 한계](architecture/discovery-snapshots.md)를 따른다. 이하의 기존 배포 기록은 이전 시점의 기록이다.
 
 ## 현재 상태
 
