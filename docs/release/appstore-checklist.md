@@ -18,11 +18,11 @@
 - [x] **Bundle ID 확정** — `PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_ID)`, 실제 값은 gitignore된 `Config/{Debug,Release}.xcconfig`에 있어 저장소로는 못 본다. **TestFlight 업로드가 성공했다는 것은 Release xcconfig의 Bundle ID가 ASC에 등록된 App ID와 일치하고 프로비저닝도 맞는다는 뜻**이므로 이 항목은 닫힌다.
 - [x] **iOS 빌드 / TestFlight** — build 296 컴파일 성공, TestFlight 업로드·실행 확인 (2026-09-11, 사용자). 이전 회차에서는 WSL2 환경에 Xcode가 없어 Swift 변경 11개 파일이 미검증 상태였다.
 - [x] **App Store Connect App Privacy 입력** — 질문지 + Privacy Policy URL 입력 완료 (2026-09-11, 사용자 확인). 답변 근거는 readiness report 1장에 248줄로 남아 있다.
-- [x] **앱 스크린샷 확보** — `docs/release/screenshots/`에 6.9" 규격 5장(1320×2868, 8-bit RGB, sRGB, 알파 없음). `.github/workflows/ios-screenshots.yml`을 수동 실행해 macOS 러너 시뮬레이터에서 뽑았다(run `34614345570`, master `8054ae5`, 2026-09-11). 현재 필수 규격은 **6.9" 1장 이상**이고 6.5"는 6.9"를 내지 않을 때만 필요하다 — 이전 판의 `6.7"/6.5" 각 5장` 서술은 현재 Apple 요구사항과 다르다. 다만 `02-discover`·`03-detail`에 KOPIS 원본 데이터 문제(10년 넘는 기간 표기, 빈 주소)가 그대로 보인다 — 자세한 내용은 `docs/release/screenshots/README.md`.
 
 ## 미완료 (제출 전 필요)
 
-- [ ] **앱 소개 문구(이름·부제·설명·키워드) 작성** — 스크린샷은 확보됐고 문구는 아직 없다. **지금 제출을 막는 유일한 항목.**
+- [ ] **앱 소개 문구(이름·부제·설명·키워드) 작성** — 아직 없다. 스크린샷 규격 문제와 함께 제출을 막는 항목이다.
+- [ ] **앱 스크린샷 규격 미달 — 다시 내보내야 함** — `docs/release/screenshots/`의 7장은 사용자가 직접 편집한 마케팅용 캡처인데 모두 **941×1672**다. App Store Connect 6.9" 슬롯은 **1290×2796 또는 1320×2868**만 받으므로 그대로 올리면 거부된다. 가로세로 비도 달라 단순 확대로는 맞지 않는다 — 편집 원본을 그 규격으로 다시 내보내야 한다. 필수 규격은 **6.9" 1장 이상**이고 6.5"는 6.9"를 내지 않을 때만 필요하다. 앱 화면 원본이 필요하면 `.github/workflows/ios-screenshots.yml`을 수동 실행하면 1320×2868로 나온다. 자세한 내용은 `docs/release/screenshots/README.md`.
 - [ ] **외부 데이터 출처와 실시간 정보 한계 고지 — 절반만 됨** — Settings에 **데이터 안내** 카드가 있고(`SettingsView.swift:165-179`, `docs/release/merchant-flow/00-app-settings-entry.png`에서 확인), "행사 정보는 공공기관 및 공식 제공처 데이터를 기반으로 제공됩니다… 실제 정보와 차이가 있을 수 있습니다"로 **한계 고지는 되어 있다**. 남은 것은 **제공처 이름 표기**다 — `rg -n "data.go.kr|KOPIS|한국관광공사" ios-app -g '*.swift'` → 0건. 이전 판의 "앱 안 어디에도 출처 표기가 없다"는 과한 서술이었다.
 - [ ] **환불·취소 정책 앱 내 링크** — 페이지는 배포됐지만 Settings는 개인정보 처리방침·이용약관만 링크한다(`SettingsView.swift:193-194`). 결제를 켜는 시점에는 필수.
 
