@@ -219,11 +219,13 @@ export interface MapItem {
 
 export interface DiscoverFestivalsResponse {
   items: Festival[];
+  nextCursor?: string | null;
   generatedAt: string;
 }
 
 export interface DiscoverEventsResponse {
   items: LocalEvent[];
+  nextCursor?: string | null;
   generatedAt: string;
 }
 
@@ -235,5 +237,6 @@ export interface MapItemsResponse {
 export interface DiscoverPerformancesResponse {
   festivals: Festival[];
   events: FreeEvent[];
+  nextCursor?: string | null;
   generatedAt: string;
 }

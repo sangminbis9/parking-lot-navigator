@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { queryPerformancesFromCache } from "../src/discoveryCache.js";
+import { queryPerformancesFromCache, queryFestivalPageFromCache, queryPerformancePageFromCache, queryFestivalsFromCache } from "../src/discoveryCache.js";
 import { queryLocalEvents } from "../src/localEvents.js";
 
 interface FakeCall {
@@ -7,8 +7,7 @@ interface FakeCall {
   args: unknown[];
 }
 
-// D1을 흉내내되, 테스트가 검증하는 두 가지만 구현한다: 바인딩된 SQL을 기록하고,
-// LIMIT(마지막 바인딩)만큼만 돌려준다. 정렬은 rows를 이미 정렬된 순서로 넘겨 표현한다.
+// 실제 쿼리의 keyset(id > cursor), ORDER BY id, 페이지 크기를 적용한다.
 function fakeDb(rows: Record<string, unknown>[], calls: FakeCall[]) {
   return {
     prepare(sql: string) {
@@ -16,8 +15,10 @@ function fakeDb(rows: Record<string, unknown>[], calls: FakeCall[]) {
         bind(...args: unknown[]) {
           calls.push({ sql, args });
           const limit = args[args.length - 1];
-          const limited =
-            typeof limit === "number" ? rows.slice(0, limit) : rows;
+          const cursor = args[args.length - 2] as string;
+          const sorted = [...rows].sort((a, b) => String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0);
+          const after = sql.includes("AND id > ?") ? sorted.filter((row) => String(row.id) > cursor) : sorted;
+          const limited = typeof limit === "number" ? after.slice(0, limit) : after;
           return {
             async all() {
               return { results: limited };
@@ -160,13 +161,14 @@ describe("queryPerformancesFromCache", () => {
     expect(result.festivals).toEqual([]);
   });
 
-  it("orders the bbox scan by distance so the LIMIT keeps the nearest rows", async () => {
+  it("uses a stable keyset instead of truncating nearest results", async () => {
     const calls: FakeCall[] = [];
     const db = fakeDb([discoveryRow({})], calls);
 
     await queryPerformancesFromCache(db, 37.5512, 126.9882, options);
 
     expect(calls[0].sql).toContain("ORDER BY");
+    expect(calls[0].sql).toContain("AND id > ?");
     expect(calls[0].sql.indexOf("ORDER BY")).toBeLessThan(
       calls[0].sql.indexOf("LIMIT"),
     );
@@ -206,7 +208,7 @@ function localEventRow(overrides: Record<string, unknown>) {
 }
 
 describe("queryLocalEvents", () => {
-  it("bounds the scan with ORDER BY + LIMIT instead of loading the whole bbox", async () => {
+  it("bounds each scan but follows every page for legacy offset clients", async () => {
     const calls: FakeCall[] = [];
     const rows = Array.from({ length: 500 }, (_, index) =>
       localEventRow({ id: `le-${index}` }),
@@ -222,8 +224,8 @@ describe("queryLocalEvents", () => {
 
     expect(calls[0].sql).toContain("ORDER BY");
     expect(calls[0].sql).toContain("LIMIT ?");
-    // offset(0) + limit(20) + 여유분만 읽는다.
-    expect(calls[0].args[calls[0].args.length - 1]).toBe(220);
+    expect(calls[0].args[calls[0].args.length - 1]).toBe(256);
+    expect(calls).toHaveLength(2);
   });
 
   it("pages through results without dropping or repeating an item", async () => {
@@ -253,5 +255,58 @@ describe("queryLocalEvents", () => {
     });
     expect(third.items.map((item) => item.id)).toEqual(["le-4"]);
     expect(third.nextCursor).toBeNull();
+  });
+});
+
+describe("uncapped map discovery", () => {
+  const options = { radiusMeters: 50000, upcomingWithinDays: 365 };
+
+  it("returns more than 5000 festivals without losing the tail", async () => {
+    const rows = Array.from({ length: 5501 }, (_, i) => discoveryRow({
+      id: `festival:${String(i).padStart(5, "0")}`,
+      source_item_id: `f-${i}`, title: `고유 축제 ${i}`,
+    }));
+    const db = fakeDb(rows, []);
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await queryFestivalPageFromCache(db, 37.5512, 126.9882, options, cursor);
+      ids.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(new Set(ids).size).toBe(5501);
+    expect(ids).toContain("f-5500");
+    const legacy = await queryFestivalsFromCache(db, 37.5512, 126.9882, options);
+    expect(legacy).toHaveLength(5501);
+  });
+
+  it("continues past an entirely filtered page to a later performance", async () => {
+    const rows = Array.from({ length: 256 }, (_, i) => discoveryRow({
+      id: `a:${i}`, end_date: "2000-01-01",
+    }));
+    rows.push(discoveryRow({ id: "z:concert", source: "kopis", source_item_id: "late-concert" }));
+    const db = fakeDb(rows, []);
+    const first = await queryPerformancePageFromCache(db, 37.5512, 126.9882, options);
+    expect(first.events).toEqual([]);
+    expect(first.festivals).toEqual([]);
+    expect(first.nextCursor).not.toBeNull();
+    const last = await queryPerformancePageFromCache(db, 37.5512, 126.9882, options, first.nextCursor!);
+    expect(last.events.map((e) => e.id)).toEqual(["late-concert"]);
+    expect(last.nextCursor).toBeNull();
+  });
+
+  it("keeps the cursor when a full local-event page lies outside the circle", async () => {
+    const rows = Array.from({ length: 256 }, (_, i) => localEventRow({
+      id: `a:${i}`, lat: 37.6065, lng: 127.028,
+    }));
+    rows.push(localEventRow({ id: "z:inside" }));
+    const options = { lat: 37.5665, lng: 126.978, radiusMeters: 5000, limit: 200, paged: true };
+    const db = fakeDb(rows, []);
+    const first = await queryLocalEvents(db, options);
+    expect(first.items).toEqual([]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await queryLocalEvents(db, { ...options, cursor: first.nextCursor! });
+    expect(second.items.map((e) => e.id)).toEqual(["z:inside"]);
+    expect(second.nextCursor).toBeNull();
   });
 });

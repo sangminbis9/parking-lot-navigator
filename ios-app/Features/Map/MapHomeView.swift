@@ -29,6 +29,7 @@ struct MapHomeView: View {
     @State private var mapZoomLevel = 13
     @State private var didAutoCenterOnLocation = false
     @State private var hasUserFocusedMapTarget = false
+    @State private var hasUserMovedMap = false
     @State private var shouldCenterOnNextLocation = false
     @State private var discoverRefreshTask: Task<Void, Never>?
     @State private var lastDiscoverRefreshViewport: MapViewport?
@@ -122,6 +123,10 @@ struct MapHomeView: View {
                 },
                 onCameraIdle: { viewport in
                     handleCameraIdle(viewport)
+                },
+                onCameraWillMove: {
+                    hasUserMovedMap = true
+                    discoverRefreshTask?.cancel()
                 },
                 onPinRenderPending: { pending in
                     isPlacingPins = pending
@@ -224,8 +229,10 @@ struct MapHomeView: View {
             // 첫 실행에 시스템 권한 팝업을 띄우지 않는다. 팝업은 안내를 보고 사용자가 눌렀을 때만 뜬다.
             locationProvider.startIfAuthorized()
             applyFallbackCenterIfNeeded()
-            await viewModel.loadInitialDiscoverLayers(viewport: mapViewport, filter: festivalFilterModel.filter)
-            lastDiscoverRefreshViewport = mapViewport
+            let initialViewport = mapViewport
+            if await viewModel.loadInitialDiscoverLayers(viewport: initialViewport, filter: festivalFilterModel.filter) {
+                lastDiscoverRefreshViewport = initialViewport
+            }
             centerOnInitialDiscoverPinIfNeeded()
             // 응답이 끝난 시점부터 핀이 올라가기 시작한다. 렌더 신호가 켜질 틈을 주고,
             // 그 신호가 꺼질 때까지(= 첫 핀이 다 자리 잡을 때까지) 기다렸다가 로딩을 내린다.
@@ -270,13 +277,13 @@ struct MapHomeView: View {
         .onReceive(festivalFilterModel.$filter.dropFirst()) { newFilter in
             discoverRefreshTask?.cancel()
             discoverRefreshTask = Task {
-                await viewModel.loadDiscoverLayers(
-                    viewport: mapViewport,
+                let viewport = mapViewport
+                let loaded = await viewModel.loadDiscoverLayers(
+                    viewport: viewport,
                     filter: newFilter
                 )
-                await MainActor.run {
-                    lastDiscoverRefreshViewport = mapViewport
-                }
+                guard !Task.isCancelled else { return }
+                lastDiscoverRefreshViewport = loaded ? viewport : nil
             }
         }
         .onChange(of: hologramPin?.id) { _ in
@@ -585,11 +592,6 @@ struct MapHomeView: View {
         return sources
     }
 
-    /// 핀 파이프라인에 넣을 소스의 상한. 지도가 처음 뜰 때는 아직 카메라 이벤트가 없어
-    /// 뷰포트 반경이 초기값(20km)이라 반경 컷만으로는 콜드 스타트 부하가 줄지 않는다.
-    /// 가까운 순으로 이만큼만 남겨 어떤 상황에서도 한 번에 그리는 양을 묶어 둔다.
-    private static let maxPinSourceCount = 600
-
     /// 핀으로 만들 소스를 화면 주변으로 잘라내는 반경. 살짝 밀어도 핀이 비지 않도록 여유를 준다.
     private var pinClipRadiusMeters: Int {
         max(Int(Double(mapViewport.radiusMeters) * 1.35), 3_000)
@@ -610,33 +612,10 @@ struct MapHomeView: View {
     /// 보이는 영역(+여유)만 남긴다. 선택된 핀은 화면 밖으로 밀려도 유지한다.
     private var clippedDiscoverSources: [DiscoverPinSource] {
         pinCache.clippedDiscoverSources(discoverClipKey) {
-            let sources = discoverSources
-            guard !sources.isEmpty else { return [] }
-            let selectedID = selectedDiscoverPinID
-            let centerLat = mapViewport.center.latitude
-            let centerLng = mapViewport.center.longitude
-            let radius = Double(pinClipRadiusMeters)
-            // 수천 건에 CLLocation.distance를 쓰면 객체 할당만으로 프레임을 넘긴다.
-            // 이 규모에서는 평면 근사로 충분하다.
-            let metersPerLat = 111_320.0
-            let metersPerLng = 111_320.0 * cos(centerLat * .pi / 180)
-            let limit = radius * radius
-            var scored: [(source: DiscoverPinSource, distanceSquared: Double)] = []
-            scored.reserveCapacity(min(sources.count, Self.maxPinSourceCount))
-            for source in sources {
-                if let selectedID, source.id == selectedID {
-                    scored.append((source, -1))
-                    continue
-                }
-                let dy = (source.coordinate.latitude - centerLat) * metersPerLat
-                let dx = (source.coordinate.longitude - centerLng) * metersPerLng
-                let distanceSquared = dx * dx + dy * dy
-                if distanceSquared <= limit { scored.append((source, distanceSquared)) }
-            }
-            guard scored.count > Self.maxPinSourceCount else { return scored.map(\.source) }
-            return scored.sorted { $0.distanceSquared < $1.distanceSquared }
-                .prefix(Self.maxPinSourceCount)
-                .map(\.source)
+            MapViewportSelection.sources(
+                discoverSources, center: mapViewport.center, radiusMeters: pinClipRadiusMeters,
+                selectedID: selectedDiscoverPinID, coordinate: { $0.coordinate }
+            )
         }
     }
 
@@ -926,7 +905,7 @@ struct MapHomeView: View {
                         tint: FestivalDesign.teal,
                         isOn: viewModel.showsLocalEventLayer
                     ) {
-                        Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport) }
+                        Task { await viewModel.setLocalEventLayerVisible(!viewModel.showsLocalEventLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                     }
                     layerToggle(
                         title: "공연",
@@ -934,7 +913,7 @@ struct MapHomeView: View {
                         tint: FestivalPrimaryCategory.musicPerformance.tint,
                         isOn: viewModel.showsPerformanceLayer
                     ) {
-                        Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport) }
+                        Task { await viewModel.setPerformanceLayerVisible(!viewModel.showsPerformanceLayer, viewport: mapViewport, filter: festivalFilterModel.filter) }
                     }
                     layerToggle(
                         title: "박람회",
@@ -1616,7 +1595,8 @@ struct MapHomeView: View {
     /// 권한이 있는 사용자는 곧 실제 좌표가 도착하므로 건드리지 않는다 —
     /// 여기서 didAutoCenterOnLocation을 써 버리면 그 좌표가 와도 내 위치로 못 간다.
     private func centerOnInitialDiscoverPinIfNeeded() {
-        guard !didAutoCenterOnLocation, !isLocationAuthorized else { return }
+        guard !didAutoCenterOnLocation, !isLocationAuthorized,
+              !hasUserMovedMap, !hasUserFocusedMapTarget else { return }
         guard viewModel.selectedDestination == nil, viewModel.parkingLots.isEmpty else { return }
         if viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer, let festival = viewModel.festivals.first {
             didAutoCenterOnLocation = true
@@ -1638,7 +1618,7 @@ struct MapHomeView: View {
             return
         }
 
-        guard !didAutoCenterOnLocation, !hasUserFocusedMapTarget, viewModel.selectedDestination == nil else {
+        guard !didAutoCenterOnLocation, !hasUserMovedMap, !hasUserFocusedMapTarget, viewModel.selectedDestination == nil else {
             return
         }
         didAutoCenterOnLocation = true
@@ -1656,29 +1636,37 @@ struct MapHomeView: View {
         let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
         let freeParkingActive = viewModel.showsFreeParkingLayer
         guard discoverLayersActive || freeParkingActive else { return }
-        guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask?.cancel()
+        // A → B → A로 돌아왔을 때도 B 요청을 먼저 취소해야 A를 덮어쓰지 않는다.
+        guard shouldRefreshDiscover(for: viewport) else { return }
         discoverRefreshTask = Task {
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
+            var loaded = true
             if discoverLayersActive {
-                await viewModel.loadDiscoverLayers(
+                loaded = await viewModel.loadDiscoverLayers(
                     viewport: viewport,
                     filter: festivalFilterModel.filter,
+                    showsError: true,
                     showsSpinner: false
                 )
             }
+            guard !Task.isCancelled else { return }
             if freeParkingActive {
-                await viewModel.loadStaticFreeParkingLots(viewport: viewport)
+                let parkingLoaded = await viewModel.loadStaticFreeParkingLots(viewport: viewport)
+                loaded = loaded && parkingLoaded
             }
-            await MainActor.run {
-                lastDiscoverRefreshViewport = viewport
-            }
+            guard !Task.isCancelled else { return }
+            // 실패/취소를 조회 완료로 기억하면 같은 장소에서 재시도하지 못한다.
+            lastDiscoverRefreshViewport = loaded ? viewport : nil
         }
     }
 
     private func shouldRefreshDiscover(for viewport: MapViewport) -> Bool {
-        guard let previous = lastDiscoverRefreshViewport else { return true }
+        let discoverActive = viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
+        if discoverActive && viewModel.completedDiscoverFilter != festivalFilterModel.filter { return true }
+        let completedViewport = discoverActive ? viewModel.completedDiscoverViewport : lastDiscoverRefreshViewport
+        guard let previous = completedViewport else { return true }
         if viewport.zoomLevel != previous.zoomLevel { return true }
         let movedMeters = CLLocation(latitude: viewport.center.latitude, longitude: viewport.center.longitude)
             .distance(from: CLLocation(latitude: previous.center.latitude, longitude: previous.center.longitude))
@@ -2055,7 +2043,7 @@ private struct ParkingPinSource: OverlayPinSource {
     }
 }
 
-private enum DiscoverPinSource: OverlayPinSource {
+private enum DiscoverPinSource: OverlayPinSource, Identifiable {
     /// `layerTint`는 이 핀을 만들어낸 지도 상단 토글의 색이다. 같은 축제가 여러 레이어에 들어올 수 있어
     /// 모델만으로는 소속 레이어를 알 수 없으므로 만들 때 함께 들고 다닌다.
     case festival(Festival, layerTint: UIColor)

@@ -9,7 +9,9 @@ import {
   queryDiscoveryClusters,
   getFestivalBySourceItemId,
   queryFestivalsFromCache,
+  queryFestivalPageFromCache,
   queryPerformancesFromCache,
+  queryPerformancePageFromCache,
   pruneOldSyncRuns,
   reapStaleSyncRuns,
   syncDiscoveryCache,
@@ -216,6 +218,8 @@ const discoverQuerySchema = z.object({
   upcomingWithinDays: z.coerce.number().min(0).max(365).optional(),
   pastWithinDays: z.coerce.number().min(0).max(90).optional(),
   freeOnly: optionalBoolean,
+  paged: optionalBoolean,
+  cursor: z.string().max(512).optional(),
 });
 
 const localEventQuerySchema = discoverQuerySchema.extend({
@@ -526,18 +530,22 @@ app.get("/api/festivals", async (c) =>
   edgeCached(c.req.url, c.executionCtx, 60, async () => {
     const query = discoverQuerySchema.parse(queryObject(c.req.raw.url));
     if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
-    const items = await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, {
+    const options: DiscoveryQueryOptions = {
       radiusMeters:
         query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
       ongoingOnly: query.ongoingOnly,
       upcomingWithinDays: query.upcomingWithinDays ?? 30,
       pastWithinDays: query.pastWithinDays ?? 0,
-    });
+    };
+    const result = query.paged
+      ? await queryFestivalPageFromCache(c.env.DB, query.lat, query.lng, options, query.cursor)
+      : { items: await queryFestivalsFromCache(c.env.DB, query.lat, query.lng, options), nextCursor: null };
     return c.json({
-      items: items.map((item) => ({
+      items: result.items.map((item) => ({
         ...item,
         description: item.description ?? item.subtitle ?? null,
       })),
+      nextCursor: result.nextCursor,
       generatedAt: new Date().toISOString(),
     });
   }),
@@ -563,15 +571,11 @@ app.get("/api/performances", async (c) =>
       radiusMeters: radiusMeters ?? 50_000,
       upcomingWithinDays: upcomingWithinDays ?? 365,
     };
-    const { festivals, events } = await queryPerformancesFromCache(
-      c.env.DB,
-      lat,
-      lng,
-      options,
-    );
+    const result = query.data.paged
+      ? await queryPerformancePageFromCache(c.env.DB, lat, lng, options, query.data.cursor)
+      : { ...await queryPerformancesFromCache(c.env.DB, lat, lng, options), nextCursor: null };
     return c.json({
-      festivals,
-      events,
+      ...result,
       generatedAt: new Date().toISOString(),
     } satisfies DiscoverPerformancesResponse);
   }));
@@ -587,6 +591,7 @@ app.get("/api/local-events", async (c) =>
         query.radiusMeters ?? Number(c.env.DEFAULT_DISCOVER_RADIUS_METERS),
       cursor: query.cursor,
       limit: query.limit,
+      paged: query.paged,
       status: "approved",
     });
     return c.json({ ...result, generatedAt: new Date().toISOString() });

@@ -6,10 +6,12 @@ final class StubURLProtocol: URLProtocol {
     /// 호출 순서대로 꺼내 쓴다. 성공이면 (status, body), 실패면 URLError를 던진다.
     static var responses: [() throws -> (Int, Data)] = []
     static var requestCount = 0
+    static var requests: [URLRequest] = []
 
     static func reset() {
         responses = []
         requestCount = 0
+        requests = []
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -18,6 +20,7 @@ final class StubURLProtocol: URLProtocol {
     override func startLoading() {
         let index = min(StubURLProtocol.requestCount, StubURLProtocol.responses.count - 1)
         StubURLProtocol.requestCount += 1
+        StubURLProtocol.requests.append(request)
         guard index >= 0 else {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
@@ -91,7 +94,7 @@ final class APIClientRetryTests: XCTestCase {
     }
 
     func testServerErrorRecoversOnSecondAttempt() async throws {
-        StubURLProtocol.responses = [status(503), ok("[]")]
+        StubURLProtocol.responses = [status(503), ok("{\"items\":[],\"generatedAt\":\"test\"}")]
         let festivals = try await client.nearbyFestivals(lat: 36.35, lng: 127.8, radiusMeters: 460_000, upcomingWithinDays: 365)
         XCTAssertTrue(festivals.isEmpty)
         XCTAssertEqual(StubURLProtocol.requestCount, 2)
@@ -111,7 +114,7 @@ final class APIClientRetryTests: XCTestCase {
     }
 
     func testConnectionLostRetriesOnce() async {
-        StubURLProtocol.responses = [failure(.networkConnectionLost), ok("[]")]
+        StubURLProtocol.responses = [failure(.networkConnectionLost), ok("{\"items\":[],\"generatedAt\":\"test\"}")]
         let events = try? await client.nearbyEvents(lat: 36.35, lng: 127.8, radiusMeters: 460_000)
         XCTAssertEqual(events?.count, 0)
         XCTAssertEqual(StubURLProtocol.requestCount, 2)
@@ -171,5 +174,71 @@ final class APIClientRetryTests: XCTestCase {
         XCTAssertEqual(APIEndpointLabel.festivals.rawValue, "festivals")
         XCTAssertEqual(APIEndpointLabel.localEvents.rawValue, "local-events")
         XCTAssertEqual(APIEndpointLabel.performances.rawValue, "performances")
+    }
+
+    func testFestivalsReadPastEmptyPageAndPreserveViewport() async throws {
+        StubURLProtocol.responses = [
+            ok("{\"items\":[],\"generatedAt\":\"test\",\"nextCursor\":\"festival:a\"}"),
+            ok("{\"items\":[],\"generatedAt\":\"test\",\"nextCursor\":null}")
+        ]
+        _ = try await client.nearbyFestivals(lat: 37.4, lng: 126.6, radiusMeters: 20000, upcomingWithinDays: 365)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        let queries = StubURLProtocol.requests.map {
+            URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)!.queryItems!
+        }
+        XCTAssertTrue(queries.allSatisfy { $0.contains(URLQueryItem(name: "lat", value: "37.4")) })
+        XCTAssertTrue(queries.allSatisfy { $0.contains(URLQueryItem(name: "paged", value: "true")) })
+        XCTAssertTrue(queries[1].contains(URLQueryItem(name: "cursor", value: "festival:a")))
+    }
+
+    func testLocalEventsReadBeyondFirst200AndDeduplicateIDs() async throws {
+        let mock = try await MockAPIClient().nearbyEvents(lat: 37.4, lng: 126.6, radiusMeters: 20000)
+        let item = try XCTUnwrap(mock.first)
+        let data = try JSONEncoder().encode(item)
+        let template = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        func page(_ ids: Range<Int>, cursor: String?) throws -> String {
+            let items = ids.map { id -> [String: Any] in
+                var object = template
+                object["id"] = "event-\(id)"
+                return object
+            }
+            let body: [String: Any] = ["items": items, "generatedAt": "test", "nextCursor": cursor.map { $0 as Any } ?? NSNull()]
+            return String(data: try JSONSerialization.data(withJSONObject: body), encoding: .utf8)!
+        }
+        StubURLProtocol.responses = [try ok(page(0..<200, cursor: "event-199")), try ok(page(199..<402, cursor: nil))]
+        let items = try await client.nearbyEvents(lat: 37.4, lng: 126.6, radiusMeters: 20000)
+        XCTAssertEqual(items.count, 402)
+        XCTAssertEqual(Set(items.map(\.id)).count, 402)
+    }
+
+    func testPerformancePaginationContinuesAcrossEmptyPage() async throws {
+        StubURLProtocol.responses = [
+            ok("{\"festivals\":[],\"events\":[],\"generatedAt\":\"test\",\"nextCursor\":\"next\"}"),
+            ok("{\"festivals\":[],\"events\":[],\"generatedAt\":\"test\",\"nextCursor\":null}")
+        ]
+        _ = try await client.nearbyPerformances(lat: 37.4, lng: 126.6, radiusMeters: 20000, upcomingWithinDays: 365)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testRepeatedCursorFailsInsteadOfSilentlyTruncatingOrLooping() async {
+        StubURLProtocol.responses = [ok("{\"items\":[],\"generatedAt\":\"test\",\"nextCursor\":\"same\"}")]
+        do {
+            _ = try await client.nearbyEvents(lat: 37.4, lng: 126.6, radiusMeters: 20000)
+            XCTFail("반복 커서를 성공으로 처리하면 안 된다")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .badServerResponse)
+        }
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+    }
+
+    func testLaterPageFailureDoesNotReturnPartialSuccess() async {
+        StubURLProtocol.responses = [
+            ok("{\"items\":[],\"generatedAt\":\"test\",\"nextCursor\":\"next\"}"), status(500), status(500)
+        ]
+        do {
+            _ = try await client.nearbyEvents(lat: 37.4, lng: 126.6, radiusMeters: 20000)
+            XCTFail("중간 실패는 조회 완료가 아니다")
+        } catch { XCTAssertEqual((error as? APIHTTPError)?.statusCode, 500) }
+        XCTAssertEqual(StubURLProtocol.requestCount, 3)
     }
 }

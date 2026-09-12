@@ -13,8 +13,7 @@ import {
   structureLocalEvent,
 } from "../../backend/src/features/localEvents/localEventStructuring.js";
 
-// bbox 모서리에 있어 원(radiusMeters) 밖으로 걸러질 행을 감안한 여유분.
-const LOCAL_EVENT_SCAN_SLACK = 200;
+const LOCAL_EVENT_PAGE_SIZE = 256;
 
 export interface LocalEventQueryOptions {
   lat: number;
@@ -22,6 +21,7 @@ export interface LocalEventQueryOptions {
   radiusMeters: number;
   limit: number;
   cursor?: string;
+  paged?: boolean;
   status?: LocalEventStatus;
 }
 
@@ -58,18 +58,32 @@ export async function queryLocalEvents(
   db: D1Database,
   options: LocalEventQueryOptions,
 ): Promise<{ items: LocalEvent[]; nextCursor: string | null }> {
-  const status = options.status ?? "approved";
+  if (options.paged) return queryLocalEventPage(db, options, options.cursor);
+  // 구버전 offset 클라이언트도 원 밖의 행이 스캔 여유분을 소진했다고
+  // 마지막 페이지로 오인하지 않는다. 새 지도는 아래 keyset 페이지를 직접 읽는다.
+  const matched: LocalEvent[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await queryLocalEventPage(db, options, cursor);
+    matched.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  matched.sort(localEventSort);
   const offset = parseCursor(options.cursor);
+  const items = matched.slice(offset, offset + options.limit);
+  const nextOffset = offset + items.length;
+  return { items, nextCursor: nextOffset < matched.length ? String(nextOffset) : null };
+}
+
+async function queryLocalEventPage(
+  db: D1Database, options: LocalEventQueryOptions, cursor?: string,
+): Promise<{ items: LocalEvent[]; nextCursor: string | null }> {
+  const status = options.status ?? "approved";
   const latDelta = options.radiusMeters / 111320;
   const lngDelta =
     options.radiusMeters /
     Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
   const now = new Date().toISOString();
-  // bbox 조건만 걸고 전부 가져오면 승인 이벤트가 늘어날수록 Worker 메모리를 그대로 밟는다
-  // (/api/festivals가 같은 패턴으로 1102를 냈다). localEventSort와 같은 순서를 SQL에 두고,
-  // 현재 페이지에 필요한 만큼(+ bbox 모서리에서 원 밖으로 떨어질 몫)만 읽는다.
-  const lngScale = Math.cos((options.lat * Math.PI) / 180) ** 2;
-  const scanLimit = offset + options.limit + LOCAL_EVENT_SCAN_SLACK;
   let rows: D1Result<LocalEventRow>;
   try {
     rows = await db
@@ -84,9 +98,8 @@ export async function queryLocalEvents(
            AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))
            AND (end_date IS NULL OR end_date >= date('now', '-1 day'))
            AND (end_date IS NOT NULL OR start_date >= date('now', '-14 days'))
-         ORDER BY is_sponsored DESC,
-                  priority_score DESC,
-                  (lat - ?) * (lat - ?) + (lng - ?) * (lng - ?) * ?
+           AND id > ?
+         ORDER BY id
          LIMIT ?`,
       )
       .bind(
@@ -96,12 +109,8 @@ export async function queryLocalEvents(
         options.lng - lngDelta,
         options.lng + lngDelta,
         now,
-        options.lat,
-        options.lat,
-        options.lng,
-        options.lng,
-        lngScale,
-        scanLimit,
+        cursor ?? "",
+        LOCAL_EVENT_PAGE_SIZE,
       )
       .all<LocalEventRow>();
   } catch (error) {
@@ -111,21 +120,13 @@ export async function queryLocalEvents(
     throw error;
   }
   const scanned = rows.results ?? [];
-  const matched = scanned
+  const items = scanned
     .map((row) => mapLocalEventRow(row, options.lat, options.lng))
     .filter((item) => item.distanceMeters <= options.radiusMeters)
     .sort(localEventSort);
-  const page = matched.slice(offset, offset + options.limit);
-  const nextOffset = offset + page.length;
-  // 스캔 상한에 걸렸다면 뒤에 더 있을 수 있으므로 커서를 닫지 않는다.
-  const scanCapped = scanned.length >= scanLimit;
   return {
-    items: page,
-    nextCursor:
-      nextOffset < matched.length ||
-      (scanCapped && page.length === options.limit)
-        ? String(nextOffset)
-        : null,
+    items,
+    nextCursor: scanned.length === LOCAL_EVENT_PAGE_SIZE ? scanned[scanned.length - 1].id : null,
   };
 }
 
@@ -494,7 +495,7 @@ function localEventSort(a: LocalEvent, b: LocalEvent): number {
   if (a.isSponsored !== b.isSponsored) return a.isSponsored ? -1 : 1;
   if (a.priorityScore !== b.priorityScore)
     return b.priorityScore - a.priorityScore;
-  return a.distanceMeters - b.distanceMeters;
+  return a.distanceMeters - b.distanceMeters || a.id.localeCompare(b.id);
 }
 
 function duplicateKey(item: LocalEvent): string {

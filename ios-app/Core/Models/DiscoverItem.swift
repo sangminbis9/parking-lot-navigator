@@ -718,14 +718,20 @@ enum DiscoverTagBuilder {
     }
 }
 
-struct DiscoverFestivalsResponse: Codable {
-    let items: [Festival]
-    let generatedAt: String
+protocol DiscoverCursorPage: Decodable {
+    var nextCursor: String? { get }
 }
 
-struct DiscoverEventsResponse: Codable {
+struct DiscoverFestivalsResponse: Codable, DiscoverCursorPage {
+    let items: [Festival]
+    let generatedAt: String
+    let nextCursor: String?
+}
+
+struct DiscoverEventsResponse: Codable, DiscoverCursorPage {
     let items: [FreeEvent]
     let generatedAt: String
+    let nextCursor: String?
 }
 
 struct DiscoverFestivalDetailResponse: Decodable {
@@ -738,10 +744,11 @@ struct DiscoverEventDetailResponse: Decodable {
     let generatedAt: String
 }
 
-struct DiscoverPerformancesResponse: Decodable {
+struct DiscoverPerformancesResponse: Decodable, DiscoverCursorPage {
     let festivals: [Festival]
     let events: [FreeEvent]
     let generatedAt: String
+    let nextCursor: String?
 }
 
 enum PerformanceItem: Identifiable {

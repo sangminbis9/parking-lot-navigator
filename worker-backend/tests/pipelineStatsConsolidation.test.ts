@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { queryPipelineStats } from "../src/pipelineStats.js";
 
 // pipelineStats는 D1 rows read 예산을 지키려고, 지표마다 따로 돌던 스칼라 쿼리를
@@ -24,7 +25,7 @@ interface SqliteDb {
   prepare(sql: string): { all(...args: unknown[]): Record<string, unknown>[] };
 }
 
-const MIGRATIONS_DIR = new URL("../migrations/", import.meta.url).pathname;
+const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations/", import.meta.url));
 
 function openSeededDb(): { sqlite: SqliteDb; db: D1Database; sql: string[] } {
   const sqlite = new DatabaseSync!(":memory:");

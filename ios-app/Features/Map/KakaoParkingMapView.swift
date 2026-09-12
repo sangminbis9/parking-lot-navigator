@@ -391,13 +391,17 @@ struct KakaoParkingMapView: UIViewRepresentable {
             let width = max(size.width, 1)
             let height = max(size.height, 1)
             let centerPoint = CGPoint(x: width / 2, y: height / 2)
-            let cornerPoint = CGPoint(x: width - 1, y: height - 1)
             let center = mapView.getPosition(centerPoint).wgsCoord
-            let corner = mapView.getPosition(cornerPoint).wgsCoord
             let centerCoordinate = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude)
-            let cornerCoordinate = CLLocationCoordinate2D(latitude: corner.latitude, longitude: corner.longitude)
-            let radiusMeters = CLLocation(latitude: centerCoordinate.latitude, longitude: centerCoordinate.longitude)
-                .distance(from: CLLocation(latitude: cornerCoordinate.latitude, longitude: cornerCoordinate.longitude))
+            let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            // 회전/기울기에서 우하단 한 점만 재면 다른 화면 모서리를 놓칠 수 있다.
+            let radiusMeters = [
+                CGPoint(x: 0, y: 0), CGPoint(x: width - 1, y: 0),
+                CGPoint(x: 0, y: height - 1), CGPoint(x: width - 1, y: height - 1)
+            ].map { point in
+                let corner = mapView.getPosition(point).wgsCoord
+                return centerLocation.distance(from: CLLocation(latitude: corner.latitude, longitude: corner.longitude))
+            }.max() ?? 800
             return MapViewport(
                 center: centerCoordinate,
                 zoomLevel: mapView.zoomLevel,
@@ -439,7 +443,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
             var options: [PoiOptions] = []
             var positions: [MapPoint] = []
-            var addedIDs: [String] = []
             var clickableIDs: Set<String> = []
             var deferredCount = 0
             for (poiID, entry) in desired where renderedPins[poiID] == nil {
@@ -466,27 +469,37 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 option.clickable = !pin.isCurrentLocation
                 options.append(option)
                 positions.append(MapPoint(longitude: pin.coordinate.longitude, latitude: pin.coordinate.latitude))
-                addedIDs.append(poiID)
                 if !pin.isCurrentLocation { clickableIDs.insert(poiID) }
-                renderedPins[poiID] = entry.snapshot
             }
-            pendingPinChunk = deferredCount > 0
-            reportPinPending(deferredCount > 0)
-            scheduleNextPinChunkIfNeeded()
-            guard !options.isEmpty else { return }
+            guard !options.isEmpty else {
+                pendingPinChunk = deferredCount > 0
+                reportPinPending(pendingPinChunk)
+                scheduleNextPinChunkIfNeeded()
+                return
+            }
 
             // 앱을 새로 열면 수십~수백 개가 한 번에 들어온다. 카카오맵 문서가 권장하는 대로
             // addPoi/show를 개수만큼 반복하지 않고 addPois·showPois로 한 번에 넘긴다.
+            var failedToAdd = false
             PerfTrace.measure("map.addPois", "\(options.count)") {
                 let added = layer.addPois(options: options, at: positions) ?? []
+                // SDK가 실제로 추가한 POI만 완료 처리한다. nil/부분 성공을 완료로
+                // 기록하면 다음 렌더에서 재시도하지 않아 핀이 영구히 빠진다.
+                for poi in added {
+                    renderedPins[poi.itemID] = desired[poi.itemID]?.snapshot
+                }
+                failedToAdd = added.count < options.count
                 for poi in added where clickableIDs.contains(poi.itemID) {
                     poiTapHandlers[poi.itemID] = poi.addPoiTappedEventHandler(
                         target: self,
                         handler: KakaoParkingMapView.Coordinator.poiTappedHandler
                     )
                 }
-                layer.showPois(poiIDs: addedIDs)
+                layer.showPois(poiIDs: added.map(\.itemID))
             }
+            pendingPinChunk = deferredCount > 0 || failedToAdd
+            reportPinPending(pendingPinChunk)
+            scheduleNextPinChunkIfNeeded(delay: failedToAdd ? 1 : 1.0 / 60.0)
         }
 
         /// 핀 렌더가 진행 중인지 알린다. 켜는 건 즉시, 끄는 건 잠시 조용한 걸 확인한 뒤다.
@@ -515,10 +528,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         /// 남은 핀은 다음 프레임에 올린다. asyncAfter로 한 프레임을 비워 줘야
         /// 그 사이 터치/카메라 이벤트가 처리된다.
-        private func scheduleNextPinChunkIfNeeded() {
+        private func scheduleNextPinChunkIfNeeded(delay: TimeInterval = 1.0 / 60.0) {
             guard pendingPinChunk, !pinChunkScheduled else { return }
             pinChunkScheduled = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self else { return }
                 self.pinChunkScheduled = false
                 self.continuePinChunk()

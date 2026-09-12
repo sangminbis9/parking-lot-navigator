@@ -34,6 +34,10 @@ final class MapHomeViewModel: ObservableObject {
     /// 지도 핀 파이프라인 memoization 키. 배열을 통째로 비교하는 건 비싸서 "몇 번째 대입인지"만 센다.
     /// 핀 소스가 되는 배열이 새로 대입될 때마다 올라간다.
     private(set) var pinDataRevision = 0
+    private var discoveryRequestRevision = 0
+    private var freeParkingRequestRevision = 0
+    private(set) var completedDiscoverViewport: MapViewport?
+    private(set) var completedDiscoverFilter: FestivalFilter?
 
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
@@ -167,22 +171,22 @@ final class MapHomeViewModel: ObservableObject {
         await loadDiscoverLayers(viewport: viewport, filter: filter)
     }
 
-    func setLocalEventLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+    func setLocalEventLayerVisible(_ isVisible: Bool, viewport: MapViewport, filter: FestivalFilter = .default) async {
         showsLocalEventLayer = isVisible
         if !isVisible {
             events = []
             return
         }
-        await loadDiscoverLayers(viewport: viewport)
+        await loadDiscoverLayers(viewport: viewport, filter: filter)
     }
 
-    func setPerformanceLayerVisible(_ isVisible: Bool, viewport: MapViewport) async {
+    func setPerformanceLayerVisible(_ isVisible: Bool, viewport: MapViewport, filter: FestivalFilter = .default) async {
         showsPerformanceLayer = isVisible
         if !isVisible {
             performances = []
             return
         }
-        await loadDiscoverLayers(viewport: viewport)
+        await loadDiscoverLayers(viewport: viewport, filter: filter)
     }
 
     /// 실시간 주차와 무료 주차장은 같은 주차 핀 자리를 쓰므로 둘 중 하나만 켠다.
@@ -247,20 +251,26 @@ final class MapHomeViewModel: ObservableObject {
         isLoadingRealtimeParking = false
     }
 
-    func loadStaticFreeParkingLots(viewport: MapViewport, force: Bool = false) async {
-        guard showsFreeParkingLayer || force else { return }
+    @discardableResult
+    func loadStaticFreeParkingLots(viewport: MapViewport, force: Bool = false) async -> Bool {
+        guard showsFreeParkingLayer || force else { return false }
+        freeParkingRequestRevision &+= 1
+        let revision = freeParkingRequestRevision
         do {
             let items = try await apiClient.nearbyParking(
                 lat: viewport.center.latitude,
                 lng: viewport.center.longitude,
                 radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
             )
+            guard !Task.isCancelled, revision == freeParkingRequestRevision,
+                  showsFreeParkingLayer || force else { return false }
             staticFreeParkingLots = items.filter { $0.feeSummary == "무료" }
-            errorMessage = nil
+            return true
         } catch {
-            if !isCancellation(error) {
+            if !isCancellation(error), revision == freeParkingRequestRevision {
                 errorMessage = "\u{BB34}\u{B8CC} \u{C8FC}\u{CC28}\u{C7A5} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
             }
+            return false
         }
     }
 
@@ -270,20 +280,27 @@ final class MapHomeViewModel: ObservableObject {
         return (error as? URLError)?.code == .cancelled
     }
 
-    func loadInitialDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default) async {
+    @discardableResult
+    func loadInitialDiscoverLayers(viewport: MapViewport, filter: FestivalFilter = .default) async -> Bool {
         await loadDiscoverLayers(viewport: viewport, filter: filter, showsError: false)
     }
 
     /// `showsSpinner`는 지도를 끌고 다니며 도는 재검색을 위해 있다. 그 경로는 이미 핀이 떠 있는
     /// 상태라 스피너가 깜빡이기만 하고, 사용자가 누른 것도 아니라 피드백이 필요 없다.
     /// 콜드 스타트와 토글·필터 변경은 기본값 그대로 스피너를 켠다.
+    @discardableResult
     func loadDiscoverLayers(
         viewport: MapViewport,
         filter: FestivalFilter = .default,
         showsError: Bool = false,
         showsSpinner: Bool = true
-    ) async {
-        if showsSpinner { isLoadingDiscover = true }
+    ) async -> Bool {
+        discoveryRequestRevision &+= 1
+        let requestRevision = discoveryRequestRevision
+        isLoadingDiscover = showsSpinner
+        defer {
+            if requestRevision == discoveryRequestRevision { isLoadingDiscover = false }
+        }
         errorMessage = nil
 
         // 세 요청은 서로 의존하지 않는다. 순차 await면 가장 느린 하나가 아니라 셋의 합만큼 기다린다.
@@ -302,14 +319,14 @@ final class MapHomeViewModel: ObservableObject {
         let eventOutcome = await eventResult
         let performanceOutcome = await performanceResult
 
-        if Task.isCancelled { return }
+        guard !Task.isCancelled, requestRevision == discoveryRequestRevision else { return false }
 
         var failedLoads = 0
         var attemptedLoads = 0
         var firstFailure: Error?
 
         // 결과는 한 번에 반영한다. 하나씩 넣으면 그때마다 핀 파이프라인이 처음부터 다시 돈다.
-        if let festivalOutcome {
+        if let festivalOutcome, showsFestivalLayer || showsTradeExpoLayer {
             attemptedLoads += 1
             switch festivalOutcome {
             case .success(let items): festivals = items
@@ -318,7 +335,7 @@ final class MapHomeViewModel: ObservableObject {
                 firstFailure = firstFailure ?? error
             }
         }
-        if let eventOutcome {
+        if let eventOutcome, showsLocalEventLayer {
             attemptedLoads += 1
             switch eventOutcome {
             case .success(let items): events = items
@@ -327,7 +344,7 @@ final class MapHomeViewModel: ObservableObject {
                 firstFailure = firstFailure ?? error
             }
         }
-        if let performanceOutcome {
+        if let performanceOutcome, showsPerformanceLayer {
             attemptedLoads += 1
             switch performanceOutcome {
             case .success(let items): performances = items
@@ -337,10 +354,15 @@ final class MapHomeViewModel: ObservableObject {
             }
         }
 
-        if showsError && attemptedLoads > 0 && attemptedLoads == failedLoads, let firstFailure {
+        if showsError && failedLoads > 0, let firstFailure {
             errorMessage = NetworkErrorMessage.text(for: firstFailure, subject: "탐색 정보")
         }
-        if showsSpinner { isLoadingDiscover = false }
+        let loaded = attemptedLoads > 0 && failedLoads == 0
+        // 완료 메타데이터와 배열을 같은 MainActor 구간에 반영한다. 호출자가 await에서
+        // 돌아오기 전에 카메라가 움직여도 실제 보관된 데이터 범위를 기준으로 판단한다.
+        completedDiscoverViewport = loaded ? viewport : nil
+        completedDiscoverFilter = loaded ? filter : nil
+        return loaded
     }
 
     func loadDiscoverItems(viewport: MapViewport) async {
@@ -413,7 +435,8 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     private func viewportDiscoverRadiusMeters(for viewport: MapViewport) -> Int {
-        max(viewport.radiusMeters, localDiscoverRadiusMeters)
+        // 표시 반경(1.35배)과 재조회 이동 임계값(0.15배)을 모두 덮는다.
+        max(Int(ceil(Double(viewport.radiusMeters) * 1.6)), localDiscoverRadiusMeters)
     }
 
     func isDestinationParking(_ parkingLot: ParkingLot, for destination: Destination) -> Bool {

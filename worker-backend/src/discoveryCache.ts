@@ -21,8 +21,7 @@ export {
 
 type DiscoveryType = "festival" | "event";
 
-const DISCOVERY_RESULT_LIMIT = 5000;
-const DISCOVERY_CLUSTER_RESULT_LIMIT = 5000;
+const DISCOVERY_PAGE_SIZE = 256;
 const DISCOVERY_STALE_DAYS: Record<DiscoveryType, number> = {
   festival: 100,
   event: 45,
@@ -194,6 +193,17 @@ export async function queryFestivalsFromCache(
 ): Promise<Festival[]> {
   const rows = await queryDiscoveryRows(db, "festival", lat, lng, options);
   return dedupeFestivals(rows.map((row) => mapFestivalRow(row, lat, lng)));
+}
+
+export async function queryFestivalPageFromCache(
+  db: D1Database, lat: number, lng: number, options: DiscoveryQueryOptions,
+  cursor?: string,
+): Promise<{ items: Festival[]; nextCursor: string | null }> {
+  const page = await queryDiscoveryPage(db, "festival", lat, lng, options, cursor);
+  return {
+    items: dedupeFestivals(page.rows.map((row) => mapFestivalRow(row, lat, lng))),
+    nextCursor: page.nextCursor,
+  };
 }
 
 /** 푸시 알림 딥링크용 단건 조회. 알림에는 id만 실리므로 앱이 이걸로 상세를 받는다. */
@@ -478,6 +488,20 @@ export async function queryPerformancesFromCache(
   options: DiscoveryQueryOptions,
 ): Promise<{ festivals: Festival[]; events: FreeEvent[] }> {
   const rows = await queryDiscoveryRows(db, "festival", lat, lng, options);
+  return mapPerformanceRows(rows, lat, lng, options);
+}
+
+export async function queryPerformancePageFromCache(
+  db: D1Database, lat: number, lng: number, options: DiscoveryQueryOptions,
+  cursor?: string,
+): Promise<{ festivals: Festival[]; events: FreeEvent[]; nextCursor: string | null }> {
+  const page = await queryDiscoveryPage(db, "festival", lat, lng, options, cursor);
+  return { ...mapPerformanceRows(page.rows, lat, lng, options), nextCursor: page.nextCursor };
+}
+
+function mapPerformanceRows(
+  rows: DiscoveryItemRow[], lat: number, lng: number, options: DiscoveryQueryOptions,
+): { festivals: Festival[]; events: FreeEvent[] } {
   const events = rows
     .filter((row) => PERFORMANCE_EVENT_SOURCES.has(row.source))
     .map((row) => mapEventRow(row, lat, lng))
@@ -509,7 +533,6 @@ export async function queryDiscoveryClusters(
           lat,
           lng,
           { ...options, upcomingWithinDays: 365 },
-          DISCOVERY_CLUSTER_RESULT_LIMIT,
         ),
       ),
     )
@@ -776,8 +799,24 @@ async function queryDiscoveryRows(
   lat: number,
   lng: number,
   options: DiscoveryQueryOptions,
-  limit = DISCOVERY_RESULT_LIMIT,
 ): Promise<DiscoveryItemRow[]> {
+  const rows: DiscoveryItemRow[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await queryDiscoveryPage(db, type, lat, lng, options, cursor);
+    rows.push(...page.rows);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return rows.map((row) => ({ row, distance: distanceMeters(lat, lng, row.lat, row.lng) }))
+    .sort(sortDiscoveryRows).map((entry) => entry.row);
+}
+
+// LIMIT는 전송 단위일 뿐 전체 결과 상한이 아니다. 필터에서 한 페이지가 전부
+// 탈락해도 마지막 원본 id로 계속 읽어, 먼 행사/공연이 가까운 행에 밀리지 않게 한다.
+async function queryDiscoveryPage(
+  db: D1Database, type: DiscoveryType, lat: number, lng: number,
+  options: DiscoveryQueryOptions, cursor?: string,
+): Promise<{ rows: DiscoveryItemRow[]; nextCursor: string | null }> {
   const radiusMeters = options.radiusMeters;
   const latDelta = radiusMeters / 111320;
   const lngDelta =
@@ -785,10 +824,6 @@ async function queryDiscoveryRows(
   const minSeenAt = new Date(
     Date.now() - DISCOVERY_STALE_DAYS[type] * 24 * 60 * 60 * 1000,
   ).toISOString();
-  // LIMIT만 걸면 SQLite가 bbox 안에서 어떤 행을 돌려줄지 정해지지 않아, bbox 결과가
-  // LIMIT을 넘는 순간 가까운 축제가 조용히 빠지고 응답이 매번 달라진다. 근사 거리
-  // (경도는 위도에 따른 실거리 차이를 cos²로 보정) 오름차순으로 잘라 항상 가까운 쪽을 남긴다.
-  const lngScale = Math.cos((lat * Math.PI) / 180) ** 2;
   const rows = await db
     .prepare(
       `SELECT *
@@ -797,7 +832,8 @@ async function queryDiscoveryRows(
          AND lat BETWEEN ? AND ?
          AND lng BETWEEN ? AND ?
          AND last_seen_at >= ?
-       ORDER BY (lat - ?) * (lat - ?) + (lng - ?) * (lng - ?) * ?
+         AND id > ?
+       ORDER BY id
        LIMIT ?`,
     )
     .bind(
@@ -807,12 +843,8 @@ async function queryDiscoveryRows(
       lng - lngDelta,
       lng + lngDelta,
       minSeenAt,
-      lat,
-      lat,
-      lng,
-      lng,
-      lngScale,
-      Math.max(limit + 500, limit),
+      cursor ?? "",
+      DISCOVERY_PAGE_SIZE,
     )
     .all<DiscoveryItemRow>();
   // 거리는 행마다 한 번만 재고 정렬은 그 값을 본다. sort 비교마다 haversine을 두 번씩
@@ -825,10 +857,11 @@ async function queryDiscoveryRows(
     if (!rowPassesFilters(row, options)) continue;
     candidates.push({ row, distance });
   }
-  return candidates
-    .sort(sortDiscoveryRows)
-    .slice(0, limit)
-    .map((entry) => entry.row);
+  const scanned = rows.results ?? [];
+  return {
+    rows: candidates.sort(sortDiscoveryRows).map((entry) => entry.row),
+    nextCursor: scanned.length === DISCOVERY_PAGE_SIZE ? scanned[scanned.length - 1].id : null,
+  };
 }
 
 const DISCOVERY_UPSERT_BATCH_SIZE = 50;
@@ -1541,7 +1574,7 @@ function sortDiscoveryRows(
     if (aStatus === "ongoing") return -1;
     if (bStatus === "ongoing") return 1;
   }
-  return a.distance - b.distance;
+  return a.distance - b.distance || a.row.id.localeCompare(b.row.id);
 }
 
 function dedupeItems<T extends DiscoveryItem>(items: T[]): T[] {

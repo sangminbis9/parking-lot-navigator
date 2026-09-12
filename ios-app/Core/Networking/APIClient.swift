@@ -125,8 +125,8 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays)),
             URLQueryItem(name: "pastWithinDays", value: String(pastWithinDays))
         ]
-        let response: DiscoverFestivalsResponse = try await get(components.url!, endpoint: .festivals)
-        return response.items
+        let pages: [DiscoverFestivalsResponse] = try await discoveryPages(components, endpoint: .festivals)
+        return uniqueItems(pages.flatMap(\.items)).sorted(by: festivalOrder)
     }
 
     func nearbyEvents(lat: Double, lng: Double, radiusMeters: Int) async throws -> [FreeEvent] {
@@ -136,8 +136,13 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "lng", value: String(lng)),
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters))
         ]
-        let response: DiscoverEventsResponse = try await get(components.url!, endpoint: .localEvents)
-        return response.items
+        let pages: [DiscoverEventsResponse] = try await discoveryPages(components, endpoint: .localEvents)
+        return uniqueItems(pages.flatMap(\.items)).sorted {
+            if $0.isSponsored != $1.isSponsored { return $0.isSponsored }
+            if $0.priorityScore != $1.priorityScore { return $0.priorityScore > $1.priorityScore }
+            if $0.distanceMeters != $1.distanceMeters { return $0.distanceMeters < $1.distanceMeters }
+            return $0.id < $1.id
+        }
     }
 
     func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent]) {
@@ -148,8 +153,49 @@ final class APIClient: APIClientProtocol {
             URLQueryItem(name: "radiusMeters", value: String(radiusMeters)),
             URLQueryItem(name: "upcomingWithinDays", value: String(upcomingWithinDays))
         ]
-        let response: DiscoverPerformancesResponse = try await get(components.url!, endpoint: .performances)
-        return (festivals: response.festivals, events: response.events)
+        let pages: [DiscoverPerformancesResponse] = try await discoveryPages(components, endpoint: .performances)
+        let festivals = uniqueItems(pages.flatMap(\.festivals)).sorted(by: festivalOrder)
+        let events = uniqueItems(pages.flatMap(\.events)).sorted {
+            if $0.timelineStatus != $1.timelineStatus { return $0.timelineStatus == .ongoing }
+            if $0.distanceMeters != $1.distanceMeters { return $0.distanceMeters < $1.distanceMeters }
+            return $0.id < $1.id
+        }
+        return (festivals, events)
+    }
+
+    /// 페이지 크기는 전송 단위이지 핀 상한이 아니다. 빈 페이지도 다음 커서가
+    /// 있으면 계속 읽고, 중간 실패/취소는 일부 결과를 완료된 조회로 반환하지 않는다.
+    private func discoveryPages<Page: DiscoverCursorPage>(
+        _ base: URLComponents, endpoint: APIEndpointLabel
+    ) async throws -> [Page] {
+        var pages: [Page] = []
+        var cursor: String?
+        var seenCursors = Set<String>()
+        repeat {
+            try Task.checkCancellation()
+            var components = base
+            components.queryItems = (base.queryItems ?? []) + [URLQueryItem(name: "paged", value: "true")]
+            if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
+            let page: Page = try await get(components.url!, endpoint: endpoint)
+            try Task.checkCancellation()
+            pages.append(page)
+            cursor = page.nextCursor
+            if let cursor, cursor.isEmpty || !seenCursors.insert(cursor).inserted {
+                throw URLError(.badServerResponse)
+            }
+        } while cursor != nil
+        return pages
+    }
+
+    private func uniqueItems<Item: Identifiable>(_ items: [Item]) -> [Item] {
+        var seen = Set<Item.ID>()
+        return items.filter { seen.insert($0.id).inserted }
+    }
+
+    private func festivalOrder(_ lhs: Festival, _ rhs: Festival) -> Bool {
+        if lhs.status != rhs.status { return lhs.status == .ongoing }
+        if lhs.distanceMeters != rhs.distanceMeters { return lhs.distanceMeters < rhs.distanceMeters }
+        return lhs.id < rhs.id
     }
 
     func providerHealth() async throws -> [ProviderHealth] {
