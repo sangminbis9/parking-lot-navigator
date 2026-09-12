@@ -28,6 +28,8 @@ final class MapHomeViewModel: ObservableObject {
     @Published var isSearching = false
     @Published var isLoadingParking = false
     @Published var isLoadingDiscover = false
+    /// 조용한 지도 이동 재조회도 포함하는 실제 네트워크 작업 상태.
+    @Published private(set) var isFetchingDiscover = false
     @Published var isLoadingRealtimeParking = false
     @Published var errorMessage: String?
 
@@ -298,8 +300,12 @@ final class MapHomeViewModel: ObservableObject {
         discoveryRequestRevision &+= 1
         let requestRevision = discoveryRequestRevision
         isLoadingDiscover = showsSpinner
+        isFetchingDiscover = true
         defer {
-            if requestRevision == discoveryRequestRevision { isLoadingDiscover = false }
+            if requestRevision == discoveryRequestRevision {
+                isLoadingDiscover = false
+                isFetchingDiscover = false
+            }
         }
         errorMessage = nil
 

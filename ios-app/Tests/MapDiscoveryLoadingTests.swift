@@ -24,6 +24,8 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         await fulfillment(of: [startedA], timeout: 2)
         let second = Task { await model.loadDiscoverLayers(viewport: b, showsSpinner: false) }
         await fulfillment(of: [startedB], timeout: 2)
+        XCTAssertTrue(model.isFetchingDiscover, "지도 이동의 조용한 조회도 로딩 배지에 알려야 한다")
+        XCTAssertFalse(model.isLoadingDiscover)
         let items = try await MockAPIClient().nearbyFestivals(lat: b.center.latitude, lng: b.center.longitude, radiusMeters: 20000, upcomingWithinDays: 365)
         client.finish(b.center.latitude, .success(items))
         let secondLoaded = await second.value
@@ -36,6 +38,7 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         XCTAssertEqual(model.festivals, expected)
         XCTAssertEqual(model.completedDiscoverViewport, b)
         XCTAssertFalse(model.isLoadingDiscover)
+        XCTAssertFalse(model.isFetchingDiscover)
     }
 
     func testCancelledLoadDoesNotCommitOrLeaveSpinnerRunning() async {
@@ -50,6 +53,7 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         let loaded = await task.value
         XCTAssertFalse(loaded)
         XCTAssertFalse(model.isLoadingDiscover)
+        XCTAssertFalse(model.isFetchingDiscover)
     }
 
     func testFailureIsNotReportedAsLoadedAndQueryCoversVisibleMargin() async {
@@ -66,6 +70,7 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         let loaded = await task.value
         XCTAssertFalse(loaded)
         XCTAssertNotNil(model.errorMessage)
+        XCTAssertFalse(model.isFetchingDiscover)
         XCTAssertNil(model.completedDiscoverViewport)
         XCTAssertFalse(model.isLoadingDiscover)
     }

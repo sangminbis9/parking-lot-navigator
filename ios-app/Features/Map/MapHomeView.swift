@@ -36,6 +36,7 @@ struct MapHomeView: View {
     @State private var isHomeDiscoveryPanelDismissed = false
     /// 핀을 여러 프레임에 걸쳐 올리는 중인지. 이 동안 지도가 굳은 것처럼 보인다.
     @State private var isPlacingPins = false
+    @State private var viewportLoadingID: UUID?
     /// 다른 앱에 갔다 돌아온 직후인지. 지도 엔진이 되살아나는 동안 화면이 멈춘다.
     @State private var isResumingMap = false
     /// 첫 조회 응답과 그 핀이 다 자리 잡았는지. 그 전까지는 로딩 표시를 내리지 않는다.
@@ -163,6 +164,11 @@ struct MapHomeView: View {
                 homeMapHeader
                 festivalFilterButton
                     .festivalShadow(.medium)
+                    .overlay(alignment: .topTrailing) {
+                        MapPinLoadingBadge(isLoading: isViewportPinLoading)
+                            .offset(y: layerToggleHeight + 6)
+                            .allowsHitTesting(false)
+                    }
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.horizontal, 14)
                     .background(
@@ -256,6 +262,7 @@ struct MapHomeView: View {
         }
         .onDisappear {
             discoverRefreshTask?.cancel()
+            viewportLoadingID = nil
             stopHologramAnchorTracking()
         }
         .sheet(isPresented: $presentingFestivalFilter) {
@@ -456,6 +463,11 @@ struct MapHomeView: View {
     /// 재조회는 화면을 가리지 않는다.
     private var isInitialDiscoverLoading: Bool {
         !hasSettledAfterInitialLoad || isResumingMap
+    }
+
+    private var isViewportPinLoading: Bool {
+        !isInitialDiscoverLoading && scenePhase == .active && tabRouter.selectedTab == .map
+            && (viewportLoadingID != nil || viewModel.isFetchingDiscover || isPlacingPins)
     }
 
     /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면
@@ -1635,11 +1647,17 @@ struct MapHomeView: View {
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
         let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
         let freeParkingActive = viewModel.showsFreeParkingLayer
-        guard discoverLayersActive || freeParkingActive else { return }
         discoverRefreshTask?.cancel()
+        viewportLoadingID = nil
+        guard discoverLayersActive || freeParkingActive else { return }
         // A → B → A로 돌아왔을 때도 B 요청을 먼저 취소해야 A를 덮어쓰지 않는다.
         guard shouldRefreshDiscover(for: viewport) else { return }
+        let loadingID = UUID()
+        viewportLoadingID = loadingID
         discoverRefreshTask = Task {
+            defer {
+                if viewportLoadingID == loadingID { viewportLoadingID = nil }
+            }
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
             var loaded = true
