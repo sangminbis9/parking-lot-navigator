@@ -2,6 +2,14 @@
 
 마지막 업데이트: 2026-09-13
 
+## 2026-09-13 지도 로딩 정리·주차 15분 갱신
+
+- `dba5824` master 반영: 행사 기준 시간은 설정 최하단으로 이동(디스크에서 복원, 설정 진입만으로 네트워크 요청 없음). 행사 전용 지도 이동의 650ms 대기/로컬 조회·핀 재렌더 로딩 배지 제거. 최초 로딩과 주차 조회 표시는 유지.
+- 주차 자동 조회는 45초 → 15분. 같은 viewport의 성공 결과를 메모리에 재사용하고 레이어 재활성화 시 복원, 새 지역은 별도 조회, 복귀 시 만료된 결과 갱신. 서버 원본 수집 주기는 변경하지 않았다. 이동·검색·재시도 등 추가 Worker 요청은 여전히 존재한다.
+- GitHub iOS `34734529664` 컴파일·단위 99개·핵심 UI 5개 성공(실패 0). 새 상태 복원/네트워크 없음/15분 캐시·지역 이동·복귀 테스트 포함.
+- 사용자 실행 Codemagic `6aa61390575175d30a784476`은 앱 컴파일 전 `Publisher unhealthy or not checked in 15 minutes`로 중단. 원본 status는 healthy/pending=false였지만 CDN status는 02:11 UTC에 머물러 있었다. 예약 workflow는 active이나 당시 schedule 실행 기록 없음. 검증을 우회하지 않고 `workflow_dispatch` 발행 `34734853630` 성공 후 CDN checkedAt 03:11:09 UTC/pending=false 및 전체 무결성 검증을 복구했다.
+- [Codemagic 재빌드](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa6148a79e7d0f1a951524e)에서 `dba5824` checkout, 행사 전체 검증/백엔드 테스트/서명/IPA 아카이브 성공. **TestFlight 1.0 (264)** 2026-09-13 12:16:25 KST `UPLOAD SUCCEEDED with no errors` 확인. Apple 처리 완료·실기기 설치는 미확인, App Store 공개 제출 없음. Worker/D1 코드 변경·재배포 없음(CDN 파일만 재발행).
+
 ## 2026-09-13 도메인 없는 혼합 CDN — 첫 정적 배포 완료
 
 - 사용자 선택: 도메인 구매 없이 행사 파일은 Workers Static Assets, 실시간 주차는 기존 Worker 유지. 비공개 R2 공개/유료 전환 없음.
