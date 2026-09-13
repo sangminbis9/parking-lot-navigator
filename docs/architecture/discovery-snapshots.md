@@ -1,6 +1,6 @@
 # 변경 기반 행사 스냅샷 / 앱 로컬 조회
 
-작성·갱신: 2026-09-13. D1 0032 적용, Worker 3a8608d7-163c-481b-8a64-ec151d0ae9e3 배포 완료. 최초 완성 발행과 전체 파일 검증 및 iOS 시뮬레이터 검증 완료. TestFlight는 다음 단계다.
+작성·갱신: 2026-09-13. D1 0032 및 Worker 배포 완료. 최초 완성 발행과 전체 파일 검증, iOS 시뮬레이터 검증 및 TestFlight 1.0 (261) 업로드 완료. Apple 처리 완료와 실기기 검증은 별도다.
 
 ## 데이터 흐름
 
@@ -63,6 +63,6 @@
 4. Codemagic 시뮬레이터 검증 후 TestFlight. 완성 데이터 검증 전 TestFlight 금지. App Store 공개는 별도 승인 사항.
 5. 최초 다운로드 크기/시간/메모리, 종료 후 재개, 오프라인, 변경/삭제/취소, 지도 이동, 주차 갱신을 실기기로 확인한다.
 
-2026-09-13 검증: Worker 전체 338개 및 backend 73개 테스트, TypeScript 통과. 로컬 D1 0001~0032 호환 확인. Wrangler SQL 분리기의 CASE 공백 인식 문제를 로컬에서 발견·수정한 뒤 운영 0032 적용 완료. 09:22 실제 Worker 발행 시작, 09:46 이후 완성 manifest 공개. 버전 9f2f03cd-e632-42e2-9696-a2a63f8cee12의 12,669개 공개 항목/167파일/11,500,812바이트 전체 해시·크기·건수·좌표 검사 통과. 미처리 변경 0개와 내부 파일 HTTP 404 확인. iOS 결과는 완료 후 기록한다.
+2026-09-13 검증: Worker 전체 340개 및 backend 73개 테스트, TypeScript 통과. 로컬 D1 0001~0032 호환 확인. Wrangler SQL 분리기의 CASE 공백 인식 문제를 로컬에서 발견·수정한 뒤 운영 0032 적용 완료. 09:22 실제 Worker 발행 시작, 09:46 이후 완성 manifest 공개. 버전 9f2f03cd-e632-42e2-9696-a2a63f8cee12의 12,669개 공개 항목/167파일/11,500,812바이트 전체 해시·크기·건수·좌표 검사 통과. 미처리 변경 0개와 내부 파일 HTTP 404 확인. Codemagic 6aa5f316e44a8c826652cc81에서 TEST SUCCEEDED, 핵심 UI 5개 모두 통과. 6aa5f6aca5e9a8fc17c21dad에서 TestFlight 1.0 (261) 업로드 성공. GitHub #204 자동 Worker 배포도 성공했다.
 
 참고: [D1 요금·한도](https://developers.cloudflare.com/d1/platform/pricing/), [R2 조건부 쓰기](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/), [R2 요금](https://developers.cloudflare.com/r2/pricing/).

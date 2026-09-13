@@ -1,10 +1,10 @@
 # API Runbook
 
-Last updated: 2026-05-26
+Last updated: 2026-09-13
 
-## Discovery snapshot rollout — 2026-09-13 (not deployed)
+## Discovery snapshot rollout — 2026-09-13 (Worker/data deployed)
 
-새 행사 경로는 R2 버킷/첫 스냅샷을 준비한 뒤 앱을 배포해야 한다. 인증된 `POST /admin/publish-discovery-snapshot`, 공개 `GET /api/discovery-snapshot/manifest.json` 및 해시 파일 경로를 추가했다. [배포/복구/기기 검증 절차](architecture/discovery-snapshots.md)를 먼저 따른다. 기존 API는 구버전 호환용으로 남아 있다.
+R2 버킷·D1 0032·변경 기반 Worker 및 최초 전체 발행을 운영 검증했다. 공개 `GET /api/discovery-snapshot/manifest.json`, `status.json` 및 해시 파일을 제공한다. 인증된 `POST /admin/publish-discovery-snapshot`은 미처리 발행 복구를 요청하며 매일 전체 데이터를 다시 만들지 않는다. `node worker-backend/scripts/verify-discovery-snapshot.mjs`로 모든 공개 파일과 발행기 건강 상태를 검증한 뒤 앱을 배포한다. [배포/복구/기기 검증 절차](architecture/discovery-snapshots.md)를 먼저 따른다. 기존 API는 구버전 호환용으로 남아 있다.
 
 ## Production API
 

@@ -5,8 +5,11 @@
 ## 2026-09-13 09:00 재개 — 변경 기반 부분 발행
 
 - 첫 완성 데이터 발행·전체 검증 완료: `9f2f03cd-e632-42e2-9696-a2a63f8cee12`, 공개 항목 12,669개 / 167파일 / 11,500,812바이트. 미처리 변경 조회 0개, 내부 catalog/build/예산 경로 모두 HTTP 404. 최신 Worker `3a8608d7-163c-481b-8a64-ec151d0ae9e3`.
-- 최종 로컬 검증: Worker 39파일/340테스트, 공통 backend 23파일/73테스트, TypeScript 통과. [Codemagic iOS 검증](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa5f316e44a8c826652cc81)에서 컴파일 및 TEST SUCCEEDED 확인. 실제 공개 데이터 상세/즐겨찾기를 포함한 핵심 UI 5개 모두 통과(0 skip). TestFlight는 다음 단계다.
+- 최종 로컬 검증: Worker 39파일/340테스트, 공통 backend 23파일/73테스트, TypeScript 통과. [Codemagic iOS 검증](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa5f316e44a8c826652cc81)에서 컴파일 및 TEST SUCCEEDED 확인. 실제 공개 데이터 상세/즐겨찾기를 포함한 핵심 UI 5개 모두 통과(0 skip).
+- `a02eecf`를 master 반영하고 GitHub Deploy Worker #204(검사→마이그레이션→배포→전체 데이터 확인) 성공. [TestFlight 1.0 (261)](https://codemagic.io/app/69dcadd54a91cff993cba997/build/6aa5f6aca5e9a8fc17c21dad)는 10:10 KST `UPLOAD SUCCEEDED with no errors`. Apple 처리 완료/실기기 설치는 미확인, App Store 공개 제출 없음.
+- 별도 GitHub iOS #469는 남아 있던 `api.example.com` 때문에 실제 행사 목록 assertion 실패. `1a7892e`로 운영 주소를 적용하고 별도 스크린샷 테스트를 일반 CI에서 제외했다. 앱 코드는 TestFlight 빌드와 동일하며 [#470 재검증](https://github.com/sangminbis9/parking-lot-navigator/actions/runs/34729980329)에서도 핵심 UI 5개 모두 통과했다.
 - 일일 전체 발행을 고정 묶음 변경 추적으로 전환. D1 0032 원격 적용 완료. 09:22 실제 Worker 행 읽기/묶음 발행 전진, 09:46 이후 최초 완성 manifest 공개 확인.
+- 최초 검증 버전 이후 자동 부분 발행 revision 155(`ffe48d8f-3d56-4d11-9b2b-045ddb536fff`, 10:01:56 KST)도 167파일/12,669항목/11,500,570바이트 전체 검사 통과. 10:17 발행기 healthy=true/pending=false 확인.
 - 일반 행사 변경 합치기 2분, 지역/사장님 행사 우선 처리, 미처리 변경 매분 복구. Queue 신규 발행 메시지 700/UTC일 예산 및 한도 초과 대기. 삭제/비공개·중복/동시 변경·실패 시 이전 데이터 보존.
 - 실시간 주차 조회는 R2 공유 캐시로 전환. 정상 수집 결과를 legacy D1 쓰기보다 먼저 발행해 D1 한도 장애와 분리했다. 공급자별 실패 격리/기존 핀 보존 및 양쪽 저장 경로 장애 주입 테스트 통과. iOS는 활성 관련 화면에서 행사 버전 60초, 지도 주차 레이어는 현재 영역 45초 확인.
 - 배포 workflow의 강제 수집 워밍업/넓은 D1 smoke 제거. 세부 계약과 비용은 [운영 문서](architecture/discovery-snapshots.md) 참조. 아래 일일 설계 기록은 이전 이력이다.
@@ -92,9 +95,9 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 실시간 지도 레이어:
 
 - iOS 실시간 토글은 기본값이 꺼짐이다.
-- 켜면 앱이 Worker/D1 캐시에서 전국 실시간 핀/클러스터를 로드한다.
-- 실시간 캐시는 D1 테이블 `realtime_parking_status` 가 뒷받침한다.
-- 실시간 캐시 sync 는 5분마다 실행되도록 의도되어 있다.
+- 켜면 새 앱은 현재 지도 영역의 실시간 핀을 Worker/R2 공유 캐시에서 읽는다(활성 화면 45초 확인).
+- 기존 D1 `realtime_parking_status`는 구형/클러스터 경로와의 호환을 위해 유지한다. 새 핀 API 요청은 D1을 조회하지 않는다.
+- 기존 분 단위 shard 수집 스케줄에서 정상 공급자별 R2 파일을 갱신한다. 수집 실패 시 이전 위치를 보존하고 오래된 잔여면수는 unknown으로 표시한다.
 
 이벤트/축제 발견 레이어:
 
