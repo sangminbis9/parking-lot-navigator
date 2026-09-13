@@ -63,11 +63,22 @@ describe("shared realtime snapshot", () => {
     const provider = { nearby: async () => [lot()], health: () => [{ status: "down", stale: true, lastSuccessAt: null }] } as unknown as CompositeParkingProvider;
     await syncRealtimeParkingCache(fake.asD1(), provider, { publish, prune: false });
     expect(publish).not.toHaveBeenCalled();
-    provider.health = () => [{ name: "test", status: "up", stale: false, lastError: null, qualityScore: 1, lastSuccessAt: new Date().toISOString() }];
+    provider.health = () => [{ name: "daejeon-realtime", status: "up", stale: false, lastError: null, qualityScore: 1, lastSuccessAt: new Date().toISOString() }];
     await syncRealtimeParkingCache(fake.asD1(), provider, { publish, prune: false });
     expect(publish).toHaveBeenCalledTimes(1);
     provider.nearby = async () => [];
     await syncRealtimeParkingCache(fake.asD1(), provider, { publish, prune: false });
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+  it("keeps failed-source positions while another source successfully changes", async () => {
+    let saved: string | undefined;
+    const bucket = { get: async () => saved ? { etag: "x", json: async () => JSON.parse(saved!) } : null,
+      put: async (_key: string, value: string) => { saved = value; return {}; } } as unknown as R2Bucket;
+    await publishRealtimeShard(bucket, 0, [lot(), lot({ id: "seoul:1", source: "seoul-realtime" })], "2026-09-13T00:00:00Z");
+    await publishRealtimeShard(bucket, 0, [lot({ availableSpaces: 9 })], "2026-09-13T00:01:00Z", ["seoul-realtime"]);
+    const result = JSON.parse(saved!) as RealtimeShard;
+    expect(result.items).toHaveLength(2);
+    expect(result.items.find(item => item.id === "daejeon-realtime:1")?.availableSpaces).toBe(9);
+    expect(result.items.find(item => item.id === "seoul:1")?.freshnessTimestamp).toBeTruthy();
   });
 });

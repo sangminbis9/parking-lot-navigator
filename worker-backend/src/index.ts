@@ -73,7 +73,6 @@ import {
   recordAnalytics,
 } from "./analytics.js";
 import {
-  queryRealtimeParkingCache,
   queryRealtimeParkingClusters,
   syncRealtimeParkingCache,
 } from "./realtimeParkingCache.js";
@@ -1884,7 +1883,7 @@ async function syncRealtimeParkingScheduled(env: Env, scheduledAt: Date): Promis
     await syncRealtimeParkingCache(env.DB!, shards[index], {
       prune: shouldPruneRealtime(scheduledAt),
       publish: env.DISCOVERY_SNAPSHOTS
-        ? (items, generatedAt) => publishRealtimeShard(env.DISCOVERY_SNAPSHOTS!, index, items, generatedAt)
+        ? (items, generatedAt, retained) => publishRealtimeShard(env.DISCOVERY_SNAPSHOTS!, index, items, generatedAt, retained)
         : undefined,
     });
   } catch (error) {

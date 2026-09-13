@@ -111,6 +111,26 @@ describe("incremental discovery snapshot", () => {
     expect(detail).toMatch(/USING INDEX idx_discovery_items_snapshot/);
     expect(detail).not.toMatch(/SCAN|TEMP B-TREE/);
   });
+  it("continues a large section past an entirely filtered page", async () => {
+    const f = fixture(Array.from({ length: 600 }, (_, i) => row(i, {
+      id: `id:${String(i).padStart(6, "0")}:same`, ...(i < 128 ? { lat: 0, lng: 0 } : {}),
+    })));
+    await f.publish();
+    expect(f.manifest().count).toBe(472);
+    expect(f.rowsRead()).toBe(600);
+    expect(f.manifest().parts.length).toBeGreaterThan(1);
+  });
+  it("recovers an expired checkpoint and ignores its delayed queue delivery", async () => {
+    const f = fixture([row(1)]);
+    await runSnapshotJob(f.env, { type: "discovery-snapshot" });
+    const oldJob = f.queue.shift()!;
+    const key = `${SNAPSHOT_PREFIX}incremental-build.json`;
+    const saved = f.objects.get(key)!;
+    saved.text = JSON.stringify({ ...JSON.parse(saved.text), generatedAt: "2020-01-01" });
+    await f.publish(); const manifest = f.manifest();
+    await runSnapshotJob(f.env, oldJob);
+    expect(f.manifest()).toEqual(manifest);
+  });
   it("ignores collection heartbeat changes and republishes only modified section", async () => {
     const f = fixture([row(1), row(2)]);
     await f.publish(); const first = f.manifest(); const before = f.rowsRead();

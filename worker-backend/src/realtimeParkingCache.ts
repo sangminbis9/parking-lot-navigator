@@ -54,7 +54,7 @@ export interface RealtimeCacheSyncOptions {
    * 다만 매 분 돌리면 하루 1,440회가 되므로 호출부가 간격을 정한다.
    */
   prune?: boolean;
-  publish?: (items: ParkingLot[], generatedAt: string) => Promise<void>;
+  publish?: (items: ParkingLot[], generatedAt: string, retainSources: string[]) => Promise<void>;
 }
 
 export async function syncRealtimeParkingCache(
@@ -82,10 +82,14 @@ export async function syncRealtimeParkingCache(
   if (options.publish) {
     const health = provider.health();
     // Some providers swallow fetch errors. A fulfilled promise alone isn't success.
-    if (validItems.length > 0 && health.length > 0 && health.every(p => p.status === "up" && !p.stale
-      && p.lastSuccessAt && Date.parse(p.lastSuccessAt) >= Date.parse(generatedAt) - 1000)) {
-      await options.publish(validItems, generatedAt);
-    }
+    const healthy = health.filter(p => p.status === "up" && !p.stale && p.lastSuccessAt
+      && Date.parse(p.lastSuccessAt) >= Date.parse(generatedAt) - 1000).map(p => p.name);
+    const publishable = validItems.filter(item => healthy.includes(item.source));
+    const retained = health.filter(p => !healthy.includes(p.name)).map(p => p.name);
+    if (publishable.length > 0) await options.publish(publishable, generatedAt, retained);
+    console.log(JSON.stringify({ event: publishable.length ? "realtime_snapshot_published" : "realtime_snapshot_skipped",
+      fetched: validItems.length, published: publishable.length, retainedSources: retained,
+      providers: health.map(p => ({ name: p.name, status: p.status, lastSuccessAt: p.lastSuccessAt })) }));
   }
 
   return {

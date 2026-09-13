@@ -48,7 +48,6 @@ final class MapHomeViewModel: ObservableObject {
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
-    private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
 
     init(apiClient: APIClientProtocol) {
         self.apiClient = apiClient

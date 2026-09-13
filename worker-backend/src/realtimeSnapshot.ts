@@ -5,12 +5,14 @@ export const realtimeShardKey = (shard: number) => `parking/v1/shard-${shard}.js
 export interface RealtimeShard { schemaVersion: 1; generatedAt: string; items: ParkingLot[] }
 
 /** Existing provider output, never another D1 export. Publish only a healthy shard. */
-export async function publishRealtimeShard(bucket: R2Bucket, shard: number, items: ParkingLot[], generatedAt: string) {
+export async function publishRealtimeShard(bucket: R2Bucket, shard: number, items: ParkingLot[], generatedAt: string, retainSources: string[] = []) {
   const previousObject = await bucket.get(realtimeShardKey(shard));
   const previous = previousObject ? await previousObject.json<RealtimeShard>() : null;
   if (previous && Date.parse(previous.generatedAt) >= Date.parse(generatedAt)) return;
   const old = new Map(previous?.items.map(item => [item.id, item]) ?? []);
-  const publicItems: ParkingLot[] = items.map(item => {
+  const merged = [...items, ...(previous?.items.filter(item => retainSources.includes(item.source)
+    && !items.some(next => next.id === item.id)) ?? [])];
+  const publicItems: ParkingLot[] = merged.map(item => {
     const saved = old.get(item.id);
     const position = item.coordinateIsApproximate && saved && !saved.coordinateIsApproximate ? saved : item;
     // Explicit public allowlist: provider raw payloads may contain internal URLs/keys.
