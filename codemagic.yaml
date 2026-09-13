@@ -22,7 +22,8 @@ workflows:
       vars:
         XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
         XCODE_SCHEME: ParkingLotNavigator
-        API_BASE_URL: https://api.example.com
+        # Public R2-backed data: exercise real discovery instead of skipping empty-list tests.
+        API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
         APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
         SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
         APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator

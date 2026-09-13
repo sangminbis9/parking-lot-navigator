@@ -71,8 +71,8 @@ final class CoreJourneyUITests: XCTestCase {
 
     // MARK: - 3. 행사 선택 → 상세 → 즐겨찾기
 
-    /// 목록 데이터는 서버에서 온다. 목 응답을 넣지 않기로 했으므로, 목록이 비어 있는
-    /// 환경(오프라인 CI 등)에서는 실패가 아니라 skip으로 남긴다.
+    /// Release validation uses the completed public snapshot. Missing data is a failure,
+    /// not a successful build with the central user journey skipped.
     func testEventDetailAndFavoriteToggle() throws {
         let app = launch(["-uiTestingDenyLocation"])
 
@@ -81,9 +81,7 @@ final class CoreJourneyUITests: XCTestCase {
         discoverTab.tap()
 
         let row = element("discover-row", in: app)
-        guard row.waitForExistence(timeout: 30) else {
-            throw XCTSkip("행사 목록이 비어 있어 상세 진입을 검증할 수 없다")
-        }
+        XCTAssertTrue(row.waitForExistence(timeout: 60), "완성 행사 스냅샷의 목록을 불러오지 못했다")
         row.tap()
 
         let favorite = element("event-favorite-button", in: app)
