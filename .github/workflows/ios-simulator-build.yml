@@ -15,6 +15,7 @@ jobs:
       XCODE_SCHEME: ParkingLotNavigator
       # Core journeys require the complete public R2-backed discovery dataset.
       API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
+      DISCOVERY_SNAPSHOT_BASE_URL: https://parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1
       APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
       SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
       APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
@@ -44,8 +45,10 @@ jobs:
         shell: bash
         run: |
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
+          XCCONFIG_SNAPSHOT_BASE_URL=$(printf '%s' "$DISCOVERY_SNAPSHOT_BASE_URL" | sed 's#://#:/\$()/#')
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
+          DISCOVERY_SNAPSHOT_BASE_URL = $XCCONFIG_SNAPSHOT_BASE_URL
           APP_BUNDLE_ID = $APP_BUNDLE_ID
           SHARE_EXTENSION_BUNDLE_ID = $SHARE_EXTENSION_BUNDLE_ID
           APP_GROUP_ID = $APP_GROUP_ID

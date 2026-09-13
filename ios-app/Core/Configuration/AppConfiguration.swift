@@ -6,7 +6,7 @@ struct AppConfiguration {
     let kakaoNativeAppKey: String
     let navigationProvider: String
 
-    /// A custom-domain R2/CDN URL avoids spending a Worker invocation per file.
+    /// A static-assets or custom-domain R2 URL avoids a Worker invocation per file.
     /// Until configured, the Worker exposes exactly the same static contract.
     var discoverySnapshotBaseURL: URL {
         if ProcessInfo.processInfo.environment["UITEST_API_BASE_URL"] == nil,

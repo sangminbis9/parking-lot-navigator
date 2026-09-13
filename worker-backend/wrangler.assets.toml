@@ -1,0 +1,10 @@
+name = "parking-lot-navigator-data"
+compatibility_date = "2026-09-13"
+workers_dev = true
+
+# Asset-only deployment: no Worker script, D1/R2 bindings, secrets or fallback API.
+# The verified staging directory is supplied via --assets by the publisher.
+[assets]
+directory = "../tmp/discovery-assets"
+html_handling = "none"
+not_found_handling = "404-page"

@@ -24,6 +24,7 @@ workflows:
         XCODE_SCHEME: ParkingLotNavigator
         # Public R2-backed data: exercise real discovery instead of skipping empty-list tests.
         API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
+        DISCOVERY_SNAPSHOT_BASE_URL: https://parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1
         APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
         SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
         APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
@@ -108,6 +109,7 @@ workflows:
         SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
         APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
         API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
+        DISCOVERY_SNAPSHOT_BASE_URL: https://parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1
         NAVIGATION_PROVIDER: kakao
     scripts:
       - name: 운영 행사 스냅샷 전체 검증

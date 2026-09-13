@@ -2,6 +2,13 @@
 
 마지막 업데이트: 2026-09-13
 
+## 진행: 도메인 없는 혼합 CDN (2026-09-13)
+
+1. 첫 정적 배포 및 전체 12,669항목 검증 완료. 자동 발행 workflow를 기본 브랜치에 반영하고 기존 Cloudflare CI 토큰으로 실제 배포 성공 확인.
+2. 새 CDN 주소를 넣은 GitHub iOS/Codemagic 빌드·핵심 UI 테스트 후 TestFlight 업로드. 261은 기존 Worker 주소이므로 업데이트 필요.
+3. 원본 수집 누락은 아직 미완료. 130사이트 재방문 지연/IFEZ 페이지 순회/탈락 진단/원본 전달 500개 제한을 Queue와 D1 예산 안에서 보완.
+4. 주차는 사용자 선택에 따라 기존 Worker 유지. 행사 CDN만으로 모든 Worker 요청 한도 문제를 해결했다고 보고하지 않는다. [구체적 한계/검증 절차](architecture/discovery-static-assets.md).
+
 ## 완료: 변경 기반 발행으로 교체 (09:00 재개)
 
 - **첫 발행·iOS 검증·TestFlight 업로드 완료**: 12,669개 공개 항목 / 167파일 / 11,500,812바이트 전체 무결성 검사 통과. D1 0032 및 Worker 운영 반영, 미처리 변경 0 확인. Codemagic `6aa5f316e44a8c826652cc81` TEST SUCCEEDED, 실제 행사 상세 포함 핵심 UI 5개 모두 통과. master 반영과 Worker 자동 배포 #204 성공, TestFlight `6aa5f6aca5e9a8fc17c21dad`의 1.0 (261) 업로드 성공. Apple 처리 상태 확인 후 실제 기기에 설치한다.

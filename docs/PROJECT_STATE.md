@@ -2,6 +2,14 @@
 
 마지막 업데이트: 2026-09-13
 
+## 2026-09-13 도메인 없는 혼합 CDN — 첫 정적 배포 완료
+
+- 사용자 선택: 도메인 구매 없이 행사 파일은 Workers Static Assets, 실시간 주차는 기존 Worker 유지. 비공개 R2 공개/유료 전환 없음.
+- `parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1` 첫 발행 `6f3195de-cc89-490f-af6c-5f69fd6308a8`. 12,669항목/167파트/11,500,570바이트 전체 HTTP 무결성 검증 통과, 내부 catalog/예산/checkpoint 경로 404.
+- 새 발행기 안전 테스트 8개 통과. 5분 변경 검사 + 10분 상태 heartbeat의 GitHub workflow 추가(예약 지연 가능). 새로운 파일만 원본 Worker에서 읽고, 기존 파일은 CDN 재사용. 현재/직전 파일을 검증 후 함께 배포하며 실패 시 기존 배포 유지.
+- CI/Codemagic/Release 예제 설정을 정적 주소로 연결. **이 항목 작성 시 자동 CI 발행과 새 iOS 빌드는 아직 미검증이며 TestFlight 261은 기존 주소 사용.**
+- 원본 누락 문제는 별도 미완료: 13일 소스 재방문, IFEZ 첫 페이지 한정, 탈락 이유 미집계, city cache 500/5,000 제한. [설계와 후속 작업](architecture/discovery-static-assets.md).
+
 ## 2026-09-13 09:00 재개 — 변경 기반 부분 발행
 
 - 첫 완성 데이터 발행·전체 검증 완료: `9f2f03cd-e632-42e2-9696-a2a63f8cee12`, 공개 항목 12,669개 / 167파일 / 11,500,812바이트. 미처리 변경 조회 0개, 내부 catalog/build/예산 경로 모두 HTTP 404. 최신 Worker `3a8608d7-163c-481b-8a64-ec151d0ae9e3`.

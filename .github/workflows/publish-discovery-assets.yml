@@ -1,0 +1,47 @@
+name: Publish discovery static assets
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Best effort, not a real-time SLA. Parking stays on the existing Worker.
+    - cron: "2-57/5 * * * *"
+  push:
+    branches: [master]
+    paths:
+      - worker-backend/scripts/prepare-static-snapshot.mjs
+      - worker-backend/wrangler.assets.toml
+      - .github/workflows/publish-discovery-assets.yml
+
+permissions:
+  contents: read
+concurrency:
+  group: discovery-static-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    # Standard runners are free for this public repository. Fail closed if private.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test publication guards
+        run: node --test worker-backend/scripts/prepare-static-snapshot.test.mjs
+      - name: Prepare complete verified public release
+        id: prepare
+        run: node worker-backend/scripts/prepare-static-snapshot.mjs
+      - name: Deploy assets atomically
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ASSET_DIRECTORY: ${{ steps.prepare.outputs.directory }}
+        run: npx --yes --package wrangler@4.92.0 wrangler deploy --config worker-backend/wrangler.assets.toml --assets "$ASSET_DIRECTORY"
+      - name: Verify the live CDN release
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          DISCOVERY_SNAPSHOT_BASE_URL: https://parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1
+        run: node worker-backend/scripts/verify-discovery-snapshot.mjs
