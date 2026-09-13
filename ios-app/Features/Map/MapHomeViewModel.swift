@@ -5,6 +5,7 @@ import UIKit
 
 @MainActor
 final class MapHomeViewModel: ObservableObject {
+    static let realtimeRefreshInterval: TimeInterval = 15 * 60
     @Published var query = ""
     @Published var destinations: [Destination] = []
     @Published var selectedDestination: Destination?
@@ -28,11 +29,10 @@ final class MapHomeViewModel: ObservableObject {
     @Published var isSearching = false
     @Published var isLoadingParking = false
     @Published var isLoadingDiscover = false
-    /// 조용한 지도 이동 재조회도 포함하는 실제 네트워크 작업 상태.
+    /// 로컬 스냅샷 검색을 포함하는 조회 상태. 네트워크 다운로드 여부와는 별개다.
     @Published private(set) var isFetchingDiscover = false
     @Published var isLoadingRealtimeParking = false
     @Published var errorMessage: String?
-    @Published var snapshotStatusText: String?
 
     /// 지도 핀 파이프라인 memoization 키. 배열을 통째로 비교하는 건 비싸서 "몇 번째 대입인지"만 센다.
     /// 핀 소스가 되는 배열이 새로 대입될 때마다 올라간다.
@@ -42,15 +42,18 @@ final class MapHomeViewModel: ObservableObject {
     private var realtimeRequestRevision = 0
     private var realtimeViewport: MapViewport?
     private var realtimeRetryAfter = Date.distantPast
+    private var realtimeCache: (viewport: MapViewport, items: [ParkingLot], fetchedAt: Date)?
     private(set) var completedDiscoverViewport: MapViewport?
     private(set) var completedDiscoverFilter: FestivalFilter?
 
     private let apiClient: APIClientProtocol
+    private let now: () -> Date
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
 
-    init(apiClient: APIClientProtocol) {
+    init(apiClient: APIClientProtocol, now: @escaping () -> Date = Date.init) {
         self.apiClient = apiClient
+        self.now = now
     }
 
     var parkingRecommendations: [ParkingRecommendation] {
@@ -238,9 +241,19 @@ final class MapHomeViewModel: ObservableObject {
     }
 
     func loadRealtimeParkingLayer(force: Bool = false, viewport: MapViewport? = nil) async {
+        guard !Task.isCancelled else { return }
         guard showsRealtimeParkingLayer || showsFreeParkingLayer || force else { return }
         if let viewport { realtimeViewport = viewport }
-        guard let viewport = realtimeViewport, Date() >= realtimeRetryAfter else { return }
+        guard let viewport = realtimeViewport else { return }
+        if !force, let cache = realtimeCache, cache.viewport == viewport,
+           now().timeIntervalSince(cache.fetchedAt) < Self.realtimeRefreshInterval {
+            // Also restore pins when the layer was toggled off and back on.
+            realtimeRequestRevision &+= 1
+            isLoadingRealtimeParking = false
+            realtimeParkingLots = cache.items
+            return
+        }
+        guard now() >= realtimeRetryAfter else { return }
         realtimeRequestRevision &+= 1
         let revision = realtimeRequestRevision
         isLoadingRealtimeParking = true
@@ -254,13 +267,23 @@ final class MapHomeViewModel: ObservableObject {
             guard !Task.isCancelled, revision == realtimeRequestRevision,
                   showsRealtimeParkingLayer || showsFreeParkingLayer || force else { return }
             realtimeParkingLots = items
+            realtimeCache = (viewport, items, now())
             realtimeRetryAfter = .distantPast
         } catch {
             if !isCancellation(error), revision == realtimeRequestRevision {
-                realtimeRetryAfter = Date().addingTimeInterval(60)
+                realtimeRetryAfter = now().addingTimeInterval(60)
                 errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
             }
         }
+    }
+
+    /// Resume at the remaining cache lifetime, not 15 minutes after every tab switch.
+    var realtimeRefreshDelayNanoseconds: UInt64 {
+        let remaining = realtimeCache.map {
+            min(Self.realtimeRefreshInterval, max(1, Self.realtimeRefreshInterval - now().timeIntervalSince($0.fetchedAt)))
+        } ?? Self.realtimeRefreshInterval
+        let delay = now() < realtimeRetryAfter ? Self.realtimeRefreshInterval : remaining
+        return UInt64(delay * 1_000_000_000)
     }
 
     @discardableResult

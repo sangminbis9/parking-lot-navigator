@@ -14,6 +14,46 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         return model
     }
 
+    func testRealtimeParkingReusesSameViewportUntilFifteenMinutes() async {
+        let client = ControlledDiscoveryClient()
+        var now = Date(timeIntervalSince1970: 1_000)
+        let model = MapHomeViewModel(apiClient: client, now: { now })
+        await model.setRealtimeParkingLayerVisible(true, viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 1)
+        now = now.addingTimeInterval(899)
+        await model.loadRealtimeParkingLayer(viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 1)
+        XCTAssertEqual(model.realtimeRefreshDelayNanoseconds, 1_000_000_000)
+        now = now.addingTimeInterval(1)
+        await model.loadRealtimeParkingLayer(viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 2)
+        XCTAssertEqual(model.realtimeRefreshDelayNanoseconds, 900_000_000_000)
+    }
+
+    func testRealtimeParkingToggleUsesCacheButNewRegionLoadsImmediately() async {
+        let client = ControlledDiscoveryClient()
+        let model = MapHomeViewModel(apiClient: client)
+        await model.setRealtimeParkingLayerVisible(true, viewport: a)
+        await model.setRealtimeParkingLayerVisible(false, viewport: a)
+        await model.setRealtimeParkingLayerVisible(true, viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 1)
+        await model.loadRealtimeParkingLayer(viewport: b)
+        XCTAssertEqual(client.realtimeRequests, 2)
+    }
+
+    func testRealtimeParkingExpiredCacheRefreshesOnResume() async {
+        let client = ControlledDiscoveryClient()
+        var now = Date(timeIntervalSince1970: 1_000)
+        let model = MapHomeViewModel(apiClient: client, now: { now })
+        model.showsRealtimeParkingLayer = true
+        await model.loadRealtimeParkingLayer(viewport: a)
+        now = now.addingTimeInterval(30 * 60)
+        await model.loadRealtimeParkingLayer(viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 2)
+        await model.loadRealtimeParkingLayer(force: true, viewport: a)
+        XCTAssertEqual(client.realtimeRequests, 3, "명시적인 강제 갱신은 캐시 유효 기간을 우회한다")
+    }
+
     func testOlderInitialLocationResponseCannotOverwriteNewViewport() async throws {
         let client = ControlledDiscoveryClient()
         let model = model(client)
@@ -24,7 +64,7 @@ final class MapDiscoveryLoadingTests: XCTestCase {
         await fulfillment(of: [startedA], timeout: 2)
         let second = Task { await model.loadDiscoverLayers(viewport: b, showsSpinner: false) }
         await fulfillment(of: [startedB], timeout: 2)
-        XCTAssertTrue(model.isFetchingDiscover, "지도 이동의 조용한 조회도 로딩 배지에 알려야 한다")
+        XCTAssertTrue(model.isFetchingDiscover, "로컬 조회의 진행 상태는 추적하되 다운로드 배지와는 분리한다")
         XCTAssertFalse(model.isLoadingDiscover)
         let items = try await MockAPIClient().nearbyFestivals(lat: b.center.latitude, lng: b.center.longitude, radiusMeters: 20000, upcomingWithinDays: 365)
         client.finish(b.center.latitude, .success(items))
@@ -78,6 +118,7 @@ final class MapDiscoveryLoadingTests: XCTestCase {
 
 @MainActor
 private final class ControlledDiscoveryClient: APIClientProtocol {
+    private(set) var realtimeRequests = 0
     var onRequest: ((Double, Int) -> Void)?
     private var pending: [Double: CheckedContinuation<[Festival], Error>] = [:]
     func finish(_ lat: Double, _ result: Result<[Festival], Error>) {
@@ -93,7 +134,10 @@ private final class ControlledDiscoveryClient: APIClientProtocol {
     func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> (festivals: [Festival], events: [FreeEvent]) { ([], []) }
     func searchDestination(query: String) async throws -> [Destination] { [] }
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] { [] }
-    func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] { [] }
+    func realtimeParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot] {
+        realtimeRequests += 1
+        return []
+    }
     func providerHealth() async throws -> [ProviderHealth] { [] }
     func discoveryProviderHealth() async throws -> [ProviderHealth] { [] }
     func agentActivity(since: String?, limit: Int) async throws -> [AgentActivityEvent] { [] }

@@ -61,6 +61,30 @@ struct DiscoverySnapshotDownload {
     let etag: String?
 }
 
+struct DiscoverySnapshotStatus: Equatable {
+    var generatedAt: Date?
+    var isUpdating = false
+    var refreshFailed = false
+
+    var referenceTimeText: String {
+        guard let generatedAt else { return "아직 저장된 행사 데이터가 없어요" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
+        formatter.dateFormat = "yyyy년 M월 d일 HH:mm"
+        return "\(formatter.string(from: generatedAt)) 기준 (한국 시간)"
+    }
+
+    var detailText: String {
+        if isUpdating { return "행사 데이터 업데이트 중" }
+        if refreshFailed {
+            return generatedAt == nil ? "행사 데이터를 내려받지 못했어요. 잠시 후 다시 시도해 주세요."
+                : "업데이트를 확인하지 못해 저장된 행사 데이터를 사용 중이에요."
+        }
+        return "행사 데이터가 발행된 시간입니다. 주차 정보의 갱신 시간과는 다를 수 있어요."
+    }
+}
+
 /// Shared by map/list/widget sync. Disk I/O, decoding, distance calculations and
 /// indexing run on this actor, never the MainActor. Panning cannot trigger D1 reads.
 actor DiscoverySnapshotStore {
@@ -119,6 +143,17 @@ actor DiscoverySnapshotStore {
         return data.festival(id: id, now: now())
     }
     func event(id: String) async throws -> FreeEvent? { try await dataset().eventByID[id] }
+
+    /// Settings can recover the timestamp after relaunch without a network request.
+    func currentStatus() -> DiscoverySnapshotStatus {
+        loadDiskIfNeeded()
+        return snapshotStatus
+    }
+
+    private var snapshotStatus: DiscoverySnapshotStatus {
+        DiscoverySnapshotStatus(generatedAt: manifest.flatMap { Self.date($0.generatedAt) },
+            isUpdating: refreshTask != nil, refreshFailed: lastRefreshFailed)
+    }
 
     /// Useful for explicit refresh/tests; regular queries use stale-while-revalidate.
     func refreshIfDue() async throws {
@@ -268,6 +303,7 @@ actor DiscoverySnapshotStore {
     }
     private func publishStatus() {
         var info: [String: Any] = ["updating": refreshTask != nil, "failed": lastRefreshFailed]
+        info["status"] = snapshotStatus
         if let generatedAt = manifest?.generatedAt { info["generatedAt"] = generatedAt }
         NotificationCenter.default.post(name: .discoverySnapshotStatusChanged, object: nil, userInfo: info)
     }

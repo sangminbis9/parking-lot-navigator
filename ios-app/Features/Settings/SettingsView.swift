@@ -1,9 +1,12 @@
+import Combine
 import SwiftUI
 
 struct SettingsView: View {
     let apiClient: APIClientProtocol
     @EnvironmentObject private var themeStore: FestivalThemeStore
     @EnvironmentObject private var notificationPrefs: NotificationPreferencesModel
+    @State private var snapshotStatus = DiscoverySnapshotStatus()
+    @State private var snapshotStatusRevision = 0
 
     var body: some View {
         ScrollView {
@@ -16,11 +19,40 @@ struct SettingsView: View {
                 #if DEBUG
                 developerSectionCard
                 #endif
+                snapshotStatusFooter
             }
             .padding(16)
         }
         .background(FestivalDesign.background.ignoresSafeArea())
         .festivalNavigationTitle("설정")
+        .task {
+            let revision = snapshotStatusRevision
+            let status = await DiscoverySnapshotStore.shared.currentStatus()
+            guard !Task.isCancelled, revision == snapshotStatusRevision else { return }
+            snapshotStatus = status
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotStatusChanged)
+            .receive(on: RunLoop.main)) { notification in
+            guard let status = notification.userInfo?["status"] as? DiscoverySnapshotStatus else { return }
+            snapshotStatusRevision += 1
+            snapshotStatus = status
+        }
+    }
+
+    private var snapshotStatusFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("행사 데이터 기준 시간")
+                .font(.festival(.subheadline, weight: .semibold))
+            Text(snapshotStatus.referenceTimeText)
+                .font(.festival(.caption))
+            Text(snapshotStatus.detailText)
+                .font(.festival(.caption))
+        }
+        .foregroundStyle(FestivalDesign.secondaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 8)
+        .accessibilityIdentifier("settings.discoverySnapshotStatus")
     }
 
     private var merchantURL: URL {
@@ -183,6 +215,10 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("주차장 정보와 잔여 면수는 제공처가 갱신하는 시점에 따라 현장과 다를 수 있으니 참고용으로 확인해 주세요.")
                 .font(.festival(.subheadline))
+                .foregroundStyle(FestivalDesign.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("주차 지도를 보는 동안 잔여 면수를 약 15분 간격으로 확인합니다. 다른 지역으로 이동하면 해당 지역 정보를 별도로 조회하며, 표시된 면수는 현재 현장 상황과 다를 수 있습니다.")
+                .font(.festival(.caption))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Text("주차장 제공처 — 공공데이터포털 전국 주차장 정보, 서울 열린데이터광장 실시간 주차 정보, 한국교통안전공단, 한국공항공사, 인천국제공항공사, 카카오")

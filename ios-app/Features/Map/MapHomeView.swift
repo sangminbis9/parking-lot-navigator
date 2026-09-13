@@ -181,15 +181,6 @@ struct MapHomeView: View {
                         }
                     )
                 VStack(spacing: 10) {
-                    if let status = viewModel.snapshotStatusText {
-                        Text(status)
-                            .font(.caption2)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.regularMaterial, in: Capsule())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .allowsHitTesting(false)
-                    }
                     if let errorMessage = viewModel.errorMessage {
                         inlineError(errorMessage)
                     }
@@ -264,9 +255,13 @@ struct MapHomeView: View {
             guard scenePhase == .active, tabRouter.selectedTab == .map,
                   viewModel.showsRealtimeParkingLayer || viewModel.showsFreeParkingLayer else { return }
             while !Task.isCancelled {
-                do { try await Task.sleep(nanoseconds: 45_000_000_000) }
+                // A fresh same-viewport result is reused; returning from the
+                // background refreshes expired data without another 15-minute wait.
+                if !viewModel.isLoadingRealtimeParking {
+                    await viewModel.loadRealtimeParkingLayer(viewport: mapViewport)
+                }
+                do { try await Task.sleep(nanoseconds: viewModel.realtimeRefreshDelayNanoseconds) }
                 catch { return }
-                await viewModel.loadRealtimeParkingLayer(viewport: mapViewport)
             }
         }
         .onChange(of: scenePhase) { phase in
@@ -286,19 +281,6 @@ struct MapHomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotChanged).receive(on: RunLoop.main)) { _ in
             refreshSnapshotViewport()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .discoverySnapshotStatusChanged).receive(on: RunLoop.main)) { notification in
-            guard let text = notification.userInfo?["generatedAt"] as? String,
-                  let date = DiscoverySnapshotStore.date(text) else { return }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "ko_KR")
-            formatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
-            formatter.dateFormat = "M/d HH:mm"
-            let failed = notification.userInfo?["failed"] as? Bool ?? false
-            let updating = notification.userInfo?["updating"] as? Bool ?? false
-            let stale = Date().timeIntervalSince(date) > 36 * 3600
-            let suffix = failed || stale ? " · 저장된 행사 표시 중" : updating ? " · 업데이트 중" : ""
-            viewModel.snapshotStatusText = "행사 \(formatter.string(from: date)) 기준\(suffix)"
         }
         .onReceive(Timer.publish(every: 15 * 60, on: .main, in: .common).autoconnect()) { _ in
             if scenePhase == .active { refreshSnapshotViewport() }
@@ -515,8 +497,9 @@ struct MapHomeView: View {
     }
 
     private var isViewportPinLoading: Bool {
+        // Local snapshot queries and marker redraws are not downloads.
         !isInitialDiscoverLoading && scenePhase == .active && tabRouter.selectedTab == .map
-            && (viewportLoadingID != nil || viewModel.isFetchingDiscover || isPlacingPins)
+            && viewportLoadingID != nil
     }
 
     /// 콜드 스타트에는 응답이 수 MB라 핀이 뜨기까지 몇 초가 걸린다. 그 사이 지도가 빈 채로 있으면
@@ -1703,12 +1686,18 @@ struct MapHomeView: View {
         // A → B → A로 돌아왔을 때도 B 요청을 먼저 취소해야 A를 덮어쓰지 않는다.
         guard shouldRefreshDiscover(for: viewport) else { return }
         let loadingID = UUID()
-        viewportLoadingID = loadingID
         discoverRefreshTask = Task {
             defer {
                 if viewportLoadingID == loadingID { viewportLoadingID = nil }
             }
-            try? await Task.sleep(nanoseconds: 650_000_000)
+            // Only parking uses viewport network requests. Cached event queries
+            // should run immediately and must not display a download spinner.
+            if realtimeActive {
+                do { try await Task.sleep(nanoseconds: 650_000_000) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                viewportLoadingID = loadingID
+            }
             guard !Task.isCancelled else { return }
             var loaded = true
             if discoverLayersActive {

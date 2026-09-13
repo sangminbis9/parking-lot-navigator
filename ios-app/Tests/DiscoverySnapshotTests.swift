@@ -56,6 +56,55 @@ final class DiscoverySnapshotTests: XCTestCase {
         XCTAssertEqual(busan.map(\.id), ["busan"])
         let after = await transport.requests
         XCTAssertEqual(before, after)
+        await transport.setOffline(true)
+        let returned = try await store.festivals(lat: 37.41, lng: 126.64, radius: 20000, upcoming: 365)
+        XCTAssertEqual(Set(returned.map(\.id)), Set(nearby.map(\.id)))
+        let afterReturn = await transport.requests
+        XCTAssertEqual(before, afterReturn, "저장된 핀은 다른 지역을 거쳐 돌아와도 재다운로드하지 않는다")
+    }
+
+    func testSettingsStatusDoesNotDownloadOnFirstUse() async throws {
+        let release = try release([festival("one")])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let store = store(directory(), transport: transport)
+        let status = await store.currentStatus()
+        XCTAssertNil(status.generatedAt)
+        XCTAssertFalse(status.isUpdating)
+        XCTAssertFalse(status.refreshFailed)
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testSettingsStatusRestoresDiskTimestampWithoutNetworkAndPreservesItOnFailure() async throws {
+        let release = try release([festival("saved")])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let directory = directory()
+        let first = store(directory, transport: transport)
+        try await first.refreshNow()
+        let before = await transport.requests
+        await transport.setOffline(true)
+        let relaunched = store(directory, transport: transport)
+        let restored = await relaunched.currentStatus()
+        XCTAssertEqual(restored.generatedAt, DiscoverySnapshotStore.date("2026-09-13T00:00:00Z"))
+        XCTAssertFalse(restored.isUpdating)
+        let after = await transport.requests
+        XCTAssertEqual(before, after, "설정을 여는 동작은 서버 조회를 시작하면 안 된다")
+        do { try await relaunched.refreshNow(); XCTFail("offline") } catch {}
+        let failed = await relaunched.currentStatus()
+        XCTAssertEqual(failed.generatedAt, restored.generatedAt)
+        XCTAssertTrue(failed.refreshFailed)
+        XCTAssertFalse(failed.isUpdating)
+    }
+
+    func testSettingsTimestampUsesKoreanTimeAndDistinguishesMissingData() {
+        var status = DiscoverySnapshotStatus()
+        XCTAssertEqual(status.referenceTimeText, "아직 저장된 행사 데이터가 없어요")
+        status.generatedAt = DiscoverySnapshotStore.date("2026-09-13T00:00:00Z")
+        XCTAssertEqual(status.referenceTimeText, "2026년 9월 13일 09:00 기준 (한국 시간)")
+        status.refreshFailed = true
+        XCTAssertTrue(status.detailText.contains("저장된 행사"))
+        status.isUpdating = true
+        XCTAssertEqual(status.detailText, "행사 데이터 업데이트 중")
     }
 
     func testPeriodicCheckSharesCooldownAndPreservesOfflineData() async throws {
