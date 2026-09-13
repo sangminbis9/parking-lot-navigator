@@ -260,6 +260,15 @@ struct MapHomeView: View {
             }
             hasSettledAfterInitialLoad = true
         }
+        .task(id: scenePhase == .active && tabRouter.selectedTab == .map && (viewModel.showsRealtimeParkingLayer || viewModel.showsFreeParkingLayer)) {
+            guard scenePhase == .active, tabRouter.selectedTab == .map,
+                  viewModel.showsRealtimeParkingLayer || viewModel.showsFreeParkingLayer else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 45_000_000_000) }
+                catch { return }
+                await viewModel.loadRealtimeParkingLayer(viewport: mapViewport)
+            }
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active { refreshSnapshotViewport() }
             // 백그라운드로 나갈 때 미리 켜 둔다. 복귀 직후엔 메인 스레드가 밀려 이때 켜면 그려지지 않는다.
@@ -1687,9 +1696,10 @@ struct MapHomeView: View {
     private func scheduleVisibleDiscoverRefresh(for viewport: MapViewport) {
         let discoverLayersActive = viewModel.showsFestivalLayer || viewModel.showsTradeExpoLayer || viewModel.showsLocalEventLayer || viewModel.showsPerformanceLayer
         let freeParkingActive = viewModel.showsFreeParkingLayer
+        let realtimeActive = viewModel.showsRealtimeParkingLayer || freeParkingActive
         discoverRefreshTask?.cancel()
         viewportLoadingID = nil
-        guard discoverLayersActive || freeParkingActive else { return }
+        guard discoverLayersActive || freeParkingActive || realtimeActive else { return }
         // A → B → A로 돌아왔을 때도 B 요청을 먼저 취소해야 A를 덮어쓰지 않는다.
         guard shouldRefreshDiscover(for: viewport) else { return }
         let loadingID = UUID()
@@ -1709,6 +1719,8 @@ struct MapHomeView: View {
                     showsSpinner: false
                 )
             }
+            guard !Task.isCancelled else { return }
+            if realtimeActive { await viewModel.loadRealtimeParkingLayer(viewport: viewport) }
             guard !Task.isCancelled else { return }
             if freeParkingActive {
                 let parkingLoaded = await viewModel.loadStaticFreeParkingLots(viewport: viewport)

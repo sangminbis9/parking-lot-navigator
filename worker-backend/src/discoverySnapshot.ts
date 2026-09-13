@@ -6,11 +6,38 @@ import { mapLocalEventRow, type LocalEventRow } from "./localEvents.js";
 // A per-invocation work budget, NEVER a total pin limit. Scan both tables to EOF.
 export const SNAPSHOT_PAGE_SIZE = 128;
 export const SNAPSHOT_PREFIX = "discovery/v1/";
-const STATE_KEY = `${SNAPSHOT_PREFIX}build.json`;
+const STATE_KEY = `${SNAPSHOT_PREFIX}incremental-build.json`;
+const CATALOG_KEY = `${SNAPSHOT_PREFIX}catalog.json`;
+const STATUS_KEY = `${SNAPSHOT_PREFIX}status.json`;
 export const MANIFEST_KEY = `${SNAPSHOT_PREFIX}manifest.json`;
 const MAX_PART_BYTES = 8 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_BUILD_AGE_MS = 2 * 60 * 60 * 1000;
+const QUEUE_BUDGET_KEY = `${SNAPSHOT_PREFIX}queue-budget.json`;
+// Baseline worst case: 7,446 queue operations/day. Reserve 2,100 for publication,
+// leaving 454 for retries. Exhaustion delays changes; it never removes public pins.
+const MAX_DAILY_SNAPSHOT_MESSAGES = 700;
+
+async function enqueue(env: Required<SnapshotEnvironment>, job: SnapshotJob): Promise<void> {
+  const bucket = env.DISCOVERY_SNAPSHOTS;
+  const day = new Date().toISOString().slice(0, 10);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const object = await bucket.get(QUEUE_BUDGET_KEY);
+    const previous = object ? await object.json<{ day: string; count: number }>() : null;
+    const count = previous?.day === day ? previous.count : 0;
+    if (count >= MAX_DAILY_SNAPSHOT_MESSAGES) {
+      await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: false,
+        checkedAt: new Date().toISOString(), error: "publication_queue_budget",
+        retryAt: new Date(new Date().setUTCHours(24, 1, 0, 0)).toISOString() }));
+      return;
+    }
+    const saved = await bucket.put(QUEUE_BUDGET_KEY, JSON.stringify({ day, count: count + 1 }), {
+      onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: "*" },
+    });
+    if (saved) { await env.BACKGROUND_QUEUE.send(job); return; }
+  }
+  throw new Error("snapshot_queue_budget_conflict");
+}
 
 export interface SnapshotPart {
   schemaVersion: 1;
@@ -25,12 +52,25 @@ export interface SnapshotManifest {
   generatedAt: string;
   parts: SnapshotFile[];
   count: number;
+  revision?: number;
 }
-interface BuildState extends SnapshotManifest {
-  allowEmpty?: boolean;
-  phase: "discovery" | "local" | "publish" | "complete";
+interface DirtySection { kind: "discovery" | "local"; bucket: number; revision: number; changed_at: string }
+interface Catalog extends SnapshotManifest {
+  sections: Record<string, SnapshotFile[]>;
+  ready: boolean;
+  revision: number;
+}
+interface BuildState {
+  format: 2;
+  version: string;
+  generatedAt: string;
+  phase: "scan" | "publish" | "complete";
+  section: DirtySection;
   cursor: string;
+  parts: SnapshotFile[];
+  count: number;
   rowsRead: number;
+  catalogRevision: number;
 }
 export type SnapshotJob = { type: "discovery-snapshot"; version?: string; force?: boolean; allowEmpty?: boolean };
 export interface SnapshotEnvironment {
@@ -39,11 +79,10 @@ export interface SnapshotEnvironment {
   BACKGROUND_QUEUE?: { send(body: SnapshotJob): Promise<unknown> };
 }
 
-export function snapshotItems(rows: DiscoveryItemRow[], at: Date): SnapshotPart {
+export function snapshotItems(rows: DiscoveryItemRow[], _at: Date): SnapshotPart {
   const part: SnapshotPart = { schemaVersion: 1, festivals: [], performanceEvents: [], localEvents: [] };
-  const minSeen = new Date(at.getTime() - 100 * 86400000).toISOString();
   for (const row of rows) {
-    if (row.type !== "festival" || row.last_seen_at < minSeen || !validCoordinate(row.lat, row.lng)
+    if (row.type !== "festival" || !validCoordinate(row.lat, row.lng)
       || isRegionFallbackCoordinate(row.lat, row.lng)) continue;
     // Public DTOs only; raw_payload/reviewer notes must never enter public storage.
     // Status is recomputed on-device. Stabilize it here so midnight alone doesn't change hashes.
@@ -73,78 +112,136 @@ function encoded(value: unknown, max: number): Uint8Array {
   if (bytes.length > max) throw new Error("snapshot_size_budget_exceeded");
   return bytes;
 }
-function publicManifest(state: BuildState): SnapshotManifest {
-  return { schemaVersion: 1, version: state.version, generatedAt: state.generatedAt,
-    parts: state.parts, count: state.count };
-}
 
-/** One bounded page per invocation; R2 CAS checkpoints tolerate duplicate delivery.
- * Queue send errors propagate so retries resume the checkpoint, not the entire scan. */
+/** A persistent R2 checkpoint serializes publishers; D1 triggers are the outbox.
+ * Rebuild only an indexed fixed section, preserving all other content hashes. */
 export async function runSnapshotJob(env: SnapshotEnvironment, job: SnapshotJob): Promise<void> {
   const bucket = env.DISCOVERY_SNAPSHOTS;
+  const db = env.DB;
   const queue = env.BACKGROUND_QUEUE;
-  if (!bucket || !queue || !env.DB) throw new Error("snapshot_bindings_not_configured");
+  if (!bucket || !db || !queue) throw new Error("snapshot_bindings_not_configured");
+  const healthObject = await bucket.get(STATUS_KEY);
+  const health = healthObject ? await healthObject.json<{ retryAt?: string }>() : null;
+  if (health?.retryAt && Date.parse(health.retryAt) > Date.now()) return;
+  try {
+    await advanceSnapshot(env as Required<SnapshotEnvironment>, job);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+    const quota = /daily.*limit|daily.*quota/i.test(message + cause);
+    const retryAt = quota
+      ? new Date(new Date().setUTCHours(24, 1, 0, 0)).toISOString()
+      : new Date(Date.now() + 60_000).toISOString();
+    await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: false, retryAt,
+      checkedAt: new Date().toISOString(), error: quota ? "database_daily_limit" : "publication_failed" }),
+      { httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=30" } });
+    throw error;
+  }
+}
+
+async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: SnapshotJob): Promise<void> {
+  const { DB: db, DISCOVERY_SNAPSHOTS: bucket } = env;
   const object = await bucket.get(STATE_KEY);
   const current = object ? await object.json<BuildState>() : null;
   if (!job.version) {
-    if (!job.force && current && current.phase !== "complete" && Date.now() - Date.parse(current.generatedAt) < MAX_BUILD_AGE_MS) {
-      await queue.send({ type: "discovery-snapshot", version: current.version });
+    if (current?.format === 2 && current.phase !== "complete"
+      && Date.now() - Date.parse(current.generatedAt) < MAX_BUILD_AGE_MS) {
+      await enqueue(env, { type: "discovery-snapshot", version: current.version });
       return;
     }
-    if (!job.force && current?.phase === "complete"
-      && current.generatedAt.slice(0, 10) === new Date().toISOString().slice(0, 10)) return;
-    const state: BuildState = { schemaVersion: 1, version: crypto.randomUUID(), generatedAt: new Date().toISOString(),
-      phase: "discovery", cursor: "", parts: [], count: 0, rowsRead: 0, allowEmpty: job.allowEmpty === true };
+    // Partial index contains only dirty sections. The heartbeat never scans event tables.
+    // Earliest change wins within a layer: a hot section cannot starve another.
+    const pending = await db.prepare(`SELECT kind,bucket,revision,changed_at FROM snapshot_sections
+      WHERE revision > published_revision
+      ORDER BY CASE kind WHEN 'local' THEN 0 ELSE 1 END, changed_at, bucket LIMIT 1`)
+      .first<DirtySection>();
+    if (!pending) {
+      await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: true,
+        pending: false, checkedAt: new Date().toISOString() }),
+        { httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=30" } });
+      return;
+    }
+    // Coalesce ordinary collection writes for up to 2 minutes. Local/merchant rows
+    // are eligible at the next minute; never block local changes behind this debounce.
+    const catalogObject = await bucket.get(CATALOG_KEY);
+    const catalog = catalogObject ? await catalogObject.json<Catalog>() : null;
+    if (catalog?.ready && pending.kind === "discovery" && !job.force
+      && Date.now() - Date.parse(pending.changed_at) < 120_000) {
+      await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: true,
+        pending: true, pendingSince: pending.changed_at, checkedAt: new Date().toISOString() }));
+      return;
+    }
+    const state: BuildState = { format: 2, version: crypto.randomUUID(), generatedAt: new Date().toISOString(),
+      phase: "scan", section: pending, cursor: "", parts: [], count: 0, rowsRead: 0,
+      catalogRevision: catalog?.revision ?? 0 };
     const saved = await bucket.put(STATE_KEY, encoded(state, MAX_MANIFEST_BYTES), {
       onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: "*" },
     });
-    if (saved) await queue.send({ type: "discovery-snapshot", version: state.version });
+    if (saved) await enqueue(env, { type: "discovery-snapshot", version: state.version });
     return;
   }
-  if (!current || current.version !== job.version || current.phase === "complete") return;
+  if (!current || current.format !== 2 || current.version !== job.version || current.phase === "complete") return;
   if (Date.now() - Date.parse(current.generatedAt) >= MAX_BUILD_AGE_MS) throw new Error("snapshot_build_expired");
   if (current.phase === "publish") {
-    const manifest = publicManifest(current);
-    const previousObject = await bucket.get(MANIFEST_KEY);
-    const previous = previousObject ? await previousObject.json<SnapshotManifest>() : null;
-    if (previous && Date.parse(previous.generatedAt) > Date.parse(current.generatedAt)) return;
-    if (previous && previous.count > 0 && manifest.count === 0 && !current.allowEmpty) throw new Error("snapshot_unexpected_empty_release");
-    if (manifest.parts.reduce((sum, part) => sum + part.bytes, 0) > 128 * 1024 * 1024
-      || new Set(manifest.parts.map(part => part.sha256)).size !== manifest.parts.length) {
-      throw new Error("snapshot_client_budget_exceeded");
+    const oldObject = await bucket.get(CATALOG_KEY);
+    const old = oldObject ? await oldObject.json<Catalog>() : null;
+    if ((old?.revision ?? 0) !== current.catalogRevision && old?.version !== current.version) return;
+    const sectionKey = `${current.section.kind}:${current.section.bucket}`;
+    // Internal-only source changes may mark a section dirty without changing its DTOs.
+    const unchanged = old?.sections[sectionKey] !== undefined
+      && JSON.stringify(old.sections[sectionKey]) === JSON.stringify(current.parts);
+    const sections = { ...(old?.sections ?? {}), [sectionKey]: current.parts };
+    const ready = Object.keys(sections).length === 128; // all 64 buckets in both layers, including empty ones
+    const parts = Object.keys(sections).sort().flatMap(key => sections[key]);
+    const count = parts.reduce((sum, part) => sum + part.count, 0);
+    if (parts.reduce((sum, part) => sum + part.bytes, 0) > 128 * 1024 * 1024
+      || new Set(parts.map(part => part.sha256)).size !== parts.length) throw new Error("snapshot_client_budget_exceeded");
+    const catalog: Catalog = old && (old.version === current.version || unchanged) ? old : {
+      schemaVersion: 1, version: current.version, generatedAt: current.generatedAt,
+      parts, count, sections, ready, revision: current.catalogRevision + 1,
+    };
+    if (old?.version !== current.version && !unchanged) {
+      const saved = await bucket.put(CATALOG_KEY, encoded(catalog, MAX_MANIFEST_BYTES), {
+        onlyIf: oldObject ? { etagMatches: oldObject.etag } : { etagDoesNotMatch: "*" },
+      });
+      if (!saved) throw new Error("snapshot_catalog_conflict");
     }
-    const published = await bucket.put(MANIFEST_KEY, encoded(manifest, MAX_MANIFEST_BYTES), {
-      onlyIf: previousObject ? { etagMatches: previousObject.etag } : { etagDoesNotMatch: "*" },
-      httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "public, max-age=300" },
-    });
-    if (!published) throw new Error("snapshot_publish_conflict");
-    await bucket.put(STATE_KEY, encoded({ ...current, phase: "complete" }, MAX_MANIFEST_BYTES), { onlyIf: { etagMatches: object!.etag } });
-    console.log(JSON.stringify({ event: "snapshot_published", version: current.version,
-      count: current.count, parts: current.parts.length, rowsRead: current.rowsRead }));
+    if (catalog.ready) {
+      const previousObject = await bucket.get(MANIFEST_KEY);
+      const previous = previousObject ? await previousObject.json<SnapshotManifest>() : null;
+      // Monotonic catalog revisions prevent delayed retries rolling back public data.
+      if (!previous || (previous.revision ?? 0) < catalog.revision) {
+        const publicData: SnapshotManifest = { schemaVersion: 1, version: catalog.version,
+          generatedAt: catalog.generatedAt, revision: catalog.revision, parts: catalog.parts, count: catalog.count };
+        const saved = await bucket.put(MANIFEST_KEY, encoded(publicData, MAX_MANIFEST_BYTES), {
+          onlyIf: previousObject ? { etagMatches: previousObject.etag } : { etagDoesNotMatch: "*" },
+          httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "public, max-age=30" },
+        });
+        if (!saved) throw new Error("snapshot_publish_conflict");
+      }
+    }
+    // Do not clear a concurrent newer change. Generations never reset or get deleted.
+    await db.prepare(`UPDATE snapshot_sections SET published_revision = MAX(published_revision, ?)
+      WHERE kind = ? AND bucket = ?`).bind(current.section.revision, current.section.kind, current.section.bucket).run();
+    const completed = await bucket.put(STATE_KEY, encoded({ ...current, phase: "complete" }, MAX_MANIFEST_BYTES),
+      { onlyIf: { etagMatches: object!.etag } });
+    console.log(JSON.stringify({ event: catalog.ready ? "snapshot_published" : "snapshot_bootstrap_section",
+      version: catalog.version, section: sectionKey, count: catalog.count, parts: catalog.parts.length,
+      rowsRead: current.rowsRead, revision: catalog.revision }));
+    if (completed) await advanceSnapshot(env, { type: "discovery-snapshot" });
     return;
   }
-  let part: SnapshotPart;
-  let ids: string[];
-  let readCount: number;
-  // PK range bounds rows read. No bbox/type/date predicate, OFFSET or repeated sort.
-  if (current.phase === "discovery") {
-    const result = await env.DB.prepare("SELECT * FROM discovery_items WHERE id > ? ORDER BY id LIMIT ?")
-      .bind(current.cursor, SNAPSHOT_PAGE_SIZE).all<DiscoveryItemRow>();
-    if (!result.success) throw new Error("snapshot_discovery_read_failed");
-    const rows = result.results ?? [];
-    ids = rows.map(row => row.id);
-    readCount = result.meta.rows_read ?? rows.length;
-    part = snapshotItems(rows, new Date(current.generatedAt));
-  } else {
-    const result = await env.DB.prepare("SELECT * FROM local_events WHERE id > ? ORDER BY id LIMIT ?")
-      .bind(current.cursor, SNAPSHOT_PAGE_SIZE).all<LocalEventRow>();
-    if (!result.success) throw new Error("snapshot_local_read_failed");
-    const rows = result.results ?? [];
-    ids = rows.map(row => row.id);
-    readCount = result.meta.rows_read ?? rows.length;
-    part = snapshotLocalItems(rows);
-  }
-  const next: BuildState = { ...current, parts: [...current.parts], rowsRead: current.rowsRead + readCount };
+  const table = current.section.kind === "discovery" ? "discovery_items" : "local_events";
+  // Composite index bounds the read to this bucket and the unprocessed suffix.
+  const result = await db.prepare(`SELECT * FROM ${table} WHERE snapshot_bucket = ? AND id > ? ORDER BY id LIMIT ?`)
+    .bind(current.section.bucket, current.cursor, SNAPSHOT_PAGE_SIZE).all<DiscoveryItemRow | LocalEventRow>();
+  if (!result.success) throw new Error("snapshot_section_read_failed");
+  const rows = result.results ?? [];
+  const part = current.section.kind === "discovery"
+    ? snapshotItems(rows as DiscoveryItemRow[], new Date(current.generatedAt))
+    : snapshotLocalItems(rows as LocalEventRow[]);
+  const next: BuildState = { ...current, parts: [...current.parts],
+    rowsRead: current.rowsRead + (result.meta.rows_read ?? rows.length) };
   const count = part.festivals.length + part.performanceEvents.length + part.localEvents.length;
   if (count) {
     const data = encoded(part, MAX_PART_BYTES);
@@ -156,15 +253,13 @@ export async function runSnapshotJob(env: SnapshotEnvironment, job: SnapshotJob)
     next.parts.push({ sha256: hash, bytes: data.length, count });
     next.count += count;
   }
-  if (ids.length < SNAPSHOT_PAGE_SIZE) {
-    next.phase = current.phase === "discovery" ? "local" : "publish";
-    next.cursor = "";
-  } else {
-    next.cursor = ids[ids.length - 1];
+  if (rows.length < SNAPSHOT_PAGE_SIZE) next.phase = "publish";
+  else {
+    next.cursor = rows[rows.length - 1].id;
     if (next.cursor <= current.cursor) throw new Error("snapshot_cursor_not_advancing");
   }
   const saved = await bucket.put(STATE_KEY, encoded(next, MAX_MANIFEST_BYTES), { onlyIf: { etagMatches: object!.etag } });
-  if (saved) await queue.send({ type: "discovery-snapshot", version: current.version });
+  if (saved) await enqueue(env, { type: "discovery-snapshot", version: current.version });
 }
 
 /** Public delivery NEVER consults D1, including on cache miss/outage. */
@@ -173,12 +268,13 @@ export async function serveSnapshot(request: Request, bucket?: R2Bucket): Promis
   const path = new URL(request.url).pathname;
   const hash = path.match(/^\/api\/discovery-snapshot\/parts\/([a-f0-9]{64})\.json$/)?.[1];
   const isManifest = path === "/api/discovery-snapshot/manifest.json";
-  if (!isManifest && !hash) return new Response(null, { status: 404 });
-  const object = await bucket.get(isManifest ? MANIFEST_KEY : `${SNAPSHOT_PREFIX}parts/${hash}.json`);
+  const isStatus = path === "/api/discovery-snapshot/status.json";
+  if (!isManifest && !isStatus && !hash) return new Response(null, { status: 404 });
+  const object = await bucket.get(isManifest ? MANIFEST_KEY : isStatus ? STATUS_KEY : `${SNAPSHOT_PREFIX}parts/${hash}.json`);
   if (!object) return Response.json({ error: isManifest ? "snapshot_not_ready" : "snapshot_part_missing" },
     { status: isManifest ? 503 : 404, headers: { "Retry-After": "300", "Cache-Control": "no-store" } });
   const headers = new Headers({ "Content-Type": "application/json; charset=utf-8", "ETag": object.httpEtag,
-    "Cache-Control": isManifest ? "public, max-age=300" : "public, max-age=31536000, immutable",
+    "Cache-Control": (isManifest || isStatus) ? "public, max-age=30" : "public, max-age=31536000, immutable",
     "X-Content-Type-Options": "nosniff" });
   if (request.headers.get("If-None-Match") === object.httpEtag) return new Response(null, { status: 304, headers });
   return new Response(object.body, { headers });

@@ -5,7 +5,7 @@ import { MANIFEST_KEY, SNAPSHOT_PREFIX, SNAPSHOT_PAGE_SIZE, runSnapshotJob, serv
   snapshotItems, snapshotLocalItems, type SnapshotJob, type SnapshotManifest } from "../src/discoverySnapshot.js";
 import type { DiscoveryItemRow } from "../src/discoveryCache.js";
 import type { LocalEventRow } from "../src/localEvents.js";
-import { plannedJobs } from "../src/jobs.js";
+import { readFileSync } from "node:fs";
 
 function row(n: number, extra: Partial<DiscoveryItemRow> = {}): DiscoveryItemRow {
   return { id: `id:${String(n).padStart(6, "0")}`, type: "festival", source: "test", source_item_id: `event:${n}`,
@@ -25,12 +25,22 @@ function local(extra: Partial<LocalEventRow> = {}): LocalEventRow {
     category_tags_json: null, ...extra };
 }
 
-// Minimal platform fakes; production code uses typed native bindings.
+// SQLite exercises the actual invalidation triggers and range queries.
 function fixture(rows: DiscoveryItemRow[] = [], locals: LocalEventRow[] = []) {
-  let sequence = 0;
+  const sqlite = new DatabaseSync(":memory:");
+  for (const [table, sample] of [["discovery_items", row(0)], ["local_events", local()]] as const) {
+    sqlite.exec(`CREATE TABLE ${table} (${Object.keys(sample).map(key => key + (key === "id" ? " TEXT PRIMARY KEY" : "")).join(",")})`);
+  }
+  sqlite.exec(readFileSync(new URL("../migrations/0032_incremental_snapshots.sql", import.meta.url), "utf8"));
+  function insert(table: string, data: object) {
+    const entries = Object.entries(data);
+    sqlite.prepare(`INSERT INTO ${table} (${entries.map(([key]) => key).join(",")}) VALUES (${entries.map(() => "?").join(",")})`).run(...entries.map(([, value]) => value));
+  }
+  rows.forEach(row => insert("discovery_items", row));
+  locals.forEach(row => insert("local_events", row));
+  let sequence = 0, rowsRead = 0;
   const objects = new Map<string, { text: string; etag: string }>();
   const sql: string[] = [];
-  let rowsRead = 0;
   const get = vi.fn(async (key: string) => {
     const stored = objects.get(key);
     return stored ? { ...stored, httpEtag: `"${stored.etag}"`, body: new Response(stored.text).body,
@@ -42,20 +52,23 @@ function fixture(rows: DiscoveryItemRow[] = [], locals: LocalEventRow[] = []) {
     if (condition?.etagMatches && previous?.etag !== condition.etagMatches) return null;
     if (condition?.etagDoesNotMatch === "*" && previous) return null;
     const stored = { text: typeof value === "string" ? value : new TextDecoder().decode(value), etag: String(++sequence) };
-    objects.set(key, stored);
-    return stored;
+    objects.set(key, stored); return stored;
   });
   const db = { prepare(query: string) {
     sql.push(query);
-    return { bind(cursor: string, limit: number) {
-      expect(limit).toBe(SNAPSHOT_PAGE_SIZE);
-      return { all: async () => {
-        const source = query.includes("local_events") ? locals : rows;
-        const result = source.filter(row => row.id > cursor).sort((a, b) => a.id < b.id ? -1 : 1).slice(0, limit);
-        rowsRead += result.length;
-        return { success: true, results: result, meta: { rows_read: result.length } };
-      } };
-    } };
+    const statement = sqlite.prepare(query);
+    function bound(args: (string | number)[] = []) {
+      return { bind: (...args: (string | number)[]) => bound(args),
+        first: async () => statement.get(...args) ?? null,
+        run: async () => ({ success: true, meta: statement.run(...args) }),
+        all: async () => {
+          const results = statement.all(...args);
+          rowsRead += results.length;
+          return { success: true, results, meta: { rows_read: results.length } };
+        },
+      };
+    }
+    return bound();
   } } as unknown as D1Database;
   const queue: SnapshotJob[] = [];
   const send = vi.fn(async (job: SnapshotJob) => { queue.push(job); });
@@ -68,113 +81,118 @@ function fixture(rows: DiscoveryItemRow[] = [], locals: LocalEventRow[] = []) {
       await runSnapshotJob(env, queue.shift()!);
     }
   }
+  async function publish() {
+    sqlite.exec("UPDATE snapshot_sections SET changed_at='2020-01-01T00:00:00Z' WHERE revision>published_revision");
+    await runSnapshotJob(env, { type: "discovery-snapshot", force: true }); await drain();
+  }
   function manifest(): SnapshotManifest { return JSON.parse(objects.get(MANIFEST_KEY)!.text); }
-  return { objects, sql, rowsRead: () => rowsRead, env, queue, send, bucket, get, put, drain, manifest };
+  return { objects, sql, sqlite, insert, rowsRead: () => rowsRead, env, queue, send, bucket, get, put, drain, publish, manifest };
 }
 
-describe("daily discovery snapshot", () => {
-  beforeEach(() => vi.restoreAllMocks());
-  it("exports beyond old pin caps, scanning each row once including filtered pages", async () => {
-    const rows = Array.from({ length: 900 }, (_, i) => row(i, i < 128 ? { lat: 0, lng: 0 } : {}));
-    const f = fixture(rows, [local(), local({ id: "local:2", status: "pending" })]);
+describe("incremental discovery snapshot", () => {
+  beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(console, "log").mockImplementation(() => {}); });
+  it("bootstraps every section without a total cap; idle checks read no event rows", async () => {
+    const f = fixture(Array.from({ length: 900 }, (_, i) => row(i, i < 128 ? { lat: 0, lng: 0 } : {})),
+      [local(), local({ id: "local:2", status: "pending" })]);
     await runSnapshotJob(f.env, { type: "discovery-snapshot" });
     expect(f.objects.has(MANIFEST_KEY)).toBe(false);
     await f.drain();
     expect(f.manifest().count).toBe(773);
     expect(f.rowsRead()).toBe(902);
-    expect(f.sql.every(query => /WHERE id > \? ORDER BY id LIMIT \?$/.test(query))).toBe(true);
-    expect(f.sql).toHaveLength(Math.ceil(900 / 128) + 1);
-    const readBefore = f.rowsRead();
-    await runSnapshotJob(f.env, { type: "discovery-snapshot" });
-    expect(f.rowsRead()).toBe(readBefore);
+    const before = f.rowsRead();
+    await f.publish();
+    expect(f.rowsRead()).toBe(before);
+    expect(f.sql.filter(query => query.startsWith("SELECT *")).every(query => query.includes("snapshot_bucket = ? AND id > ?"))).toBe(true);
   });
-  it("uses the primary-key range index in SQLite, not a repeated full scan/sort", () => {
-    const db = new DatabaseSync(":memory:");
-    try {
-      db.exec("CREATE TABLE discovery_items (id TEXT PRIMARY KEY, type TEXT, lat REAL, lng REAL); CREATE INDEX geo ON discovery_items(type,lat,lng)");
-      const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM discovery_items WHERE id > ? ORDER BY id LIMIT ?").all("", 128);
-      const detail = plan.map(row => row.detail).join(" ");
-      expect(detail).toMatch(/SEARCH .* USING INDEX .* \(id>\?\)/);
-      expect(detail).not.toMatch(/SCAN|TEMP B-TREE/);
-    } finally { db.close(); }
+  it("uses the composite section index without full scans/sorts", () => {
+    const f = fixture();
+    const detail = f.sqlite.prepare("EXPLAIN QUERY PLAN SELECT * FROM discovery_items WHERE snapshot_bucket = ? AND id > ? ORDER BY id LIMIT ?")
+      .all(1, "", SNAPSHOT_PAGE_SIZE).map(row => row.detail).join(" ");
+    expect(detail).toMatch(/USING INDEX idx_discovery_items_snapshot/);
+    expect(detail).not.toMatch(/SCAN|TEMP B-TREE/);
   });
-  it("retries queue-send failure from its checkpoint, not a new national scan", async () => {
-    const f = fixture([row(1)]);
+  it("ignores collection heartbeat changes and republishes only modified section", async () => {
+    const f = fixture([row(1), row(2)]);
+    await f.publish(); const first = f.manifest(); const before = f.rowsRead();
+    f.sqlite.exec("UPDATE discovery_items SET last_seen_at='tomorrow', data_updated_at='tomorrow'");
+    await f.publish();
+    expect(f.manifest()).toEqual(first); expect(f.rowsRead()).toBe(before);
+    f.sqlite.exec("UPDATE discovery_items SET title='changed' WHERE id='id:000001'");
+    await f.publish();
+    expect(f.rowsRead() - before).toBe(1);
+    expect(f.manifest().parts.filter(part => first.parts.some(old => old.sha256 === part.sha256))).toHaveLength(1);
+  });
+  it("does not publish a new version for private-only payload changes", async () => {
+    const f = fixture([row(1)]); await f.publish(); const first = f.manifest();
+    f.sqlite.exec(`UPDATE discovery_items SET raw_payload='{"internal":"ignored"}'`);
+    await f.publish(); expect(f.manifest()).toEqual(first);
+  });
+  it("durably invalidates deletes, approval changes, and enrichment; rollback rolls back invalidation", async () => {
+    const f = fixture([row(1)], [local()]); await f.publish();
+    f.sqlite.exec("BEGIN; UPDATE discovery_items SET title='rollback'; ROLLBACK;");
+    expect(f.sqlite.prepare("SELECT count(*) n FROM snapshot_sections WHERE revision > published_revision").get()?.n).toBe(0);
+    f.sqlite.exec("UPDATE local_events SET status='rejected'; DELETE FROM discovery_items;");
+    await f.publish(); expect(f.manifest().count).toBe(0);
+    f.insert("discovery_items", row(5, { lat: null })); await f.publish(); expect(f.manifest().count).toBe(0);
+    f.sqlite.exec("UPDATE discovery_items SET lat=37.41"); await f.publish(); expect(f.manifest().count).toBe(1);
+  });
+  it("preserves the first dirty time and a concurrent generation until it is published", async () => {
+    const f = fixture([row(1)]); await f.publish();
+    f.sqlite.exec("UPDATE discovery_items SET title='first'; UPDATE snapshot_sections SET changed_at='2020-01-01T00:00:00Z' WHERE revision>published_revision;");
     await runSnapshotJob(f.env, { type: "discovery-snapshot" });
-    const job = f.queue.shift()!;
-    f.send.mockRejectedValueOnce(new Error("queue unavailable"));
-    await expect(runSnapshotJob(f.env, job)).rejects.toThrow("queue unavailable");
-    expect(f.rowsRead()).toBe(1);
-    await runSnapshotJob(f.env, job);
+    await runSnapshotJob(f.env, f.queue.shift()!); // scan
+    f.sqlite.exec("UPDATE discovery_items SET title='second'");
+    expect(f.sqlite.prepare("SELECT changed_at FROM snapshot_sections WHERE revision>published_revision").get()?.changed_at).toBe("2020-01-01T00:00:00Z");
     await f.drain();
-    expect(f.rowsRead()).toBe(1);
-    expect(f.manifest().count).toBe(1);
+    const parts = f.manifest().parts.map(p => f.objects.get(`${SNAPSHOT_PREFIX}parts/${p.sha256}.json`)!.text).join("");
+    expect(parts).toContain("second");
+    expect(f.sqlite.prepare("SELECT count(*) n FROM snapshot_sections WHERE revision>published_revision").get()?.n).toBe(0);
   });
-  it("duplicate concurrent deliveries do not duplicate parts", async () => {
+  it("duplicate concurrent delivery cannot duplicate parts or roll back revision", async () => {
     const f = fixture([row(1)]);
     await runSnapshotJob(f.env, { type: "discovery-snapshot" });
     const job = f.queue.shift()!;
     await Promise.all([runSnapshotJob(f.env, job), runSnapshotJob(f.env, job)]);
-    await f.drain();
-    expect(f.manifest().parts).toHaveLength(1);
-    expect(f.manifest().count).toBe(1);
+    await f.drain(); expect(f.manifest().count).toBe(1); expect(f.manifest().parts).toHaveLength(1);
+    const first = f.manifest(); await runSnapshotJob(f.env, job); expect(f.manifest()).toEqual(first);
   });
-  it("keeps the public release on failed generation and never masks a missing table", async () => {
+  it("recovers queue-send failure at the checkpoint after backoff", async () => {
     const f = fixture([row(1)]);
-    await runSnapshotJob(f.env, { type: "discovery-snapshot" }); await f.drain();
-    const before = f.objects.get(MANIFEST_KEY)!.text;
-    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true });
-    f.env.DB.prepare = () => { throw new Error("D1 quota exceeded"); };
-    await expect(f.drain()).rejects.toThrow("D1 quota exceeded");
-    expect(f.objects.get(MANIFEST_KEY)!.text).toBe(before);
-    const response = await serveSnapshot(new Request("https://example.com/api/discovery-snapshot/manifest.json"), f.bucket);
+    f.send.mockRejectedValueOnce(new Error("queue unavailable"));
+    await expect(f.publish()).rejects.toThrow("queue unavailable");
+    f.objects.delete(`${SNAPSHOT_PREFIX}status.json`);
+    await f.publish(); expect(f.manifest().count).toBe(1); expect(f.rowsRead()).toBe(1);
+  });
+  it("retains public data and backs off after quota exhaustion without repeated D1 reads", async () => {
+    const f = fixture([row(1)]); await f.publish(); const first = f.manifest();
+    const prepare = vi.fn(() => { throw new Error("D1 daily row read limit exceeded"); });
+    f.env.DB.prepare = prepare;
+    await expect(f.publish()).rejects.toThrow("daily row");
+    await f.publish(); expect(prepare).toHaveBeenCalledTimes(1); expect(f.manifest()).toEqual(first);
+    const response = await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json"), f.bucket);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe(before);
   });
-  it("publishes deletions as a full replacement and reuses unchanged content hashes", async () => {
-    const rows = [row(1), row(2)];
-    const f = fixture(rows);
-    await runSnapshotJob(f.env, { type: "discovery-snapshot" }); await f.drain();
-    const first = f.manifest();
-    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true }); await f.drain();
-    expect(f.manifest().version).not.toBe(first.version);
-    expect(f.manifest().parts).toEqual(first.parts);
-    rows.pop();
-    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true }); await f.drain();
-    expect(f.manifest().count).toBe(1);
+  it("stops sending work at the daily queue budget while preserving the checkpoint", async () => {
+    const f = fixture([row(1)]);
+    f.objects.set(`${SNAPSHOT_PREFIX}queue-budget.json`, { text: JSON.stringify({ day: new Date().toISOString().slice(0,10), count: 700 }), etag: "budget" });
+    await f.publish(); expect(f.send).not.toHaveBeenCalled(); expect(f.objects.has(MANIFEST_KEY)).toBe(false);
+    expect(JSON.parse(f.objects.get(`${SNAPSHOT_PREFIX}status.json`)!.text).error).toBe("publication_queue_budget");
   });
-  it("does not publish a suspicious empty replacement", async () => {
-    const rows = [row(1)];
-    const f = fixture(rows);
-    await runSnapshotJob(f.env, { type: "discovery-snapshot" }); await f.drain();
-    const version = f.manifest().version;
-    rows.length = 0;
-    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true });
-    await expect(f.drain()).rejects.toThrow("snapshot_unexpected_empty_release");
-    expect(f.manifest().version).toBe(version);
-  });
-  it("serves ETags, rejects private/arbitrary paths, and never exports raw payloads", async () => {
+  it("serves ETags and hides internal data and paths", async () => {
     const f = fixture([row(1, { raw_payload: '{"secret":"private","description":"public description long enough for the existing mapper"}' })]);
-    await runSnapshotJob(f.env, { type: "discovery-snapshot" }); await f.drain();
+    await f.publish();
     const first = await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json"), f.bucket);
-    expect((await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json", {
-      headers: { "If-None-Match": first.headers.get("ETag")! },
-    }), f.bucket)).status).toBe(304);
-    expect((await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/build.json"), f.bucket)).status).toBe(404);
+    expect((await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json", { headers: { "If-None-Match": first.headers.get("ETag")! } }), f.bucket)).status).toBe(304);
+    for (const path of ["catalog.json", "incremental-build.json", "queue-budget.json", "build.json"]) {
+      expect((await serveSnapshot(new Request(`https://e.com/api/discovery-snapshot/${path}`), f.bucket)).status).toBe(404);
+    }
     const part = f.objects.get(`${SNAPSHOT_PREFIX}parts/${f.manifest().parts[0].sha256}.json`)!.text;
-    expect(part).not.toContain("secret"); expect(part).not.toContain("raw_payload");
-    expect(part).toContain("public description");
+    expect(part).not.toContain("secret"); expect(part).toContain("public description");
     expect((await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json"))).status).toBe(503);
   });
   it("excludes unapproved/invalid locations and keeps KOPIS in performance DTOs", () => {
     const part = snapshotItems([row(1, { source: "kopis" }), row(2, { lat: NaN })], new Date());
     expect(part.festivals).toHaveLength(1); expect(part.performanceEvents).toHaveLength(1);
     expect(snapshotLocalItems([local({ status: "rejected" }), local({ lat: null }), local()]).localEvents).toHaveLength(1);
-  });
-  it("schedules one daily publish plus two recovery checks after quota reset", () => {
-    for (const minute of [7, 17, 37]) {
-      expect(plannedJobs(new Date(`2026-09-13T01:${String(minute).padStart(2, "0")}:00Z`)))
-        .toContainEqual({ type: "discovery-snapshot" });
-    }
   });
 });

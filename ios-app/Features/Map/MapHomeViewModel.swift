@@ -39,13 +39,15 @@ final class MapHomeViewModel: ObservableObject {
     private(set) var pinDataRevision = 0
     private var discoveryRequestRevision = 0
     private var freeParkingRequestRevision = 0
+    private var realtimeRequestRevision = 0
+    private var realtimeViewport: MapViewport?
+    private var realtimeRetryAfter = Date.distantPast
     private(set) var completedDiscoverViewport: MapViewport?
     private(set) var completedDiscoverFilter: FestivalFilter?
 
     private let apiClient: APIClientProtocol
     private let recommendationEngine = ParkingRecommendationEngine()
     private let localDiscoverRadiusMeters = 20_000
-    private let realtimeParkingRadiusMeters = 460_000
     private let koreaDiscoverCenter = CLLocationCoordinate2D(latitude: 36.35, longitude: 127.80)
 
     init(apiClient: APIClientProtocol) {
@@ -204,7 +206,7 @@ final class MapHomeViewModel: ObservableObject {
         }
         showsFreeParkingLayer = false
         staticFreeParkingLots = []
-        await loadRealtimeParkingLayer()
+        await loadRealtimeParkingLayer(viewport: viewport)
         noteRealtimeCoverage(around: viewport)
     }
 
@@ -218,7 +220,7 @@ final class MapHomeViewModel: ObservableObject {
             return
         }
         showsRealtimeParkingLayer = false
-        await loadRealtimeParkingLayer()
+        await loadRealtimeParkingLayer(viewport: viewport)
         await loadStaticFreeParkingLots(viewport: viewport, force: true)
     }
 
@@ -236,22 +238,30 @@ final class MapHomeViewModel: ObservableObject {
         }
     }
 
-    func loadRealtimeParkingLayer(force: Bool = false) async {
+    func loadRealtimeParkingLayer(force: Bool = false, viewport: MapViewport? = nil) async {
         guard showsRealtimeParkingLayer || showsFreeParkingLayer || force else { return }
+        if let viewport { realtimeViewport = viewport }
+        guard let viewport = realtimeViewport, Date() >= realtimeRetryAfter else { return }
+        realtimeRequestRevision &+= 1
+        let revision = realtimeRequestRevision
         isLoadingRealtimeParking = true
-        errorMessage = nil
+        defer { if revision == realtimeRequestRevision { isLoadingRealtimeParking = false } }
         do {
-            realtimeParkingLots = try await apiClient.realtimeParking(
-                lat: koreaDiscoverCenter.latitude,
-                lng: koreaDiscoverCenter.longitude,
-                radiusMeters: realtimeParkingRadiusMeters
+            let items = try await apiClient.realtimeParking(
+                lat: viewport.center.latitude,
+                lng: viewport.center.longitude,
+                radiusMeters: viewportDiscoverRadiusMeters(for: viewport)
             )
+            guard !Task.isCancelled, revision == realtimeRequestRevision,
+                  showsRealtimeParkingLayer || showsFreeParkingLayer || force else { return }
+            realtimeParkingLots = items
+            realtimeRetryAfter = .distantPast
         } catch {
-            if !isCancellation(error) {
+            if !isCancellation(error), revision == realtimeRequestRevision {
+                realtimeRetryAfter = Date().addingTimeInterval(60)
                 errorMessage = "\u{C2E4}\u{C2DC}\u{AC04} \u{C8FC}\u{CC28} \u{C815}\u{BCF4}\u{B97C} \u{BD88}\u{B7EC}\u{C624}\u{C9C0} \u{BABB}\u{D588}\u{C2B5}\u{B2C8}\u{B2E4}."
             }
         }
-        isLoadingRealtimeParking = false
     }
 
     @discardableResult

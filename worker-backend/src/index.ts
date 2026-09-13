@@ -89,6 +89,7 @@ import {
 } from "./upcomingNotifications.js";
 import { registerNotificationDevice } from "./notificationRegistration.js";
 import { runSnapshotJob, serveSnapshot } from "./discoverySnapshot.js";
+import { publishRealtimeShard, realtimeItemsInRegion, realtimeShardKey, type RealtimeShard } from "./realtimeSnapshot.js";
 
 export type Env = {
   DB?: D1Database;
@@ -427,16 +428,26 @@ app.get("/parking/providers/health", async (c) => {
 
 app.get("/parking/realtime", async (c) => {
   const query = parkingNearbySchema.parse(queryObject(c.req.raw.url));
-  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  const bucket = c.env.DISCOVERY_SNAPSHOTS;
+  if (!bucket) return c.json({ error: "realtime_snapshot_not_ready" }, 503);
   const radiusMeters =
     query.radiusMeters ?? Number(c.env.DEFAULT_SEARCH_RADIUS_METERS);
-  const options = { radiusMeters };
-  const items = await queryRealtimeParkingCache(
-    c.env.DB,
-    query.lat,
-    query.lng,
-    options,
-  );
+  const providers = await loadRealtimeShards(c.env);
+  const responses = await Promise.all(providers.map((_, index) => edgeCached(
+    new URL(`/internal-cache/realtime-shard-${index}`, c.req.url).toString(), c.executionCtx, 30,
+    async () => {
+      const object = await bucket.get(realtimeShardKey(index));
+      return object ? new Response(object.body, { headers: { "Content-Type": "application/json" } })
+        : new Response(null, { status: 503 });
+    })));
+  if (!responses.some(response => response.ok)) {
+    c.header("Retry-After", "60");
+    return c.json({ error: "realtime_snapshot_not_ready" }, 503);
+  }
+  const shards = await Promise.all(responses.filter(response => response.ok).map(response => response.json<RealtimeShard>()));
+  c.header("X-Realtime-Missing-Shards", String(responses.filter(response => !response.ok).length));
+  const items = realtimeItemsInRegion(shards, query.lat, query.lng, radiusMeters);
+  c.header("Cache-Control", "public, max-age=30");
   return c.json({
     destination: { lat: query.lat, lng: query.lng, radiusMeters },
     items,
@@ -1481,6 +1492,10 @@ async function runMinuteScheduler(env: Env, scheduledAt: Date): Promise<void> {
   await Promise.all([
     sendJobs(env, plannedJobs(scheduledAt)),
     syncRealtimeParkingScheduled(env, scheduledAt),
+    env.DISCOVERY_SNAPSHOTS && env.DB && env.BACKGROUND_QUEUE
+      ? runSnapshotJob(env, { type: "discovery-snapshot" }).catch(error => {
+        console.error("snapshot recovery check failed", error);
+      }) : Promise.resolve(),
   ]);
 }
 
@@ -1868,6 +1883,9 @@ async function syncRealtimeParkingScheduled(env: Env, scheduledAt: Date): Promis
     const index = realtimeShardIndex(scheduledAt, shards.length);
     await syncRealtimeParkingCache(env.DB!, shards[index], {
       prune: shouldPruneRealtime(scheduledAt),
+      publish: env.DISCOVERY_SNAPSHOTS
+        ? (items, generatedAt) => publishRealtimeShard(env.DISCOVERY_SNAPSHOTS!, index, items, generatedAt)
+        : undefined,
     });
   } catch (error) {
     console.error("realtime parking sync failed", error);

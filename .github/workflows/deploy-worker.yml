@@ -99,39 +99,11 @@ jobs:
         working-directory: worker-backend
         run: pnpm exec wrangler deploy
 
-      # 배포된 Worker가 실제로 새 스키마를 읽을 수 있는지 확인한다. migration이
-      # 빠졌으면 여기서 `no such column`으로 500이 떠 배포 실패로 드러난다.
+      # Collection is driven by existing schedules; deployment must not force a national rescan.
       - name: Smoke test deployed Worker
         run: |
-          set -e
-          base="https://parking-lot-navigator-api.parkingnav.workers.dev"
-          curl -fsS "${base}/health" > /dev/null
-          curl -fsS "${base}/api/festivals?lat=37.5665&lng=126.9780&radiusMeters=20000&upcomingWithinDays=30" > /dev/null
-          curl -fsS "${base}/api/performances?lat=37.5665&lng=126.9780&radiusMeters=20000&upcomingWithinDays=30" > /dev/null
+          curl -fsS "https://parking-lot-navigator-api.parkingnav.workers.dev/health" > /dev/null
 
-      - name: Refresh discovery cache
-        if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
-        run: |
-          for chunkIndex in 0 1 2 3 4 5 6 7 8; do
-            curl -fsS -X POST \
-              -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
-              "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-discovery?chunkIndex=${chunkIndex}" \
-              || echo "chunkIndex=${chunkIndex} failed, continuing"
-          done
-
-      - name: Refresh local event candidates
-        if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
-        run: |
-          curl -fsS -X POST \
-            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
-            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events" \
-            || echo "sync-local-events failed, continuing (hourly cron retries anyway)"
-
-      # 새 컬럼이 실제로 채워지기 시작하는지 배포 직후 한 회차 확인한다.
-      - name: Run one detail backfill round
-        if: ${{ env.SYNC_ADMIN_TOKEN != '' }}
-        run: |
-          curl -fsS -X POST \
-            -H "Authorization: Bearer ${SYNC_ADMIN_TOKEN}" \
-            "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/backfill-fees?maxItems=45" \
-            || echo "backfill-fees failed, continuing (cron retries every 20 minutes)"
+      - name: Verify published snapshot without D1 reads
+        working-directory: worker-backend
+        run: node scripts/verify-discovery-snapshot.mjs

@@ -97,10 +97,6 @@ export function plannedJobs(scheduledAt: Date): BackgroundJob[] {
   const hour = scheduledAt.getUTCHours();
   const jobs: BackgroundJob[] = [];
 
-  // Daily release at 10:07 KST, after the D1 UTC quota reset. Later slots resume
-  // interrupted checkpoints; completed releases are skipped without querying D1.
-  if (hour === 1 && [7, 17, 37].includes(minute)) jobs.push({ type: "discovery-snapshot" });
-
   if (minute % 9 === 0) {
     jobs.push({ type: "discovery-chunk", chunkIndex: currentDiscoveryChunkIndex(scheduledAt) });
   }

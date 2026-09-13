@@ -22,7 +22,14 @@ async function download(path, maxBytes) {
 const manifest = JSON.parse(await download("manifest.json", 4 * 1024 * 1024));
 check(manifest.schemaVersion === 1 && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(manifest.version), "Invalid manifest schema/version");
 const age = Date.now() - Date.parse(manifest.generatedAt);
-check(Number.isFinite(age) && age >= -300_000 && age <= 48 * 3600_000, "Snapshot missing, stale (>48h), or future-dated");
+check(Number.isFinite(age) && age >= -300_000, "Invalid snapshot publication time");
+// Unchanged data may legitimately be older than 48h. Check the publisher separately.
+const status = JSON.parse(await download("status.json", 16 * 1024));
+const checkAge = Date.now() - Date.parse(status.checkedAt);
+check(status.schemaVersion === 1 && status.healthy === true && Number.isFinite(checkAge)
+  && checkAge >= -300_000 && checkAge < 15 * 60_000, "Publisher unhealthy or not checked in 15 minutes");
+check(!status.pending || Date.now() - Date.parse(status.pendingSince) < 10 * 60_000,
+  "Publication backlog is stale");
 check(Array.isArray(manifest.parts) && Number.isSafeInteger(manifest.count) && manifest.count > 0, "Cannot release against an empty snapshot");
 let bytes = 0;
 let count = 0;

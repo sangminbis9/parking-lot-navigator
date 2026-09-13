@@ -33,6 +33,7 @@ struct APIHTTPError: Error {
 }
 
 protocol APIClientProtocol {
+    func checkDiscoverySnapshot() async throws
     func refreshDiscoverySnapshot() async throws
     func searchDestination(query: String) async throws -> [Destination]
     func nearbyParking(lat: Double, lng: Double, radiusMeters: Int) async throws -> [ParkingLot]
@@ -74,6 +75,7 @@ struct NotificationDeviceRegistration: Encodable, Equatable {
 }
 
 extension APIClientProtocol {
+    func checkDiscoverySnapshot() async throws {}
     func refreshDiscoverySnapshot() async throws {}
     func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithinDays: Int) async throws -> [Festival] {
         try await nearbyFestivals(lat: lat, lng: lng, radiusMeters: radiusMeters, upcomingWithinDays: upcomingWithinDays, pastWithinDays: 0)
@@ -98,6 +100,10 @@ final class APIClient: APIClientProtocol {
 
     func refreshDiscoverySnapshot() async throws {
         if let snapshotStore { _ = try await snapshotStore.refreshNow() }
+    }
+
+    func checkDiscoverySnapshot() async throws {
+        try await snapshotStore?.refreshIfDue()
     }
 
     func searchDestination(query: String) async throws -> [Destination] {

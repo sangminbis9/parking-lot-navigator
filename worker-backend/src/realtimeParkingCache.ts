@@ -54,6 +54,7 @@ export interface RealtimeCacheSyncOptions {
    * 다만 매 분 돌리면 하루 1,440회가 되므로 호출부가 간격을 정한다.
    */
   prune?: boolean;
+  publish?: (items: ParkingLot[], generatedAt: string) => Promise<void>;
 }
 
 export async function syncRealtimeParkingCache(
@@ -78,6 +79,14 @@ export async function syncRealtimeParkingCache(
   const skipped = items.length - validItems.length;
   const counts = await upsertRealtimeParkingItems(db, validItems, generatedAt);
   const pruned = options.prune === false ? 0 : await pruneUnseenRealtimeParking(db, generatedAt);
+  if (options.publish) {
+    const health = provider.health();
+    // Some providers swallow fetch errors. A fulfilled promise alone isn't success.
+    if (validItems.length > 0 && health.length > 0 && health.every(p => p.status === "up" && !p.stale
+      && p.lastSuccessAt && Date.parse(p.lastSuccessAt) >= Date.parse(generatedAt) - 1000)) {
+      await options.publish(validItems, generatedAt);
+    }
+  }
 
   return {
     fetched: items.length,

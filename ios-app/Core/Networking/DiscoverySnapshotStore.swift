@@ -121,6 +121,12 @@ actor DiscoverySnapshotStore {
     func event(id: String) async throws -> FreeEvent? { try await dataset().eventByID[id] }
 
     /// Useful for explicit refresh/tests; regular queries use stale-while-revalidate.
+    func refreshIfDue() async throws {
+        loadDiskIfNeeded()
+        guard now() >= nextCheck else { return }
+        _ = try await startRefresh().value
+    }
+
     @discardableResult func refreshNow() async throws -> Bool {
         loadDiskIfNeeded()
         nextCheck = .distantPast
@@ -173,7 +179,7 @@ actor DiscoverySnapshotStore {
         do {
             let result = try await loader(baseURL.appendingPathComponent("manifest.json"), 4 * 1024 * 1024, etag)
             if result.statusCode == 304, let index {
-                nextCheck = now().addingTimeInterval(15 * 60)
+                nextCheck = now().addingTimeInterval(60)
                 lastRefreshFailed = false
                 return index
             }
@@ -189,7 +195,7 @@ actor DiscoverySnapshotStore {
             }
             if manifest?.version == next.version, let index {
                 etag = result.etag
-                nextCheck = now().addingTimeInterval(15 * 60)
+                nextCheck = now().addingTimeInterval(60)
                 lastRefreshFailed = false
                 return index
             }
@@ -238,7 +244,7 @@ actor DiscoverySnapshotStore {
             index = newIndex
             etag = result.etag
             lastRefreshFailed = false
-            nextCheck = now().addingTimeInterval(15 * 60)
+            nextCheck = now().addingTimeInterval(60)
             cleanup(keeping: Set(files.map { "\($0.sha256).json" }).union(["manifest.json"]))
             if oldVersion != nil && oldVersion != next.version {
                 NotificationCenter.default.post(name: .discoverySnapshotChanged, object: nil)

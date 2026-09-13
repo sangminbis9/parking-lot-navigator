@@ -58,6 +58,23 @@ final class DiscoverySnapshotTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 
+    func testPeriodicCheckSharesCooldownAndPreservesOfflineData() async throws {
+        let release = try release([festival("saved")])
+        let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)
+        let store = store(directory(), transport: transport)
+        try await store.refreshIfDue()
+        let before = await transport.requests
+        for _ in 0..<10 { try await store.refreshIfDue() }
+        let after = await transport.requests
+        XCTAssertEqual(before, after)
+        await transport.setOffline(true)
+        do { _ = try await store.refreshNow(); XCTFail("offline") } catch {}
+        let failed = await transport.requests
+        try await store.refreshIfDue()
+        let cooled = await transport.requests
+        XCTAssertEqual(failed, cooled)
+    }
+
     func testConcurrentLayersShareOneDownloadAndCancellationDoesNotCancelOtherConsumers() async throws {
         let release = try release([festival("one")])
         let transport = SnapshotTestTransport(manifest: release.0, parts: release.1)

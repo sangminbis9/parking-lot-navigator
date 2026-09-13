@@ -128,6 +128,15 @@ struct AppRootView: View {
             festivalSync.syncIfStale(coordinate: nil, minimumInterval: 1_800)
             discoveryService.scheduleNextRefresh()
         }
+        .task(id: scenePhase == .active && (tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .calendar)) {
+            guard scenePhase == .active,
+                  tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .calendar else { return }
+            while !Task.isCancelled {
+                try? await apiClient.checkDiscoverySnapshot()
+                do { try await Task.sleep(nanoseconds: 60_000_000_000) }
+                catch { return }
+            }
+        }
         .onChange(of: themeStore.selectedTheme) { _ in
             Self.configureTabBarAppearance()
         }
