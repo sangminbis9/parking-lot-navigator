@@ -62,6 +62,16 @@ test("corrupt or missing part prevents producing a deployment", async () => {
   origin.files.delete(`parts/${origin.manifest.parts[0].sha256}.json`);
   await assert.rejects(fixture(origin.files).run(), /HTTP 404/);
 });
+test("a status-only heartbeat preserves the preceding release too", async () => {
+  const origin = release(["current"], 2), previous = release(["old"]);
+  const first = await fixture(origin.files, previous.files).run();
+  const cdn = new Map([...first.files].filter(([key]) => key.startsWith("discovery/v1/"))
+    .map(([key, data]) => [key.slice("discovery/v1/".length), data]));
+  cdn.set("status.json", Buffer.from(JSON.stringify({ mirroredAt: new Date(now - 3600000).toISOString() })));
+  const next = await fixture(origin.files, cdn).run();
+  assert.equal([...next.files.keys()].filter(key => key.includes("/parts/")).length, 2);
+  assert.equal(JSON.parse(next.files.get("discovery/v1/previous-manifest.json")).revision, 1);
+});
 test("older origin or conflicting revision cannot roll the CDN back", async () => {
   await assert.rejects(fixture(release(["a"]).files, release(["b"], 2).files).run(), /older/);
   const origin = release(["a"]), previous = release(["b"]);

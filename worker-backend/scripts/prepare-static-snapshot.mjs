@@ -72,10 +72,16 @@ export async function prepareStaticSnapshot({ source, target, bootstrap = false,
     if (now - publishedAt >= 0 && now - publishedAt < 10 * 60_000) return { changed: false, manifest };
   }
   const files = new Map();
-  const previousHashes = new Set(previous?.parts.map(p => p.sha256));
+  let retained = previous?.version !== manifest.version ? previous : null;
+  if (previous?.version === manifest.version) {
+    const data = await download(target, "previous-manifest.json", 4 * 1024 * 1024, true);
+    retained = data ? validateManifest(JSON.parse(data)) : null;
+    check(!retained || retained.revision <= previous.revision, "Invalid retained revision");
+  }
+  const previousHashes = new Set([...(previous?.parts ?? []), ...(retained?.parts ?? [])].map(p => p.sha256));
   // Retain the preceding release as well: a client may have fetched its manifest
   // immediately before this atomic asset deployment. Never copy arbitrary bucket keys.
-  const descriptors = new Map([...(previous?.parts ?? []), ...manifest.parts].map(p => [p.sha256, p]));
+  const descriptors = new Map([...(retained?.parts ?? []), ...manifest.parts].map(p => [p.sha256, p]));
   const work = [...descriptors.values()]; let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(4, work.length) }, async () => {
     while (cursor < work.length) {
@@ -87,6 +93,7 @@ export async function prepareStaticSnapshot({ source, target, bootstrap = false,
     }
   }));
   files.set("discovery/v1/manifest.json", Buffer.from(JSON.stringify(manifest)));
+  if (retained) files.set("discovery/v1/previous-manifest.json", Buffer.from(JSON.stringify(retained)));
   files.set("discovery/v1/status.json", Buffer.from(JSON.stringify({ schemaVersion: 1, healthy: true,
     checkedAt: status.checkedAt, pending: status.pending === true,
     ...(status.pending ? { pendingSince: status.pendingSince } : {}), mirroredAt: new Date(now).toISOString() })));
