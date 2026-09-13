@@ -64,6 +64,7 @@ export async function prepareStaticSnapshot({ source, target, bootstrap = false,
   if (previous) {
     check(previous.revision <= manifest.revision, "Origin revision older than deployed revision");
     check(previous.revision !== manifest.revision || previous.version === manifest.version, "Conflicting revision");
+    check(previous.version !== manifest.version || JSON.stringify(previous) === JSON.stringify(manifest), "Changed contents at same version");
   }
   const oldStatus = previous ? await download(target, "status.json", 16 * 1024, true) : null;
   if (previous?.version === manifest.version && oldStatus) {

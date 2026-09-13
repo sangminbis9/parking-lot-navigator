@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapCityFestivalRow } from "../src/cityFestivalCache.js";
+import { mapCityFestivalRow, queryCityFestivalsFromCache } from "../src/cityFestivalCache.js";
 
 describe("mapCityFestivalRow", () => {
   const baseRow = {
@@ -31,5 +31,27 @@ describe("mapCityFestivalRow", () => {
 
   it("returns null when lat/lng are not finite numbers", () => {
     expect(mapCityFestivalRow({ ...baseRow, lat: NaN }, 37.5, 127.0)).toBeNull();
+  });
+
+  it("continues past both former 500/5000 limits until EOF", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const data = Array.from({ length: 5501 }, (_, i) => ({ ...baseRow, id: `city:${String(i).padStart(5, "0")}`,
+      start_date: today, end_date: today }));
+    let calls = 0;
+    const db = { prepare: (sql: string) => ({ bind: (...args: unknown[]) => ({ all: async () => {
+      expect(sql).toContain("id > ?");
+      calls++;
+      const cursor = args[6] as string, limit = args[7] as number;
+      return { success: true, results: data.filter(row => row.id > cursor).slice(0, limit) };
+    } }) }) } as unknown as D1Database;
+    const items = await queryCityFestivalsFromCache(db, 37.5, 127, 20000, 365);
+    expect(items).toHaveLength(5501);
+    expect(new Set(items.map(x => x.id)).size).toBe(5501);
+    expect(calls).toBe(6);
+  });
+
+  it("does not return a partial successful result if a page fails", async () => {
+    const db = { prepare: () => ({ bind: () => ({ all: async () => ({ success: false, results: [] }) }) }) } as unknown as D1Database;
+    await expect(queryCityFestivalsFromCache(db, 37.5, 127, 20000, 365)).rejects.toThrow("page_failed");
   });
 });

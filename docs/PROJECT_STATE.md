@@ -6,9 +6,10 @@
 
 - 사용자 선택: 도메인 구매 없이 행사 파일은 Workers Static Assets, 실시간 주차는 기존 Worker 유지. 비공개 R2 공개/유료 전환 없음.
 - `parking-lot-navigator-data.parkingnav.workers.dev/discovery/v1` 첫 발행 `6f3195de-cc89-490f-af6c-5f69fd6308a8`. 12,669항목/167파트/11,500,570바이트 전체 HTTP 무결성 검증 통과, 내부 catalog/예산/checkpoint 경로 404.
-- 새 발행기 안전 테스트 8개 통과. 5분 변경 검사 + 10분 상태 heartbeat의 GitHub workflow 추가(예약 지연 가능). 새로운 파일만 원본 Worker에서 읽고, 기존 파일은 CDN 재사용. 현재/직전 파일을 검증 후 함께 배포하며 실패 시 기존 배포 유지.
-- CI/Codemagic/Release 예제 설정을 정적 주소로 연결. **이 항목 작성 시 자동 CI 발행과 새 iOS 빌드는 아직 미검증이며 TestFlight 261은 기존 주소 사용.**
-- 원본 누락 문제는 별도 미완료: 13일 소스 재방문, IFEZ 첫 페이지 한정, 탈락 이유 미집계, city cache 500/5,000 제한. [설계와 후속 작업](architecture/discovery-static-assets.md).
+- 새 발행기 안전 테스트 9개 통과. 5분 변경 검사 + 10분 상태 heartbeat의 GitHub workflow 추가(예약 지연 가능). 새로운 파일만 원본 Worker에서 읽고, 기존 파일은 CDN 재사용. 현재/직전 파일을 검증 후 함께 배포하며 실패 시 기존 배포 유지.
+- `c7c6db5` master 반영. GitHub iOS #471(`34731831673`) 새 CDN 주소 빌드·테스트 성공, Worker CI `34731831920` 성공. 정적 발행 첫 CI `34731831675`는 변경 없음으로 정상 종료했으므로 실제 CI 토큰 업로드/예약 발행 검증은 아직 남는다. TestFlight 261은 기존 주소 사용.
+- 원본 수집 보완(로컬 검증, 운영 배포 대기): 3사이트/시간으로 130소스 44시간 순회, city cache 500/5,000 제한 제거(1,000개씩 EOF까지), 후보 탈락/대표 좌표 및 IFEZ 누락 필드 진단을 비공개 R2에 기록. Worker 40파일/347테스트와 TypeScript 통과. Queue 발행 예산 650개로 조정, 최악 추산 9,582 ops/일(재시도 별도).
+- IFEZ 다중 페이지 순회와 공식 주최/행사장 소스 확장은 여전히 미완료다. 전체 행사 누락이 해결됐다고 볼 수 없다. [설계와 후속 작업](architecture/discovery-static-assets.md).
 
 ## 2026-09-13 09:00 재개 — 변경 기반 부분 발행
 

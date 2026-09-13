@@ -14,9 +14,10 @@ const MAX_PART_BYTES = 8 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_BUILD_AGE_MS = 2 * 60 * 60 * 1000;
 const QUEUE_BUDGET_KEY = `${SNAPSHOT_PREFIX}queue-budget.json`;
-// Baseline worst case: 7,446 queue operations/day. Reserve 2,100 for publication,
-// leaving 454 for retries. Exhaustion delays changes; it never removes public pins.
-const MAX_DAILY_SNAPSHOT_MESSAGES = 700;
+// Baseline worst case: 7,632 queue operations/day, including 72 city sites.
+// Reserve 1,950 for publication, leaving 418 for retries. Exhaustion delays
+// changes; it never removes public pins. This is not a per-user request budget.
+export const MAX_DAILY_SNAPSHOT_MESSAGES = 650;
 
 async function enqueue(env: Required<SnapshotEnvironment>, job: SnapshotJob): Promise<void> {
   const bucket = env.DISCOVERY_SNAPSHOTS;

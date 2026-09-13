@@ -14,6 +14,8 @@ import type { NormalizedCityFestival } from "./cityFestivalNormalize.js";
 import { scoreCandidate } from "./cityFestivalScore.js";
 import type { Env } from "./index.js";
 import { delay } from "./concurrency.js";
+import { saveCityFestivalAudit, type CityFestivalAudit } from "./cityFestivalAudit.js";
+import { inspectIfezCultureEvent } from "./cityFestivalParsers/customParsers/ifezCultureEvent.js";
 
 const CITY_FESTIVAL_INTER_SITE_DELAY_MS = 300;
 const CITY_FESTIVAL_FETCH_TIMEOUT_MS = 20000;
@@ -39,6 +41,7 @@ export interface CityFestivalDiscoveryResult {
   processed: number;
   published: number;
   failedSites: string[];
+  audits: CityFestivalAudit[];
 }
 
 export interface CityFestivalDiscoveryOptions {
@@ -82,12 +85,17 @@ export async function runCityFestivalDiscovery(
   let processed = 0;
   let published = 0;
   const failedSites: string[] = [];
+  const audits: CityFestivalAudit[] = [];
   const statements: D1PreparedStatement[] = [];
   const htmlCache = new Map<string, { html: string } | { error: Error }>();
 
   for (const site of sites) {
+    const audit: CityFestivalAudit = { siteId: site.siteId, checkedAt: new Date().toISOString(), status: "ok",
+      candidates: 0, missingTitle: 0, invalidDate: 0, belowThreshold: 0, fallbackCoordinates: 0, accepted: 0, written: 0 };
+    audits.push(audit);
     try {
-      const candidates = await discoverSite(site, htmlCache, detailFetchBudget);
+      const candidates = await discoverSite(site, htmlCache, detailFetchBudget, audit);
+      audit.candidates = candidates.length;
       processed += candidates.length;
       await resolver.warmup(
         candidates
@@ -101,15 +109,22 @@ export async function runCityFestivalDiscovery(
       );
       for (const candidate of candidates) {
         const normalized = await normalizeCandidate(candidate, site, resolver);
-        if (!normalized) continue;
+        if (!normalized) {
+          if (!candidate.title?.trim()) audit.missingTitle++;
+          else audit.invalidDate++;
+          continue;
+        }
+        if (normalized.lat === site.fallbackLat && normalized.lng === site.fallbackLng) audit.fallbackCoordinates++;
         const score = scoreCandidate(normalized);
-        if (score < threshold) continue;
+        if (score < threshold) { audit.belowThreshold++; continue; }
         statements.push(buildUpsertStatement(db, normalized, score));
         published += 1;
+        audit.accepted++;
       }
     } catch (error) {
       console.error(`city festival discovery failed for site=${site.siteId}`, error);
       failedSites.push(site.siteId);
+      audit.status = "site_failed";
     }
     await delay(CITY_FESTIVAL_INTER_SITE_DELAY_MS);
   }
@@ -117,12 +132,23 @@ export async function runCityFestivalDiscovery(
   // Flush geocode cache writes before the festival upsert batch so a failed
   // batch (e.g. too many statements) doesn't discard Kakao lookups that
   // already cost miss budget.
-  await resolver.flush();
-  if (statements.length > 0) {
-    await db.batch(statements);
+  try {
+    await resolver.flush();
+    if (statements.length > 0) await db.batch(statements);
+    for (const audit of audits) audit.written = audit.accepted;
+  } catch (error) {
+    for (const audit of audits) if (audit.status === "ok") audit.status = "write_failed";
+    throw error;
+  } finally {
+    if (env.DISCOVERY_SNAPSHOTS) {
+      for (const audit of audits) {
+        try { await saveCityFestivalAudit(env.DISCOVERY_SNAPSHOTS, audit); }
+        catch { console.error(`city festival audit write failed site=${audit.siteId}`); }
+      }
+    }
   }
 
-  return { processed, published, failedSites };
+  return { processed, published, failedSites, audits };
 }
 
 // 여러 site config가 같은 listUrl을 공유하는 경우(예: 충북 11개 시/군이 표
@@ -153,7 +179,8 @@ const CITY_FESTIVAL_FETCH_RETRY_DELAY_MS = 500;
 async function discoverSite(
   site: CitySiteConfig,
   htmlCache: Map<string, { html: string } | { error: Error }>,
-  detailFetchBudget: DetailFetchBudget
+  detailFetchBudget: DetailFetchBudget,
+  audit: CityFestivalAudit
 ): Promise<RawCityFestivalCandidate[]> {
   let entry = htmlCache.get(site.listUrl);
   if (!entry) {
@@ -164,6 +191,12 @@ async function discoverSite(
     throw entry.error;
   }
   const html = entry.html;
+
+  if (site.customParser === "ifez-culture-event") {
+    const parsed = inspectIfezCultureEvent(html, site);
+    audit.parserDiagnostics = parsed.diagnostics;
+    return parsed.candidates;
+  }
 
   if (site.customParser) {
     const parser = CUSTOM_PARSERS[site.customParser];

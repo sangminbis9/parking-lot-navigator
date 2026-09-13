@@ -5,6 +5,17 @@
 // 청크는 50회로 안전했음). 청크당 사이트 수를 줄여 여유를 둔다.
 export const CITY_FESTIVAL_CHUNK_SIZE = 10;
 
+// Queue jobs are isolated per site. Three per hour visits 130 sites within 44h,
+// without concentrating a whole national crawl into one invocation/day.
+export const CITY_FESTIVAL_SITES_PER_HOUR = 3;
+export function sitesForHour<T>(sites: T[], date: Date): T[] {
+  if (sites.length === 0) return [];
+  const hour = Math.floor(date.getTime() / 3_600_000);
+  const start = ((hour * CITY_FESTIVAL_SITES_PER_HOUR) % sites.length + sites.length) % sites.length;
+  return Array.from({ length: Math.min(sites.length, CITY_FESTIVAL_SITES_PER_HOUR) },
+    (_, i) => sites[(start + i) % sites.length]);
+}
+
 export function currentCityFestivalChunkIndex(date: Date, siteCount: number): number {
   const chunkCount = Math.max(1, Math.ceil(siteCount / CITY_FESTIVAL_CHUNK_SIZE));
   const epochDay = Math.floor(date.getTime() / (24 * 60 * 60 * 1000));

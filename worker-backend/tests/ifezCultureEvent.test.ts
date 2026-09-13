@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseIfezCultureEvent } from "../src/cityFestivalParsers/customParsers/ifezCultureEvent.js";
+import { parseIfezCultureEvent, inspectIfezCultureEvent } from "../src/cityFestivalParsers/customParsers/ifezCultureEvent.js";
 import { CITY_FESTIVAL_SITES } from "../src/cityFestivalSites.js";
 import type { CitySiteConfig } from "../src/cityFestivalParsers/types.js";
 
@@ -87,6 +87,7 @@ describe("parseIfezCultureEvent", () => {
     const result = parseIfezCultureEvent(html, config);
 
     expect(result.map((candidate) => candidate.title)).toEqual(["정상 행사"]);
+    expect(inspectIfezCultureEvent(html, config).diagnostics).toEqual({ seen: 4, missingTitle: 0, missingPeriod: 2, missingVenue: 1 });
   });
 
   it("reads labels by dt text rather than dl position", () => {

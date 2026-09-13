@@ -3,8 +3,28 @@ import {
   CITY_FESTIVAL_CHUNK_SIZE,
   currentCityFestivalChunkIndex,
   sitesForChunk,
+  sitesForHour,
 } from "../src/cityFestivalSchedule.js";
 import { CITY_FESTIVAL_SITES } from "../src/cityFestivalSites.js";
+
+describe("hourly site rotation", () => {
+  it("covers every real site within 44 hours from any starting slot", () => {
+    for (let start = 0; start < 130; start++) {
+      const seen = new Set<string>();
+      for (let hour = start; hour < start + 44; hour++) {
+        const sites = sitesForHour(CITY_FESTIVAL_SITES, new Date(Date.UTC(2026, 8, 13, hour)));
+        expect(sites).toHaveLength(3);
+        expect(new Set(sites.map(s => s.siteId)).size).toBe(3);
+        sites.forEach(s => seen.add(s.siteId));
+      }
+      expect(seen.size).toBe(CITY_FESTIVAL_SITES.length);
+    }
+  });
+  it("handles an empty or small registry without duplicate work", () => {
+    expect(sitesForHour([], new Date())).toEqual([]);
+    expect(sitesForHour(["one"], new Date())).toEqual(["one"]);
+  });
+});
 
 describe("currentCityFestivalChunkIndex", () => {
   it("visits every chunk across enough days when site count exceeds one chunk", () => {

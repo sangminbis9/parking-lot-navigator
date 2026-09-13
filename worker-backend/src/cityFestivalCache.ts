@@ -2,8 +2,7 @@ import type { Festival } from "@parking/shared-types";
 import { distanceMeters } from "../../backend/src/services/geo.js";
 import { discoverStatus, isWithinWindow } from "../../backend/src/features/discover/common/dateUtils.js";
 
-const CITY_FESTIVAL_RESULT_LIMIT = 500;
-const CITY_FESTIVAL_PREFETCH_LIMIT = 5000;
+const CITY_FESTIVAL_PAGE_SIZE = 1000;
 
 export interface CityFestivalRow {
   id: string;
@@ -28,35 +27,47 @@ export async function queryCityFestivalsFromCache(
 ): Promise<Festival[]> {
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / Math.max(40000, 111320 * Math.cos((lat * Math.PI) / 180));
-  const rows = await db
-    .prepare(
-      `SELECT id, site_id, source_url, title, start_date, end_date, venue, address, lat, lng, image_url
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const windowEnd = new Date(now.getTime() + upcomingWithinDays * 86_400_000).toISOString().slice(0, 10);
+  const items: Festival[] = [];
+  let cursor = "";
+  for (;;) {
+    const page = await db
+      .prepare(
+        `SELECT id, site_id, source_url, title, start_date, end_date, venue, address, lat, lng, image_url
          FROM city_festivals
         WHERE lat BETWEEN ? AND ?
           AND lng BETWEEN ? AND ?
-        ORDER BY ((lat - ?) * (lat - ?) + (lng - ?) * (lng - ?)) ASC
+          AND end_date >= ? AND start_date <= ? AND id > ?
+        ORDER BY id ASC
         LIMIT ?`
-    )
-    .bind(
-      lat - latDelta,
-      lat + latDelta,
-      lng - lngDelta,
-      lng + lngDelta,
-      lat,
-      lat,
-      lng,
-      lng,
-      CITY_FESTIVAL_PREFETCH_LIMIT
-    )
-    .all<CityFestivalRow>();
+      )
+      .bind(
+        lat - latDelta,
+        lat + latDelta,
+        lng - lngDelta,
+        lng + lngDelta,
+        today,
+        windowEnd,
+        cursor,
+        CITY_FESTIVAL_PAGE_SIZE
+      )
+      .all<CityFestivalRow>();
 
-  return (rows.results ?? [])
-    .map((row) => mapCityFestivalRow(row, lat, lng))
-    .filter((item): item is Festival => item !== null)
-    .filter((item) => item.distanceMeters <= radiusMeters)
-    .filter((item) => isWithinWindow(item.startDate, item.endDate, upcomingWithinDays))
-    .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    .slice(0, CITY_FESTIVAL_RESULT_LIMIT);
+    if (!page.success) throw new Error("city_festival_page_failed");
+    const rows = page.results ?? [];
+    items.push(...rows
+      .map((row) => mapCityFestivalRow(row, lat, lng))
+      .filter((item): item is Festival => item !== null)
+      .filter((item) => item.distanceMeters <= radiusMeters)
+      .filter((item) => isWithinWindow(item.startDate, item.endDate, upcomingWithinDays, now)));
+    if (rows.length < CITY_FESTIVAL_PAGE_SIZE) break;
+    const next = rows[rows.length - 1].id;
+    if (next <= cursor) throw new Error("city_festival_cursor_stalled");
+    cursor = next;
+  }
+  return items.sort((a, b) => a.distanceMeters - b.distanceMeters || a.id.localeCompare(b.id));
 }
 
 export function mapCityFestivalRow(row: CityFestivalRow, lat: number, lng: number): Festival | null {

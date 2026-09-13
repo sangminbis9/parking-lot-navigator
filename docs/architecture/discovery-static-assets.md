@@ -34,9 +34,10 @@
 
 ## 별도 남은 원본 누락 과제
 
-- 지자체 130개 소스가 10개/일 순환이면 재방문 약 13일. Queue·geocode 예산을 다시 계산하여 짧은 슬롯으로 분산해야 한다.
-- IFEZ 목록 첫 페이지만 읽는 구조와 파서 탈락 사유 미집계 보완.
-- `cityFestivalCache.ts`의 500개 결과/5,000개 선조회 한도가 원본 전달을 자를 가능성 검증 및 페이지 순회 전환. 정적 배포는 원본에 없는 행사를 새로 만들지 않는다.
+- 지자체 130소스의 약 13일 재방문을 3사이트/시간·44시간 순회로 단축 구현. 단위 테스트로 모든 시간 오프셋에서 44시간 전체 순회 검증. 개별 지오코딩/상세 예산은 기존 3/1 유지(최대 일일 geocode miss는 216으로 증가하므로 운영 사용량 관찰).
+- `cityFestivalCache.ts`의 500개 결과/5,000개 선조회 한도 제거. 날짜·위치 SQL 필터 후 ID keyset 1,000개씩 EOF까지 조회, 페이지 실패는 부분 성공으로 숨기지 않음. 5,501개 전체 반환 테스트 통과.
+- `internal/source-audit/<siteId>.json`에 후보 수/정규화 실패/점수 미달/대표 좌표/DB 반영 결과/연속 빈 결과를 저장. IFEZ는 제목·기간·장소 누락도 집계. 원본 본문/토큰은 저장하지 않으며 진단 저장 실패는 수집 결과를 취소하지 않는다.
+- IFEZ 첫 페이지만 읽는 문제는 남았다. 실제 페이지 매개변수는 `fnList({'page':'2'})`로 확인. 재시작 가능한 R2 커서와 페이지당 요청 예산으로 확장 필요. 정적 배포는 원본에 없는 행사를 새로 만들지 않는다.
 - RoboCup 2026은 공식 공개 행사 7월 2–6일로 이미 종료. 당시 수집 누락과 현재 날짜 필터를 구분하고 공식 주최/행사장 소스의 지속 수집 가능성을 검증해야 한다.
 
 공식 근거: [Static Assets 비용](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/), [업로드/배포 계약](https://developers.cloudflare.com/workers/static-assets/direct-upload/), [GitHub Actions 비용](https://docs.github.com/en/billing/concepts/product-billing/github-actions), [예약 실행 한계](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).

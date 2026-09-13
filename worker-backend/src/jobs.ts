@@ -1,10 +1,6 @@
 import type { Env } from "./index.js";
 import { currentDiscoveryChunkIndex } from "./discoverySchedule.js";
-import {
-  CITY_FESTIVAL_CHUNK_SIZE,
-  currentCityFestivalChunkIndex,
-  sitesForChunk,
-} from "./cityFestivalSchedule.js";
+import { sitesForHour } from "./cityFestivalSchedule.js";
 import { CITY_FESTIVAL_SITES } from "./cityFestivalSites.js";
 import { akeiTargetMonths } from "./akeiTradeExpoDiscovery.js";
 
@@ -21,12 +17,12 @@ import { akeiTargetMonths } from "./akeiTradeExpoDiscovery.js";
  * 스케줄러 invocation 안에서 shard를 직접 돌린다.
  *
  * 예상 메시지/일 (근거는 docs/operations/worker-limits.md):
- *   고정분 754건 — discovery-chunk 168(=7회/시×24) · tagging/fee/geocode/image 72×4=288
+ *   고정분 816건 — discovery-chunk 168(=7회/시×24) · tagging/fee/geocode/image 72×4=288
  *   · program-select 144 · notification-plan 24 + dispatch 48 · local-events 24
- *   · agent-head/image 16 · city-festival-site 10 · akei-page 최대 30 · prune 2
+ *   · agent-head/image 16 · city-festival-site 72 · akei-page 최대 30 · prune 2
  *   변동분 — program-page 576(=144회×4건), 그 뒤 subpage/ai 최대 1,152
  *
- *   최악 ≈ 2,482건 ≈ 7,446 ops/day (한도의 74%)
+ *   최악 ≈ 2,544건 ≈ 7,632 ops/day. 스냅샷 650건=1,950 ops 포함 9,582.
  *   현실 ≈ 1,700건 ≈ 5,100 ops/day (한도의 51%)
  *
  * PROGRAM_CRAWL_MAX_ITEMS를 6보다 크게 올리면 재시도 여유가 사라진다 —
@@ -137,9 +133,8 @@ export function plannedJobs(scheduledAt: Date): BackgroundJob[] {
   // 예전에는 Promise.all로 한 invocation에서 둘을 같이 돌려 CPU를 나눠 썼다.
   if (minute === 30 && hour % 3 === 0) jobs.push({ type: "agent-head" }, { type: "agent-image" });
 
-  if (minute === 21 && hour === 4) {
-    const chunkIndex = currentCityFestivalChunkIndex(scheduledAt, CITY_FESTIVAL_SITES.length);
-    for (const site of sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE)) {
+  if (minute === 21) {
+    for (const site of sitesForHour(CITY_FESTIVAL_SITES, scheduledAt)) {
       jobs.push({ type: "city-festival-site", siteId: site.siteId });
     }
   }

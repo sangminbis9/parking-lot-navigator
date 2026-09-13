@@ -74,6 +74,9 @@ test("unhealthy publisher blocks publication even when the manifest exists", asy
   origin.files.set("status.json", Buffer.from(JSON.stringify({ schemaVersion: 1, healthy: false, checkedAt: new Date(now).toISOString() })));
   await assert.rejects(fixture(origin.files).run(), /unhealthy/);
 });
+test("same version cannot silently change its file descriptors", async () => {
+  await assert.rejects(fixture(release(["changed"]).files, release(["original"]).files).run(), /same version/);
+});
 test("invalid hash path and empty manifest are rejected instead of truncating", async () => {
   const origin = release(["a"]);
   origin.manifest.parts[0].sha256 = "../../private";

@@ -7,11 +7,8 @@ import {
 } from "../src/jobs.js";
 import { currentDiscoveryChunkIndex } from "../src/discoverySchedule.js";
 import { CITY_FESTIVAL_SITES } from "../src/cityFestivalSites.js";
-import {
-  CITY_FESTIVAL_CHUNK_SIZE,
-  currentCityFestivalChunkIndex,
-  sitesForChunk,
-} from "../src/cityFestivalSchedule.js";
+import { CITY_FESTIVAL_SITES_PER_HOUR, sitesForHour } from "../src/cityFestivalSchedule.js";
+import { MAX_DAILY_SNAPSHOT_MESSAGES } from "../src/discoverySnapshot.js";
 
 const DAY_START = Date.parse("2026-09-10T00:00:00.000Z");
 const MINUTE = 60 * 1000;
@@ -72,9 +69,17 @@ describe("plannedJobs 하루 빈도", () => {
     expect(counts["akei-page"]).toBe(3);
   });
 
-  it("city 사이트는 하루 한 청크만 팬아웃한다", () => {
-    expect(counts["city-festival-site"]).toBeGreaterThan(0);
-    expect(counts["city-festival-site"]).toBeLessThanOrEqual(CITY_FESTIVAL_CHUNK_SIZE);
+  it("city 사이트는 매시간 3개씩 하루 72개만 팬아웃한다", () => {
+    expect(counts["city-festival-site"]).toBe(24 * CITY_FESTIVAL_SITES_PER_HOUR);
+  });
+
+  it("전파 작업과 스냅샷까지 합산해 일일 Queue 재시도 여유를 보존한다", () => {
+    const direct = Object.values(counts).reduce((a, b) => a + b, 0);
+    const deferredDispatch = 24, additionalAkeiPages = 27;
+    const programChildren = 144 * 4 * 3; // page + subpage + AI
+    const totalOps = (direct + deferredDispatch + additionalAkeiPages + programChildren + MAX_DAILY_SNAPSHOT_MESSAGES) * 3;
+    expect(totalOps).toBe(9582);
+    expect(10000 - totalOps).toBeGreaterThanOrEqual(400);
   });
 });
 
@@ -118,10 +123,9 @@ describe("plannedJobs 회차 내용", () => {
     });
   });
 
-  it("city 팬아웃은 그날 청크의 사이트를 하나씩 낸다", () => {
+  it("city 팬아웃은 해당 시간 슬롯의 사이트를 하나씩 낸다", () => {
     const at = new Date(DAY_START + 4 * 60 * MINUTE + 21 * MINUTE);
-    const chunkIndex = currentCityFestivalChunkIndex(at, CITY_FESTIVAL_SITES.length);
-    const expected = sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE).map(
+    const expected = sitesForHour(CITY_FESTIVAL_SITES, at).map(
       (site) => site.siteId,
     );
     const jobs = plannedJobs(at).filter(

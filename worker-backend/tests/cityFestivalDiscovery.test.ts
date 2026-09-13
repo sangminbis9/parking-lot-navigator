@@ -66,6 +66,7 @@ describe("runCityFestivalDiscovery", () => {
     expect(result.processed).toBe(1);
     expect(result.published).toBe(1);
     expect(result.failedSites).toEqual([]);
+    expect(result.audits[0]).toMatchObject({ siteId: "site-a", candidates: 1, accepted: 1, written: 1, fallbackCoordinates: 1 });
     expect(batch).toHaveBeenCalledTimes(1);
     expect(batch.mock.calls[0][0]).toHaveLength(1);
   });
@@ -81,6 +82,7 @@ describe("runCityFestivalDiscovery", () => {
     const result = await runCityFestivalDiscovery(db, fakeEnv(), [tableSite, otherSite]);
 
     expect(result.failedSites).toEqual(["site-a"]);
+    expect(result.audits[0].status).toBe("site_failed");
     expect(result.published).toBe(1);
     expect(batch).toHaveBeenCalledTimes(1);
   });

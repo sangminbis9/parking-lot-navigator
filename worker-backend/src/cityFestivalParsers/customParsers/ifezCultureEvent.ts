@@ -26,13 +26,19 @@ export function parseIfezCultureEvent(
   html: string,
   config: CitySiteConfig
 ): RawCityFestivalCandidate[] {
+  return inspectIfezCultureEvent(html, config).candidates;
+}
+
+export function inspectIfezCultureEvent(html: string, config: CitySiteConfig) {
   const $ = cheerio.load(html);
   const results: RawCityFestivalCandidate[] = [];
+  const diagnostics = { seen: 0, missingTitle: 0, missingPeriod: 0, missingVenue: 0 };
 
   $(".cm_board_list5 ul.board_list > li").each((_index, element) => {
+    diagnostics.seen++;
     const item = $(element);
     const title = item.find(".board_title").first().text().replace(/\s+/g, " ").trim();
-    if (!title) return;
+    if (!title) { diagnostics.missingTitle++; return; }
 
     const info = new Map<string, string>();
     item.find(".board_info dl").each((_i, dl) => {
@@ -43,7 +49,8 @@ export function parseIfezCultureEvent(
 
     const period = info.get("기간");
     const venue = info.get("장소");
-    if (!period || !venue) return;
+    if (!period) { diagnostics.missingPeriod++; return; }
+    if (!venue) { diagnostics.missingVenue++; return; }
 
     // 목록 링크는 세션마다 바뀌는 search 토큰을 달고 있어 그대로 쓰면
     // source_url이 매 수집마다 달라진다. 상세 페이지는 schdl_mng_sn만으로
@@ -68,5 +75,5 @@ export function parseIfezCultureEvent(
     });
   });
 
-  return results;
+  return { candidates: results, diagnostics };
 }
