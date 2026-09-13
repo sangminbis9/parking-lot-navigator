@@ -176,6 +176,16 @@ describe("incremental discovery snapshot", () => {
     await f.drain(); expect(f.manifest().count).toBe(1); expect(f.manifest().parts).toHaveLength(1);
     const first = f.manifest(); await runSnapshotJob(f.env, job); expect(f.manifest()).toEqual(first);
   });
+  it("concurrent publication CAS contention does not poison global health", async () => {
+    const f = fixture([row(1)]);
+    await runSnapshotJob(f.env, { type: "discovery-snapshot" });
+    await runSnapshotJob(f.env, f.queue.shift()!);
+    const publication = f.queue.shift()!;
+    await Promise.all([runSnapshotJob(f.env, publication), runSnapshotJob(f.env, publication)]);
+    await f.drain();
+    expect(f.manifest().count).toBe(1);
+    expect(JSON.parse(f.objects.get(`${SNAPSHOT_PREFIX}status.json`)!.text).healthy).toBe(true);
+  });
   it("recovers queue-send failure at the checkpoint after backoff", async () => {
     const f = fixture([row(1)]);
     f.send.mockRejectedValueOnce(new Error("queue unavailable"));

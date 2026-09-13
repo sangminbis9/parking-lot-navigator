@@ -36,7 +36,8 @@ async function enqueue(env: Required<SnapshotEnvironment>, job: SnapshotJob): Pr
     });
     if (saved) { await env.BACKGROUND_QUEUE.send(job); return; }
   }
-  throw new Error("snapshot_queue_budget_conflict");
+  // Another invocation reserved work concurrently. The durable checkpoint remains;
+  // the minute sweep can enqueue it later without poisoning global health.
 }
 
 export interface SnapshotPart {
@@ -204,7 +205,7 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
       const saved = await bucket.put(CATALOG_KEY, encoded(catalog, MAX_MANIFEST_BYTES), {
         onlyIf: oldObject ? { etagMatches: oldObject.etag } : { etagDoesNotMatch: "*" },
       });
-      if (!saved) throw new Error("snapshot_catalog_conflict");
+      if (!saved) return; // another publisher won; its checkpoint/recovery owns completion
     }
     if (catalog.ready) {
       const previousObject = await bucket.get(MANIFEST_KEY);
@@ -217,7 +218,7 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
           onlyIf: previousObject ? { etagMatches: previousObject.etag } : { etagDoesNotMatch: "*" },
           httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "public, max-age=30" },
         });
-        if (!saved) throw new Error("snapshot_publish_conflict");
+        if (!saved) return; // expected duplicate delivery, not a service outage
       }
     }
     // Do not clear a concurrent newer change. Generations never reset or get deleted.
