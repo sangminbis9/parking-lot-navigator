@@ -77,9 +77,11 @@ export async function syncRealtimeParkingCache(
     (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
   );
   const skipped = items.length - validItems.length;
-  const counts = await upsertRealtimeParkingItems(db, validItems, generatedAt);
-  const pruned = options.prune === false ? 0 : await pruneUnseenRealtimeParking(db, generatedAt);
-  if (options.publish) {
+  // R2 is fed from the authoritative provider result, not from a D1 re-export.
+  // Legacy D1 quota exhaustion must not prevent fresh realtime data reaching new apps.
+  let publicationFailed = false;
+  let publicationError: unknown;
+  try { if (options.publish) {
     const health = provider.health();
     // Some providers swallow fetch errors. A fulfilled promise alone isn't success.
     const healthy = health.filter(p => p.status === "up" && !p.stale && p.lastSuccessAt
@@ -90,7 +92,11 @@ export async function syncRealtimeParkingCache(
     console.log(JSON.stringify({ event: publishable.length ? "realtime_snapshot_published" : "realtime_snapshot_skipped",
       fetched: validItems.length, published: publishable.length, retainedSources: retained,
       providers: health.map(p => ({ name: p.name, status: p.status, lastSuccessAt: p.lastSuccessAt })) }));
-  }
+  } } catch (error) { publicationFailed = true; publicationError = error; }
+  // Conversely, an R2 error must not prevent the existing D1 cache from updating.
+  const counts = await upsertRealtimeParkingItems(db, validItems, generatedAt);
+  const pruned = options.prune === false ? 0 : await pruneUnseenRealtimeParking(db, generatedAt);
+  if (publicationFailed) throw publicationError;
 
   return {
     fetched: items.length,

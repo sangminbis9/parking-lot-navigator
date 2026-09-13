@@ -81,4 +81,20 @@ describe("shared realtime snapshot", () => {
     expect(result.items.find(item => item.id === "daejeon-realtime:1")?.availableSpaces).toBe(9);
     expect(result.items.find(item => item.id === "seoul:1")?.freshnessTimestamp).toBeTruthy();
   });
+  it("publishes healthy realtime data even when the legacy D1 cache exhausts quota", async () => {
+    const publish = vi.fn();
+    const provider = { nearby: async () => [lot()], health: () => [{ name: "daejeon-realtime", status: "up",
+      stale: false, lastSuccessAt: new Date().toISOString() }] } as unknown as CompositeParkingProvider;
+    const db = { prepare: () => { throw new Error("D1 daily read limit"); } } as unknown as D1Database;
+    await expect(syncRealtimeParkingCache(db, provider, { publish })).rejects.toThrow("D1 daily read limit");
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+  it("still updates the legacy cache when R2 publication fails", async () => {
+    const fake = new FakeD1(REALTIME_COLUMNS);
+    const provider = { nearby: async () => [lot()], health: () => [{ name: "daejeon-realtime", status: "up",
+      stale: false, lastSuccessAt: new Date().toISOString() }] } as unknown as CompositeParkingProvider;
+    await expect(syncRealtimeParkingCache(fake.asD1(), provider, { publish: async () => { throw new Error("R2 unavailable"); }, prune: false }))
+      .rejects.toThrow("R2 unavailable");
+    expect(fake.writes).toBeGreaterThan(0);
+  });
 });
