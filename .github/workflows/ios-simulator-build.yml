@@ -13,7 +13,8 @@ jobs:
     env:
       XCODE_PROJECT: ios-app/ParkingLotNavigator.xcodeproj
       XCODE_SCHEME: ParkingLotNavigator
-      API_BASE_URL: https://api.example.com
+      # Core journeys require the complete public R2-backed discovery dataset.
+      API_BASE_URL: https://parking-lot-navigator-api.parkingnav.workers.dev
       APP_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator
       SHARE_EXTENSION_BUNDLE_ID: com.sangminbis9.ParkingLotNavigator.ShareExtension
       APP_GROUP_ID: group.com.sangminbis9.ParkingLotNavigator
@@ -76,7 +77,7 @@ jobs:
             INFOPLIST_OUTPUT_FORMAT=XML \
             build
 
-      - name: Run iOS unit tests
+      - name: Run iOS unit and core UI tests
         shell: bash
         run: |
           DEVICE=$(xcrun simctl list devices available | grep -E 'iPhone (16|15|14)' | head -n 1 | sed -E 's/^[[:space:]]*([^()]*) .*/\1/' | xargs)
@@ -88,6 +89,7 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=$DEVICE" \
+            -skip-testing:ParkingLotNavigatorUITests/AppStoreScreenshotTests \
             CODE_SIGNING_ALLOWED=NO \
             APP_SHORTCUTS_ENABLE_FLEXIBLE_MATCHING=NO \
             INFOPLIST_OUTPUT_FORMAT=XML \
