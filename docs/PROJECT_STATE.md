@@ -2,13 +2,13 @@
 
 마지막 업데이트: 2026-09-15
 
-## 2026-09-15 Slack 일일 통계 — 구현 완료·배포 대기
+## 2026-09-15 Slack 일일 통계 — Worker 배포 완료·첫 수신 대기
 
 - 매일 20:00 KST에 하루 접속자와 신규 축제/박람회/공연/로컬 이벤트 수를 Slack Incoming Webhook으로 보낸다. 사장님 직접 등록(`source='merchant'`)은 가게·제목·상태·유형·기간·주소·혜택·설명·이미지를 Block Kit 카드로 모두 나눠 보낸다.
 - 20:10/20:20 재시도와 비공개 R2 날짜별 완료표시로 일시 실패 복구와 중복 방지를 적용했다. 관리자 수동 시험 endpoint도 추가했다. Webhook URL은 `SLACK_DAILY_REPORT_WEBHOOK_URL` secret만 사용하며 GitHub Actions와 운영 Worker 양쪽에 등록했다(값은 문서·로그에 기록하지 않음).
 - iOS `app_open`을 설치별 KST 하루 최대 1회 전송하도록 변경했다. 서버 기기 ID 없이 best-effort 일일 활성 설치 수를 세며, 기존 빌드는 여전히 앱 실행 횟수를 보내므로 새 빌드 보급 전 수치는 혼합된다.
 - 한도 영향: Cron 4/5, 예약 실행 최대 +3회/일, R2 완료표시 +1 write/day, discovery 약 12,700행 일일 scan은 D1 500만 rows-read/day의 약 0.26%. 새 D1 인덱스/마이그레이션/Queue 메시지는 없다.
-- Worker 전체 41파일/353테스트, TypeScript, Wrangler dry-run 통과. 새 secret 등록 후 환경변수는 62/64이며, 동일 기본값 text var 2개를 제거해 두 칸을 남긴다. iOS/Codemagic 컴파일은 아직 재검증 전이고 코드·Worker·iOS는 운영 반영 전이다. [설계와 배포 절차](architecture/daily-slack-report.md).
+- Worker 전체 41파일/353테스트, TypeScript, Wrangler dry-run 통과. 새 secret 등록 후 환경변수는 62/64이며, 동일 기본값 text var 2개를 제거해 두 칸을 남긴다. 운영 Worker `5f254885-0e8d-4c01-bc9f-9c6347f20eb8`로 직접 배포했고 `/health`, 관리자 endpoint 인증 차단(무인증 401), 공개 스냅샷 13,026건/182파트 무결성을 확인했다. 첫 Slack 자동 수신과 iOS/Codemagic 컴파일은 아직 확인 전이다. [설계와 배포 절차](architecture/daily-slack-report.md).
 
 ## 2026-09-15 GitHub 정적 발행 실패 수정 — 배포 대기
 

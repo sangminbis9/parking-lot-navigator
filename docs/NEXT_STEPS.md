@@ -4,8 +4,8 @@
 
 ## Slack 일일 통계 배포 (2026-09-15)
 
-1. 현재 작업 트리를 커밋·푸시한다. GitHub deploy workflow가 등록된 secret을 Worker에 동기화한 뒤 Worker를 배포하도록 구성했다. D1 마이그레이션은 없다.
-2. `POST /api/admin/daily-slack-report`를 관리자 토큰으로 한 번 호출해 요약과 사장님 카드, 이미지, R2 완료표시를 확인한다. 다음 20:00/20:10/20:20 KST에는 한 번만 전송되는지 확인한다.
+1. 오늘 20:00 KST 첫 Slack 자동 보고에서 요약과 사장님 카드, 이미지가 정상 표시되는지 확인한다. 일시 실패 시 20:10/20:20에 재시도하며 R2 완료표시가 있으면 중복 전송하지 않는다.
+2. 즉시 시험이 필요하면 로컬에 값을 남기지 않는 방식으로 `SYNC_ADMIN_TOKEN`을 입력해 `POST /api/admin/daily-slack-report`를 인증 호출한다. 이 endpoint는 완료표시와 관계없이 강제 재전송한다.
 3. iOS의 설치별 하루 1회 익명 접속 집계를 반영하려면 Codemagic 테스트 및 TestFlight 새 빌드가 필요하다. 새 빌드 보급 전에는 기존 앱의 실행 횟수와 새 앱의 일일 활성 설치 수가 섞인다.
 4. 배포 후 D1 rows-read/rows-written과 Cron outcome을 24시간 관찰한다. 현재 계산은 discovery scan 약 12,700행/일(무료 읽기 한도의 약 0.26%), R2 write 1건/일, Queue 추가 0이다.
 
