@@ -28,10 +28,6 @@ const ANALYTICS_EVENTS = {
 
 export type AnalyticsEventName = keyof typeof ANALYTICS_EVENTS;
 
-export const ANALYTICS_EVENT_NAMES = Object.keys(
-  ANALYTICS_EVENTS,
-) as AnalyticsEventName[];
-
 export const analyticsBatchSchema = z.object({
   events: z
     .array(
