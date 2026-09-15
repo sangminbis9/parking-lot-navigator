@@ -64,7 +64,7 @@ struct ParkingLotNavigatorApp: App {
                 .environmentObject(eventFavorites)
                 .environmentObject(notificationRegistration)
                 .task {
-                    AnalyticsService.shared.track(.appOpen)
+                    AnalyticsService.shared.trackDailyActive()
                     // UI 테스트가 딥링크 경로를 그대로 태우는 통로. 푸시 전달 자체는 흉내내지 않는다.
                     let args = ProcessInfo.processInfo.arguments
                     if let index = args.firstIndex(of: "-uiTestingDeepLink"),

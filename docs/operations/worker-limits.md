@@ -1,9 +1,17 @@
 # Worker 계정 한도
 
+## 2026-09-15 Slack 일일 통계 영향 — 배포 대기
+
+- 새 Cron 문자열 하나(`0,10,20 11 * * *`)를 추가해 trigger는 4/5다. 첫 회차는 20:00 KST, 뒤 두 회차는 Slack/R2 실패 재시도이며 이미 성공했으면 R2 `head`만 하고 끝난다. 최대 +3 invocation/day로 Worker 100,000 requests/day에 미미하다.
+- 접속자는 iOS가 설치별 하루 한 번만 기존 analytics 카운터를 올린다. 기존 매 실행 집계보다 D1 쓰기가 감소한다. 서버에는 기기 ID/세션 ID가 없다.
+- 일일 보고서의 discovery full scan은 현재 약 12,700 rows/day로 D1 5,000,000 reads/day의 약 0.26%다. analytics는 PK 1행 lookup, local_events는 작은 테이블 2회 scan, R2는 성공표시 1 write/day다. Queue operations는 추가하지 않는다.
+- 사장님 직접 등록이 많으면 Slack Block Kit payload를 나누되 최대 2,000카드/일로 외부 subrequest 50 한도 아래에 둔다. 현재 등록량에서는 통상 외부 fetch 1회다. 2,000건 도달 시 전용 Queue/Worker 설계를 다시 검토한다.
+- 기존 text var 46개 + secret 17개 상태에서 Slack secret을 바로 더하면 환경변수 상한 64개를 모두 쓴다. 코드 기본값과 같던 `LOCAL_EVENT_BLOG_DISPLAY=20`, `LOCAL_EVENT_KAKAO_RADIUS_METERS=20000`을 설정에서 제거해 새 secret 등록 후 62/64로 두 칸을 남긴다. 런타임 값은 변하지 않는다.
+
 ## 2026-09-15 예약 실행/정적 발행 실패 수정 — 배포 대기
 
 - 최근 1시간 대시보드에서 성공 293건/오류 37건을 확인했고, 표본 예약 실행의 outcome은 `exceededCpu`였다. 하나의 매분 invocation이 Queue dispatch, 실시간 주차, 스냅샷 복구를 함께 시작하던 구조를 원인 후보로 좁혔다.
-- Cron을 dispatch `* * * * *`, 실시간 `*/4 * * * *`, 스냅샷 복구 `2-57/5 * * * *`로 분리한다. 계정 한도 5개 중 3개를 사용하며 각 invocation의 작업 종류를 하나로 격리한다. 실시간 4개 shard의 전체 순회는 약 16분이다.
+- Cron을 dispatch `* * * * *`, 실시간 `*/4 * * * *`, 스냅샷 복구 `2-57/5 * * * *`로 분리한다. Slack 일일 통계 추가 전에는 계정 한도 5개 중 3개였고, 현재 수정안은 통계 Cron까지 4/5다. 실시간 4개 shard의 전체 순회는 약 16분이다.
 - 11:35 KST 무렵 발행 Queue 예산은 327/650이었다. 짧은 변경 묶음은 마지막 scan과 publish를 같은 Queue 소비에서 완료해 별도 메시지 하나를 절약한다.
 - 정적 발행 workflow는 검증된 기존 CDN 릴리스가 있고 `publication_queue_budget`의 미래 `retryAt`이 확인될 때만 성공적인 defer로 기록한다. 실제 손상·예상 밖 unhealthy·첫 릴리스 부재는 계속 실패한다.
 - Worker 40파일/348테스트, 발행기 12테스트, TypeScript, Wrangler dry-run 통과. 아직 운영 Worker와 GitHub workflow에는 배포하지 않았다. 배포 후 30~60분 실제 outcome과 checkedAt 전진을 재측정한다.
@@ -34,7 +42,7 @@
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
 | invocation당 리소스 한도 (`exceededCpu` / `exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-04 실측: scheduled invocation이 243ms를 쓰고 `ok`) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않고, 진행 중이던 D1 쓰기는 손실된다. **`wrangler tail --format json`의 `outcome` 필드에 `exceededCpu`로 찍힌다**(실측 2026-09-04, wrangler 4.92.0). 2026-08-18에는 tail이 킬 도중에도 `ok`만 찍어서 GraphQL `workersInvocationsAdaptive`로만 보였는데, 지금은 tail로 바로 관측된다 — 진단은 tail을 먼저 본다. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이었다. Queue 분할 배포(2026-09-04) 이후 관측 창에서는 킬이 사라졌다. 아래 "무엇이 리소스 한도로 죽는가" 참고 |
-| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 현재 수정안은 dispatch/실시간/스냅샷 복구의 3개(3/5)를 쓰고, 나머지 작업은 dispatch가 Queue로 분배한다 |
+| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 현재 수정안은 dispatch/실시간/스냅샷 복구/Slack 통계의 4개(4/5)를 쓰고, 나머지 작업은 dispatch가 Queue로 분배한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **`실측 필요` — 깨끗한 24시간 창을 아직 못 쟀다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배)에서 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)로 내려왔다. 가장 최근 측정은 2026-09-01T09:47Z 24시간 창의 **58,513행(한도의 59%)**인데, 그 창은 **앞 5.7시간이 조건부 쓰기 배포(2026-08-31T15:29Z) 전**이라 완전히 깨끗하지 않다. 배포 후 구간만으로 이뤄진 창을 다시 재기 전에는 확정치로 쓰지 않는다. 아래 "D1 행 쓰기 예산" 참고 |
 | D1 prepared statement 바인딩 | 100 | 101번째 바인딩에서 쿼리가 실패한다. | `geocodeBackfill.ts`의 지역 대표 좌표 매칭(18좌표 × 4 + 1 = 73). `pipelineStats.ts`는 같은 조건을 리터럴로 박아 바인딩을 아예 안 쓴다 |

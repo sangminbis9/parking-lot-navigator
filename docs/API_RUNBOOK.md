@@ -2,6 +2,23 @@
 
 Last updated: 2026-09-15
 
+## Slack daily app report — 2026-09-15 (deployment pending)
+
+The report Cron runs at `0,10,20 11 * * *` (20:00/20:10/20:20 KST); private R2 state makes the latter two retry-only. Configure the Slack Incoming Webhook as a secret, never a text var or committed value:
+
+```bash
+pnpm -C worker-backend exec wrangler secret put SLACK_DAILY_REPORT_WEBHOOK_URL
+```
+
+After Worker deployment, send one forced verification report with the existing admin bearer token:
+
+```bash
+curl -X POST -H "Authorization: Bearer $SYNC_ADMIN_TOKEN" \
+  https://parking-lot-navigator-api.parkingnav.workers.dev/api/admin/daily-slack-report
+```
+
+Confirm the Slack summary/cards and the structured `daily_slack_report_sent` log. The endpoint intentionally sends again even if today's scheduled report completed. See [design, privacy definition, limits, and recovery](architecture/daily-slack-report.md).
+
 ## Scheduled publishing recovery — 2026-09-15 (code verified, deployment pending)
 
 The Worker now routes Queue dispatch (`* * * * *`), realtime parking (`*/4 * * * *`), and discovery snapshot recovery (`2-57/5 * * * *`) into separate scheduled invocations. A verified existing CDN release plus a source status of `publication_queue_budget` with a future `retryAt` is an expected deferred publication, so GitHub Actions reports a notice instead of a failed run. Missing first release, overdue retry, corruption, and unrelated unhealthy/stale states still fail. After deployment, observe scheduled outcomes for 30–60 minutes, confirm source `status.checkedAt` advances, then run the static publisher and verify every CDN part. No D1 migration or iOS rebuild is required.

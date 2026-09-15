@@ -53,15 +53,18 @@ final class AnalyticsService {
     private let baseURL: URL
     private let session: URLSession
     private let isEnabled: Bool
+    private let dailyActiveGate: DailyActiveGate
 
     init(
         baseURL: URL = AppConfiguration.current.apiBaseURL,
         session: URLSession = .shared,
-        isEnabled: Bool = !ProcessInfo.processInfo.arguments.contains("-uiTesting")
+        isEnabled: Bool = !ProcessInfo.processInfo.arguments.contains("-uiTesting"),
+        dailyActiveGate: DailyActiveGate = DailyActiveGate()
     ) {
         self.baseURL = baseURL
         self.session = session
         self.isEnabled = isEnabled
+        self.dailyActiveGate = dailyActiveGate
     }
 
     func track(_ event: AnalyticsEvent, label: String? = nil) {
@@ -70,22 +73,34 @@ final class AnalyticsService {
         Task { await buffer.add(key) }
     }
 
+    /// 서버에 기기 식별자를 보내지 않고 설치별 KST 하루 최대 한 번만 app_open을 센다.
+    /// 수치는 로그인 사용자 수가 아니라 best-effort 일일 활성 설치 수다.
+    func trackDailyActive(now: Date = Date()) {
+        guard isEnabled, dailyActiveGate.shouldRecord(now: now) else { return }
+        Task {
+            await buffer.add(AnalyticsEvent.appOpen.rawValue)
+            await flushBuffered()
+        }
+    }
+
     /// 앱이 백그라운드로 갈 때 호출한다. 응답을 기다리지 않는다.
     func flush() {
         guard isEnabled else { return }
-        Task {
-            let counts = await buffer.drain()
-            guard !counts.isEmpty else { return }
-            let entries = counts.map { key, count -> Entry in
-                let parts = key.split(separator: "|", maxSplits: 1)
-                return Entry(
-                    name: String(parts[0]),
-                    label: parts.count > 1 ? String(parts[1]) : nil,
-                    count: count
-                )
-            }
-            await send(Batch(events: Array(entries.prefix(40))))
+        Task { await flushBuffered() }
+    }
+
+    private func flushBuffered() async {
+        let counts = await buffer.drain()
+        guard !counts.isEmpty else { return }
+        let entries = counts.map { key, count -> Entry in
+            let parts = key.split(separator: "|", maxSplits: 1)
+            return Entry(
+                name: String(parts[0]),
+                label: parts.count > 1 ? String(parts[1]) : nil,
+                count: count
+            )
         }
+        await send(Batch(events: Array(entries.prefix(40))))
     }
 
     private func send(_ batch: Batch) async {
@@ -100,5 +115,31 @@ final class AnalyticsService {
             // 집계는 실패해도 사용자에게 알릴 것이 없다.
             AppLogger.networking.debug("analytics flush skipped: \(error.localizedDescription)")
         }
+    }
+}
+
+final class DailyActiveGate {
+    private let defaults: UserDefaults
+    private let key: String
+    private var calendar: Calendar
+
+    init(
+        defaults: UserDefaults = .standard,
+        key: String = "analytics.lastDailyActiveDay",
+        timeZone: TimeZone = TimeZone(identifier: "Asia/Seoul")!
+    ) {
+        self.defaults = defaults
+        self.key = key
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        self.calendar = calendar
+    }
+
+    func shouldRecord(now: Date = Date()) -> Bool {
+        let components = calendar.dateComponents([.year, .month, .day], from: now)
+        let day = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+        guard defaults.string(forKey: key) != day else { return false }
+        defaults.set(day, forKey: key)
+        return true
     }
 }

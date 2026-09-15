@@ -2,13 +2,21 @@
 
 마지막 업데이트: 2026-09-15
 
+## 2026-09-15 Slack 일일 통계 — 구현 완료·배포 대기
+
+- 매일 20:00 KST에 하루 접속자와 신규 축제/박람회/공연/로컬 이벤트 수를 Slack Incoming Webhook으로 보낸다. 사장님 직접 등록(`source='merchant'`)은 가게·제목·상태·유형·기간·주소·혜택·설명·이미지를 Block Kit 카드로 모두 나눠 보낸다.
+- 20:10/20:20 재시도와 비공개 R2 날짜별 완료표시로 일시 실패 복구와 중복 방지를 적용했다. 관리자 수동 시험 endpoint도 추가했다. Webhook URL은 `SLACK_DAILY_REPORT_WEBHOOK_URL` secret만 사용하며 GitHub Actions와 운영 Worker 양쪽에 등록했다(값은 문서·로그에 기록하지 않음).
+- iOS `app_open`을 설치별 KST 하루 최대 1회 전송하도록 변경했다. 서버 기기 ID 없이 best-effort 일일 활성 설치 수를 세며, 기존 빌드는 여전히 앱 실행 횟수를 보내므로 새 빌드 보급 전 수치는 혼합된다.
+- 한도 영향: Cron 4/5, 예약 실행 최대 +3회/일, R2 완료표시 +1 write/day, discovery 약 12,700행 일일 scan은 D1 500만 rows-read/day의 약 0.26%. 새 D1 인덱스/마이그레이션/Queue 메시지는 없다.
+- Worker 전체 41파일/353테스트, TypeScript, Wrangler dry-run 통과. 새 secret 등록 후 환경변수는 62/64이며, 동일 기본값 text var 2개를 제거해 두 칸을 남긴다. iOS/Codemagic 컴파일은 아직 재검증 전이고 코드·Worker·iOS는 운영 반영 전이다. [설계와 배포 절차](architecture/daily-slack-report.md).
+
 ## 2026-09-15 GitHub 정적 발행 실패 수정 — 배포 대기
 
 - GitHub `Publish discovery static assets` 실패 원인은 원본 발행기가 `publication_queue_budget`으로 정상 대기 중인 상태를 발행기가 일반 장애로 처리한 것이었다. 2026-09-15 11:35 KST 무렵 R2 예산은 327/650이었고, 직전 검증된 CDN 릴리스(2026-09-14 15:04 KST, 12,700항목/168파트)는 계속 제공되고 있었다.
 - 같은 시각 Cloudflare 최근 1시간에는 성공 293건/오류 37건이 있었고, 확인한 예약 실행 오류의 outcome은 `exceededCpu`였다. 매분 한 invocation에서 Queue dispatch·실시간 주차·스냅샷 복구를 함께 시작하던 구조를 세 개 Cron으로 분리했다: dispatch `* * * * *`, 실시간 `*/4 * * * *`, 스냅샷 복구 `2-57/5 * * * *`.
 - 실시간 주차는 4개 shard를 약 16분에 한 번씩 순회한다. 짧은 변경 묶음은 마지막 스캔과 publish를 같은 Queue 메시지에서 끝내 불필요한 메시지 1개를 줄인다. 신규 발행 메시지 상한은 650/UTC일을 유지한다.
 - 정적 발행기는 유효한 기존 CDN 릴리스가 있고 `publication_queue_budget`의 미래 `retryAt`이 확인되는 경우에만 성공적인 defer/no-op으로 끝낸다. 최초 릴리스 없음, 기한이 지난 retry, 다른 unhealthy/stale/손상은 계속 실패한다.
-- 로컬 검증 완료: Worker 40파일/348테스트, 정적 발행기 12테스트, TypeScript, Wrangler dry-run 통과. D1 마이그레이션 및 iOS 변경은 없다. **코드·workflow는 아직 커밋/푸시/Worker 운영 배포 전**이며 배포 후 30~60분 예약 실행과 CDN 갱신을 관찰해야 한다.
+- 당시 로컬 검증: Worker 40파일/348테스트, 정적 발행기 12테스트, TypeScript, Wrangler dry-run 통과. 이 수정 자체의 D1 마이그레이션 및 iOS 변경은 없었다. 이후 같은 작업 트리에 Slack 통계용 iOS 변경이 추가됐다. **코드·workflow는 아직 커밋/푸시/Worker 운영 배포 전**이며 배포 후 30~60분 예약 실행과 CDN 갱신을 관찰해야 한다.
 
 ## 2026-09-13 지도 로딩 정리·주차 15분 갱신
 

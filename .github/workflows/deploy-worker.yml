@@ -67,6 +67,7 @@ jobs:
       NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
       NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
       KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+      SLACK_DAILY_REPORT_WEBHOOK_URL: ${{ secrets.SLACK_DAILY_REPORT_WEBHOOK_URL }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -93,6 +94,9 @@ jobs:
           fi
           if [ -n "${KAKAO_REST_API_KEY}" ]; then
             printf "%s" "${KAKAO_REST_API_KEY}" | pnpm exec wrangler versions secret put KAKAO_REST_API_KEY
+          fi
+          if [ -n "${SLACK_DAILY_REPORT_WEBHOOK_URL}" ]; then
+            printf "%s" "${SLACK_DAILY_REPORT_WEBHOOK_URL}" | pnpm exec wrangler versions secret put SLACK_DAILY_REPORT_WEBHOOK_URL
           fi
 
       - name: Deploy Worker

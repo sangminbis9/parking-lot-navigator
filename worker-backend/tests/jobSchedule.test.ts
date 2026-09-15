@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DAILY_SLACK_REPORT_CRON,
+  DISPATCH_CRON,
   LOCAL_EVENT_CHUNK_COUNT,
+  REALTIME_PARKING_CRON,
+  SNAPSHOT_RECOVERY_CRON,
   currentLocalEventChunkIndex,
   plannedJobs,
   type BackgroundJob,
@@ -80,6 +84,16 @@ describe("plannedJobs 하루 빈도", () => {
     const totalOps = (direct + deferredDispatch + additionalAkeiPages + programChildren + MAX_DAILY_SNAPSHOT_MESSAGES) * 3;
     expect(totalOps).toBe(9582);
     expect(10000 - totalOps).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe("독립 Cron 계약", () => {
+  it("계정 상한 안에서 dispatcher와 무거운 작업을 서로 다른 네 trigger로 격리한다", () => {
+    expect(new Set([
+      DISPATCH_CRON, REALTIME_PARKING_CRON, SNAPSHOT_RECOVERY_CRON, DAILY_SLACK_REPORT_CRON,
+    ])).toEqual(new Set([
+      "* * * * *", "*/4 * * * *", "2-57/5 * * * *", "0,10,20 11 * * *",
+    ]));
   });
 });
 

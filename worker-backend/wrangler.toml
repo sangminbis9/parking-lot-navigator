@@ -22,6 +22,7 @@ head_sampling_rate = 1
 #   AGENT_PIXEL_BATCH_SIZE (12, imageAgent.ts DEFAULT_BATCH_SIZE)
 #   NAVER_SEARCH_BASE_URL (https://openapi.naver.com, localEventDiscovery.ts)
 #   NATIONAL_PARKING_DATA_BASE_URL (https://api.data.go.kr, index.ts)
+#   LOCAL_EVENT_BLOG_DISPLAY (20) / LOCAL_EVENT_KAKAO_RADIUS_METERS (20000)
 # 기본값과 다른 값을 쓰고 싶으면 그때 다시 적는다.
 NODE_ENV = "production"
 LOG_LEVEL = "info"
@@ -39,8 +40,6 @@ LOCAL_EVENT_PROVIDER_ENABLED = "true"
 LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.75"
 LOCAL_EVENT_SEARCH_MAX_QUERIES = "17"
 LOCAL_EVENT_MAX_KAKAO_LOOKUPS = "30"
-LOCAL_EVENT_BLOG_DISPLAY = "20"
-LOCAL_EVENT_KAKAO_RADIUS_METERS = "20000"
 AGENT_HEAD_BATCH_SIZE = "15"
 AGENT_HEAD_MAX_BATCHES = "3"
 KAKAO_LOCAL_BASE_URL = "https://dapi.kakao.com"
@@ -79,9 +78,10 @@ APNS_BUNDLE_ID = "com.sangminbis9.ParkingLotNavigator"
 
 # Queue dispatcher는 분마다 가볍게 실행하고, CPU/메모리를 쓰는 실시간 주차와
 # D1/R2를 읽는 스냅샷 복구는 별도 invocation으로 격리한다. 실시간 shard 4개는
-# 4분마다 하나씩, 약 16분에 한 바퀴 돈다. 3개 trigger는 계정 상한 5개 이하다.
+# 4분마다 하나씩, 약 16분에 한 바퀴 돈다. Slack 통계는 20:00 KST에 발송하고
+# 10분 간격으로 두 번 재시도한다. 4개 trigger는 계정 상한 5개 이하다.
 [triggers]
-crons = ["* * * * *", "*/4 * * * *", "2-57/5 * * * *"]
+crons = ["* * * * *", "*/4 * * * *", "2-57/5 * * * *", "0,10,20 11 * * *"]
 
 # producer와 consumer가 같은 스크립트다(새 Worker 프로젝트를 만들지 않는다).
 [[queues.producers]]

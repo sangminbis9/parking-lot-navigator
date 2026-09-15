@@ -89,6 +89,8 @@ export function currentLocalEventChunkIndex(now: Date, chunkCount: number): numb
 export const DISPATCH_CRON = "* * * * *";
 export const REALTIME_PARKING_CRON = "*/4 * * * *";
 export const SNAPSHOT_RECOVERY_CRON = "2-57/5 * * * *";
+// 20:00 KST에 발송하고, 일시 실패 시 20:10/20:20에 R2 중복 방지 후 재시도한다.
+export const DAILY_SLACK_REPORT_CRON = "0,10,20 11 * * *";
 export const REALTIME_SYNC_CADENCE_MINUTES = 4;
 
 // 이 분에 Queue로 넘길 job 목록. 예전 다섯 cron의 빈도를 분 가드로 재현한다 —

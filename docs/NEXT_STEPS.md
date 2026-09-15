@@ -2,12 +2,19 @@
 
 마지막 업데이트: 2026-09-15
 
+## Slack 일일 통계 배포 (2026-09-15)
+
+1. 현재 작업 트리를 커밋·푸시한다. GitHub deploy workflow가 등록된 secret을 Worker에 동기화한 뒤 Worker를 배포하도록 구성했다. D1 마이그레이션은 없다.
+2. `POST /api/admin/daily-slack-report`를 관리자 토큰으로 한 번 호출해 요약과 사장님 카드, 이미지, R2 완료표시를 확인한다. 다음 20:00/20:10/20:20 KST에는 한 번만 전송되는지 확인한다.
+3. iOS의 설치별 하루 1회 익명 접속 집계를 반영하려면 Codemagic 테스트 및 TestFlight 새 빌드가 필요하다. 새 빌드 보급 전에는 기존 앱의 실행 횟수와 새 앱의 일일 활성 설치 수가 섞인다.
+4. 배포 후 D1 rows-read/rows-written과 Cron outcome을 24시간 관찰한다. 현재 계산은 discovery scan 약 12,700행/일(무료 읽기 한도의 약 0.26%), R2 write 1건/일, Queue 추가 0이다.
+
 ## Worker/정적 발행 수정 완료 — 배포 대기 (2026-09-15)
 
 1. 로컬 수정과 검증 완료: Cron을 Queue dispatch/실시간 주차/스냅샷 복구로 분리하고, 짧은 스냅샷은 마지막 scan+publish를 한 메시지에서 끝낸다. Worker 348테스트, 발행기 12테스트, TypeScript와 Wrangler dry-run이 통과했다.
 2. 커밋·푸시 후 Worker를 배포한다. D1 마이그레이션은 없다. 배포 뒤 30~60분간 세 Cron의 outcome, 원본 `status.checkedAt`, R2 `queue-budget.json` 증가율을 확인한다.
 3. `Publish discovery static assets`를 실행한다. 예산의 정상 대기라면 빨간 실패 대신 defer notice가 나와야 하며, 예산이 풀린 뒤에는 CDN manifest/status와 모든 part 무결성 검사가 성공해야 한다. 최초 릴리스 없음·기한 초과·다른 unhealthy는 계속 실패하는 것이 정상이다.
-4. iOS 소스 변경은 없어 Codemagic/TestFlight 재빌드는 필요 없다. 앱 배포 전에 CDN 검증만 다시 통과시키면 된다.
+4. 정적 발행 수정 자체에는 iOS 변경이 없지만, 같은 배포 묶음의 Slack DAU 변경 때문에 현재 작업 트리 전체로는 Codemagic/TestFlight 재빌드가 필요하다.
 
 ## 업로드 완료: 지도 UX·주차 15분 갱신 (2026-09-13)
 

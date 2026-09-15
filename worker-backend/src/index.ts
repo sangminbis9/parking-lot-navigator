@@ -45,6 +45,7 @@ import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runFeeBackfill } from "./feeBackfill.js";
 import { runProgramCrawl, runProgramStage, selectProgramCrawlTargets } from "./programCrawl.js";
 import {
+  DAILY_SLACK_REPORT_CRON,
   DISPATCH_CRON,
   LOCAL_EVENT_CHUNK_COUNT,
   REALTIME_PARKING_CRON,
@@ -56,6 +57,7 @@ import {
   shouldPruneRealtime,
   type BackgroundJob,
 } from "./jobs.js";
+import { sendDailySlackReport } from "./dailySlackReport.js";
 import { runImageBackfill } from "./imageBackfill.js";
 import { runGeocodeBackfill } from "./geocodeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
@@ -153,6 +155,8 @@ export type Env = {
   TAGGING_RUN_MAX_ROWS?: string;
   TAGGING_CONCURRENCY?: string;
   OPS_ALERT_WEBHOOK_URL?: string;
+  // Slack Incoming Webhook. URL 자체가 credential이므로 wrangler secret으로만 설정한다.
+  SLACK_DAILY_REPORT_WEBHOOK_URL?: string;
   // APNs (다가오는 행사 알림 서버 발송). 넷 중 하나라도 없으면 발송을 건너뛴다.
   APNS_KEY_ID?: string;
   APNS_TEAM_ID?: string;
@@ -774,6 +778,13 @@ app.get("/api/admin/analytics", async (c) => {
     Number.isFinite(days) ? days : 14,
   );
   return c.json({ items: rows, generatedAt: new Date().toISOString() });
+});
+
+app.post("/api/admin/daily-slack-report", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  const result = await sendDailySlackReport(c.env, { force: true });
+  return c.json(result);
 });
 
 // 수동 등록은 가게 이름만 주는 경우가 대부분이다. 좌표가 없으면 lat/lng이 0으로
@@ -1456,6 +1467,17 @@ export default {
       if (!env.DISCOVERY_SNAPSHOTS || !env.BACKGROUND_QUEUE) return;
       ctx.waitUntil(runSnapshotJob(env, { type: "discovery-snapshot" }).catch(error => {
         console.error("snapshot recovery check failed", error);
+      }));
+      return;
+    }
+    if (controller.cron === DAILY_SLACK_REPORT_CRON) {
+      ctx.waitUntil(sendDailySlackReport(env).then(result => {
+        if (result.skipped === "webhook_not_configured") {
+          console.warn(JSON.stringify({ event: "daily_slack_report_skipped", reason: result.skipped }));
+        }
+      }).catch(async error => {
+        console.error("daily Slack report failed", error);
+        await notifyOpsFailure(env, "daily Slack report", error);
       }));
       return;
     }
