@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { syncRealtimeParkingCache } from "../src/realtimeParkingCache.js";
-import { realtimeShardIndex, shouldPruneRealtime } from "../src/jobs.js";
+import { REALTIME_SYNC_CADENCE_MINUTES, realtimeShardIndex, shouldPruneRealtime } from "../src/jobs.js";
 import type { CompositeParkingProvider } from "../../backend/src/providers/CompositeParkingProvider.js";
 import { FakeD1, REALTIME_COLUMNS } from "./fakeD1.js";
 import type { ParkingLot } from "@parking/shared-types";
 
-// 실시간 주차 sync는 예전에 provider 전부를 한 invocation에서 돌려 10ms CPU를
-// 자주 넘겼다. 지금은 분마다 shard 하나씩만 돌린다. 그 로테이션이 heartbeat(30분)
-// · 조회 신선도(45분) · prune 보존(90분) 계약을 깨지 않는지 센다.
+// 실시간 주차 sync는 별도 `*/4` Cron에서 shard 하나씩 돈다. shard 4개면
+// 약 16분 주기다. 그 로테이션이 heartbeat(30분)·조회 신선도(45분)
+// · prune 보존(90분) 계약을 깨지 않는지 센다.
 const MINUTE = 60 * 1000;
 // epoch 분이 4로 나누어떨어지는 시각이라 T0의 shard 인덱스는 0이다.
 const T0 = Date.parse("2026-08-01T00:00:00.000Z");
@@ -59,17 +59,17 @@ interface ShardFeed {
   throws?: boolean;
 }
 
-/** 스케줄러와 같은 규칙으로 분마다 shard 하나씩 돌린다. 실패는 index.ts처럼 삼킨다. */
+/** 스케줄러와 같은 규칙으로 Cron 회차마다 shard 하나씩 돌린다. 실패는 index.ts처럼 삼킨다. */
 async function rotate(
   fake: FakeD1,
   feeds: ShardFeed[],
-  minutes: number,
-  fromMinute = 0,
+  runs: number,
+  fromRun = 0,
 ): Promise<{ pruned: number; failures: number }> {
   let pruned = 0;
   let failures = 0;
-  for (let m = fromMinute; m < fromMinute + minutes; m += 1) {
-    const at = new Date(T0 + m * MINUTE);
+  for (let run = fromRun; run < fromRun + runs; run += 1) {
+    const at = new Date(T0 + run * REALTIME_SYNC_CADENCE_MINUTES * MINUTE);
     vi.setSystemTime(at);
     const feed = feeds[realtimeShardIndex(at, feeds.length)];
     const provider = feed.throws
@@ -77,7 +77,7 @@ async function rotate(
       : providerOf(feed.items);
     try {
       const result = await syncRealtimeParkingCache(fake.asD1(), provider, {
-        prune: shouldPruneRealtime(at),
+        prune: shouldPruneRealtime(at, feeds.length),
       });
       pruned += result.pruned;
     } catch {
@@ -105,33 +105,34 @@ afterEach(() => {
 });
 
 describe("realtime shard 로테이션", () => {
-  it("분마다 다음 shard로 넘어가고 shard 수만큼 돌면 처음으로 돌아온다", () => {
+  it("4분마다 다음 shard로 넘어가고 shard 수만큼 돌면 처음으로 돌아온다", () => {
     const seen = [0, 1, 2, 3, 4, 5].map((m) =>
-      realtimeShardIndex(new Date(T0 + m * MINUTE), 4),
+      realtimeShardIndex(new Date(T0 + m * REALTIME_SYNC_CADENCE_MINUTES * MINUTE), 4),
     );
     expect(seen).toEqual([0, 1, 2, 3, 0, 1]);
   });
 
   it("mock 모드처럼 shard가 하나뿐이면 항상 0이다", () => {
     for (let m = 0; m < 10; m += 1) {
-      expect(realtimeShardIndex(new Date(T0 + m * MINUTE), 1)).toBe(0);
+      expect(realtimeShardIndex(new Date(T0 + m * REALTIME_SYNC_CADENCE_MINUTES * MINUTE), 1)).toBe(0);
     }
   });
 
-  it("100분을 돌리면 shard 4개가 각각 25번씩 갱신된다", () => {
+  it("하루 동안 shard 4개가 각각 90번씩 갱신된다", () => {
     const counts = [0, 0, 0, 0];
-    for (let m = 0; m < 100; m += 1) {
-      counts[realtimeShardIndex(new Date(T0 + m * MINUTE), 4)] += 1;
+    for (let run = 0; run < 1440 / REALTIME_SYNC_CADENCE_MINUTES; run += 1) {
+      counts[realtimeShardIndex(new Date(T0 + run * REALTIME_SYNC_CADENCE_MINUTES * MINUTE), 4)] += 1;
     }
-    expect(counts).toEqual([25, 25, 25, 25]);
+    expect(counts).toEqual([90, 90, 90, 90]);
   });
 
-  it("prune은 15분마다만 돈다 — 하루 96회", () => {
-    let pruneMinutes = 0;
-    for (let m = 0; m < 1440; m += 1) {
-      if (shouldPruneRealtime(new Date(T0 + m * MINUTE))) pruneMinutes += 1;
+  it("prune은 shard 한 바퀴마다만 돈다 — 4개면 하루 90회", () => {
+    let pruneRuns = 0;
+    for (let run = 0; run < 1440 / REALTIME_SYNC_CADENCE_MINUTES; run += 1) {
+      const at = new Date(T0 + run * REALTIME_SYNC_CADENCE_MINUTES * MINUTE);
+      if (shouldPruneRealtime(at, 4)) pruneRuns += 1;
     }
-    expect(pruneMinutes).toBe(96);
+    expect(pruneRuns).toBe(90);
   });
 
   it("한 shard의 provider가 죽어도 다른 shard는 계속 저장된다", async () => {
@@ -141,7 +142,7 @@ describe("realtime shard 로테이션", () => {
 
     const { failures, pruned } = await rotate(fake, feeds, 40);
 
-    // 40분 중 shard 1 차례 10번이 전부 실패했지만 나머지는 그대로 들어간다.
+    // 40회 중 shard 1 차례 10번이 전부 실패했지만 나머지는 그대로 들어간다.
     expect(failures).toBe(10);
     expect(pruned).toBe(0);
     expect(fake.rows.has("seoul-realtime:1")).toBe(true);
@@ -157,15 +158,15 @@ describe("realtime shard 로테이션", () => {
     expect(fake.rows.has("daejeon-realtime:1")).toBe(true);
 
     feeds[1] = { items: () => [], throws: true };
-    // 85분까지는 prune 보존(90분) 안이라 살아 있어야 한다.
-    const { pruned } = await rotate(fake, feeds, 81, 4);
+    // 마지막 성공 뒤 80분까지는 prune 보존(90분) 안이라 살아 있어야 한다.
+    const { pruned } = await rotate(fake, feeds, 20, 4);
     expect(pruned).toBe(0);
     expect(fake.rows.has("daejeon-realtime:1")).toBe(true);
   });
 
   it("prune 회차가 다른 shard의 행을 지우지 않는다", async () => {
     const fake = db();
-    // 보존 90분을 여러 번 넘기도록 200분 돌린다. shard 하나는 4분에 한 번만
+    // 보존 90분을 여러 번 넘기도록 200회 돌린다. shard 하나는 16분에 한 번만
     // 갱신되지만 heartbeat가 prune 시계를 밀어 준다.
     const { pruned } = await rotate(fake, feedsOf(), 200);
 
@@ -177,13 +178,14 @@ describe("realtime shard 로테이션", () => {
 
   it("값이 그대로여도 로테이션 중 heartbeat가 계속 나가 prune 시계가 멈추지 않는다", async () => {
     const fake = db();
-    await rotate(fake, feedsOf(), 120);
+    const runs = 120;
+    await rotate(fake, feedsOf(), runs);
 
-    const now = T0 + 119 * MINUTE;
+    const now = T0 + (runs - 1) * REALTIME_SYNC_CADENCE_MINUTES * MINUTE;
     for (const source of SHARD_SOURCES) {
       const lastSeen = Date.parse(fake.rows.get(`${source}:1`)!.last_seen_at as string);
-      // heartbeat 30분 + shard 주기 4분이라 최신 last_seen_at은 34분보다 오래될 수 없다.
-      expect(now - lastSeen).toBeLessThanOrEqual(34 * MINUTE);
+      // heartbeat 30분 + shard 주기 16분이라 최신 last_seen_at은 46분보다 오래될 수 없다.
+      expect(now - lastSeen).toBeLessThanOrEqual(46 * MINUTE);
     }
   });
 
@@ -224,9 +226,9 @@ describe("realtime shard 로테이션", () => {
     expect(fake.rows.has("kac-airport-realtime:2")).toBe(true);
 
     feeds[3] = { items: () => [lot("kac-airport-realtime", 1)] };
-    // 사라진 행의 last_seen_at은 3분에 멈춘다. 보존 90분이 지난 뒤 처음 오는
-    // prune 회차는 105분이라 그때 지워진다.
-    const { pruned } = await rotate(fake, feeds, 130, 4);
+    // 사라진 행의 last_seen_at은 첫 순회에 멈춘다. 보존 90분이 지난 뒤 처음 오는
+    // 순회 시작(prune)에서 지워진다.
+    const { pruned } = await rotate(fake, feeds, 35, 4);
 
     expect(pruned).toBe(1);
     expect(fake.rows.has("kac-airport-realtime:2")).toBe(false);

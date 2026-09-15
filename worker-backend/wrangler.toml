@@ -77,11 +77,11 @@ UPCOMING_NOTIFICATION_SEND_START_HOUR = "9"
 UPCOMING_NOTIFICATION_SEND_END_HOUR = "21"
 APNS_BUNDLE_ID = "com.sangminbis9.ParkingLotNavigator"
 
-# cron 하나로 합쳤다. 계정당 cron trigger가 5개뿐이라 예전에는 그 다섯을 전부 썼고,
-# 새 스케줄을 얹을 자리가 없었다. 분 가드로 기존 빈도를 그대로 재현한다
-# (index.ts runMinuteScheduler 참고). 하루 1,440 invocation은 무료 한도 100,000의 1.4%다.
+# Queue dispatcher는 분마다 가볍게 실행하고, CPU/메모리를 쓰는 실시간 주차와
+# D1/R2를 읽는 스냅샷 복구는 별도 invocation으로 격리한다. 실시간 shard 4개는
+# 4분마다 하나씩, 약 16분에 한 바퀴 돈다. 3개 trigger는 계정 상한 5개 이하다.
 [triggers]
-crons = ["* * * * *"]
+crons = ["* * * * *", "*/4 * * * *", "2-57/5 * * * *"]
 
 # producer와 consumer가 같은 스크립트다(새 Worker 프로젝트를 만들지 않는다).
 [[queues.producers]]

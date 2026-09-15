@@ -1,6 +1,10 @@
 # API Runbook
 
-Last updated: 2026-09-13
+Last updated: 2026-09-15
+
+## Scheduled publishing recovery — 2026-09-15 (code verified, deployment pending)
+
+The Worker now routes Queue dispatch (`* * * * *`), realtime parking (`*/4 * * * *`), and discovery snapshot recovery (`2-57/5 * * * *`) into separate scheduled invocations. A verified existing CDN release plus a source status of `publication_queue_budget` with a future `retryAt` is an expected deferred publication, so GitHub Actions reports a notice instead of a failed run. Missing first release, overdue retry, corruption, and unrelated unhealthy/stale states still fail. After deployment, observe scheduled outcomes for 30–60 minutes, confirm source `status.checkedAt` advances, then run the static publisher and verify every CDN part. No D1 migration or iOS rebuild is required.
 
 ## Discovery snapshot rollout — 2026-09-13 (Worker/data deployed)
 

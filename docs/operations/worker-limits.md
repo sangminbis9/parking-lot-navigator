@@ -1,5 +1,13 @@
 # Worker 계정 한도
 
+## 2026-09-15 예약 실행/정적 발행 실패 수정 — 배포 대기
+
+- 최근 1시간 대시보드에서 성공 293건/오류 37건을 확인했고, 표본 예약 실행의 outcome은 `exceededCpu`였다. 하나의 매분 invocation이 Queue dispatch, 실시간 주차, 스냅샷 복구를 함께 시작하던 구조를 원인 후보로 좁혔다.
+- Cron을 dispatch `* * * * *`, 실시간 `*/4 * * * *`, 스냅샷 복구 `2-57/5 * * * *`로 분리한다. 계정 한도 5개 중 3개를 사용하며 각 invocation의 작업 종류를 하나로 격리한다. 실시간 4개 shard의 전체 순회는 약 16분이다.
+- 11:35 KST 무렵 발행 Queue 예산은 327/650이었다. 짧은 변경 묶음은 마지막 scan과 publish를 같은 Queue 소비에서 완료해 별도 메시지 하나를 절약한다.
+- 정적 발행 workflow는 검증된 기존 CDN 릴리스가 있고 `publication_queue_budget`의 미래 `retryAt`이 확인될 때만 성공적인 defer로 기록한다. 실제 손상·예상 밖 unhealthy·첫 릴리스 부재는 계속 실패한다.
+- Worker 40파일/348테스트, 발행기 12테스트, TypeScript, Wrangler dry-run 통과. 아직 운영 Worker와 GitHub workflow에는 배포하지 않았다. 배포 후 30~60분 실제 outcome과 checkedAt 전진을 재측정한다.
+
 ## 2026-09-13 후속: 정적 파일 직접 제공과 소스 순회
 
 행사 파일은 사용자 선택에 따라 도메인 없는 Workers Static Assets로 발행한다. 앱 새 빌드의 행사 파일 요청은 API Worker를 거치지 않지만, 실시간 주차/기존 앱/수집 요청은 남는다. 5분 GitHub 변경 검사로 생기는 원본 요청은 manifest/status와 새 파일에 한정된다(기존 파일은 CDN 재사용). 예약 지연 가능, 정적 발행은 부분 파일을 공개하지 않는다.
@@ -8,7 +16,7 @@
 
 ## 2026-09-13 추가: 변경 기반 행사 스냅샷 (최초 발행·운영 검증 완료)
 
-일일 전체 생성 대신 D1 0032 트리거가 변경된 고정 묶음을 기록한다. 최초 128개 묶음 준비 후 변경분만 읽는다. 매분 미처리 인덱스 확인은 Queue 없이 수행하고, 발행 신규 메시지를 700/UTC일로 제한한다. 기존 최악 추산 7,446 ops + 발행 통상 최대 2,100 ops = 9,546 ops이며, 재시도와 다른 생산자는 별도다. 예산 소진은 발행 지연으로 처리하고 기존 공개 데이터/변경 기록을 유지한다. 앱 행사 탐색과 /parking/realtime은 R2/공유 캐시를 이용한다. 정적 주차·구버전 행사 API·수집·관리 작업의 D1 사용량은 남는다. [설계·한계·검증](../architecture/discovery-snapshots.md).
+일일 전체 생성 대신 D1 0032 트리거가 변경된 고정 묶음을 기록한다. 최초 128개 묶음 준비 후 변경분만 읽는다. 별도 5분 Cron이 미처리 인덱스를 Queue 없이 확인하고, 발행 신규 메시지를 650/UTC일로 제한한다. 기존 최악 추산 7,632 ops + 발행 통상 최대 1,950 ops = 9,582 ops이며, 재시도와 다른 생산자는 별도다. 예산 소진은 발행 지연으로 처리하고 기존 공개 데이터/변경 기록을 유지한다. 앱 행사 탐색과 /parking/realtime은 R2/공유 캐시를 이용한다. 정적 주차·구버전 행사 API·수집·관리 작업의 D1 사용량은 남는다. [설계·한계·검증](../architecture/discovery-snapshots.md).
 
 09:00~09:39 KST 대시보드 관측(단일 DB, 초기화 이후 일부 구간): 읽기 약 398k, 쓰기 약 7k. 기존 위치 기반 행사 페이지 쿼리 38회가 273.52k행, 새 discovery 묶음 쿼리 56회가 5.55k행, local 묶음 쿼리 42회가 580행을 읽었다. 일부 기간/쿼리 관측이며 하루 총량이나 전체 계정 한도 보장은 아니다. 09:33 발행 Queue 예산 카운터는 202 메시지였다. 수성 공급자는 down, KAC 공항은 빈 결과/degraded로 관측됐지만 대전·서울·인천공항의 정상 데이터는 별도로 발행됐다.
 
@@ -26,7 +34,7 @@
 | --- | --- | --- | --- |
 | invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
 | invocation당 리소스 한도 (`exceededCpu` / `exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-04 실측: scheduled invocation이 243ms를 쓰고 `ok`) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않고, 진행 중이던 D1 쓰기는 손실된다. **`wrangler tail --format json`의 `outcome` 필드에 `exceededCpu`로 찍힌다**(실측 2026-09-04, wrangler 4.92.0). 2026-08-18에는 tail이 킬 도중에도 `ok`만 찍어서 GraphQL `workersInvocationsAdaptive`로만 보였는데, 지금은 tail로 바로 관측된다 — 진단은 tail을 먼저 본다. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이었다. Queue 분할 배포(2026-09-04) 이후 관측 창에서는 킬이 사라졌다. 아래 "무엇이 리소스 한도로 죽는가" 참고 |
-| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 예전에는 다섯을 전부 써서 새 주기를 얹을 자리가 없었다. 지금은 `* * * * *` 하나뿐이고(1/5), 옛 다섯 주기는 `jobs.ts`의 분 가드로 재현한다 |
+| 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 현재 수정안은 dispatch/실시간/스냅샷 복구의 3개(3/5)를 쓰고, 나머지 작업은 dispatch가 Queue로 분배한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
 | D1 일일 행 쓰기 | 100,000 | 위와 같음(2026-09-01 강제). **`실측 필요` — 깨끗한 24시간 창을 아직 못 쟀다** | 2026-08-29 실측 상위 10개 합계 474,322/일(한도의 4.7배)에서 `0028`(realtime 행당 3행 → 1행)과 조건부 쓰기(discovery/realtime/태깅)로 내려왔다. 가장 최근 측정은 2026-09-01T09:47Z 24시간 창의 **58,513행(한도의 59%)**인데, 그 창은 **앞 5.7시간이 조건부 쓰기 배포(2026-08-31T15:29Z) 전**이라 완전히 깨끗하지 않다. 배포 후 구간만으로 이뤄진 창을 다시 재기 전에는 확정치로 쓰지 않는다. 아래 "D1 행 쓰기 예산" 참고 |
 | D1 prepared statement 바인딩 | 100 | 101번째 바인딩에서 쿼리가 실패한다. | `geocodeBackfill.ts`의 지역 대표 좌표 매칭(18좌표 × 4 + 1 = 73). `pipelineStats.ts`는 같은 조건을 리터럴로 박아 바인딩을 아예 안 쓴다 |
@@ -364,10 +372,10 @@ CPU 10ms / subrequest 50건 예산을 온전히 준다.
 재시도 여유가 사라진다** — 소비자가 CPU로 죽으면 `max_retries = 2`만큼 재배달되고,
 그 재배달도 op를 쓴다.
 
-**실시간 주차는 Queue를 쓰지 않는다.** shard 4개 × 하루 480회 = 1,920건이면 그 하나로
-예산의 58%다. 대신 스케줄러 invocation 안에서 분마다 shard 하나씩 직접 돌린다
-(`jobs.ts`의 `realtimeShardIndex`). shard가 4개면 각 shard가 4분에 한 번 갱신되고
-(기존 3분에서 소폭 후퇴), Queue 비용은 0이며, 회차마다 CPU·subrequest 예산을 통째로 쓴다.
+**실시간 주차는 Queue를 쓰지 않는다.** 별도 `*/4` Cron이 하루 360회 shard 하나씩 직접
+처리한다(`jobs.ts`의 `realtimeShardIndex`). shard가 4개면 전체 순회가 약 16분이고,
+Queue 비용은 0이다. dispatch·스냅샷 복구와 invocation을 분리하여 회차마다 CPU·subrequest
+예산을 실시간 수집에만 쓴다.
 
 ## 유료 플랜으로 풀리는 것
 

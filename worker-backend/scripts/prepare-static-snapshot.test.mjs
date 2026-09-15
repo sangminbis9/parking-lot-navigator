@@ -84,6 +84,26 @@ test("unhealthy publisher blocks publication even when the manifest exists", asy
   origin.files.set("status.json", Buffer.from(JSON.stringify({ schemaVersion: 1, healthy: false, checkedAt: new Date(now).toISOString() })));
   await assert.rejects(fixture(origin.files).run(), /unhealthy/);
 });
+test("daily publication budget pause is a successful no-op when a verified CDN release exists", async () => {
+  const origin = release(["new"], 2), cdn = release(["current"]);
+  origin.files.set("status.json", Buffer.from(JSON.stringify({ schemaVersion: 1, healthy: false,
+    checkedAt: new Date(now - 60_000).toISOString(), error: "publication_queue_budget",
+    retryAt: new Date(now + 60 * 60_000).toISOString() })));
+  const result = await fixture(origin.files, cdn.files).run();
+  assert.equal(result.changed, false);
+  assert.equal(result.deferred, true);
+  assert.equal(result.reason, "publication_queue_budget");
+  assert.equal(result.manifest.version, cdn.manifest.version);
+});
+test("budget pause cannot hide a missing first release or an overdue retry", async () => {
+  const origin = release(["a"]);
+  const paused = { schemaVersion: 1, healthy: false, checkedAt: new Date(now).toISOString(),
+    error: "publication_queue_budget", retryAt: new Date(now + 60_000).toISOString() };
+  origin.files.set("status.json", Buffer.from(JSON.stringify(paused)));
+  await assert.rejects(fixture(origin.files).run(), /first complete CDN release/);
+  origin.files.set("status.json", Buffer.from(JSON.stringify({ ...paused, retryAt: new Date(now - 1).toISOString() })));
+  await assert.rejects(fixture(origin.files, release(["current"]).files).run(), /unhealthy/);
+});
 test("same version cannot silently change its file descriptors", async () => {
   await assert.rejects(fixture(release(["changed"]).files, release(["original"]).files).run(), /same version/);
 });

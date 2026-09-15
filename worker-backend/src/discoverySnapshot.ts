@@ -261,7 +261,13 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
     if (next.cursor <= current.cursor) throw new Error("snapshot_cursor_not_advancing");
   }
   const saved = await bucket.put(STATE_KEY, encoded(next, MAX_MANIFEST_BYTES), { onlyIf: { etagMatches: object!.etag } });
-  if (saved) await enqueue(env, { type: "discovery-snapshot", version: current.version });
+  if (saved) {
+    // The publish phase is short and the Queue consumer already owns this
+    // checkpoint. Finish it in the same invocation instead of spending a second
+    // message for every dirty section. Full pages still yield before the next scan.
+    if (next.phase === "publish") await advanceSnapshot(env, { ...job, version: current.version });
+    else await enqueue(env, { type: "discovery-snapshot", version: current.version });
+  }
 }
 
 /** Public delivery NEVER consults D1, including on cache miss/outage. */

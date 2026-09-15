@@ -33,6 +33,9 @@ jobs:
       - name: Prepare complete verified public release
         id: prepare
         run: node worker-backend/scripts/prepare-static-snapshot.mjs
+      - name: Report expected publication delay
+        if: steps.prepare.outputs.deferred == 'true'
+        run: echo "::notice title=Discovery publication deferred::${{ steps.prepare.outputs.reason }} until ${{ steps.prepare.outputs.retry_at }}; the previous verified CDN release remains active"
       - name: Deploy assets atomically
         if: steps.prepare.outputs.changed == 'true'
         env:

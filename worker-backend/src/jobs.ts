@@ -83,9 +83,17 @@ export function currentLocalEventChunkIndex(now: Date, chunkCount: number): numb
   return ((slot % chunkCount) + chunkCount) % chunkCount;
 }
 
-// 이 분에 돌릴 job 목록. cron이 `* * * * *` 하나로 합쳐지면서 예전 다섯 cron의
-// 빈도를 분 가드로 재현한다 — `*/3`은 `분%3`, `*/9`는 `분%9`, `*/5`는 `분%5`,
-// `15 * * * *`는 `분===15`, `30 */3 * * *`는 `분===30 && 시%3===0`.
+// 직접 I/O를 하는 실시간 주차와 스냅샷 복구는 별도 invocation으로 분리한다.
+// 분당 dispatcher가 Queue 전송과 함께 실행하면 한 작업의 CPU 초과가 다른 작업까지
+// 중단시키기 때문이다. controller.cron은 wrangler에 적은 문자열을 그대로 제공한다.
+export const DISPATCH_CRON = "* * * * *";
+export const REALTIME_PARKING_CRON = "*/4 * * * *";
+export const SNAPSHOT_RECOVERY_CRON = "2-57/5 * * * *";
+export const REALTIME_SYNC_CADENCE_MINUTES = 4;
+
+// 이 분에 Queue로 넘길 job 목록. 예전 다섯 cron의 빈도를 분 가드로 재현한다 —
+// `*/3`은 `분%3`, `*/9`는 `분%9`, `*/5`는 `분%5`, `15 * * * *`는
+// `분===15`, `30 */3 * * *`는 `분===30 && 시%3===0`.
 //
 // D1을 읽지 않고 시각만 본다. 그래서 테스트가 가짜 시각만으로 전 구간을 훑을 수 있다.
 export function plannedJobs(scheduledAt: Date): BackgroundJob[] {
@@ -149,17 +157,17 @@ export function plannedJobs(scheduledAt: Date): BackgroundJob[] {
   return jobs;
 }
 
-// 실시간 주차는 Queue를 쓰지 않는다 — shard 4개 × 하루 480회면 메시지 1,920건
-// (Queue 예산의 58%)이라 감당이 안 된다. 대신 스케줄러 invocation 안에서 분마다
-// 한 shard씩 직접 돌린다. shard가 4개면 각 shard가 4분에 한 번 갱신되고,
-// 회차마다 CPU 10ms / subrequest 50건 예산을 온전히 쓴다.
+// 실시간 주차는 Queue를 쓰지 않는다. 별도 `*/4` Cron invocation에서 한 shard씩
+// 직접 처리한다. shard가 4개면 전체를 16분에 한 번 순회해 앱의 약 15분 갱신 정책과
+// 맞고, 예전 분당 실행보다 invocation/D1/R2 사용량을 75% 줄인다.
 export function realtimeShardIndex(scheduledAt: Date, shardCount: number): number {
   if (shardCount <= 1) return 0;
-  return Math.floor(scheduledAt.getTime() / 60_000) % shardCount;
+  const slot = Math.floor(scheduledAt.getTime() / (REALTIME_SYNC_CADENCE_MINUTES * 60_000));
+  return ((slot % shardCount) + shardCount) % shardCount;
 }
 
-// 오래된 행 정리를 이 회차에 같이 돌릴지. prune은 `last_seen_at < now - 90분`이라는
-// **시간 기준**이라 아직 안 돈 shard의 행을 지우지 않는다. 15분마다면 하루 96회다.
-export function shouldPruneRealtime(scheduledAt: Date): boolean {
-  return scheduledAt.getUTCMinutes() % 15 === 0;
+// 한 순회의 첫 shard에서만 정리한다. 4개 shard면 약 16분마다이고,
+// `last_seen_at < now - 90분` 시간 기준이므로 아직 안 돈 shard를 지우지 않는다.
+export function shouldPruneRealtime(scheduledAt: Date, shardCount: number): boolean {
+  return realtimeShardIndex(scheduledAt, shardCount) === 0;
 }

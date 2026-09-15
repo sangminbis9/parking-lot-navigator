@@ -45,7 +45,10 @@ import { AkeiTradeExpoFestivalProvider } from "./akeiTradeExpoProvider.js";
 import { runFeeBackfill } from "./feeBackfill.js";
 import { runProgramCrawl, runProgramStage, selectProgramCrawlTargets } from "./programCrawl.js";
 import {
+  DISPATCH_CRON,
   LOCAL_EVENT_CHUNK_COUNT,
+  REALTIME_PARKING_CRON,
+  SNAPSHOT_RECOVERY_CRON,
   currentLocalEventChunkIndex,
   plannedJobs,
   realtimeShardIndex,
@@ -1431,25 +1434,32 @@ export default {
   ): Response | Promise<Response> {
     return app.fetch(request, env, ctx);
   },
-  /**
-   * cron은 "지금 무엇을 돌릴지 정하고 Queue로 넘기는" 일만 한다.
-   * 예외는 실시간 주차 하나뿐이다 — 하루 1,440회라 Queue 예산
-   * (10,000 operations/day, 메시지 하나당 write+read+delete 3 op)에 넣을 수 없어
-   * 이 invocation 안에서 shard 하나만 직접 돈다. Queue send는 네트워크 I/O라
-   * CPU를 거의 안 쓰므로 같은 10ms 예산에 둘이 함께 들어간다.
-   *
-   * cron을 `* * * * *` 하나로 합친 것은 계정당 cron trigger가 5개뿐인데
-   * 예전에는 그 다섯을 전부 쓰고 있었기 때문이다. 분 가드로 기존 빈도를
-   * 그대로 재현한다: `*​/3`→`minute % 3`, `*​/9`→`minute % 9`, `*​/5`→`minute % 5`,
-   * `15 * * * *`→`minute === 15`, `30 *​/3 * * *`→`minute === 30 && hour % 3 === 0`.
-   */
+  /** Queue dispatcher, realtime parking, and snapshot recovery run in separate
+   * Cron invocations. A CPU/resource kill in one workload must not suppress the
+   * other two or leave publisher health stale. */
   async scheduled(
     controller: ScheduledController,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
     if (!env.DB) return;
-    ctx.waitUntil(runMinuteScheduler(env, new Date(controller.scheduledTime)));
+    const scheduledAt = new Date(controller.scheduledTime);
+    if (controller.cron === DISPATCH_CRON) {
+      ctx.waitUntil(sendJobs(env, plannedJobs(scheduledAt)));
+      return;
+    }
+    if (controller.cron === REALTIME_PARKING_CRON) {
+      ctx.waitUntil(syncRealtimeParkingScheduled(env, scheduledAt));
+      return;
+    }
+    if (controller.cron === SNAPSHOT_RECOVERY_CRON) {
+      if (!env.DISCOVERY_SNAPSHOTS || !env.BACKGROUND_QUEUE) return;
+      ctx.waitUntil(runSnapshotJob(env, { type: "discovery-snapshot" }).catch(error => {
+        console.error("snapshot recovery check failed", error);
+      }));
+      return;
+    }
+    console.error(JSON.stringify({ event: "unknown_cron", cron: controller.cron }));
   },
   /**
    * consumer는 producer와 같은 스크립트다(새 Worker 프로젝트를 만들지 않는다).
@@ -1483,20 +1493,6 @@ export default {
     }
   },
 };
-
-/**
- * 분마다 도는 스케줄러. D1을 읽지 않고 시각만 보고 job을 만든다.
- */
-async function runMinuteScheduler(env: Env, scheduledAt: Date): Promise<void> {
-  await Promise.all([
-    sendJobs(env, plannedJobs(scheduledAt)),
-    syncRealtimeParkingScheduled(env, scheduledAt),
-    env.DISCOVERY_SNAPSHOTS && env.DB && env.BACKGROUND_QUEUE
-      ? runSnapshotJob(env, { type: "discovery-snapshot" }).catch(error => {
-        console.error("snapshot recovery check failed", error);
-      }) : Promise.resolve(),
-  ]);
-}
 
 async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
   switch (job.type) {
@@ -1881,7 +1877,7 @@ async function syncRealtimeParkingScheduled(env: Env, scheduledAt: Date): Promis
     if (shards.length === 0) return;
     const index = realtimeShardIndex(scheduledAt, shards.length);
     await syncRealtimeParkingCache(env.DB!, shards[index], {
-      prune: shouldPruneRealtime(scheduledAt),
+      prune: shouldPruneRealtime(scheduledAt, shards.length),
       publish: env.DISCOVERY_SNAPSHOTS
         ? (items, generatedAt, retained) => publishRealtimeShard(env.DISCOVERY_SNAPSHOTS!, index, items, generatedAt, retained)
         : undefined,

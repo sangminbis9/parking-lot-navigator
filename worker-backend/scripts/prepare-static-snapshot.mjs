@@ -54,13 +54,22 @@ export async function prepareStaticSnapshot({ source, target, bootstrap = false,
   };
   const manifest = validateManifest(JSON.parse(await download(source, "manifest.json", 4 * 1024 * 1024)));
   const status = JSON.parse(await download(source, "status.json", 16 * 1024));
-  const age = now - Date.parse(status.checkedAt);
-  check(status.schemaVersion === 1 && status.healthy === true && Number.isFinite(age) && age >= -300_000 && age < 15 * 60_000,
-    "Source publisher unhealthy/stale; retaining previous deployment");
-  check(!status.pending || now - Date.parse(status.pendingSince) < 10 * 60_000, "Source publication backlog stale");
-  check(Date.parse(manifest.generatedAt) <= now + 300_000, "Future manifest");
   const previousData = await download(target, "manifest.json", 4 * 1024 * 1024, true);
   const previous = previousData ? validateManifest(JSON.parse(previousData)) : null;
+  const age = now - Date.parse(status.checkedAt);
+  const retryAt = Date.parse(status.retryAt);
+  const expectedBudgetPause = status.schemaVersion === 1 && status.healthy === false
+    && status.error === "publication_queue_budget" && Number.isFinite(age)
+    && age >= -300_000 && age < 26 * 60 * 60_000 && Number.isFinite(retryAt)
+    && retryAt > now && retryAt - now <= 26 * 60 * 60_000;
+  if (expectedBudgetPause) {
+    check(previous, "Source publisher paused before the first complete CDN release");
+    return { changed: false, deferred: true, reason: status.error, retryAt: status.retryAt, manifest: previous };
+  }
+  check(status.schemaVersion === 1 && status.healthy === true && Number.isFinite(age) && age >= -300_000 && age < 15 * 60_000,
+    `Source publisher unhealthy/stale; retaining previous deployment (error=${status.error ?? "none"}, ageMs=${Number.isFinite(age) ? age : "invalid"})`);
+  check(!status.pending || now - Date.parse(status.pendingSince) < 10 * 60_000, "Source publication backlog stale");
+  check(Date.parse(manifest.generatedAt) <= now + 300_000, "Future manifest");
   if (previous) {
     check(previous.revision <= manifest.revision, "Origin revision older than deployed revision");
     check(previous.revision !== manifest.revision || previous.version === manifest.version, "Conflicting revision");
@@ -117,8 +126,9 @@ async function main() {
     }
   }
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT,
-    `changed=${result.changed}\ndirectory=${directory ?? ""}\n`);
-  console.log(JSON.stringify({ changed: result.changed, directory, version: result.manifest.version,
+    `changed=${result.changed}\ndeferred=${result.deferred === true}\nreason=${result.reason ?? ""}\nretry_at=${result.retryAt ?? ""}\ndirectory=${directory ?? ""}\n`);
+  console.log(JSON.stringify({ changed: result.changed, deferred: result.deferred === true,
+    reason: result.reason, retryAt: result.retryAt, directory, version: result.manifest.version,
     count: result.manifest.count, parts: result.manifest.parts.length }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => {

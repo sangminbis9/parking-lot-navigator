@@ -156,17 +156,28 @@ describe("incremental discovery snapshot", () => {
     f.insert("discovery_items", row(5, { lat: null })); await f.publish(); expect(f.manifest().count).toBe(0);
     f.sqlite.exec("UPDATE discovery_items SET lat=37.41"); await f.publish(); expect(f.manifest().count).toBe(1);
   });
-  it("preserves the first dirty time and a concurrent generation until it is published", async () => {
+  it("preserves a newer generation created immediately after the preceding section publishes", async () => {
     const f = fixture([row(1)]); await f.publish();
     f.sqlite.exec("UPDATE discovery_items SET title='first'; UPDATE snapshot_sections SET changed_at='2020-01-01T00:00:00Z' WHERE revision>published_revision;");
     await runSnapshotJob(f.env, { type: "discovery-snapshot" });
-    await runSnapshotJob(f.env, f.queue.shift()!); // scan
+    await runSnapshotJob(f.env, f.queue.shift()!); // scan + publish in one Queue invocation
     f.sqlite.exec("UPDATE discovery_items SET title='second'");
-    expect(f.sqlite.prepare("SELECT changed_at FROM snapshot_sections WHERE revision>published_revision").get()?.changed_at).toBe("2020-01-01T00:00:00Z");
+    const pending = f.sqlite.prepare("SELECT revision,published_revision FROM snapshot_sections WHERE revision>published_revision").get();
+    expect(Number(pending?.revision)).toBeGreaterThan(Number(pending?.published_revision));
+    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true }); // next eligible recovery check
     await f.drain();
     const parts = f.manifest().parts.map(p => f.objects.get(`${SNAPSHOT_PREFIX}parts/${p.sha256}.json`)!.text).join("");
     expect(parts).toContain("second");
     expect(f.sqlite.prepare("SELECT count(*) n FROM snapshot_sections WHERE revision>published_revision").get()?.n).toBe(0);
+  });
+  it("finishes a short dirty section without a second Queue message for publish", async () => {
+    const f = fixture([row(1)]); await f.publish();
+    f.send.mockClear();
+    f.sqlite.exec("UPDATE discovery_items SET title='one-message'");
+    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true });
+    await f.drain();
+    expect(f.send).toHaveBeenCalledTimes(1);
+    expect(f.manifest().count).toBe(1);
   });
   it("duplicate concurrent delivery cannot duplicate parts or roll back revision", async () => {
     const f = fixture([row(1)]);

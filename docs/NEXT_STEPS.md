@@ -1,6 +1,13 @@
 # 다음 단계
 
-마지막 업데이트: 2026-09-13
+마지막 업데이트: 2026-09-15
+
+## Worker/정적 발행 수정 완료 — 배포 대기 (2026-09-15)
+
+1. 로컬 수정과 검증 완료: Cron을 Queue dispatch/실시간 주차/스냅샷 복구로 분리하고, 짧은 스냅샷은 마지막 scan+publish를 한 메시지에서 끝낸다. Worker 348테스트, 발행기 12테스트, TypeScript와 Wrangler dry-run이 통과했다.
+2. 커밋·푸시 후 Worker를 배포한다. D1 마이그레이션은 없다. 배포 뒤 30~60분간 세 Cron의 outcome, 원본 `status.checkedAt`, R2 `queue-budget.json` 증가율을 확인한다.
+3. `Publish discovery static assets`를 실행한다. 예산의 정상 대기라면 빨간 실패 대신 defer notice가 나와야 하며, 예산이 풀린 뒤에는 CDN manifest/status와 모든 part 무결성 검사가 성공해야 한다. 최초 릴리스 없음·기한 초과·다른 unhealthy는 계속 실패하는 것이 정상이다.
+4. iOS 소스 변경은 없어 Codemagic/TestFlight 재빌드는 필요 없다. 앱 배포 전에 CDN 검증만 다시 통과시키면 된다.
 
 ## 업로드 완료: 지도 UX·주차 15분 갱신 (2026-09-13)
 
