@@ -22,6 +22,14 @@ final class DiscoverySnapshotTests: XCTestCase {
                  venueName: nil, address: "인천", lat: lat, lng: lng, distanceMeters: 999999,
                  source: "test", sourceUrl: nil, imageUrl: nil, tags: [])
     }
+    private func merchantEvent(_ id: String, start: String, end: String?, paidUntil: String) -> FreeEvent {
+        FreeEvent(id: id, title: id, eventType: "discount", category: "local_event", sourceId: id,
+                  startDate: start, endDate: end, status: .approved, storeName: "테스트 매장", venueName: "테스트 매장",
+                  address: "인천", lat: 37.41, lng: 126.64, distanceMeters: 999999, source: "merchant",
+                  sourceUrl: nil, imageUrl: nil, benefit: "10% 할인", shortDescription: nil, region: nil,
+                  updatedAt: nil, confidenceScore: nil, needsReview: false, isSponsored: true,
+                  sponsorTier: nil, paidUntil: paidUntil, priorityScore: 100)
+    }
     private func release(_ items: [Festival], generated: String = "2026-09-13T00:00:00.000Z") throws -> (Data, [String: Data]) {
         var files: [String: Data] = [:]
         let encoder = JSONEncoder()
@@ -227,6 +235,15 @@ final class DiscoverySnapshotTests: XCTestCase {
         XCTAssertEqual(current.first(where: { $0.id == "today" })?.status, .ongoing)
         let past = index.festivals(lat: 37.49999, lng: 126.64, radius: 20000, upcoming: 365, past: 1, now: atMidnight)
         XCTAssertEqual(past.count, 4)
+    }
+
+    func testMerchantReversedDatesUsePaidPeriodWithoutRevivingNormallyExpiredEvents() {
+        let malformed = merchantEvent("merchant-malformed", start: "2026-09-15", end: "2026-05-21", paidUntil: "2026-12-15")
+        let expired = merchantEvent("merchant-expired", start: "2026-05-18", end: "2026-05-21", paidUntil: "2026-12-15")
+        let index = DiscoverySnapshotIndex(parts: [.init(schemaVersion: 1, festivals: [], performanceEvents: [], localEvents: [malformed, expired])])
+        let now = ISO8601DateFormatter().date(from: "2026-09-15T03:00:00Z")!
+
+        XCTAssertEqual(index.events(lat: 37.41, lng: 126.64, radius: 20_000, now: now).map(\.id), ["merchant-malformed"])
     }
 }
 

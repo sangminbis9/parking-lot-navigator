@@ -61,6 +61,10 @@ const baseStyle = `
   .event-row:first-child { border-top: 0; }
   .event-title { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
   .event-meta { font-size: 12px; color: var(--festival-muted); }
+  .event-image { display: block; width: 100%; max-height: 280px; object-fit: cover; border-radius: 10px; margin-bottom: 16px; }
+  .detail-label { font-size: 12px; font-weight: 600; color: var(--festival-teal); margin: 16px 0 4px; }
+  .detail-value { color: var(--festival-navy); white-space: pre-wrap; }
+  .status-note { padding: 12px 14px; border-radius: 10px; background: var(--festival-cream); color: var(--festival-navy); font-size: 13px; line-height: 1.55; }
   .error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
   .consent-box { display: flex; gap: 10px; align-items: flex-start; background: var(--festival-cream); border: 1px solid var(--festival-cream-deep); border-radius: 10px; padding: 12px 14px; margin-top: 18px; }
   .consent-box input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--festival-coral); flex: none; }
@@ -246,6 +250,61 @@ const EVENT_TYPE_OPTIONS: Array<[MerchantEventType, string]> = [
   ["opening_event", "오픈 이벤트"],
   ["etc", "기타"],
 ];
+
+function eventTypeLabel(type: MerchantEventType): string {
+  return EVENT_TYPE_OPTIONS.find(([key]) => key === type)?.[1] ?? "기타";
+}
+
+function eventStatusNote(status: MerchantEventStatus): string {
+  switch (status) {
+    case "approved":
+      return "게시 승인되었습니다. 앱이 다음 이벤트 데이터를 갱신하면 지도와 로컬 이벤트 목록에 표시됩니다.";
+    case "pending_payment":
+      return "아직 게시가 시작되지 않았습니다. 무료 등록 또는 결제를 완료해 주세요.";
+    case "pending":
+      return "검수 중입니다. 승인되기 전에는 앱에 표시되지 않습니다.";
+    case "expired":
+      return "게시 기간이 만료되어 현재 앱에 표시되지 않습니다.";
+    case "rejected":
+      return "반려된 이벤트입니다. 현재 앱에 표시되지 않습니다.";
+  }
+}
+
+export function renderEventDetail(event: MerchantEventRow): string {
+  const image = event.image_url
+    ? `<img class="event-image" src="${htmlEscape(event.image_url)}" alt="${htmlEscape(event.title)} 대표 이미지" />`
+    : "";
+  const period = `${htmlEscape(event.start_date ?? "게시 승인일")} ~ ${htmlEscape(event.end_date ?? event.paid_until ?? "종료일 미정")}`;
+  const action = event.status === "pending_payment"
+    ? `<a class="btn btn-primary" href="/merchant/event/${htmlEscape(event.id)}/pay">등록 계속하기</a>`
+    : "";
+  return layout(
+    "이벤트 상세",
+    `
+<div class="topbar">
+  <h2>이벤트 상세</h2>
+  <a class="muted" href="/merchant/dashboard">대시보드</a>
+</div>
+<div class="container">
+  <div class="card">
+    ${image}
+    <h1>${htmlEscape(event.title)}${statusBadge(event.status)}</h1>
+    <p class="muted">${htmlEscape(event.store_name)} · ${htmlEscape(event.address)}</p>
+    <div class="status-note">${htmlEscape(eventStatusNote(event.status))}</div>
+    <div class="detail-label">혜택</div>
+    <div class="detail-value">${htmlEscape(event.benefit ?? "-")}</div>
+    <div class="detail-label">상세 설명</div>
+    <div class="detail-value">${htmlEscape(event.description ?? "-")}</div>
+    <div class="detail-label">유형</div>
+    <div class="detail-value">${htmlEscape(eventTypeLabel(event.event_type))}</div>
+    <div class="detail-label">이벤트 기간</div>
+    <div class="detail-value">${period}</div>
+    ${action}
+  </div>
+</div>
+`,
+  );
+}
 
 export type EventFormValues = {
   title: string;

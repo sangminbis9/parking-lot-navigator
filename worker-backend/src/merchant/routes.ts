@@ -11,6 +11,7 @@ import {
 import {
   EMPTY_FORM,
   renderDashboard,
+  renderEventDetail,
   renderEventForm,
   renderFreeClaim,
   renderLanding,
@@ -30,8 +31,11 @@ import {
   couponSourceItemId,
   uploadEventImage,
   type MerchantEventType,
+  type MerchantEventRow,
 } from "./events.js";
 import { addMonths, confirmTossPayment } from "./toss.js";
+import type { BackgroundJob } from "../jobs.js";
+import { sendMerchantEventCreatedSlackCard } from "./slack.js";
 import {
   createSessionToken,
   randomToken,
@@ -54,6 +58,8 @@ export type MerchantEnv = {
   TOSS_CLIENT_KEY?: string;
   TOSS_SECRET_KEY?: string;
   MERCHANT_LAUNCH_PROMO_FREE?: string;
+  SLACK_DAILY_REPORT_WEBHOOK_URL?: string;
+  BACKGROUND_QUEUE?: Queue<BackgroundJob>;
 };
 
 const EVENT_PRICE_KRW = 10000;
@@ -88,6 +94,57 @@ function normalizeDate(value: string): string | null {
   if (!trimmed) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function koreaDay(now: Date): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function isValidDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function validateEventPeriod(
+  startDate: string,
+  endDate: string,
+  today: string,
+): string | null {
+  if (startDate && !isValidDay(startDate)) return "시작일 형식이 올바르지 않습니다.";
+  if (endDate && !isValidDay(endDate)) return "종료일 형식이 올바르지 않습니다.";
+  if (startDate && endDate && endDate < startDate) {
+    return "종료일은 시작일보다 빠를 수 없습니다.";
+  }
+  if (endDate && endDate < today) return "이미 지난 종료일은 등록할 수 없습니다.";
+  return null;
+}
+
+export function resolveApprovalPeriod(
+  event: Pick<MerchantEventRow, "start_date" | "end_date">,
+  now: Date,
+): { startDate: string; endDate: string; paidUntil: string } {
+  const activatedOn = koreaDay(now);
+  const paidUntil = addMonths(
+    new Date(`${activatedOn}T00:00:00Z`),
+    EVENT_DURATION_MONTHS,
+  )
+    .toISOString()
+    .slice(0, 10);
+  const existingStart = event.start_date;
+  const existingEnd = event.end_date;
+  const periodStillUsable = Boolean(
+    existingEnd &&
+      existingEnd >= activatedOn &&
+      (!existingStart || existingEnd >= existingStart),
+  );
+  return {
+    startDate: periodStillUsable ? (existingStart ?? activatedOn) : activatedOn,
+    endDate: periodStillUsable ? existingEnd! : paidUntil,
+    paidUntil,
+  };
 }
 
 const SESSION_COOKIE = "__merchant_session";
@@ -322,6 +379,22 @@ export function createMerchantApp() {
       );
     }
 
+    const periodError = validateEventPeriod(
+      values.startDate,
+      values.endDate,
+      koreaDay(new Date()),
+    );
+    if (periodError) {
+      return c.html(
+        renderEventForm({
+          values,
+          error: periodError,
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+
     const couponLink = parseNaverCouponLink(values.couponUrl);
     if (couponLink === undefined) {
       return c.html(
@@ -424,6 +497,35 @@ export function createMerchantApp() {
       );
     }
 
+    if (c.env.SLACK_DAILY_REPORT_WEBHOOK_URL) {
+      // Fast path does not spend a Queue operation. Only a Slack failure enters the
+      // existing retry queue, so normal registrations remain immediate and cheap.
+      c.executionCtx.waitUntil(
+        sendMerchantEventCreatedSlackCard(c.env, event).catch(async (error) => {
+          console.error(JSON.stringify({
+            event: "merchant_event_slack_immediate_failed",
+            eventId: event.id,
+            message: error instanceof Error ? error.message : String(error),
+          }));
+          if (!c.env.BACKGROUND_QUEUE) return;
+          try {
+            await c.env.BACKGROUND_QUEUE.send({
+              type: "merchant-event-slack",
+              eventId: event.id,
+            });
+          } catch (queueError) {
+            // The event is already safely stored. A notification outage must not make
+            // the merchant resubmit the form and create a duplicate event.
+            console.error(JSON.stringify({
+              event: "merchant_event_slack_enqueue_failed",
+              eventId: event.id,
+              message: queueError instanceof Error ? queueError.message : String(queueError),
+            }));
+          }
+        }),
+      );
+    }
+
     return c.redirect(`/merchant/event/${event.id}/pay`);
   });
 
@@ -437,6 +539,19 @@ export function createMerchantApp() {
         object.httpMetadata?.contentType ?? "application/octet-stream",
       "Cache-Control": "public, max-age=31536000, immutable",
     });
+  });
+
+  app.get("/event/:id", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    return c.html(renderEventDetail(event));
   });
 
   app.get("/event/:id/pay", async (c) => {
@@ -512,19 +627,12 @@ export function createMerchantApp() {
         400,
       );
     }
-    const startDate = event.start_date ?? new Date().toISOString().slice(0, 10);
-    const paidUntil = addMonths(
-      new Date(`${startDate}T00:00:00Z`),
-      EVENT_DURATION_MONTHS,
-    )
-      .toISOString()
-      .slice(0, 10);
+    const period = resolveApprovalPeriod(event, new Date());
     await markEventApproved(c.env.DB, {
       id: event.id,
       paymentKey: "free_launch_promo",
       paymentAmount: 0,
-      paidUntil,
-      startDate,
+      ...period,
     });
     return c.redirect("/merchant/dashboard");
   });
@@ -588,19 +696,12 @@ export function createMerchantApp() {
         400,
       );
     }
-    const startDate = event.start_date ?? new Date().toISOString().slice(0, 10);
-    const paidUntil = addMonths(
-      new Date(`${startDate}T00:00:00Z`),
-      EVENT_DURATION_MONTHS,
-    )
-      .toISOString()
-      .slice(0, 10);
+    const period = resolveApprovalPeriod(event, new Date());
     await markEventApproved(c.env.DB, {
       id: event.id,
       paymentKey: result.payment.paymentKey,
       paymentAmount: result.payment.totalAmount,
-      paidUntil,
-      startDate,
+      ...period,
     });
     return c.redirect("/merchant/dashboard");
   });

@@ -82,7 +82,7 @@ curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/local-eve
 curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/map/items?type=all&lat=36.35&lng=127.8&radiusMeters=460000"
 ```
 
-캘린더 탭 + Medium 위젯이 사용하는 호출 패턴:
+홈 화면 위젯과 소스에 보존된 캘린더 화면이 사용하는 호출 패턴(기본 탭에서는 캘린더 화면을 만들지 않음):
 
 ```bash
 curl -sS "https://parking-lot-navigator-api.parkingnav.workers.dev/api/festivals?lat=37.5663&lng=126.9779&radiusMeters=50000&upcomingWithinDays=90"

@@ -124,11 +124,12 @@ final class CoreJourneyUITests: XCTestCase {
 
     /// 푸시 전달 자체는 XCUITest가 흉내낼 수 없다. 푸시가 앱에 넘기는 것과 같은 URL을
     /// 라우터에 태워, 딥링크가 해당 화면으로 보내는지만 확인한다.
-    func testDeepLinkOpensCalendar() {
+    func testLegacyCalendarDeepLinkOpensDiscoverAfterTabRemoval() {
         let app = launch(["-uiTestingDenyLocation", "-uiTestingDeepLink", "parkingnavigator://calendar"])
 
-        // 캘린더 화면에만 있는 컨트롤이다.
-        let nextMonth = app.buttons["다음 달"]
-        XCTAssertTrue(nextMonth.waitForExistence(timeout: 25), "딥링크가 캘린더 탭을 열지 않았다")
+        XCTAssertFalse(app.buttons["tab-calendar"].exists, "숨긴 캘린더 탭이 다시 노출됐다")
+        XCTAssertTrue(app.buttons["tab-office"].waitForExistence(timeout: 25), "사무실 탭이 보이지 않는다")
+        XCTAssertTrue(app.navigationBars["축제 / 이벤트"].waitForExistence(timeout: 25),
+                      "기존 캘린더 딥링크가 이벤트 목록으로 복귀하지 못했다")
     }
 }

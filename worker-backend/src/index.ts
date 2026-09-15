@@ -64,6 +64,7 @@ import { runHeadReview } from "./agents/headAgent.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { runTagging } from "./llmTagging.js";
 import { createMerchantApp } from "./merchant/routes.js";
+import { sendMerchantEventCreatedSlack } from "./merchant/slack.js";
 import { createLegalApp } from "./legal/routes.js";
 import {
   createEventReport,
@@ -1551,6 +1552,8 @@ async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
       return runNotificationPlanScheduled(env);
     case "notification-dispatch":
       return runUpcomingNotificationsScheduled(env, { plan: false });
+    case "merchant-event-slack":
+      return sendMerchantEventCreatedSlack(env, job.eventId).then(() => undefined);
     case "prune-sync-runs": {
       await pruneOldSyncRuns(env.DB!);
       return;

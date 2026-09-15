@@ -24,6 +24,8 @@ import { akeiTargetMonths } from "./akeiTradeExpoDiscovery.js";
  *
  *   최악 ≈ 2,544건 ≈ 7,632 ops/day. 스냅샷 650건=1,950 ops 포함 9,582.
  *   현실 ≈ 1,700건 ≈ 5,100 ops/day (한도의 51%)
+ *   사장님 즉시 Slack 알림은 정상 시 waitUntil 직송이라 Queue 0건이다.
+ *   Slack 실패 때만 메시지 1건(재시도 없는 정상 복구 약 3 ops)을 추가한다.
  *
  * PROGRAM_CRAWL_MAX_ITEMS를 6보다 크게 올리면 재시도 여유가 사라진다 —
  * 그 값이 이 예산에서 가장 민감한 손잡이다.
@@ -46,6 +48,7 @@ export type BackgroundJob =
   | { type: "agent-image" }
   | { type: "notification-plan" }
   | { type: "notification-dispatch" }
+  | { type: "merchant-event-slack"; eventId: string }
   | { type: "prune-sync-runs" }
   | { type: "prune-analytics" };
 

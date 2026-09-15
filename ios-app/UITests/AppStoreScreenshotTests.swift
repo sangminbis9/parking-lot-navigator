@@ -78,9 +78,9 @@ final class AppStoreScreenshotTests: XCTestCase {
             }
         }
 
-        // 5. 캘린더
-        if openTab("tab-calendar") {
-            capture("05-calendar", settle: 12.0)
+        // 5. 에이전트 사무실
+        if openTab("tab-office") {
+            capture("05-agent-office", settle: 12.0)
         }
 
         // 6. 즐겨찾기 — 새 시뮬레이터라 비어 있을 수 있다. 쓸지는 사람이 고른다.

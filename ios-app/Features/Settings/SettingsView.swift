@@ -291,9 +291,6 @@ struct SettingsView: View {
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
 
-            developerRow(icon: "building.2.fill", title: "에이전트 사무실", subtitle: "제공자·수집 현황을 마스코트로 확인") {
-                AgentOfficeView(apiClient: apiClient)
-            }
             developerRow(icon: "chart.bar.doc.horizontal.fill", title: "파이프라인 대시보드", subtitle: "수집 파이프라인 통계 전체 보기") {
                 PipelineDashboardView(apiClient: apiClient)
             }

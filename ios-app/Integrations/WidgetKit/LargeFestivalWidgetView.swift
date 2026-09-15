@@ -87,7 +87,7 @@ struct LargeFestivalWidgetView: View {
     private var footer: some View {
         HStack(spacing: 4) {
             Link(destination: DeepLinkRouter.shared.urlForCalendar()) {
-                Text("캘린더에서 전체 보기")
+                Text("앱에서 전체 보기")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(FestivalDesign.coralText)
             }

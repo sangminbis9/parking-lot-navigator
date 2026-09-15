@@ -50,6 +50,7 @@ struct AgentOfficeSnapshot {
     let discoveryProviders: [ProviderHealth]
     let festivals: [DiscoveryItem]
     let events: [DiscoveryItem]
+    let merchantEventCount: Int
     let updatedAt: Date
 
     var published: [DiscoveryItem] {
@@ -67,6 +68,7 @@ struct AgentOfficeSnapshot {
         discoveryProviders: [],
         festivals: [],
         events: [],
+        merchantEventCount: 0,
         updatedAt: Date()
     )
 }
@@ -79,6 +81,10 @@ struct AgentOfficeAgent: Identifiable {
     let status: AgentOfficeStatus
     let line: String
     let reply: String
+
+    var usesGeneratedPortrait: Bool {
+        ["AgentAtlas", "AgentHarbor", "AgentRelay"].contains(spriteAsset)
+    }
 }
 
 @MainActor
@@ -110,9 +116,13 @@ final class AgentOfficeViewModel: ObservableObject {
     }
 
     func runPolling() async {
-        await loadIfNeeded()
+        if hasLoaded {
+            await refresh()
+        } else {
+            await loadIfNeeded()
+        }
         while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
             guard !Task.isCancelled else { return }
             await refresh()
         }
@@ -120,22 +130,38 @@ final class AgentOfficeViewModel: ObservableObject {
 
     func refresh() async {
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
 
         async let parkingProviders = apiClient.providerHealth()
         async let discoveryProviders = apiClient.discoveryProviderHealth()
         async let festivalsResult: [Festival]? = try? apiClient.nearbyFestivals(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius, upcomingWithinDays: 365)
         async let eventsResult: [FreeEvent]? = try? apiClient.nearbyEvents(lat: referenceLat, lng: referenceLng, radiusMeters: referenceRadius)
-        async let activityResult: [AgentActivityEvent]? = try? apiClient.agentActivity(since: nil, limit: 80)
+        let activitySince = lastActivityTimestamp
+        async let activityResult: [AgentActivityEvent]? = try? apiClient.agentActivity(
+            since: activitySince,
+            limit: activitySince == nil ? 80 : 30
+        )
 
         do {
             let parking = try await parkingProviders
             let discovery = try await discoveryProviders
             let fests = (await festivalsResult) ?? []
             let evts = (await eventsResult) ?? []
+            let merchantEventCount = evts.filter { $0.source == "merchant" }.count
             let activity = (await activityResult) ?? []
-            recentActivity = activity
-            lastActivityTimestamp = activity.first?.ts ?? lastActivityTimestamp
+            if activitySince == nil {
+                recentActivity = activity
+            } else if !activity.isEmpty {
+                let merged = activity + recentActivity
+                var seen = Set<String>()
+                recentActivity = merged
+                    .filter { seen.insert($0.id).inserted }
+                    .sorted { $0.ts > $1.ts }
+                    .prefix(80)
+                    .map { $0 }
+            }
+            lastActivityTimestamp = recentActivity.first?.ts ?? lastActivityTimestamp
 
             let normalizedFestivals = fests.prefix(8).map { f in
                 DiscoveryItem(
@@ -168,11 +194,13 @@ final class AgentOfficeViewModel: ObservableObject {
                 discoveryProviders: discovery,
                 festivals: Array(normalizedFestivals),
                 events: Array(normalizedEvents),
+                merchantEventCount: merchantEventCount,
                 updatedAt: Date()
             )
             snapshot = nextSnapshot
             agents = Self.buildAgents(snapshot: nextSnapshot)
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
             snapshot = AgentOfficeSnapshot(
                 summary: "백엔드 연결 실패: \(error.localizedDescription)",
@@ -180,12 +208,12 @@ final class AgentOfficeViewModel: ObservableObject {
                 discoveryProviders: [],
                 festivals: [],
                 events: [],
+                merchantEventCount: 0,
                 updatedAt: Date()
             )
             agents = Self.errorAgents(message: error.localizedDescription)
         }
 
-        isLoading = false
     }
 
     // MARK: - Builders
@@ -193,7 +221,7 @@ final class AgentOfficeViewModel: ObservableObject {
     private static func summary(parking: [ProviderHealth], discovery: [ProviderHealth], festivals: Int, events: Int, missingImages: Int) -> String {
         let p = providerCounts(parking)
         let d = providerCounts(discovery)
-        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 오늘 발견 축제 \(festivals)건 이벤트 \(events)건 · 사진 보강 \(missingImages)건"
+        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 기기 스냅샷 축제 \(festivals)건 이벤트 \(events)건 · 사진 보강 \(missingImages)건"
     }
 
     private static func buildAgents(snapshot: AgentOfficeSnapshot) -> [AgentOfficeAgent] {
@@ -208,7 +236,7 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "orion",
                 name: "Orion",
-                role: "총괄",
+                role: "운영 총괄",
                 spriteAsset: "AgentChar0",
                 status: .thinking,
                 line: snapshot.summary,
@@ -217,7 +245,7 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "festa",
                 name: "Festa",
-                role: "축제 수집",
+                role: "공공 축제 수집",
                 spriteAsset: "AgentChar1",
                 status: festivalCount > 0 ? .collecting : .idle,
                 line: festivalCount > 0 ? "축제 \(festivalCount)건 정리했어요." : "오늘은 새 축제가 없네요.",
@@ -226,7 +254,7 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "scout",
                 name: "Scout",
-                role: "이벤트 수집",
+                role: "로컬 이벤트 수집",
                 spriteAsset: "AgentChar2",
                 status: eventCount > 0 ? .collecting : .idle,
                 line: eventCount > 0 ? "이벤트 \(eventCount)건 발견." : "현재 진행 이벤트 없음.",
@@ -235,7 +263,7 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "vera",
                 name: "Vera",
-                role: "검증",
+                role: "품질·누락 검증",
                 spriteAsset: "AgentChar3",
                 status: validatorStatus(parking: p, discovery: d),
                 line: "데이터 품질 확인 중.",
@@ -253,7 +281,7 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "sentinel",
                 name: "Sentinel",
-                role: "백엔드 감시",
+                role: "실시간 주차 감시",
                 spriteAsset: "AgentChar4",
                 status: healthStatus(for: p),
                 line: p.total == 0
@@ -264,11 +292,42 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "echo",
                 name: "Echo",
-                role: "게시 / 홍보",
+                role: "게시·알림",
                 spriteAsset: "AgentChar6",
                 status: snapshot.published.isEmpty ? .idle : .monitoring,
                 line: snapshot.published.isEmpty ? "게시판 정리 중." : "게시판에 \(snapshot.published.count)건 붙였어요.",
                 reply: "푸시 일정 잡아둘게요."
+            ),
+            AgentOfficeAgent(
+                id: "atlas",
+                name: "Atlas",
+                role: "스냅샷·CDN",
+                spriteAsset: "AgentAtlas",
+                status: snapshot.published.isEmpty ? .idle : .monitoring,
+                line: snapshot.published.isEmpty
+                    ? "다음 변경 묶음을 기다려요."
+                    : "기기용 행사 스냅샷 \(snapshot.published.count)건을 점검 중.",
+                reply: "변경된 섹션만 안전하게 발행할게요."
+            ),
+            AgentOfficeAgent(
+                id: "harbor",
+                name: "Harbor",
+                role: "사장님 이벤트·Slack",
+                spriteAsset: "AgentHarbor",
+                status: snapshot.merchantEventCount > 0 ? .monitoring : .idle,
+                line: snapshot.merchantEventCount > 0
+                    ? "현재 범위 사장님 이벤트 \(snapshot.merchantEventCount)건 확인."
+                    : "새 사장님 등록을 기다려요.",
+                reply: "등록 정보와 사진을 즉시 전달할게요."
+            ),
+            AgentOfficeAgent(
+                id: "relay",
+                name: "Relay",
+                role: "Cron·Queue",
+                spriteAsset: "AgentRelay",
+                status: .monitoring,
+                line: "수집·주차·발행 작업의 분리 일정을 감시 중.",
+                reply: "실패 작업만 재시도 큐로 보낼게요."
             )
         ]
     }
@@ -279,7 +338,7 @@ final class AgentOfficeViewModel: ObservableObject {
             switch agent.id {
             case "orion":
                 return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .error, line: "백엔드에 연결할 수 없어요.", reply: message)
-            case "sentinel":
+            case "sentinel", "atlas", "relay":
                 return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .blocked, line: "헬스 엔드포인트 응답 없음.", reply: "재시도 대기 중.")
             default:
                 return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .idle, line: "백엔드 복구를 기다려요.", reply: "대기 중.")

@@ -1,6 +1,6 @@
 # Backend API
 
-Last updated: 2026-05-12
+Last updated: 2026-09-15
 
 ## GET /search/destination
 
@@ -66,6 +66,12 @@ Query:
 ## GET /api/local-events/:id
 
 Returns one approved local event.
+
+## GET /merchant/event/:id
+
+Returns the authenticated merchant's own event detail page for every merchant status. It redirects unauthenticated requests to `/merchant` and returns 404 when the event does not belong to the signed-in merchant. Public app access continues to use `/api/local-events/:id`, which exposes approved, active events only.
+
+Merchant registration rejects invalid or past end dates and an end date before the start date. On free claim/payment approval, the server writes an explicit active start/end period; blank or already-invalid legacy periods fall back to the three-month paid publication window.
 
 ## POST /api/local-events/report
 

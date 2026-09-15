@@ -2,9 +2,11 @@ import SwiftUI
 
 struct AgentOfficeView: View {
     @StateObject private var viewModel: AgentOfficeViewModel
+    let isActive: Bool
 
-    init(apiClient: APIClientProtocol) {
+    init(apiClient: APIClientProtocol, isActive: Bool = true) {
         _viewModel = StateObject(wrappedValue: AgentOfficeViewModel(apiClient: apiClient))
+        self.isActive = isActive
     }
 
     var body: some View {
@@ -15,7 +17,7 @@ struct AgentOfficeView: View {
                     snapshot: viewModel.snapshot,
                     activity: viewModel.recentActivity
                 )
-                    .aspectRatio(CGFloat(OfficeLayout.cols) / CGFloat(OfficeLayout.rows), contentMode: .fit)
+                    .aspectRatio(1, contentMode: .fit)
                 AgentRoleStrip(agents: viewModel.agents)
                 if !viewModel.recentActivity.isEmpty {
                     ActivityFeed(events: viewModel.recentActivity)
@@ -37,7 +39,10 @@ struct AgentOfficeView: View {
                 .accessibilityLabel("에이전트 사무실 새로고침")
             }
         }
-        .task { await viewModel.runPolling() }
+        .task(id: isActive) {
+            guard isActive else { return }
+            await viewModel.runPolling()
+        }
         .refreshable { await viewModel.refresh() }
     }
 
@@ -84,7 +89,7 @@ struct AgentOfficeView: View {
     }
 
     private var attribution: some View {
-        Text("스프라이트: harishkotra/agent-office · 가구: pixel-agents by Pablo De Lucca (MIT)")
+        Text("사무실·신규 요원: OpenAI 생성 픽셀 아트 · 이동 스프라이트: harishkotra/agent-office (MIT)")
             .font(.festival(.caption2))
             .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
     }
@@ -108,7 +113,9 @@ private struct OfficeFloorView: View {
 
     var body: some View {
         // 캐릭터가 계속 움직이는 화면이라, 동작 줄이기를 켠 사용자에게는 정지 프레임으로 보여준다.
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion)) { timeline in
+        // 픽셀 보행은 12fps면 프레임 구분이 선명하고, 10명+고해상도 배경을 24fps로
+        // 다시 합성할 때보다 GPU 부담이 작다.
+        TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: reduceMotion)) { timeline in
             GeometryReader { proxy in
                 let size = proxy.size
                 let t = timeline.date.timeIntervalSinceReferenceDate
@@ -116,8 +123,7 @@ private struct OfficeFloorView: View {
                 let workingIds = Set(agents.filter { $0.status.movesInOffice }.map(\.id))
 
                 ZStack {
-                    PixelOfficeBackdrop(activeAgentIds: workingIds,
-                                        pcPhase: Int(t * 2) % 3)
+                    PixelOfficeBackdrop(activeAgentIds: workingIds)
 
                     // Tap-outside-to-dismiss layer (below agents so agents still receive their own taps)
                     Color.clear
@@ -278,13 +284,7 @@ private struct AgentRoleCard: View {
                 ZStack {
                     Circle()
                         .fill(agent.status.color.opacity(0.15))
-                    PixelSprite(
-                        sheet: agent.spriteAsset,
-                        direction: .down,
-                        walking: false,
-                        walkPhase: 1,
-                        scale: 1.05
-                    )
+                    AgentPortrait(agent: agent, direction: .down, walking: false, walkPhase: 1, compact: true)
                 }
                 .frame(width: 42, height: 42)
 
@@ -393,54 +393,60 @@ private struct AgentFrame {
     let stage: Stage
     let carry: CarryKind?
 
-    enum Stage { case idle, walkingOut, reporting, walkingToWall, posting, returning, patrolling, validating }
+    enum Stage { case idle, walkingOut, reporting, walkingToWall, posting, returning, patrolling, validating, publishing, notifying, dispatching }
     enum CarryKind { case festival, event }
 }
 
 private enum OfficeChoreography {
-    // All positions live on tile centers: tile(col, row) = ((col+0.5)/21, (row+0.5)/22).
-    // Every route below runs along furniture-free rows/cols verified against OfficeLayout:
-    // clear rows 2, 8, 14 (cols 3–16) and clear cols 5.5, 9.5, 11.5, 15.5.
-    private static func tile(_ col: Double, _ row: Double) -> CGPoint {
-        CGPoint(x: (col + 0.5) / CGFloat(OfficeLayout.cols),
-                y: (row + 0.5) / CGFloat(OfficeLayout.rows))
+    // 생성 배경의 중앙 세로 통로(x 0.30...0.70)와 중단 가로 통로(y 0.43...0.72)를
+    // 안전 구역으로 삼는다. 모든 경로는 이 영역 안에서만 꺾여 책상·화분을 가로지르지 않는다.
+    private static func point(_ x: Double, _ y: Double) -> CGPoint {
+        CGPoint(x: CGFloat(x), y: CGFloat(y))
     }
 
-    // Homes sit on each agent's chair tile.
+    // 각 홈은 배경의 좌우 워크스테이션 또는 중앙 운영석 앞에 놓인다.
     private static let homes: [String: CGPoint] = [
-        "vera":     tile(2, 6),
-        "orion":    tile(10, 5),
-        "pixel":    tile(18, 6),
-        "festa":    tile(2, 13),
-        "scout":    tile(18, 13),
-        "echo":     tile(18, 17),
-        "sentinel": tile(5, 8)     // patrol loop start
+        "orion":    point(0.50, 0.33),
+        "vera":     point(0.16, 0.40),
+        "pixel":    point(0.84, 0.40),
+        "festa":    point(0.16, 0.52),
+        "scout":    point(0.84, 0.52),
+        "echo":     point(0.84, 0.66),
+        "atlas":    point(0.16, 0.68),
+        "relay":    point(0.20, 0.81),
+        "harbor":   point(0.80, 0.81),
+        "sentinel": point(0.30, 0.70)
     ]
 
-    // Collectors leave the desk sideways, take the col-5.5/15.5 corridor up to row 8,
-    // and stop beside Orion's chair (never on top of him).
+    // 수집 요원은 좌우 책상에서 가로 통로로 나온 뒤 Orion 양옆에 보고한다.
     private static let reportRoutes: [String: [CGPoint]] = [
-        "festa": [tile(2, 13), tile(5, 13), tile(5, 8), tile(9, 8), tile(9, 6)],
-        "scout": [tile(18, 13), tile(15, 13), tile(15, 8), tile(11, 8), tile(11, 6)]
+        "festa": [point(0.16, 0.52), point(0.30, 0.52), point(0.30, 0.39), point(0.44, 0.39)],
+        "scout": [point(0.84, 0.52), point(0.70, 0.52), point(0.70, 0.39), point(0.56, 0.39)]
     ]
-    // Straight down the clear col 9.5 / 11.5 to just above the notice board.
+    // 중앙 통로를 따라 하단 데이터 월 앞까지 이동한다.
     private static let boardRoutes: [String: [CGPoint]] = [
-        "festa": [tile(9, 6), tile(9, 18)],
-        "scout": [tile(11, 6), tile(11, 18)]
+        "festa": [point(0.44, 0.39), point(0.44, 0.84)],
+        "scout": [point(0.56, 0.39), point(0.56, 0.84)]
     ]
-    // Back home along the clear row 14 corridor.
     private static let homeRoutes: [String: [CGPoint]] = [
-        "festa": [tile(9, 18), tile(9, 14), tile(5, 14), tile(5, 13), tile(2, 13)],
-        "scout": [tile(11, 18), tile(11, 14), tile(15, 14), tile(15, 13), tile(18, 13)]
+        "festa": [point(0.44, 0.84), point(0.44, 0.70), point(0.30, 0.70), point(0.30, 0.52), point(0.16, 0.52)],
+        "scout": [point(0.56, 0.84), point(0.56, 0.70), point(0.70, 0.70), point(0.70, 0.52), point(0.84, 0.52)]
     ]
 
-    private static let veraRoute = [tile(2, 6), tile(5, 6), tile(5, 7)]
-    private static let pixelRoute = [tile(18, 6), tile(15, 6), tile(15, 14), tile(12, 14), tile(12, 16)]
-    private static let echoRoute = [tile(18, 17), tile(13, 17)]
+    private static let veraRoute = [point(0.16, 0.40), point(0.30, 0.40), point(0.38, 0.44)]
+    private static let pixelRoute = [point(0.84, 0.40), point(0.70, 0.40), point(0.70, 0.66), point(0.62, 0.66)]
+    private static let echoRoute = [point(0.84, 0.66), point(0.70, 0.66), point(0.64, 0.76)]
+    private static let atlasRoute = [point(0.16, 0.68), point(0.30, 0.68), point(0.30, 0.82), point(0.42, 0.82)]
+    private static let harborRoute = [point(0.80, 0.81), point(0.70, 0.81), point(0.70, 0.58), point(0.60, 0.58)]
 
-    // Sentinel patrols a rectangle around Orion's island through clear rows 2/8/14.
+    // Sentinel은 외곽 운영 통로, Relay는 중앙 Queue 루프를 돈다.
     private static let patrolPath: [CGPoint] = [
-        tile(5, 8), tile(5, 2), tile(15, 2), tile(15, 8), tile(15, 14), tile(5, 14)
+        point(0.30, 0.70), point(0.30, 0.43), point(0.70, 0.43),
+        point(0.70, 0.70), point(0.56, 0.78), point(0.36, 0.78)
+    ]
+    private static let relayPath: [CGPoint] = [
+        point(0.20, 0.81), point(0.34, 0.81), point(0.34, 0.58),
+        point(0.50, 0.58), point(0.50, 0.72), point(0.34, 0.72)
     ]
 
     static func frame(for agent: AgentOfficeAgent, at t: TimeInterval, snapshot: AgentOfficeSnapshot, hasLiveActivity: Bool) -> AgentFrame {
@@ -471,7 +477,18 @@ private enum OfficeChoreography {
         case "echo":
             return publisherFrame(t: t, hasItems: snapshot.published.count > 0)
         case "sentinel":
-            return patrolFrame(t: t)
+            return patrolFrame(t: t, path: patrolPath)
+        case "atlas":
+            return serviceFrame(t: t, offset: 2, home: home,
+                                route: atlasRoute, active: !snapshot.published.isEmpty,
+                                stage: .publishing)
+        case "harbor":
+            return serviceFrame(t: t, offset: 7, home: home,
+                                route: harborRoute,
+                                active: snapshot.merchantEventCount > 0 || hasLiveActivity,
+                                stage: .notifying)
+        case "relay":
+            return patrolFrame(t: t + 3, path: relayPath, stage: .dispatching)
         default:
             return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
                               stage: .idle, carry: nil)
@@ -591,14 +608,40 @@ private enum OfficeChoreography {
         }
     }
 
-    private static func patrolFrame(t: TimeInterval) -> AgentFrame {
+    private static func serviceFrame(t: TimeInterval, offset: Double, home: CGPoint,
+                                     route: [CGPoint], active: Bool,
+                                     stage: AgentFrame.Stage) -> AgentFrame {
+        guard active else {
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
+                              stage: .idle, carry: nil)
+        }
+        let cycle: Double = 18
+        let tau = (t + offset).truncatingRemainder(dividingBy: cycle)
+        switch tau {
+        case 0..<6:
+            return AgentFrame(position: home, direction: .up, walking: false, walkPhase: 1,
+                              stage: stage, carry: nil)
+        case 6..<10:
+            return walkFrame(route: route, progress: (tau - 6) / 4, t: t,
+                             stage: stage, carry: nil)
+        case 10..<13:
+            return AgentFrame(position: route.last ?? home, direction: .down,
+                              walking: false, walkPhase: 1, stage: stage, carry: nil)
+        default:
+            return walkFrame(route: Array(route.reversed()), progress: (tau - 13) / 5,
+                             t: t, stage: .returning, carry: nil)
+        }
+    }
+
+    private static func patrolFrame(t: TimeInterval, path: [CGPoint],
+                                    stage: AgentFrame.Stage = .patrolling) -> AgentFrame {
         let segDuration: Double = 6
-        let total = Double(patrolPath.count) * segDuration
+        let total = Double(path.count) * segDuration
         let tau = t.truncatingRemainder(dividingBy: total)
         let segIndex = Int(tau / segDuration)
         let local = (tau - Double(segIndex) * segDuration) / segDuration
-        let from = patrolPath[segIndex]
-        let to = patrolPath[(segIndex + 1) % patrolPath.count]
+        let from = path[segIndex]
+        let to = path[(segIndex + 1) % path.count]
         let pos = lerp(from, to, ease(local))
         let walking3 = Int(t * 6) % 3
         let dx = to.x - from.x
@@ -610,7 +653,7 @@ private enum OfficeChoreography {
             dir = dy >= 0 ? .down : .up
         }
         return AgentFrame(position: pos, direction: dir, walking: true, walkPhase: walking3,
-                          stage: .patrolling, carry: nil)
+                          stage: stage, carry: nil)
     }
 
     static func spokenLine(for agent: AgentOfficeAgent, frame: AgentFrame,
@@ -654,6 +697,13 @@ private enum OfficeChoreography {
             let tau = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: total)
             let local = tau - Double(Int(tau / segDuration)) * segDuration
             return local < 1.0 ? agent.line : nil
+        case "atlas":
+            return frame.stage == .publishing ? agent.reply : nil
+        case "harbor":
+            return frame.stage == .notifying ? agent.reply : nil
+        case "relay":
+            let local = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 12)
+            return local < 1.0 ? agent.reply : nil
         default:
             return nil
         }
@@ -688,8 +738,14 @@ private enum OfficeChoreography {
             return nextHourlyMinute(after: date, minute: 15)
         case "orion", "pixel", "echo":
             return nextThreeHourSlot(after: date, minute: 30)
+        case "atlas":
+            return nextMinuteOffset(after: date, intervalMinutes: 5, offset: 2)
+        case "relay":
+            return nextMinuteSlot(after: date, intervalMinutes: 1)
+        case "harbor":
+            return nil // 이벤트 등록 직후 실행되는 event-driven 요원
         case "vera", "sentinel":
-            return Calendar.current.date(byAdding: .second, value: 20, to: date)
+            return nextMinuteSlot(after: date, intervalMinutes: 1)
         default:
             return nil
         }
@@ -824,12 +880,12 @@ private struct AgentRunner: View {
                 .frame(width: 24, height: 6)
                 .offset(y: 24)
 
-            PixelSprite(
-                sheet: agent.spriteAsset,
+            AgentPortrait(
+                agent: agent,
                 direction: frame.direction,
                 walking: frame.walking,
                 walkPhase: frame.walkPhase,
-                scale: 1.6
+                compact: false
             )
 
             if let carry = frame.carry {
@@ -856,6 +912,55 @@ private struct AgentRunner: View {
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(agent.name), \(agent.role)\(spokenLine.map { ", \($0)" } ?? "")")
+    }
+}
+
+/// 기존 요원은 정확한 3방향 보행 프레임을 쓰고, 새 운영 요원은 생성된 투명 픽셀 아트를
+/// 보행 방향으로 반전하고 한 픽셀씩 바운스해 같은 좌표계에서 자연스럽게 움직인다.
+private struct AgentPortrait: View {
+    let agent: AgentOfficeAgent
+    let direction: PixelSprite.Direction
+    let walking: Bool
+    let walkPhase: Int
+    let compact: Bool
+
+    var body: some View {
+        Group {
+            if agent.usesGeneratedPortrait {
+                Image(agent.spriteAsset)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: compact ? 35 : 47, height: compact ? 39 : 61)
+                    .scaleEffect(x: direction == .left ? -1 : 1, y: 1)
+                    .offset(y: walking && walkPhase == 1 ? -1 : 0)
+            } else {
+                PixelSprite(
+                    sheet: agent.spriteAsset,
+                    direction: direction,
+                    walking: walking,
+                    walkPhase: walkPhase,
+                    scale: compact ? 1.05 : 1.6
+                )
+            }
+        }
+    }
+
+    private static func nextMinuteOffset(after date: Date, intervalMinutes: Int,
+                                         offset: Int) -> Date? {
+        let calendar = Calendar.current
+        var base = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        base.second = 0
+        guard let start = calendar.date(from: base) else { return nil }
+        let normalizedOffset = ((offset % intervalMinutes) + intervalMinutes) % intervalMinutes
+        for delta in 0...intervalMinutes {
+            guard let candidate = calendar.date(byAdding: .minute, value: delta, to: start),
+                  candidate > date else { continue }
+            if calendar.component(.minute, from: candidate) % intervalMinutes == normalizedOffset {
+                return candidate
+            }
+        }
+        return nil
     }
 }
 
@@ -1141,53 +1246,30 @@ private enum OfficeLayout {
 
 private struct PixelOfficeBackdrop: View {
     var activeAgentIds: Set<String> = []
-    var pcPhase: Int = 0
 
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            let tile = min(w / CGFloat(OfficeLayout.cols),
-                           h / CGFloat(OfficeLayout.rows))
-            let roomW = tile * CGFloat(OfficeLayout.cols)
-            let roomH = tile * CGFloat(OfficeLayout.rows)
-            let offX = (w - roomW) / 2
-            let offY = (h - roomH) / 2
+            Image("AgentOfficeHighRiseBackground")
+                .resizable()
+                .interpolation(.none)
+                .scaledToFill()
+                .frame(width: w, height: h)
+                .clipped()
 
-            ZStack(alignment: .topLeading) {
-                FloorTileGrid(tile: tile)
-                    .frame(width: roomW, height: roomH)
-
-                ForEach(Array(OfficeLayout.allFurniture.enumerated()), id: \.offset) { _, furn in
-                    PixelTile(name: "PA-\(furn.id)",
-                              widthTiles: furn.w, heightTiles: furn.h,
-                              tile: tile, flipH: furn.flipH)
-                        .offset(x: CGFloat(furn.col) * tile,
-                                y: CGFloat(furn.row) * tile)
-                }
-
-                // Desk PCs — screens animate while their agent is working
-                ForEach(OfficeLayout.deskPCs, id: \.agentId) { pc in
-                    let on = activeAgentIds.contains(pc.agentId)
-                    PixelTile(name: on ? "PA-PC_FRONT_ON_\(pcPhase + 1)" : "PA-PC_FRONT_OFF",
-                              widthTiles: 1, heightTiles: 2,
-                              tile: tile, flipH: false)
-                        .offset(x: CGFloat(pc.col) * tile,
-                                y: CGFloat(pc.row) * tile)
-                }
-
-                FloorShadowBaseboard(tile: tile)
-                    .frame(width: roomW, height: tile)
-                    .offset(y: CGFloat(OfficeLayout.wallBandRows) * tile - tile * 0.5)
-            }
-            .frame(width: roomW, height: roomH)
-            .offset(x: offX, y: offY)
+            LinearGradient(
+                colors: [Color.black.opacity(0.02), Color.clear, FestivalDesign.navy.opacity(0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
 
             HStack(spacing: 4) {
                 Rectangle()
                     .fill(FestivalDesign.teal)
                     .frame(width: 6, height: 6)
-                Text("업무 진행 중")
+                Text("LIVE · \(activeAgentIds.count)명")
                     .font(.festival(size: 9, weight: .bold))
                     .foregroundStyle(FestivalDesign.navy)
             }
@@ -1195,7 +1277,7 @@ private struct PixelOfficeBackdrop: View {
             .padding(.vertical, 3)
             .background(FestivalDesign.surface)
             .overlay(Rectangle().stroke(FestivalDesign.navy.opacity(0.7), lineWidth: 1))
-            .position(x: w - 62, y: 22)
+            .position(x: w - 58, y: 18)
         }
     }
 }

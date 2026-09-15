@@ -85,7 +85,19 @@ final class DiscoverySnapshotIndex {
                 guard let paidUntil = item.paidUntil, let end = DiscoverySnapshotStore.date(paidUntil), end > now else { return nil }
             }
             // Retain the existing one-day grace period and 14-day unknown-end window.
-            if let end = item.endDate, !end.isEmpty {
+            // Old merchant drafts could be approved with an end date earlier than their
+            // activation date. Their paid-until date is a safe fallback until the repaired
+            // server snapshot reaches the device; ordinary expired events stay expired.
+            let declaredEnd = item.endDate.flatMap { $0.isEmpty ? nil : String($0.prefix(10)) }
+            let hasReversedMerchantPeriod = item.source == "merchant" && item.isSponsored &&
+                declaredEnd.map { $0 < String(item.startDate.prefix(10)) } == true
+            let end: String?
+            if hasReversedMerchantPeriod {
+                end = item.paidUntil.flatMap { $0.isEmpty ? nil : String($0.prefix(10)) }
+            } else {
+                end = declaredEnd
+            }
+            if let end {
                 guard String(end.prefix(10)) >= dates.day(-1) else { return nil }
             } else {
                 guard !item.startDate.isEmpty, String(item.startDate.prefix(10)) >= dates.day(-14) else { return nil }

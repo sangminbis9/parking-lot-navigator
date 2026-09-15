@@ -69,6 +69,8 @@ export type MerchantEventRow = {
   start_date: string | null;
   end_date: string | null;
   image_url: string | null;
+  source: string;
+  source_url: string | null;
   paid_until: string | null;
   payment_key: string | null;
   payment_amount: number | null;
@@ -147,7 +149,7 @@ export async function getMerchantEventById(
   return await db
     .prepare(
       `SELECT id, merchant_id, title, description, benefit, event_type, status,
-              store_name, address, lat, lng, start_date, end_date, image_url,
+              store_name, address, lat, lng, start_date, end_date, image_url, source, source_url,
               paid_until, payment_key, payment_amount, created_at, updated_at
        FROM local_events WHERE id = ? LIMIT 1`,
     )
@@ -162,11 +164,11 @@ export async function markEventApproved(
     paymentKey: string;
     paymentAmount: number;
     paidUntil: string;
-    startDate: string | null;
+    startDate: string;
+    endDate: string;
   },
 ): Promise<void> {
   const now = new Date().toISOString();
-  const resolvedStart = input.startDate ?? now.slice(0, 10);
   await db
     .prepare(
       `UPDATE local_events
@@ -174,7 +176,8 @@ export async function markEventApproved(
            payment_key = ?,
            payment_amount = ?,
            paid_until = ?,
-           start_date = COALESCE(start_date, ?),
+           start_date = ?,
+           end_date = ?,
            approved_at = ?,
            updated_at = ?
        WHERE id = ?`,
@@ -183,7 +186,8 @@ export async function markEventApproved(
       input.paymentKey,
       input.paymentAmount,
       input.paidUntil,
-      resolvedStart,
+      input.startDate,
+      input.endDate,
       now,
       now,
       input.id,
@@ -198,7 +202,7 @@ export async function listMerchantEvents(
   const result = await db
     .prepare(
       `SELECT id, merchant_id, title, description, benefit, event_type, status,
-              store_name, address, lat, lng, start_date, end_date, image_url,
+              store_name, address, lat, lng, start_date, end_date, image_url, source, source_url,
               paid_until, payment_key, payment_amount, created_at, updated_at
        FROM local_events
        WHERE merchant_id = ?

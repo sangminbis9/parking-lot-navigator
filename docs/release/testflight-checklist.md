@@ -8,7 +8,7 @@
 - [ ] App Intents 실행 확인
 - [ ] Share Extension 텍스트/URL 수신 확인
 - [ ] App Group 저장소 전달 확인 (main app ↔ Share Extension ↔ Widget Extension)
-- [ ] 캘린더 탭 dot 표시 + 일별 상세 시트 동작 확인
+- [ ] Agent Office 탭의 고층 픽셀 배경·10명 동선 확인 + Large 위젯 주간 캘린더 유지 확인
 - [ ] 필터 시트 적용 시 캘린더와 위젯이 같은 결과로 동기화
 - [ ] 홈 화면에 Medium `UpcomingFestivalsWidget` 추가 시 다가오는 축제 3개 카드 표시
 - [ ] 위젯 빈 상태(90일 매칭 없음) 문구 노출 확인

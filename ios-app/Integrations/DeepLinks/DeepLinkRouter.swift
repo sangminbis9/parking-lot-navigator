@@ -13,10 +13,9 @@ final class DeepLinkRouter: ObservableObject {
     @Published var pendingEvent: FreeEvent?
     /// 서버 푸시가 실어 보내는 로컬 이벤트 id. 상세는 앱이 API로 받아 온다.
     @Published var pendingLocalEventId: String?
-    /// 캘린더 탭으로만 보내는 진입점(위젯 "전체 보기"). 값이 바뀌는 것 자체가 신호다.
+    /// 예전 캘린더 탭 URL과의 호환 진입점. 앱은 현재 이벤트 목록으로 연결한다.
     @Published var pendingCalendarAt: Date?
-    /// 묶음 푸시가 가리키는 날짜. 탭을 여는 신호(`pendingCalendarAt`)와 달리 캘린더 화면이
-    /// 나타난 뒤에 읽어 가므로 published가 아니다 — 탭이 아직 만들어지지 않았어도 살아남는다.
+    /// 예전 캘린더 딥링크가 가리키던 날짜. 숨긴 화면 코드를 되살릴 때를 위해 모델은 보존한다.
     var pendingCalendarDay: Date?
     /// 알림을 탭했을 때 여는 알림센터. 값이 바뀌는 것 자체가 여는 신호다.
     /// 알림 진입만 이 경로를 쓰고, URL 딥링크와 앱 안 이동은 예전 그대로 각자 목적지로 간다.

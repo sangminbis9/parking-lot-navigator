@@ -1,6 +1,35 @@
 # 프로젝트 상태
 
-마지막 업데이트: 2026-09-15
+마지막 업데이트: 2026-09-16
+
+## 2026-09-16 Agent Office 탭·픽셀 고층 사무실 개편
+
+- 기본 탭은 `지도 → 이벤트 → 즐겨찾기 → 사무실 → 설정` 5개다. `CalendarTabView`와 관련 모델 코드는 삭제하지 않고 숨겼으며, 홈 화면 위젯의 주간 캘린더 UI도 유지한다. 기존 `parkingnavigator://calendar` URL은 더 이상 숨은 탭을 열지 않고 이벤트 목록으로 안전하게 연결한다.
+- Agent Office는 설정의 중복 진입점을 제거하고 네 번째 기본 탭으로 복구했다. 기존 7명 역할을 현재 파이프라인 용어로 정리하고 Atlas(스냅샷·CDN), Harbor(사장님 이벤트·Slack), Relay(Cron·Queue)를 추가해 10명으로 확장했다.
+- OpenAI 이미지 생성으로 서울 야경 통창이 있는 고층 픽셀 사무실 배경과 신규 요원 3명의 투명 픽셀 아트를 제작했다. 중앙/중단의 비어 있는 통로에 맞춰 수집 보고·게시판·이미지·스냅샷·Slack·Queue·주차 순찰 경로를 정규화 좌표로 다시 배치했다. 기존 7명은 정확한 방향별 보행 프레임을 위해 기존 MIT 스프라이트를 유지한다.
+- 상시 탭 전환에 따른 서버 부하를 막기 위해 Agent Office 폴링을 20초 전체 80건 조회에서 60초 증분(최초 80건, 이후 최대 30건) 조회로 변경하고 클라이언트에서 ID 중복 제거 후 최근 80건을 유지한다. 방문한 탭을 메모리에 보존하더라도 실제로 사무실 탭이 선택된 동안에만 task가 살아 있고 이탈하면 즉시 취소된다.
+- 탭 순서·10명 역할 단위 테스트와 캘린더 딥링크/스토어 스크린샷 UI 테스트를 갱신했다. Windows에는 Swift/Xcode가 없어 컴파일·실기기 동선 확인은 다음 Codemagic 빌드에서 수행해야 한다. Worker/D1 변경은 없다.
+
+## 2026-09-16 Slack 데일리 보고 사장님 이벤트 상세 제거
+
+- 매일 20:00 KST 데일리 보고의 사장님 직접 등록 항목은 당일 등록 개수만 표시한다. 개별 제목·주소·혜택·설명·쿠폰·이미지 카드는 데일리 보고에서 제거했다.
+- 데일리 보고가 `local_events` 상세 행을 다시 조회하지 않고 기존 집계 쿼리의 `merchant_count`만 사용하므로 local_events 일일 scan은 2회에서 1회로 줄고 Slack 전송은 항상 1개 메시지다.
+- 등록 직후 보내는 사장님 이벤트 즉시 알림은 변경하지 않아 모든 입력 정보·쿠폰 버튼·대표 이미지를 계속 전송한다. Worker 전체 43파일/361테스트와 TypeScript 검사를 통과했고 운영 Worker `906eb304-cad3-405e-97fe-82ebadbdc0c2` 배포 완료. D1 마이그레이션과 iOS 변경은 없다.
+
+## 2026-09-15 사장님 신규 등록 Slack 즉시 알림
+
+- 이벤트 폼 저장 직후 `waitUntil`에서 같은 `SLACK_DAILY_REPORT_WEBHOOK_URL`로 카드 메시지를 보낸다. 제목·혜택·유형·설명·매장명·주소·쿠폰 링크·기간·상태를 포함하고 HTTPS 대표 이미지가 있으면 이미지 블록으로 표시한다.
+- Slack 실패는 이벤트 저장/결제 이동을 취소하지 않는다. 실패 때만 기존 `parkingnav-background` Queue가 최대 2회 재시도하고, 이벤트 ID별 비공개 R2 완료표시로 중복을 줄인다. 정상 등록은 추가 Queue/D1 없이 Slack 1회와 R2 head+write만 사용한다.
+- Worker TypeScript 및 전체 43파일/361테스트 통과. 운영 Worker `93bee2ca-46fa-44ce-a1f0-6fee6959c2ab` 배포 완료. 실제 신규 등록 Slack 수신 검증은 다음 테스트 등록 때 확인한다. D1 마이그레이션과 iOS 변경은 없다.
+
+## 2026-09-15 사장님 로컬 이벤트 상세·지도 노출 복구
+
+- 운영의 `테스트` 이벤트는 `approved`, 좌표·`paid_until` 정상인데 `start_date=2026-09-15`, `end_date=2026-05-21`로 기간이 역전되어 앱 만료 필터에서 빠지고 있었다. 대시보드의 `상세 보기`가 연결한 `GET /merchant/event/:id` 라우트도 구현되지 않아 404가 발생했다.
+- 사장님 소유 이벤트 상세 페이지를 추가했다. 승인/결제대기/검수/만료/반려 상태, 매장·주소·혜택·설명·유형·기간·이미지를 표시하고 결제대기는 등록 계속하기로 연결한다. 다른 사장님의 이벤트는 404로 보호하고 비로그인은 로그인 화면으로 보낸다.
+- 새 등록은 잘못된 날짜·종료일 과거·시작/종료 역전을 서버에서 거부한다. 승인일 기준 3개월 게시 만료를 계산하고, 날짜를 비웠거나 승인 시 이미 무효가 된 기간은 `start_date`/`end_date`에도 실제 게시 기간을 기록한다. 따라서 종료일이 없는 이벤트가 앱의 14일 fallback 때문에 조기 소멸하지 않는다.
+- iOS 스냅샷 인덱스는 과거 데이터 중 `source=merchant`, 스폰서 행의 종료일이 시작일보다 앞선 경우에만 `paidUntil`을 방어적으로 사용한다. 정상적으로 종료된 이벤트는 되살리지 않는다.
+- 운영 `테스트` 행은 2026-09-15~2026-12-15로 보정했고 공개 상세/반경 목록 API에서 조회됨을 확인했다. Worker `0753508a-5713-4dce-a390-1722b2b38f63` 배포 완료. Worker TypeScript와 전체 42파일/358테스트 통과. iOS 컴파일은 Windows에서 미실행이다.
+- 원본 스냅샷 발행은 현재 `publication_queue_budget`, `retryAt=2026-09-16T00:01:00Z`(09:01 KST) 대기 중이다. D1 수정 트리거가 local bucket 8을 dirty 처리했으므로 한도 해제 후 우선 발행되며, 그 전에도 공개 `/api/local-events`는 정상이다.
 
 ## 2026-09-15 Slack 일일 통계 — Worker 배포 완료·첫 수신 대기
 
@@ -257,12 +286,12 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 - Figma 리디자인 참조: `Festival-Event-App-Redesign`.
 - 테마 시스템: 설정 → 테마에서 6종 선택 — 허니 옐로(기본)/피치 코랄/민트 그린/스카이 블루/라벤더/**크레파스**. `FestivalTheme`(enum, UserDefaults `festivalTheme` 영속) + `FestivalThemePalette`(12색) + `FestivalDesign`(static 토큰 accessor) 구조이며, 컴포넌트는 색/radius/도형/폰트를 모두 토큰으로 참조한다.
 - 크레파스 테마는 `isHandDrawn` 분기로 **룩 전체**가 손그림으로 바뀐다: ① 번들된 개구쟁이체(Gaegu, OFL — `Resources/Fonts/`, `Font.festival`/`FestivalDesign.uiFont` 토큰 264곳) ② 카드 왁스 이중 스트로크 + 오프셋 스티커 그림자(`FestivalCardBackground`) ③ 컨트롤/칩 손그림 외곽선(`FestivalDesign.controlShape`/`chipShape`, `RoughRoundedRectangle`) ④ 종이 알갱이 + 사선 크레용 해칭 질감(`PaperTexture`, 루트 `paperGrainOverlay()`) ⑤ 네비/탭바·지도 마커 라벨 손글씨. 다른 테마는 비분기 경로라 시각적 영향이 없다. 핵심 파일: `Core/DesignSystem/FestivalDesign.swift`, `Core/DesignSystem/HandDrawnStyle.swift`.
-- 탭 바 순서는 `지도 → 이벤트 → 즐겨찾기 → 캘린더 → 사무실 → 설정` (6개 탭). 캘린더 탭은 테마가 적용된 월간 그리드이며 아래에 인라인 어젠다가 있다: 날짜를 선택하면 그날의 축제를 그 자리에서 목록으로 보여주고(상세 시트 없음), 축제별 즐겨찾기 저장(별표)과 시작 전 로컬 알림(종) 토글, 스와이프 월 이동, "오늘 / 이번 주말" 프리셋을 제공한다.
+- 탭 바 순서는 `지도 → 이벤트 → 즐겨찾기 → 사무실 → 설정` (5개 탭)이다. 기존 캘린더 화면 구현은 소스에 보존하지만 기본 탭에서는 숨기며, 캘린더 형태의 Large 홈 위젯은 유지한다.
 - 캘린더와 위젯이 사용하는 공유 필터 축: 지역(시·도), 거리 반경(10/20/50km/무제한), 태그/장르, 진행 상태(진행중/예정). 필터 상태는 App Group `UserDefaults` 에 영속되어 두 화면이 함께 사용한다.
 
 ## 캘린더 + 위젯 아키텍처
 
-- 캘린더 탭은 `/api/festivals` 응답을 `upcomingWithinDays=90` 으로 받아 `[Date: [Festival]]` 버킷으로 정리하고, 날짜 셀에 dot 인디케이터(진행 중 → teal, 예정 → lantern)를 표시한다. (`/api/festivals` 가 60s edge cache 적용 앱 전용 엔드포인트이며, `/discover/festivals` 는 캐시 없는 내부/레거시 경로이다.)
+- 보존된 캘린더 화면과 위젯 캐시는 `/api/festivals` 응답을 `upcomingWithinDays=90`으로 받아 날짜 버킷으로 정리한다. 기본 탭에서는 캘린더 화면을 만들지 않으며 위젯 동기화와 Large 위젯의 주간 캘린더 표현만 계속 제공한다.
 - iOS 홈 화면 **Medium 위젯** `UpcomingFestivalsWidget` 가 다가오는 축제 3개를 카드 형태로 노출한다. 위젯은 네트워크를 직접 호출하지 않고 App Group container 의 `widget_festivals.json` 캐시만 읽는다.
 - `FestivalSyncService` (앱 본체) 가 cold start, foreground 진입, 필터 변경 시 `/api/festivals` 를 호출 → 필터 적용 → 상위 ~20개를 `SharedFestivalCache` 에 저장 → `WidgetCenter.shared.reloadTimelines(ofKind: "UpcomingFestivalsWidget")` 를 호출한다.
 - App Group ID 는 기존 메인 앱이 쓰던 `group.com.sangminbis9.ParkingLotNavigator` 를 재사용한다. 위젯 entitlements 도 동일한 그룹을 참조한다.

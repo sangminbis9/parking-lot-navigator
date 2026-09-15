@@ -12,6 +12,8 @@ enum AppTab: Hashable {
     case map
     case discover
     case favorites
+    case office
+    // 화면 코드는 보존하지만 기본 탭바에는 노출하지 않는다.
     case calendar
     case settings
 
@@ -20,6 +22,7 @@ enum AppTab: Hashable {
         case .map: return "지도"
         case .discover: return "이벤트"
         case .favorites: return "즐겨찾기"
+        case .office: return "사무실"
         case .calendar: return "캘린더"
         case .settings: return "설정"
         }
@@ -30,6 +33,7 @@ enum AppTab: Hashable {
         case .map: return "map.fill"
         case .discover: return "sparkles"
         case .favorites: return "star.fill"
+        case .office: return "building.2.fill"
         case .calendar: return "calendar"
         case .settings: return "gearshape.fill"
         }
@@ -41,12 +45,13 @@ enum AppTab: Hashable {
         case .map: return "tab-map"
         case .discover: return "tab-discover"
         case .favorites: return "tab-favorites"
+        case .office: return "tab-office"
         case .calendar: return "tab-calendar"
         case .settings: return "tab-settings"
         }
     }
 
-    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .calendar, .settings]
+    static let visibleTabs: [AppTab] = [.map, .discover, .favorites, .office, .settings]
 }
 
 final class AppTabRouter: ObservableObject {
@@ -87,7 +92,8 @@ struct AppRootView: View {
                         TabNavigationStack(
                             router: routers.router(for: tab),
                             tab: tab,
-                            apiClient: apiClient
+                            apiClient: apiClient,
+                            isActive: tab == tabRouter.selectedTab
                         )
                         .opacity(tab == tabRouter.selectedTab ? 1 : 0)
                         .allowsHitTesting(tab == tabRouter.selectedTab)
@@ -128,9 +134,9 @@ struct AppRootView: View {
             festivalSync.syncIfStale(coordinate: nil, minimumInterval: 1_800)
             discoveryService.scheduleNextRefresh()
         }
-        .task(id: scenePhase == .active && (tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .calendar)) {
+        .task(id: scenePhase == .active && (tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .office)) {
             guard scenePhase == .active,
-                  tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .calendar else { return }
+                  tabRouter.selectedTab == .map || tabRouter.selectedTab == .discover || tabRouter.selectedTab == .office else { return }
             while !Task.isCancelled {
                 try? await apiClient.checkDiscoverySnapshot()
                 do { try await Task.sleep(nanoseconds: 60_000_000_000) }
@@ -179,7 +185,9 @@ struct AppRootView: View {
         .onReceive(DeepLinkRouter.shared.$pendingCalendarAt) { at in
             guard at != nil else { return }
             DeepLinkRouter.shared.pendingCalendarAt = nil
-            openTab(.calendar).path.removeAll()
+            // 캘린더 탭은 숨겼지만 기존 위젯/푸시 URL은 깨지지 않게 이벤트 목록으로 보낸다.
+            DeepLinkRouter.shared.pendingCalendarDay = nil
+            openTab(.discover).path.removeAll()
         }
         .onReceive(DeepLinkRouter.shared.$pendingFestival) { festival in
             guard let festival else { return }
@@ -298,6 +306,7 @@ final class TabRouters: ObservableObject {
     let map = Router()
     let discover = Router()
     let favorites = Router()
+    let office = Router()
     let calendar = Router()
     let settings = Router()
 
@@ -306,6 +315,7 @@ final class TabRouters: ObservableObject {
         case .map: return map
         case .discover: return discover
         case .favorites: return favorites
+        case .office: return office
         case .calendar: return calendar
         case .settings: return settings
         }
@@ -316,6 +326,7 @@ private struct TabNavigationStack: View {
     @ObservedObject var router: Router
     let tab: AppTab
     let apiClient: APIClientProtocol
+    let isActive: Bool
 
     var body: some View {
         NavigationStack(path: $router.path) {
@@ -336,6 +347,8 @@ private struct TabNavigationStack: View {
             SearchView(apiClient: apiClient)
         case .favorites:
             FavoritesView()
+        case .office:
+            AgentOfficeView(apiClient: apiClient, isActive: isActive)
         case .calendar:
             CalendarTabView(apiClient: apiClient)
         case .settings:
