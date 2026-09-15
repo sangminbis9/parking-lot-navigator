@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "주차장 내비게이터 전체 시스템 아키텍처",
+    "quality_profile": "showcase",
+    "viewBox": [1260, 540],
+    "repository": {
+      "url": "https://github.com/sangminbis9/parking-lot-navigator",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "10e11eafce513a73ab98e19137417ecbbb9d719e"
+    },
+    "views": [
+      {
+        "id": "discovery-delivery",
+        "label": "행사 핀 배포",
+        "focus": ["data-sources", "api-worker", "d1", "scheduler", "r2", "github-publisher", "static-assets", "ios-app"],
+        "note": "수집된 행사 데이터가 변경 묶음으로 발행되고 앱의 로컬 공간 인덱스까지 도달하는 경로입니다."
+      },
+      {
+        "id": "realtime-parking",
+        "label": "실시간 주차",
+        "focus": ["data-sources", "scheduler", "api-worker", "r2", "ios-app"],
+        "note": "4개 shard를 약 16분에 한 바퀴 수집하고, API가 R2 캐시에서 현재 지도 영역을 반환합니다."
+      },
+      {
+        "id": "operations-reporting",
+        "label": "운영·통계",
+        "focus": ["ios-app", "api-worker", "d1", "r2", "slack", "apns"],
+        "note": "익명 앱 활동, 알림, 매일 20시 Slack 보고와 중복 방지 상태를 함께 보여줍니다."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "data-sources",
+      "type": "external",
+      "label": "공공·문화 데이터 원본",
+      "sublabel": "지자체 · KOPIS · KCISA · 주차 API",
+      "pos": [25, 60],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/src/index.ts", "line": 1936, "label": "provider runtime" }]
+    },
+    {
+      "id": "merchant-portal",
+      "type": "frontend",
+      "label": "사장님 등록 화면",
+      "sublabel": "OAuth · 결제 · 로컬 이벤트",
+      "pos": [25, 210],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/src/merchant/routes.ts", "line": 1, "label": "merchant routes" }]
+    },
+    {
+      "id": "api-worker",
+      "type": "backend",
+      "label": "Cloudflare API Worker",
+      "sublabel": "수집 · 조회 · 분석 · 관리 API",
+      "brand": "cloudflare",
+      "pos": [270, 140],
+      "size": [200, 92],
+      "sources": [
+        { "path": "worker-backend/src/index.ts", "line": 435, "label": "realtime API" },
+        { "path": "worker-backend/src/index.ts", "line": 549, "label": "snapshot API" },
+        { "path": "worker-backend/src/index.ts", "line": 761, "label": "analytics API" }
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "messagebus",
+      "label": "Cron + Background Queue",
+      "sublabel": "분산 수집 · 발행 · 재시도",
+      "pos": [270, 340],
+      "size": [200, 82],
+      "sources": [
+        { "path": "worker-backend/src/jobs.ts", "line": 61, "label": "queue dispatch" },
+        { "path": "worker-backend/src/index.ts", "line": 1451, "label": "scheduled handler" }
+      ]
+    },
+    {
+      "id": "d1",
+      "type": "database",
+      "label": "Cloudflare D1",
+      "sublabel": "행사 · 주차 · 상점 · 분석 원장",
+      "brand": "cloudflare",
+      "pos": [515, 70],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/wrangler.toml", "line": 98, "label": "DB binding" }]
+    },
+    {
+      "id": "r2",
+      "type": "database",
+      "label": "비공개 Cloudflare R2",
+      "sublabel": "행사 snapshot · 실시간 shard · 완료표시",
+      "brand": "cloudflare",
+      "pos": [515, 240],
+      "size": [200, 92],
+      "sources": [
+        { "path": "worker-backend/src/discoverySnapshot.ts", "line": 1, "label": "discovery objects" },
+        { "path": "worker-backend/src/realtimeSnapshot.ts", "line": 1, "label": "parking shards" },
+        { "path": "worker-backend/src/dailySlackReport.ts", "line": 7, "label": "report marker" }
+      ]
+    },
+    {
+      "id": "github-publisher",
+      "type": "messagebus",
+      "label": "GitHub Actions 발행기",
+      "sublabel": "변경 확인 · 전체 검증 · 원자적 배포",
+      "brand": "github-actions",
+      "pos": [515, 400],
+      "size": [200, 82],
+      "sources": [{ "path": ".github/workflows/publish-discovery-assets.yml", "line": 1, "label": "static publication" }]
+    },
+    {
+      "id": "static-assets",
+      "type": "cloud",
+      "label": "행사 Static Assets",
+      "sublabel": "해시 파트 · manifest · status",
+      "brand": "cloudflare",
+      "pos": [760, 400],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/wrangler.assets.toml", "line": 1, "label": "assets worker" }]
+    },
+    {
+      "id": "ios-app",
+      "type": "frontend",
+      "label": "iOS SwiftUI 앱",
+      "sublabel": "로컬 snapshot · 공간 검색 · 지도 핀",
+      "pos": [1020, 240],
+      "size": [220, 92],
+      "sources": [
+        { "path": "ios-app/Core/Networking/APIClient.swift", "line": 88, "label": "API client" },
+        { "path": "ios-app/Core/Networking/DiscoverySnapshotStore.swift", "line": 1, "label": "local snapshot" },
+        { "path": "ios-app/Features/Map/MapHomeViewModel.swift", "line": 8, "label": "15-minute refresh" }
+      ]
+    },
+    {
+      "id": "users",
+      "type": "external",
+      "label": "운전자·행사 방문자",
+      "sublabel": "지도 · 달력 · 알림 · 길안내",
+      "pos": [1020, 70],
+      "size": [220, 82]
+    },
+    {
+      "id": "apns",
+      "type": "external",
+      "label": "Apple Push Notification",
+      "sublabel": "다가오는 행사 알림",
+      "pos": [760, 70],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/src/apns.ts", "line": 1, "label": "APNs client" }]
+    },
+    {
+      "id": "slack",
+      "type": "external",
+      "label": "Slack 운영 보고",
+      "sublabel": "매일 20:00 KST · 카드형 상세",
+      "pos": [760, 235],
+      "size": [190, 82],
+      "sources": [{ "path": "worker-backend/src/dailySlackReport.ts", "line": 272, "label": "daily report" }]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cloudflare 운영 경계",
+      "wraps": ["api-worker", "scheduler", "d1", "r2", "static-assets"],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "비공개 데이터·시크릿 경계",
+      "wraps": ["d1", "r2"],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    { "id": "sources-to-worker", "from": "data-sources", "to": "api-worker", "label": "예약 수집 · 정규화", "variant": "emphasis", "labelAt": [220, 165] },
+    { "id": "merchant-to-worker", "from": "merchant-portal", "to": "api-worker", "label": "HTTPS 등록·관리", "labelAt": [243, 306] },
+    { "id": "scheduler-to-worker", "from": "scheduler", "to": "api-worker", "label": "Cron·Queue job", "variant": "dashed" },
+    { "id": "worker-to-d1", "from": "api-worker", "to": "d1", "label": "SQL 원장 읽기·쓰기", "labelAt": [560, 166] },
+    { "id": "worker-to-r2", "from": "api-worker", "to": "r2", "label": "변경 snapshot·주차 shard", "variant": "emphasis", "labelAt": [615, 220] },
+    { "id": "r2-to-publisher", "from": "r2", "to": "github-publisher", "label": "공개 DTO·해시 검증", "labelAt": [615, 346] },
+    { "id": "publisher-to-assets", "from": "github-publisher", "to": "static-assets", "label": "원자적 assets 배포", "variant": "emphasis", "labelAt": [738, 386] },
+    { "id": "assets-to-ios", "from": "static-assets", "to": "ios-app", "label": "HTTPS 변경 파트만 다운로드", "variant": "emphasis" },
+    { "id": "ios-to-worker", "from": "ios-app", "to": "api-worker", "label": "실시간 주차·분석·상세 API", "labelAt": [885, 220] },
+    { "id": "worker-to-apns", "from": "api-worker", "to": "apns", "label": "행사 알림 push", "variant": "dashed", "labelAt": [735, 166] },
+    { "id": "apns-to-ios", "from": "apns", "to": "ios-app", "label": "APNs", "labelAt": [975, 165] },
+    { "id": "worker-to-slack", "from": "api-worker", "to": "slack", "label": "20:00 통계·사장님 카드", "variant": "dashed" },
+    { "id": "users-to-ios", "from": "users", "to": "ios-app", "label": "탐색·필터·지도 이동", "variant": "emphasis", "labelAt": [1130, 166] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "핀 표시 경로",
+      "items": ["행사 핀은 앱에 내려받은 전체 snapshot을 로컬 공간 인덱스로 조회", "지도 이동 자체는 행사 파일 재다운로드나 서버 범위 조회를 만들지 않음"]
+    },
+    {
+      "dot": "emerald",
+      "title": "변경·장애 격리",
+      "items": ["변경된 해시 파트만 교체하고 불완전 발행은 이전 manifest를 보존", "실시간 주차는 별도 R2 shard와 30초 엣지 캐시로 행사 배포와 분리"]
+    },
+    {
+      "dot": "violet",
+      "title": "운영 자동화",
+      "items": ["Cron 4개와 Background Queue가 수집·발행·복구를 분산", "Slack 보고는 R2 완료표시로 20:10·20:20 재시도 중복을 방지"]
+    }
+  ]
+}
