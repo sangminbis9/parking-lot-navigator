@@ -83,7 +83,23 @@ struct AgentOfficeAgent: Identifiable {
     let reply: String
 
     var usesGeneratedPortrait: Bool {
-        ["AgentAtlas", "AgentHarbor", "AgentRelay"].contains(spriteAsset)
+        true
+    }
+
+    static func displayName(forID id: String) -> String {
+        switch id {
+        case "orion": return "총괄이"
+        case "festa": return "축제맨"
+        case "scout": return "행사맨"
+        case "vera": return "검증이"
+        case "pixel": return "사진이"
+        case "sentinel": return "주차맨"
+        case "echo": return "게시알"
+        case "atlas": return "스냅이"
+        case "harbor": return "가게알"
+        case "relay": return "전달이"
+        default: return id.uppercased()
+        }
     }
 }
 
@@ -235,7 +251,7 @@ final class AgentOfficeViewModel: ObservableObject {
         return [
             AgentOfficeAgent(
                 id: "orion",
-                name: "Orion",
+                name: AgentOfficeAgent.displayName(forID: "orion"),
                 role: "운영 총괄",
                 spriteAsset: "AgentChar0",
                 status: .thinking,
@@ -244,7 +260,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "festa",
-                name: "Festa",
+                name: AgentOfficeAgent.displayName(forID: "festa"),
                 role: "공공 축제 수집",
                 spriteAsset: "AgentChar1",
                 status: festivalCount > 0 ? .collecting : .idle,
@@ -253,7 +269,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "scout",
-                name: "Scout",
+                name: AgentOfficeAgent.displayName(forID: "scout"),
                 role: "로컬 이벤트 수집",
                 spriteAsset: "AgentChar2",
                 status: eventCount > 0 ? .collecting : .idle,
@@ -262,7 +278,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "vera",
-                name: "Vera",
+                name: AgentOfficeAgent.displayName(forID: "vera"),
                 role: "품질·누락 검증",
                 spriteAsset: "AgentChar3",
                 status: validatorStatus(parking: p, discovery: d),
@@ -271,7 +287,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "pixel",
-                name: "Pixel",
+                name: AgentOfficeAgent.displayName(forID: "pixel"),
                 role: "이미지 보강",
                 spriteAsset: "AgentChar5",
                 status: missingImages > 0 ? .validating : .idle,
@@ -280,7 +296,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "sentinel",
-                name: "Sentinel",
+                name: AgentOfficeAgent.displayName(forID: "sentinel"),
                 role: "실시간 주차 감시",
                 spriteAsset: "AgentChar4",
                 status: healthStatus(for: p),
@@ -291,7 +307,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "echo",
-                name: "Echo",
+                name: AgentOfficeAgent.displayName(forID: "echo"),
                 role: "게시·알림",
                 spriteAsset: "AgentChar6",
                 status: snapshot.published.isEmpty ? .idle : .monitoring,
@@ -300,7 +316,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "atlas",
-                name: "Atlas",
+                name: AgentOfficeAgent.displayName(forID: "atlas"),
                 role: "스냅샷·CDN",
                 spriteAsset: "AgentAtlas",
                 status: snapshot.published.isEmpty ? .idle : .monitoring,
@@ -311,7 +327,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "harbor",
-                name: "Harbor",
+                name: AgentOfficeAgent.displayName(forID: "harbor"),
                 role: "사장님 이벤트·Slack",
                 spriteAsset: "AgentHarbor",
                 status: snapshot.merchantEventCount > 0 ? .monitoring : .idle,
@@ -322,7 +338,7 @@ final class AgentOfficeViewModel: ObservableObject {
             ),
             AgentOfficeAgent(
                 id: "relay",
-                name: "Relay",
+                name: AgentOfficeAgent.displayName(forID: "relay"),
                 role: "Cron·Queue",
                 spriteAsset: "AgentRelay",
                 status: .monitoring,

@@ -89,7 +89,7 @@ struct AgentOfficeView: View {
     }
 
     private var attribution: some View {
-        Text("사무실·신규 요원: OpenAI 생성 픽셀 아트 · 이동 스프라이트: harishkotra/agent-office (MIT)")
+        Text("사무실·전체 요원: OpenAI 생성 픽셀 아트")
             .font(.festival(.caption2))
             .foregroundStyle(FestivalDesign.secondaryText.opacity(0.8))
     }
@@ -109,79 +109,60 @@ private struct OfficeFloorView: View {
     let activity: [AgentActivityEvent]
     @State private var selectedAgentId: String?
     @State private var showBoardLog = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // 캐릭터가 계속 움직이는 화면이라, 동작 줄이기를 켠 사용자에게는 정지 프레임으로 보여준다.
-        // 픽셀 보행은 12fps면 프레임 구분이 선명하고, 10명+고해상도 배경을 24fps로
-        // 다시 합성할 때보다 GPU 부담이 작다.
-        TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: reduceMotion)) { timeline in
-            GeometryReader { proxy in
-                let size = proxy.size
-                let t = timeline.date.timeIntervalSinceReferenceDate
+        GeometryReader { proxy in
+            let size = proxy.size
+            let workingIds = Set(agents.filter { $0.status.isWorkingAtStation }.map(\.id))
 
-                let workingIds = Set(agents.filter { $0.status.movesInOffice }.map(\.id))
+            ZStack {
+                PixelOfficeBackdrop(activeAgentIds: workingIds)
 
-                ZStack {
-                    PixelOfficeBackdrop(activeAgentIds: workingIds)
-
-                    // Tap-outside-to-dismiss layer (below agents so agents still receive their own taps)
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
-                        }
-
-                    ForEach(agents) { agent in
-                        let live = liveLine(for: agent.id)
-                        let frame = OfficeChoreography.frame(
-                            for: agent,
-                            at: t,
-                            snapshot: snapshot,
-                            hasLiveActivity: live != nil
-                        )
-                        let line = live
-                            ?? OfficeChoreography.spokenLine(for: agent, frame: frame, snapshot: snapshot)
-                        AgentRunner(
-                            agent: agent,
-                            frame: frame,
-                            spokenLine: line,
-                            onTap: {
-                                withAnimation(.spring(duration: 0.2)) {
-                                    selectedAgentId = selectedAgentId == agent.id ? nil : agent.id
-                                }
-                            }
-                        )
-                        .position(x: frame.position.x * size.width,
-                                  y: frame.position.y * size.height)
-                    }
-
-                    // PublishedWall is the topmost z-layer — agents walk underneath the board
-                    PublishedWall(items: snapshot.published)
-                        .frame(width: size.width * 0.48, height: size.height * 0.15)
-                        .position(x: size.width * 0.50, y: size.height * 0.925)
-                        .onTapGesture { showBoardLog = true }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
-                        .stroke(FestivalDesign.creamDeep.opacity(0.6), lineWidth: 1)
-                )
-
-                // Agent info badge — frame-aligned so it never bleeds outside the view
-                if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
-                    AgentInfoBadge(
-                        agent: sel,
-                        recentActivity: activity.filter { $0.agentId == sid }.prefix(5).map { $0 }
-                    ) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
                         withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
                     }
-                    .padding(.top, 8)
-                    .padding(.trailing, 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .zIndex(100)
+
+                ForEach(agents) { agent in
+                    let frame = StationaryOfficeLayout.frame(for: agent)
+                    AgentRunner(
+                        agent: agent,
+                        frame: frame,
+                        spokenLine: liveLine(for: agent.id),
+                        onTap: {
+                            withAnimation(.spring(duration: 0.2)) {
+                                selectedAgentId = selectedAgentId == agent.id ? nil : agent.id
+                            }
+                        }
+                    )
+                    .position(x: frame.position.x * size.width,
+                              y: frame.position.y * size.height)
                 }
+
+                PublishedWall(items: snapshot.published)
+                    .frame(width: size.width * 0.48, height: size.height * 0.13)
+                    .position(x: size.width * 0.50, y: size.height * 0.925)
+                    .onTapGesture { showBoardLog = true }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: FestivalDesign.cardRadius)
+                    .stroke(FestivalDesign.creamDeep.opacity(0.6), lineWidth: 1)
+            )
+
+            if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
+                AgentInfoBadge(
+                    agent: sel,
+                    recentActivity: activity.filter { $0.agentId == sid }.prefix(5).map { $0 }
+                ) {
+                    withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
+                }
+                .padding(.top, 8)
+                .padding(.trailing, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .zIndex(100)
             }
         }
         .sheet(isPresented: $showBoardLog) {
@@ -284,7 +265,7 @@ private struct AgentRoleCard: View {
                 ZStack {
                     Circle()
                         .fill(agent.status.color.opacity(0.15))
-                    AgentPortrait(agent: agent, direction: .down, walking: false, walkPhase: 1, compact: true)
+                    AgentPortrait(agent: agent, compact: true)
                 }
                 .frame(width: 42, height: 42)
 
@@ -356,7 +337,7 @@ private struct ActivityRow: View {
             Circle().fill(accent).frame(width: 8, height: 8).padding(.top, 6)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(event.agentId.uppercased())
+                    Text(AgentOfficeAgent.displayName(forID: event.agentId))
                         .font(.festival(.caption, weight: .bold))
                         .foregroundStyle(FestivalDesign.readable(accent))
                     Text(event.action)
@@ -395,6 +376,34 @@ private struct AgentFrame {
 
     enum Stage { case idle, walkingOut, reporting, walkingToWall, posting, returning, patrolling, validating, publishing, notifying, dispatching }
     enum CarryKind { case festival, event }
+}
+
+/// 배경의 5×2 업무 포드와 같은 좌표를 사용한다. 데이터가 갱신돼도 요원은 이동하지 않고
+/// 각자 맡은 콘솔에서 상태와 최근 작업만 갱신한다.
+private enum StationaryOfficeLayout {
+    private static let positions: [String: CGPoint] = [
+        "orion": CGPoint(x: 0.10, y: 0.53),
+        "festa": CGPoint(x: 0.30, y: 0.53),
+        "scout": CGPoint(x: 0.50, y: 0.53),
+        "vera": CGPoint(x: 0.70, y: 0.53),
+        "pixel": CGPoint(x: 0.90, y: 0.53),
+        "sentinel": CGPoint(x: 0.10, y: 0.76),
+        "echo": CGPoint(x: 0.30, y: 0.76),
+        "atlas": CGPoint(x: 0.50, y: 0.76),
+        "harbor": CGPoint(x: 0.70, y: 0.76),
+        "relay": CGPoint(x: 0.90, y: 0.76)
+    ]
+
+    static func frame(for agent: AgentOfficeAgent) -> AgentFrame {
+        AgentFrame(
+            position: positions[agent.id] ?? CGPoint(x: 0.5, y: 0.65),
+            direction: .down,
+            walking: false,
+            walkPhase: 1,
+            stage: .idle,
+            carry: nil
+        )
+    }
 }
 
 private enum OfficeChoreography {
@@ -862,6 +871,15 @@ private enum OfficeChoreography {
 }
 
 private extension AgentOfficeStatus {
+    var isWorkingAtStation: Bool {
+        switch self {
+        case .thinking, .collecting, .validating, .monitoring:
+            return true
+        case .idle, .blocked, .error:
+            return false
+        }
+    }
+
     var movesInOffice: Bool {
         switch self {
         case .thinking, .collecting, .validating, .monitoring:
@@ -897,13 +915,7 @@ private struct AgentRunner: View {
                 .frame(width: 24, height: 6)
                 .offset(y: 24)
 
-            AgentPortrait(
-                agent: agent,
-                direction: frame.direction,
-                walking: frame.walking,
-                walkPhase: frame.walkPhase,
-                compact: false
-            )
+            AgentPortrait(agent: agent, compact: false)
 
             if let carry = frame.carry {
                 CarryMarker(kind: carry)
@@ -912,7 +924,7 @@ private struct AgentRunner: View {
 
             if let line = spokenLine {
                 PixelBubble(text: line, speaker: agent.name, accent: agent.status.color)
-                    .offset(y: -44)
+                    .offset(x: bubbleXOffset, y: -44)
             }
 
             Text(agent.name)
@@ -924,45 +936,68 @@ private struct AgentRunner: View {
                 .offset(y: 32)
                 .foregroundStyle(FestivalDesign.navy)
         }
-        .frame(width: 90, height: 90)
+        .frame(width: 72, height: 82)
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(agent.name), \(agent.role)\(spokenLine.map { ", \($0)" } ?? "")")
     }
+
+    private var bubbleXOffset: CGFloat {
+        switch agent.id {
+        case "orion", "sentinel": return 38
+        case "pixel", "relay": return -38
+        default: return 0
+        }
+    }
 }
 
-/// 기존 요원은 정확한 3방향 보행 프레임을 쓰고, 새 운영 요원은 생성된 투명 픽셀 아트를
-/// 보행 방향으로 반전하고 한 픽셀씩 바운스해 같은 좌표계에서 자연스럽게 움직인다.
+/// 모든 요원이 같은 원본 시트와 동일한 픽셀 밀도를 사용한다.
 private struct AgentPortrait: View {
     let agent: AgentOfficeAgent
-    let direction: PixelSprite.Direction
-    let walking: Bool
-    let walkPhase: Int
     let compact: Bool
 
     var body: some View {
-        Group {
-            if agent.usesGeneratedPortrait {
-                Image(agent.spriteAsset)
-                    .resizable()
-                    .interpolation(.none)
-                    .scaledToFit()
-                    .frame(width: compact ? 35 : 47, height: compact ? 39 : 61)
-                    .scaleEffect(x: direction == .left ? -1 : 1, y: 1)
-                    .offset(y: walking && walkPhase == 1 ? -1 : 0)
-            } else {
-                PixelSprite(
-                    sheet: agent.spriteAsset,
-                    direction: direction,
-                    walking: walking,
-                    walkPhase: walkPhase,
-                    scale: compact ? 1.05 : 1.6
+        TeamSheetPortrait(index: agent.teamPortraitIndex)
+            .frame(width: compact ? 38 : 58, height: compact ? 38 : 58)
+    }
+}
+
+private struct TeamSheetPortrait: View {
+    let index: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            Image("AgentOfficeTeamSheet")
+                .resizable()
+                .interpolation(.none)
+                .frame(width: proxy.size.width * 5, height: proxy.size.height * 2)
+                .offset(
+                    x: -CGFloat(index % 5) * proxy.size.width,
+                    y: -CGFloat(index / 5) * proxy.size.height
                 )
-            }
+        }
+        .clipped()
+        .accessibilityHidden(true)
+    }
+}
+
+private extension AgentOfficeAgent {
+    var teamPortraitIndex: Int {
+        switch id {
+        case "orion": return 0
+        case "festa": return 1
+        case "scout": return 2
+        case "vera": return 3
+        case "pixel": return 4
+        case "sentinel": return 5
+        case "echo": return 6
+        case "atlas": return 7
+        case "harbor": return 8
+        case "relay": return 9
+        default: return 0
         }
     }
-
 }
 
 // Pixel-style info badge: agent status + recent 5 activities with timestamps.
