@@ -7,16 +7,9 @@ import { feeFreeFlag, normalizeFee } from "./feeNormalize.js";
 import { seoulDayString } from "./kstDate.js";
 import { TAGGING_VERSION } from "./llmTaggingSchema.js";
 import {
-  currentDiscoveryChunkIndex,
   DISCOVERY_PROVIDER_CHUNK_COUNT,
   DISCOVERY_PROVIDER_CHUNKS,
   type DiscoverySyncKind,
-} from "./discoverySchedule.js";
-
-export { mapWithConcurrency } from "./concurrency.js";
-export {
-  currentDiscoveryChunkIndex,
-  DISCOVERY_PROVIDER_CHUNK_COUNT,
 } from "./discoverySchedule.js";
 
 type DiscoveryType = "festival" | "event";
@@ -53,8 +46,6 @@ const NATIONAL_DISCOVERY_CENTERS: Array<{
   { id: "gangneung", lat: 37.7519, lng: 128.8761 },
   { id: "jeju", lat: 33.4996, lng: 126.5312 },
 ];
-
-const SEOUL_DISCOVERY_CENTER = { id: "seoul", lat: 37.5665, lng: 126.978 };
 
 export interface DiscoveryQueryOptions {
   radiusMeters: number;

@@ -18,7 +18,6 @@ const REALTIME_PRUNE_RETENTION_MS = 90 * 60 * 1000;
 /// 좌표 비교 오차. 1e-7도는 약 1cm라 부동소수 왕복 오차만 흡수하고
 /// 실제 좌표 수정은 통과시킨다.
 const REALTIME_COORD_EPSILON = 1e-7;
-const REALTIME_CACHE_RESULT_LIMIT = 1000;
 const REALTIME_CLUSTER_RESULT_LIMIT = 5000;
 
 export interface RealtimeCacheSyncResult {
@@ -304,21 +303,6 @@ async function upsertRealtimeParkingItems(
     counts.writes += statements.length;
   }
   return counts;
-}
-
-export async function queryRealtimeParkingCache(
-  db: D1Database,
-  lat: number,
-  lng: number,
-  options: ParkingSearchOptions,
-): Promise<ParkingLot[]> {
-  return queryRealtimeParkingCacheItems(
-    db,
-    lat,
-    lng,
-    options,
-    REALTIME_CACHE_RESULT_LIMIT,
-  );
 }
 
 async function queryRealtimeParkingCacheItems(

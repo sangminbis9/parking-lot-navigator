@@ -429,10 +429,6 @@ export async function runProgramStage(
   return { ...base, outcome: hasEnded(row, today) ? "nodata" : "empty" };
 }
 
-export function programCrawlBacklog(db: D1Database, now: Date = new Date()): Promise<number> {
-  return backlog(db, seoulDayString(now));
-}
-
 /// 랜딩 페이지를 열고, 규칙이 빈손이면 프로그램처럼 보이는 링크 하나만 더 따라간다.
 async function crawlRow(
   row: CrawlRow,

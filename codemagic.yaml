@@ -142,7 +142,7 @@ workflows:
           xcodegen generate
       - name: 코드 서명 프로파일 적용
         script: |
-          xcode-project use-profiles --custom-export-options='{"testFlightInternalTestingOnly": true}'
+          xcode-project use-profiles
       - name: IPA 빌드
         script: |
           xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"

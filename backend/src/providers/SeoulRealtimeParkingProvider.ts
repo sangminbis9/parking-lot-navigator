@@ -4,7 +4,7 @@ import type { AppConfig } from "../config/env.js";
 import { MemoryCache } from "../cache/memoryCache.js";
 import { distanceMeters } from "../services/geo.js";
 import { BaseProviderHealth } from "./BaseProviderHealth.js";
-import { fetchAllSeoulRows, fetchSeoulParkInfoRows, type SeoulParkInfoRow } from "./seoulOpenData.js";
+import { fetchAllSeoulRows, fetchSeoulParkInfoRows } from "./seoulOpenData.js";
 
 const SEOUL_CENTER = { lat: 37.5665, lng: 126.9780 };
 const SEOUL_SERVICE_RADIUS_METERS = 45000;

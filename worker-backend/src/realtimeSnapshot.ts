@@ -10,8 +10,9 @@ export async function publishRealtimeShard(bucket: R2Bucket, shard: number, item
   const previous = previousObject ? await previousObject.json<RealtimeShard>() : null;
   if (previous && Date.parse(previous.generatedAt) >= Date.parse(generatedAt)) return;
   const old = new Map(previous?.items.map(item => [item.id, item]) ?? []);
+  const incomingIds = new Set(items.map(item => item.id));
   const merged = [...items, ...(previous?.items.filter(item => retainSources.includes(item.source)
-    && !items.some(next => next.id === item.id)) ?? [])];
+    && !incomingIds.has(item.id)) ?? [])];
   const publicItems: ParkingLot[] = merged.map(item => {
     const saved = old.get(item.id);
     const position = item.coordinateIsApproximate && saved && !saved.coordinateIsApproximate ? saved : item;

@@ -1,4 +1,4 @@
-import type { Festival, ProviderHealth } from "@parking/shared-types";
+import type { Festival } from "@parking/shared-types";
 import { BaseProviderHealth } from "../../../providers/BaseProviderHealth.js";
 import { distanceMeters } from "../../../services/geo.js";
 import type {

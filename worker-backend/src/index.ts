@@ -5,7 +5,6 @@ import type { MapItem, DiscoverPerformancesResponse } from "@parking/shared-type
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
 import { timingSafeStringEqual } from "./security.js";
 import {
-  DISCOVERY_PROVIDER_CHUNK_COUNT,
   queryDiscoveryClusters,
   getFestivalBySourceItemId,
   queryFestivalsFromCache,
@@ -18,6 +17,7 @@ import {
   syncDiscoveryChunk,
   type DiscoveryQueryOptions,
 } from "./discoveryCache.js";
+import { DISCOVERY_PROVIDER_CHUNK_COUNT } from "./discoverySchedule.js";
 import {
   createAdminLocalEvent,
   createLocalEventReport,
@@ -1253,7 +1253,7 @@ app.post("/admin/sync-city-festivals", async (c) => {
   }
   // 등록된 사이트 전체를 한 번에 처리하면 Cloudflare Workers의 invocation당
   // subrequest 한도를 넘어설 수 있어(사이트 fetch + Kakao geocoding 합산),
-  // scheduled() 핸들러(syncCityFestivalsScheduled)와 동일하게 기본은 "오늘의
+  // 기본은 "오늘의
   // 청크"만 처리한다. chunkIndex를 명시하면 그 청크를 강제로 처리한다.
   const query = cityFestivalDiscoverySyncSchema.parse(queryObject(c.req.raw.url));
   const chunkIndex =
@@ -2046,55 +2046,6 @@ async function recordScraperRun(
   } catch (error) {
     // 기록 실패가 스크래핑 결과를 되돌리지는 않는다.
     console.error(`sync_runs record failed for ${syncType}`, error);
-  }
-}
-
-async function syncCityFestivalsScheduled(env: Env, scheduledAt: Date): Promise<void> {
-  const startedAt = new Date().toISOString();
-  try {
-    const chunkIndex = currentCityFestivalChunkIndex(scheduledAt, CITY_FESTIVAL_SITES.length);
-    const sites = sitesForChunk(CITY_FESTIVAL_SITES, chunkIndex, CITY_FESTIVAL_CHUNK_SIZE);
-    const result = await runCityFestivalDiscovery(env.DB!, env, sites);
-    if (result.failedSites.length > 0) {
-      console.warn(`city festival discovery failedSites=${result.failedSites.join(",")}`);
-    }
-    await recordScraperRun(
-      env.DB,
-      "city-festival-scrape",
-      startedAt,
-      "success",
-      { fetched: result.processed, upserted: result.published },
-      `chunk=${chunkIndex} sites=${sites.length}` +
-        (result.failedSites.length > 0 ? ` failedSites=${result.failedSites.join(",")}` : ""),
-    );
-  } catch (error) {
-    console.error("city festival discovery sync failed", error);
-    await recordScraperRun(env.DB, "city-festival-scrape", startedAt, "failed", { fetched: 0, upserted: 0 }, String(error));
-    await notifyOpsFailure(env, "city festival discovery sync", error);
-  }
-}
-
-async function syncAkeiTradeExposScheduled(env: Env, scheduledAt: Date): Promise<void> {
-  const startedAt = new Date().toISOString();
-  try {
-    const result = await runAkeiTradeExpoDiscovery(env.DB!, scheduledAt);
-    if (result.failedMonths.length > 0 || result.unmappedVenues > 0) {
-      console.warn(
-        `akei trade expo discovery failedMonths=${result.failedMonths.join(",")} unmappedVenues=${result.unmappedVenues}`,
-      );
-    }
-    await recordScraperRun(
-      env.DB,
-      "akei-trade-expo-scrape",
-      startedAt,
-      result.failedMonths.length > 0 || result.failedBatches > 0 ? "failed" : "success",
-      { fetched: result.processed, upserted: result.published },
-      `failedMonths=${result.failedMonths.join(",")} failedBatches=${result.failedBatches} unmappedVenues=${result.unmappedVenues}`,
-    );
-  } catch (error) {
-    console.error("akei trade expo discovery sync failed", error);
-    await recordScraperRun(env.DB, "akei-trade-expo-scrape", startedAt, "failed", { fetched: 0, upserted: 0 }, String(error));
-    await notifyOpsFailure(env, "akei trade expo discovery sync", error);
   }
 }
 
