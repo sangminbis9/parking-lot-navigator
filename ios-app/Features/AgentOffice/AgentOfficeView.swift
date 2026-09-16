@@ -12,6 +12,10 @@ struct AgentOfficeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("축제가 어떻게 수집되고 있는지 구경해보세요!")
+                    .font(.festival(.subheadline))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+
                 OfficeFloorView(
                     agents: viewModel.agents,
                     snapshot: viewModel.snapshot,
