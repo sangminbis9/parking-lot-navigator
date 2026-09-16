@@ -27,6 +27,7 @@ const event: MerchantEventRow = {
   paid_until: null,
   payment_key: null,
   payment_amount: null,
+  rejection_reason: null,
   created_at: "2026-09-15T09:00:00.000Z",
   updated_at: "2026-09-15T09:00:00.000Z",
 };

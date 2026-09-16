@@ -1,8 +1,8 @@
 import type { MerchantRow } from "./store.js";
-import type {
-  MerchantEventRow,
-  MerchantEventStatus,
-  MerchantEventType,
+import {
+  MERCHANT_WITHDRAWAL_REASON,
+  type MerchantEventRow,
+  type MerchantEventType,
 } from "./events.js";
 
 function htmlEscape(value: string): string {
@@ -47,6 +47,7 @@ const baseStyle = `
   .btn-primary { background: var(--festival-coral); color: #fff; }
   .btn-link { background: var(--festival-navy); color: #fff; }
   .btn-secondary { background: var(--festival-cream); color: var(--festival-navy); }
+  .btn-danger { background: #b91c1c; color: #fff; }
   .muted { color: var(--festival-muted); font-size: 13px; }
   .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: var(--festival-surface); border-bottom: 1px solid var(--festival-cream-deep); }
   .topbar h2 { font-size: 16px; margin: 0; color: var(--festival-coral); }
@@ -65,6 +66,16 @@ const baseStyle = `
   .detail-label { font-size: 12px; font-weight: 600; color: var(--festival-teal); margin: 16px 0 4px; }
   .detail-value { color: var(--festival-navy); white-space: pre-wrap; }
   .status-note { padding: 12px 14px; border-radius: 10px; background: var(--festival-cream); color: var(--festival-navy); font-size: 13px; line-height: 1.55; }
+  .danger-zone { border-top: 1px solid #fecaca; margin-top: 24px; padding-top: 18px; }
+  .danger-zone h2 { color: #991b1b; }
+  dialog.withdraw-modal { border: 0; border-radius: 14px; padding: 0; width: min(440px, 92vw); box-shadow: 0 12px 40px rgba(38, 54, 69, 0.28); }
+  dialog.withdraw-modal::backdrop { background: rgba(38, 54, 69, 0.52); }
+  .withdraw-modal-body { padding: 22px; }
+  .withdraw-modal-body h2 { margin-bottom: 12px; }
+  .withdraw-warning { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; color: #7f1d1d; padding: 12px 14px; font-size: 13px; line-height: 1.6; }
+  .withdraw-warning ul { margin: 0; padding-left: 19px; }
+  .withdraw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+  .withdraw-actions .btn { margin-top: 0; }
   .error-banner { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
   .consent-box { display: flex; gap: 10px; align-items: flex-start; background: var(--festival-cream); border: 1px solid var(--festival-cream-deep); border-radius: 10px; padding: 12px 14px; margin-top: 18px; }
   .consent-box input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--festival-coral); flex: none; }
@@ -180,8 +191,15 @@ ${legalModal()}
   );
 }
 
-function statusBadge(status: MerchantEventStatus): string {
-  switch (status) {
+function isMerchantWithdrawn(event: MerchantEventRow): boolean {
+  return event.status === "expired" && event.rejection_reason === MERCHANT_WITHDRAWAL_REASON;
+}
+
+function statusBadge(event: MerchantEventRow): string {
+  if (isMerchantWithdrawn(event)) {
+    return `<span class="badge badge-expired">직접 종료</span>`;
+  }
+  switch (event.status) {
     case "approved":
       return `<span class="badge badge-approved">게시 중</span>`;
     case "pending_payment":
@@ -207,7 +225,7 @@ function eventRow(event: MerchantEventRow): string {
   const actionLabel =
     event.status === "pending_payment" ? "결제 계속하기" : "상세 보기";
   return `<div class="event-row">
-    <div class="event-title">${htmlEscape(event.title)}${statusBadge(event.status)}</div>
+    <div class="event-title">${htmlEscape(event.title)}${statusBadge(event)}</div>
     <div class="event-meta">${meta.join(" · ")}</div>
     <a class="muted" href="${actionHref}">${actionLabel} →</a>
   </div>`;
@@ -255,8 +273,11 @@ function eventTypeLabel(type: MerchantEventType): string {
   return EVENT_TYPE_OPTIONS.find(([key]) => key === type)?.[1] ?? "기타";
 }
 
-function eventStatusNote(status: MerchantEventStatus): string {
-  switch (status) {
+function eventStatusNote(event: MerchantEventRow): string {
+  if (isMerchantWithdrawn(event)) {
+    return "사장님이 게시를 조기 종료했습니다. 현재 앱에 표시되지 않으며 이벤트와 결제 기록은 보관됩니다.";
+  }
+  switch (event.status) {
     case "approved":
       return "게시 승인되었습니다. 앱이 다음 이벤트 데이터를 갱신하면 지도와 로컬 이벤트 목록에 표시됩니다.";
     case "pending_payment":
@@ -278,6 +299,54 @@ export function renderEventDetail(event: MerchantEventRow): string {
   const action = event.status === "pending_payment"
     ? `<a class="btn btn-primary" href="/merchant/event/${htmlEscape(event.id)}/pay">등록 계속하기</a>`
     : "";
+  const withdrawal = event.status === "approved"
+    ? `
+    <div class="danger-zone">
+      <h2>게시 종료</h2>
+      <p>이벤트를 예정일보다 먼저 내릴 수 있습니다.</p>
+      <button type="button" class="btn btn-danger" id="withdraw-open">이벤트 내리기</button>
+    </div>
+    <dialog class="withdraw-modal" id="withdraw-modal" aria-labelledby="withdraw-title">
+      <form method="post" action="/merchant/event/${htmlEscape(event.id)}/withdraw" id="withdraw-form">
+        <input type="hidden" name="confirmation" value="withdraw" />
+        <div class="withdraw-modal-body">
+          <h2 id="withdraw-title">이 이벤트를 내릴까요?</h2>
+          <div class="withdraw-warning">
+            <ul>
+              <li>다음 데이터 갱신 후 앱 지도와 목록에서 이벤트가 사라집니다.</li>
+              <li>종료한 이벤트는 이 화면에서 다시 게시할 수 없습니다.</li>
+              <li><strong>사장님 요청에 따른 조기 종료는 남은 게시 기간에 대한 환불이 제공되지 않습니다.</strong></li>
+            </ul>
+          </div>
+          <p class="muted" style="margin-top:12px;">법령상 환불 의무 또는 회사 귀책 사유가 있는 경우에는 환불·취소 정책이 우선 적용됩니다.</p>
+          <div class="withdraw-actions">
+            <button type="button" class="btn btn-secondary" id="withdraw-cancel">돌아가기</button>
+            <button type="submit" class="btn btn-danger">확인하고 내리기</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <script>
+    (function() {
+      var openButton = document.getElementById('withdraw-open');
+      var cancelButton = document.getElementById('withdraw-cancel');
+      var modal = document.getElementById('withdraw-modal');
+      var form = document.getElementById('withdraw-form');
+      openButton.addEventListener('click', function() {
+        if (typeof modal.showModal === 'function') {
+          modal.showModal();
+          return;
+        }
+        if (window.confirm('조기 종료 시 남은 게시 기간에 대한 환불이 제공되지 않습니다. 이벤트를 내릴까요?')) {
+          if (typeof form.requestSubmit === 'function') form.requestSubmit();
+          else form.submit();
+        }
+      });
+      cancelButton.addEventListener('click', function() { modal.close(); });
+      modal.addEventListener('click', function(e) { if (e.target === modal) modal.close(); });
+    })();
+    </script>`
+    : "";
   return layout(
     "이벤트 상세",
     `
@@ -288,9 +357,9 @@ export function renderEventDetail(event: MerchantEventRow): string {
 <div class="container">
   <div class="card">
     ${image}
-    <h1>${htmlEscape(event.title)}${statusBadge(event.status)}</h1>
+    <h1>${htmlEscape(event.title)}${statusBadge(event)}</h1>
     <p class="muted">${htmlEscape(event.store_name)} · ${htmlEscape(event.address)}</p>
-    <div class="status-note">${htmlEscape(eventStatusNote(event.status))}</div>
+    <div class="status-note">${htmlEscape(eventStatusNote(event))}</div>
     <div class="detail-label">혜택</div>
     <div class="detail-value">${htmlEscape(event.benefit ?? "-")}</div>
     <div class="detail-label">상세 설명</div>
@@ -300,6 +369,7 @@ export function renderEventDetail(event: MerchantEventRow): string {
     <div class="detail-label">이벤트 기간</div>
     <div class="detail-value">${period}</div>
     ${action}
+    ${withdrawal}
   </div>
 </div>
 `,

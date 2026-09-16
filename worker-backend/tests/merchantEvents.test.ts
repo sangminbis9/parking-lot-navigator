@@ -29,6 +29,7 @@ const event: MerchantEventRow = {
   paid_until: "2026-12-15",
   payment_key: "free_launch_promo",
   payment_amount: 0,
+  rejection_reason: null,
   created_at: "2026-09-15T00:00:00.000Z",
   updated_at: "2026-09-15T00:00:00.000Z",
 };
@@ -108,6 +109,9 @@ describe("merchant event detail", () => {
     expect(detail).toContain("테스트 이벤트");
     expect(detail).toContain("10% 할인");
     expect(detail).toContain("게시 승인되었습니다");
+    expect(detail).toContain("이벤트 내리기");
+    expect(detail).toContain('action="/merchant/event/event-1/withdraw"');
+    expect(detail).toContain("남은 게시 기간에 대한 환불이 제공되지 않습니다");
   });
 
   it("serves the authenticated detail route instead of returning 404", async () => {
@@ -129,5 +133,104 @@ describe("merchant event detail", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("테스트 이벤트");
+  });
+
+  it("marks an owned approved event as withdrawn after explicit confirmation", async () => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken(
+      { merchantId: "merchant-1", provider: "kakao" },
+      secret,
+    );
+    const update = vi.fn(async () => ({ meta: { changes: 1 } }));
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("UPDATE local_events")) {
+        return { bind: () => ({ run: update }) };
+      }
+      return { bind: () => ({ first: async () => event }) };
+    });
+    const response = await createMerchantApp().request(
+      "/event/event-1/withdraw",
+      {
+        method: "POST",
+        headers: {
+          cookie: `__merchant_session=${token}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "confirmation=withdraw",
+      },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/merchant/event/event-1");
+    expect(update).toHaveBeenCalledOnce();
+    expect(prepare.mock.calls.some(([sql]) => sql.includes("status = 'expired'"))).toBe(true);
+  });
+
+  it("does not change an event without the confirmation value", async () => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken(
+      { merchantId: "merchant-1", provider: "kakao" },
+      secret,
+    );
+    const prepare = vi.fn();
+    const response = await createMerchantApp().request(
+      "/event/event-1/withdraw",
+      {
+        method: "POST",
+        headers: {
+          cookie: `__merchant_session=${token}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("주의사항을 확인한 뒤 이벤트를 내려 주세요");
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("does not let one merchant withdraw another merchant's event", async () => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken(
+      { merchantId: "merchant-2", provider: "naver" },
+      secret,
+    );
+    const update = vi.fn();
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("UPDATE local_events")) {
+        return { bind: () => ({ run: update }) };
+      }
+      return { bind: () => ({ first: async () => event }) };
+    });
+    const response = await createMerchantApp().request(
+      "/event/event-1/withdraw",
+      {
+        method: "POST",
+        headers: {
+          cookie: `__merchant_session=${token}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "confirmation=withdraw",
+      },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+
+    expect(response.status).toBe(404);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("shows a withdrawn event as directly ended and removes the destructive action", () => {
+    const detail = renderEventDetail({
+      ...event,
+      status: "expired",
+      rejection_reason: "merchant_withdrawn",
+    });
+
+    expect(detail).toContain("직접 종료");
+    expect(detail).toContain("사장님이 게시를 조기 종료했습니다");
+    expect(detail).not.toContain("이벤트 내리기");
   });
 });

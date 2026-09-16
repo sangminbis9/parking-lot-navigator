@@ -27,6 +27,8 @@ import {
   getMerchantEventById,
   listMerchantEvents,
   markEventApproved,
+  MERCHANT_WITHDRAWAL_REASON,
+  withdrawMerchantEvent,
   parseNaverCouponLink,
   couponSourceItemId,
   uploadEventImage,
@@ -561,6 +563,46 @@ export function createMerchantApp() {
       );
     }
     return c.html(renderEventDetail(event));
+  });
+
+  app.post("/event/:id/withdraw", async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    const form = await c.req.formData().catch(() => null);
+    if (!form || form.get("confirmation") !== "withdraw") {
+      return c.html(
+        renderMessage("확인이 필요함", "주의사항을 확인한 뒤 이벤트를 내려 주세요."),
+        400,
+      );
+    }
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(
+        renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."),
+        404,
+      );
+    }
+    if (event.status === "expired" && event.rejection_reason === MERCHANT_WITHDRAWAL_REASON) {
+      return c.redirect(`/merchant/event/${event.id}`, 303);
+    }
+    if (event.status !== "approved") {
+      return c.html(
+        renderMessage("게시 종료 불가", "현재 게시 중인 이벤트만 내릴 수 있습니다."),
+        409,
+      );
+    }
+    const withdrawn = await withdrawMerchantEvent(
+      c.env.DB,
+      event.id,
+      session.merchantId,
+    );
+    if (!withdrawn) {
+      return c.html(
+        renderMessage("게시 종료 실패", "이벤트 상태가 변경되었습니다. 다시 확인해 주세요."),
+        409,
+      );
+    }
+    return c.redirect(`/merchant/event/${event.id}`, 303);
   });
 
   app.get("/event/:id/pay", async (c) => {

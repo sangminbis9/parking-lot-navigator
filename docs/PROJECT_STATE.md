@@ -2,6 +2,13 @@
 
 마지막 업데이트: 2026-09-16
 
+## 2026-09-16 사장님 이벤트 직접 게시 종료
+
+- 사장님 대시보드의 게시 중 이벤트 상세에 `이벤트 내리기`를 추가했다. 버튼을 누르면 지도·목록 비노출, 재게시 불가, 사장님 요청 조기 종료의 잔여 기간 환불 불가를 안내하는 확인 팝업이 먼저 열리고 `확인하고 내리기` POST를 거쳐야 상태가 바뀐다.
+- 서버는 로그인 세션의 `merchantId`와 이벤트 소유자를 다시 대조하고 `source=merchant`, `status=approved`인 행만 조건부 갱신한다. 성공 시 `status=expired`, `rejection_reason=merchant_withdrawn`으로 기록하며 결제·기간·이미지·이벤트 행은 보존한다.
+- status 변경은 기존 `local_events_snapshot_update` 트리거가 local section을 dirty 처리한다. 공개 D1 API에서는 즉시 제외되고 앱 정적 핀은 다음 snapshot 발행·앱 갱신 후 빠진다.
+- 환불 정책에도 사장님 직접 조기 종료는 남은 기간 부분 환불이 없음을 추가하되, 법령상 의무와 회사 귀책 예외는 유지했다. D1 마이그레이션과 iOS 빌드는 필요 없고 Worker 배포가 필요하다.
+
 ## 2026-09-16 로컬 이벤트 자동 크롤러 제거
 
 - Naver Blog 검색과 Kakao Local 매칭으로 후보를 만들던 `localEventDiscovery.ts`를 삭제하고, 매시간 `local-events` Queue 작업·관리자 `/admin/sync-local-events`·수동 GitHub workflow·전용 환경변수를 함께 제거했다.

@@ -74,9 +74,12 @@ export type MerchantEventRow = {
   paid_until: string | null;
   payment_key: string | null;
   payment_amount: number | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export const MERCHANT_WITHDRAWAL_REASON = "merchant_withdrawn";
 
 export type CreateMerchantEventInput = {
   merchantId: string;
@@ -150,11 +153,39 @@ export async function getMerchantEventById(
     .prepare(
       `SELECT id, merchant_id, title, description, benefit, event_type, status,
               store_name, address, lat, lng, start_date, end_date, image_url, source, source_url,
-              paid_until, payment_key, payment_amount, created_at, updated_at
+              paid_until, payment_key, payment_amount, rejection_reason, created_at, updated_at
        FROM local_events WHERE id = ? LIMIT 1`,
     )
     .bind(id)
     .first<MerchantEventRow>();
+}
+
+/**
+ * 게시 중인 사장님 이벤트를 즉시 비노출 상태로 전환한다.
+ *
+ * 결제·게시 기간·이미지는 거래 기록을 위해 그대로 보존한다. status 변경은
+ * incremental snapshot trigger에도 잡히므로 다음 local snapshot 발행에서 핀이 빠진다.
+ */
+export async function withdrawMerchantEvent(
+  db: D1Database,
+  id: string,
+  merchantId: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE local_events
+       SET status = 'expired',
+           rejection_reason = ?,
+           updated_at = ?
+       WHERE id = ?
+         AND merchant_id = ?
+         AND source = 'merchant'
+         AND status = 'approved'`,
+    )
+    .bind(MERCHANT_WITHDRAWAL_REASON, now, id, merchantId)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 export async function markEventApproved(
@@ -203,7 +234,7 @@ export async function listMerchantEvents(
     .prepare(
       `SELECT id, merchant_id, title, description, benefit, event_type, status,
               store_name, address, lat, lng, start_date, end_date, image_url, source, source_url,
-              paid_until, payment_key, payment_amount, created_at, updated_at
+              paid_until, payment_key, payment_amount, rejection_reason, created_at, updated_at
        FROM local_events
        WHERE merchant_id = ?
        ORDER BY created_at DESC`,
