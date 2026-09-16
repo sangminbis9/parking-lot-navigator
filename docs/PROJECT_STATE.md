@@ -7,7 +7,7 @@
 - Codemagic 사전 검증 실패는 데이터 손상이 아니라 원본 Publisher가 일일 발행 Queue 예산 650건을 소진해 `publication_queue_budget`, `retryAt=2026-09-17T00:01:00Z`로 정상 대기 중인데도 릴리스 게이트가 이를 일반 장애로 처리한 것이 원인이었다.
 - 검증된 기존 manifest가 있고, 오류가 정확히 `publication_queue_budget`이며, `retryAt`이 현재부터 26시간 이내의 미래인 경우에만 Codemagic 검증을 허용한다. 예상 밖 unhealthy, 만료·과도한 retryAt, 첫 manifest 부재, 빈 데이터, 파트 크기·해시·건수 불일치는 계속 실패한다.
 - Worker의 복구 Cron은 quota/budget retry 기간에 D1이나 Queue를 다시 사용하지 않으면서 R2 `checkedAt`만 갱신해 스케줄러 생존을 표시한다. 기존 오류와 retryAt은 그대로 보존한다.
-- 로컬 검증은 Worker 43파일/362테스트, TypeScript, 운영 CDN 13,334건/187파트/12,068,410바이트 전체 해시 검사를 통과했다. D1 마이그레이션은 없으며 코드 푸시 후 Worker 배포와 Codemagic 재실행이 필요하다.
+- 로컬 검증은 Worker 43파일/362테스트, TypeScript, 운영 CDN 13,334건/187파트/12,068,410바이트 전체 해시 검사를 통과했다. `eb0cc9f`를 master에 반영했고 GitHub Worker 배포 `35066318382`의 테스트·마이그레이션·배포·smoke·스냅샷 검증이 모두 성공했다. 운영 `checkedAt=2026-09-16T07:02:59.995Z` 전진도 확인했다. D1 신규 마이그레이션은 없으며 Codemagic 재실행만 남았다.
 
 ## 2026-09-16 Agent Office 탭·픽셀 고층 사무실 개편
 
