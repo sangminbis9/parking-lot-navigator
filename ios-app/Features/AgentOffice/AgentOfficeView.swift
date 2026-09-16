@@ -243,7 +243,7 @@ private struct AgentRoleStrip: View {
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                EqualHeightAgentCardLayout(spacing: 10) {
                     ForEach(agents) { agent in
                         AgentRoleCard(agent: agent)
                     }
@@ -253,6 +253,33 @@ private struct AgentRoleStrip: View {
         }
         .padding(14)
         .festivalCard()
+    }
+}
+
+/// 각 카드의 자연스러운 높이를 측정한 뒤 가장 긴 카드의 높이를 모든 카드에 제안한다.
+/// 상태 문구나 Dynamic Type이 바뀌어도 고정 높이·추가 상태 없이 다시 측정한다.
+private struct EqualHeightAgentCardLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        return CGSize(
+            width: sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(0, sizes.count - 1)),
+            height: sizes.map(\.height).max() ?? 0
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for subview in subviews {
+            let width = subview.sizeThatFits(.unspecified).width
+            subview.place(
+                at: CGPoint(x: x, y: bounds.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: width, height: bounds.height)
+            )
+            x += width + spacing
+        }
     }
 }
 
@@ -286,6 +313,7 @@ private struct AgentRoleCard: View {
         }
         .frame(width: 150, alignment: .leading)
         .padding(10)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(FestivalDesign.cream.opacity(0.34))
         .clipShape(FestivalDesign.controlShape)
         .overlay(
