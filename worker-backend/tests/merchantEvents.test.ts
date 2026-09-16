@@ -162,7 +162,7 @@ describe("merchant event detail", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/merchant/event/event-1");
+    expect(response.headers.get("location")).toBe("/merchant/dashboard");
     expect(update).toHaveBeenCalledOnce();
     expect(prepare.mock.calls.some(([sql]) => sql.includes("status = 'expired'"))).toBe(true);
   });

@@ -583,7 +583,7 @@ export function createMerchantApp() {
       );
     }
     if (event.status === "expired" && event.rejection_reason === MERCHANT_WITHDRAWAL_REASON) {
-      return c.redirect(`/merchant/event/${event.id}`, 303);
+      return c.redirect("/merchant/dashboard", 303);
     }
     if (event.status !== "approved") {
       return c.html(
@@ -602,7 +602,7 @@ export function createMerchantApp() {
         409,
       );
     }
-    return c.redirect(`/merchant/event/${event.id}`, 303);
+    return c.redirect("/merchant/dashboard", 303);
   });
 
   app.get("/event/:id/pay", async (c) => {
