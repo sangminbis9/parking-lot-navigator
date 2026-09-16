@@ -11,6 +11,7 @@ export type LocalEventSource =
   | "naver_place"
   | "naver_blog"
   | "owner_submitted"
+  | "merchant"
   | "admin_manual"
   | "user_report"
   | "official_site"

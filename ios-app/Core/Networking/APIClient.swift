@@ -161,6 +161,7 @@ final class APIClient: APIClientProtocol {
         ]
         let pages: [DiscoverEventsResponse] = try await discoveryPages(components, endpoint: .localEvents)
         return uniqueItems(pages.flatMap(\.items)).sorted {
+            if $0.isMerchantSubmitted != $1.isMerchantSubmitted { return $0.isMerchantSubmitted }
             if $0.isSponsored != $1.isSponsored { return $0.isSponsored }
             if $0.priorityScore != $1.priorityScore { return $0.priorityScore > $1.priorityScore }
             if $0.distanceMeters != $1.distanceMeters { return $0.distanceMeters < $1.distanceMeters }

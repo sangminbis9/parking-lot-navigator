@@ -344,6 +344,43 @@ struct FreeEvent: Codable, Hashable, Identifiable {
     }
 }
 
+extension FreeEvent {
+    /// 사장님이 앱 등록 화면에서 직접 만든 이벤트. 자동 수집 이벤트보다 지도 표시 우선순위가 높다.
+    var isMerchantSubmitted: Bool { source == "merchant" }
+}
+
+enum LocalEventAvailability {
+    static func sponsoredRegistrationIsActive(paidUntil: String?, now: Date) -> Bool {
+        guard let paidUntil, !paidUntil.isEmpty else { return false }
+        if paidUntil.count == 10 {
+            guard validKoreanDay(paidUntil) else { return false }
+            return paidUntil >= koreanDay(now)
+        }
+        let precise = ISO8601DateFormatter()
+        precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expiry = precise.date(from: paidUntil) ?? ISO8601DateFormatter().date(from: paidUntil)
+        return expiry.map { $0 > now } ?? false
+    }
+
+    private static func validKoreanDay(_ value: String) -> Bool {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 9 * 3_600)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        guard let date = formatter.date(from: value) else { return false }
+        return formatter.string(from: date) == value
+    }
+
+    private static func koreanDay(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 9 * 3_600)!
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+    }
+}
+
 struct DiscoverPresentation: Hashable {
     let title: String
     let subtitle: String?

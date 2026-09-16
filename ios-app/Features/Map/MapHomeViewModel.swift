@@ -512,6 +512,18 @@ struct MapPinItem: Identifiable {
     var isLive = false
     /// 진행 중 행사의 대표 이미지. 배지 테두리 안쪽을 채운다. 이미 캐시에 있는 것만 들어온다.
     var photo: MapPinPhoto?
+
+    /// 카카오 지도 내부 경쟁 순위. 사장님 직접 등록 핀은 모든 행사·클러스터보다 위에 둔다.
+    var displayPriority: Int {
+        switch kind {
+        case .currentLocation: return 30
+        case .destination: return 20
+        case .parking: return 10
+        case .festival: return 12
+        case .event(let event): return event.isMerchantSubmitted ? 28 : 12
+        case .cluster: return 16
+        }
+    }
 }
 
 struct MapPinCluster: Identifiable {

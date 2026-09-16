@@ -540,17 +540,22 @@ struct MapHomeView: View {
         if mapZoomLevel < overlayReleaseZoomLevel {
             let selectedID = selectedDiscoverPinID
             return groups.flatMap { group -> [MapPinItem] in
-                // 선택된 핀은 클러스터에서 빼고 항상 개별 핀으로 남긴다 (구글 표준 동작).
-                let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
+                // 선택된 핀과 사장님 직접 등록 핀은 클러스터 밖에서 항상 개별 핀으로 남긴다.
+                let partition = MapIndividualPinSelection.partition(
+                    group,
+                    selectedID: selectedID,
+                    alwaysIndividual: { $0.isMerchantSubmitted }
+                )
+                let clusterable = partition.clusterable
                 var pins: [MapPinItem] = []
                 if let cluster = clusterPin(for: clusterable, idPrefix: "discover-cluster", tint: clusterable.first?.layerTint ?? FestivalDesign.uiTeal, isParking: false) {
                     pins.append(cluster)
                 } else if let only = clusterable.first {
                     pins.append(mapPinItem(for: only, coordinate: only.coordinate))
                 }
-                if let selectedID, let selected = group.first(where: { $0.id == selectedID }) {
-                    pins.append(mapPinItem(for: selected, coordinate: selected.coordinate))
-                }
+                pins.append(contentsOf: partition.individual.map {
+                    mapPinItem(for: $0, coordinate: $0.coordinate)
+                })
                 return pins
             }
         }
@@ -559,7 +564,12 @@ struct MapHomeView: View {
         // (줌인해도 좌표가 같아 안 풀리는 다수 이벤트 → 탭 시 목록 시트로 푼다.)
         let selectedID = selectedDiscoverPinID
         return groups.flatMap { group -> [MapPinItem] in
-            let clusterable = selectedID == nil ? group : group.filter { $0.id != selectedID }
+            let partition = MapIndividualPinSelection.partition(
+                group,
+                selectedID: selectedID,
+                alwaysIndividual: { $0.isMerchantSubmitted }
+            )
+            let clusterable = partition.clusterable
             var pins: [MapPinItem] = []
             if clusterable.count >= placeStackThreshold,
                let cluster = clusterPin(for: clusterable, idPrefix: "discover-stack", tint: clusterable.first?.layerTint ?? FestivalDesign.uiTeal, isParking: false) {
@@ -572,9 +582,9 @@ struct MapHomeView: View {
                     ))
                 }
             }
-            if let selectedID, let selected = group.first(where: { $0.id == selectedID }) {
-                pins.append(mapPinItem(for: selected, coordinate: selected.coordinate))
-            }
+            pins.append(contentsOf: partition.individual.map {
+                mapPinItem(for: $0, coordinate: $0.coordinate)
+            })
             return pins
         }
     }
@@ -2131,6 +2141,11 @@ private enum DiscoverPinSource: OverlayPinSource, Identifiable {
         case .festival(_, let tint), .event(_, let tint):
             return tint
         }
+    }
+
+    var isMerchantSubmitted: Bool {
+        guard case .event(let event, _) = self else { return false }
+        return event.isMerchantSubmitted
     }
 
     /// 레이어 토글 색이 곧 이 핀의 분류다(축제·공연·박람회·가게 이벤트가 각기 다른 색).

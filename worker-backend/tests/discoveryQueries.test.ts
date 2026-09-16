@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { queryPerformancesFromCache, queryFestivalPageFromCache, queryPerformancePageFromCache, queryFestivalsFromCache } from "../src/discoveryCache.js";
-import { queryLocalEvents } from "../src/localEvents.js";
+import { paidRegistrationIsActive, queryLocalEvents } from "../src/localEvents.js";
 
 interface FakeCall {
   sql: string;
@@ -208,6 +208,24 @@ function localEventRow(overrides: Record<string, unknown>) {
 }
 
 describe("queryLocalEvents", () => {
+  it("keeps date-only merchant registrations active through the Korean expiry day", () => {
+    expect(paidRegistrationIsActive("2026-12-15", new Date("2026-12-15T14:59:59Z"))).toBe(true);
+    expect(paidRegistrationIsActive("2026-12-15", new Date("2026-12-15T15:00:00Z"))).toBe(false);
+    expect(paidRegistrationIsActive("2026-02-30", new Date("2026-02-01T00:00:00Z"))).toBe(false);
+  });
+
+  it("sorts merchant submissions ahead of collected events", async () => {
+    const rows = [
+      localEventRow({ id: "a-collected", source: "naver_blog", priority_score: 999 }),
+      localEventRow({ id: "z-merchant", source: "merchant", is_sponsored: 1,
+        paid_until: "2026-12-15", priority_score: 100 }),
+    ];
+    const result = await queryLocalEvents(fakeDb(rows, []), {
+      lat: 37.5665, lng: 126.978, radiusMeters: 5000, limit: 20,
+    });
+    expect(result.items.map(item => item.id)).toEqual(["z-merchant", "a-collected"]);
+  });
+
   it("bounds each scan but follows every page for legacy offset clients", async () => {
     const calls: FakeCall[] = [];
     const rows = Array.from({ length: 500 }, (_, index) =>

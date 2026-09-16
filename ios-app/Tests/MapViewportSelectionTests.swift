@@ -25,4 +25,16 @@ final class MapViewportSelectionTests: XCTestCase {
         XCTAssertEqual(visible.filter { $0.id >= 1200 }.count, 1200)
         XCTAssertEqual(visible.filter { $0.id < 1200 }.map(\.id), [0])
     }
+
+    func testMerchantAndSelectedSourcesStayOutsideClusters() {
+        let center = CLLocationCoordinate2D(latitude: 37.4, longitude: 126.6)
+        let sources = (0..<5).map { Source(id: $0, coordinate: center) }
+        let partition = MapIndividualPinSelection.partition(
+            sources,
+            selectedID: 1,
+            alwaysIndividual: { $0.id == 4 }
+        )
+        XCTAssertEqual(partition.clusterable.map(\.id), [0, 2, 3])
+        XCTAssertEqual(partition.individual.map(\.id), [1, 4])
+    }
 }

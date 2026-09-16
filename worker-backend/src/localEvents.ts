@@ -83,7 +83,9 @@ async function queryLocalEventPage(
   const lngDelta =
     options.radiusMeters /
     Math.max(40000, 111320 * Math.cos((options.lat * Math.PI) / 180));
-  const now = new Date().toISOString();
+  const current = new Date();
+  const now = current.toISOString();
+  const todayKST = seoulDayString(current);
   let rows: D1Result<LocalEventRow>;
   try {
     rows = await db
@@ -95,7 +97,10 @@ async function queryLocalEventPage(
            AND lng IS NOT NULL
            AND lat BETWEEN ? AND ?
            AND lng BETWEEN ? AND ?
-           AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND paid_until > ?))
+           AND (is_sponsored = 0 OR (paid_until IS NOT NULL AND (
+             (length(paid_until) = 10 AND paid_until >= ?)
+             OR (length(paid_until) <> 10 AND paid_until > ?)
+           )))
            AND (end_date IS NULL OR end_date >= date('now', '-1 day'))
            AND (end_date IS NOT NULL OR start_date >= date('now', '-14 days'))
            AND id > ?
@@ -108,6 +113,7 @@ async function queryLocalEventPage(
         options.lat + latDelta,
         options.lng - lngDelta,
         options.lng + lngDelta,
+        todayKST,
         now,
         cursor ?? "",
         LOCAL_EVENT_PAGE_SIZE,
@@ -492,10 +498,24 @@ function parseCategoryTagsJson(raw: string | null): string[] {
 }
 
 function localEventSort(a: LocalEvent, b: LocalEvent): number {
+  const aMerchant = a.source === "merchant";
+  const bMerchant = b.source === "merchant";
+  if (aMerchant !== bMerchant) return aMerchant ? -1 : 1;
   if (a.isSponsored !== b.isSponsored) return a.isSponsored ? -1 : 1;
   if (a.priorityScore !== b.priorityScore)
     return b.priorityScore - a.priorityScore;
   return a.distanceMeters - b.distanceMeters || a.id.localeCompare(b.id);
+}
+
+export function paidRegistrationIsActive(paidUntil: string | null, now: Date): boolean {
+  if (!paidUntil) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(paidUntil)) {
+    const parsed = new Date(`${paidUntil}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== paidUntil) return false;
+    return paidUntil >= seoulDayString(now);
+  }
+  const expiry = Date.parse(paidUntil);
+  return Number.isFinite(expiry) && expiry > now.getTime();
 }
 
 function duplicateKey(item: LocalEvent): string {

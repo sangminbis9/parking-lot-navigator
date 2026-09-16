@@ -82,7 +82,10 @@ final class DiscoverySnapshotIndex {
         return candidates(eventsByCell, lat: lat, lng: lng, radius: radius).compactMap { item -> FreeEvent? in
             guard item.status == .approved else { return nil }
             if item.isSponsored {
-                guard let paidUntil = item.paidUntil, let end = DiscoverySnapshotStore.date(paidUntil), end > now else { return nil }
+                guard LocalEventAvailability.sponsoredRegistrationIsActive(
+                    paidUntil: item.paidUntil,
+                    now: now
+                ) else { return nil }
             }
             // Retain the existing one-day grace period and 14-day unknown-end window.
             // Old merchant drafts could be approved with an end date earlier than their
@@ -108,6 +111,7 @@ final class DiscoverySnapshotIndex {
             copy.distanceMeters = Int(distance.rounded())
             return copy
         }.sorted {
+            if $0.isMerchantSubmitted != $1.isMerchantSubmitted { return $0.isMerchantSubmitted }
             if $0.isSponsored != $1.isSponsored { return $0.isSponsored }
             if $0.priorityScore != $1.priorityScore { return $0.priorityScore > $1.priorityScore }
             if $0.distanceMeters != $1.distanceMeters { return $0.distanceMeters < $1.distanceMeters }

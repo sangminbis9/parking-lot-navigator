@@ -19,3 +19,21 @@ enum MapViewportSelection {
         }
     }
 }
+
+/// 선택된 핀과 사업자 직접 등록 핀처럼 클러스터에 흡수되면 안 되는 항목을 분리한다.
+enum MapIndividualPinSelection {
+    static func partition<Item: Identifiable>(
+        _ items: [Item], selectedID: Item.ID?, alwaysIndividual: (Item) -> Bool
+    ) -> (clusterable: [Item], individual: [Item]) {
+        var clusterable: [Item] = []
+        var individual: [Item] = []
+        for item in items {
+            if item.id == selectedID || alwaysIndividual(item) {
+                individual.append(item)
+            } else {
+                clusterable.append(item)
+            }
+        }
+        return (clusterable, individual)
+    }
+}

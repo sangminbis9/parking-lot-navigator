@@ -23,6 +23,7 @@ import {
   createLocalEventReport,
   getLocalEvent,
   localEventMapItem,
+  paidRegistrationIsActive,
   patchLocalEventStatus,
   queryLocalEvents,
   updateAdminLocalEvent,
@@ -655,8 +656,7 @@ app.get("/api/local-events/:id", async (c) => {
   if (!item || item.status !== "approved")
     return c.json({ error: "not_found" }, 404);
   if (item.isSponsored) {
-    const now = new Date().toISOString();
-    if (!item.paidUntil || item.paidUntil <= now)
+    if (!paidRegistrationIsActive(item.paidUntil, new Date()))
       return c.json({ error: "not_found" }, 404);
   }
   return c.json({ item, generatedAt: new Date().toISOString() });

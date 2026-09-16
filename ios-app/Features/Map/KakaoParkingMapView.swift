@@ -445,7 +445,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
             var positions: [MapPoint] = []
             var clickableIDs: Set<String> = []
             var deferredCount = 0
-            for (poiID, entry) in desired where renderedPins[poiID] == nil {
+            let pendingEntries = desired
+                .filter { renderedPins[$0.key] == nil }
+                .sorted {
+                    if $0.value.pin.displayPriority != $1.value.pin.displayPriority {
+                        return $0.value.pin.displayPriority > $1.value.pin.displayPriority
+                    }
+                    return $0.key < $1.key
+                }
+            for (poiID, entry) in pendingEntries {
                 if options.count >= Coordinator.minPinsPerRenderPass,
                    CFAbsoluteTimeGetCurrent() - startedAt >= Coordinator.pinRenderBudget {
                     deferredCount += 1
@@ -464,7 +472,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                     registeredDynamicStyleIDs.insert(style.id)
                 }
                 let option = PoiOptions(styleID: styleID, poiID: poiID)
-                option.rank = rank(for: pin.kind)
+                option.rank = entry.snapshot.rank
                 // 내 위치 핀은 보여줄 정보가 없으므로 탭 대상에서 뺀다.
                 option.clickable = !pin.isCurrentLocation
                 options.append(option)
@@ -573,23 +581,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 .0
         }
 
-        private func rank(for kind: MapPinItem.Kind) -> Int {
-            switch kind {
-            case .currentLocation:
-                return 30
-            case .destination:
-                return 20
-            case .parking:
-                return 10
-            case .festival:
-                return 12
-            case .event:
-                return 12
-            case .cluster:
-                return 16
-            }
-        }
-
         func screenPoint(for coord: CLLocationCoordinate2D) -> CGPoint? {
             guard let mapView = controller?.getView("mapview") as? KakaoMap else { return nil }
             let size = container?.bounds.size ?? mapView.viewRect.size
@@ -651,6 +642,7 @@ private struct MapPinSnapshot: Equatable {
     let coordinate: CLLocationCoordinate2D
     let styleID: String
     let poiID: String
+    let rank: Int
 
     init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) {
         id = pin.id
@@ -661,13 +653,15 @@ private struct MapPinSnapshot: Equatable {
             isSelected: isSelected
         )
         poiID = pin.poiID
+        rank = pin.displayPriority
     }
 
     static func == (lhs: MapPinSnapshot, rhs: MapPinSnapshot) -> Bool {
         lhs.id == rhs.id &&
             lhs.coordinate.isClose(to: rhs.coordinate) &&
             lhs.styleID == rhs.styleID &&
-            lhs.poiID == rhs.poiID
+            lhs.poiID == rhs.poiID &&
+            lhs.rank == rhs.rank
     }
 }
 

@@ -245,6 +245,18 @@ final class DiscoverySnapshotTests: XCTestCase {
 
         XCTAssertEqual(index.events(lat: 37.41, lng: 126.64, radius: 20_000, now: now).map(\.id), ["merchant-malformed"])
     }
+
+    func testMerchantDateOnlyRegistrationRemainsVisibleThroughKoreanExpiryDay() {
+        let merchant = merchantEvent("merchant", start: "2026-09-15", end: "2026-12-15", paidUntil: "2026-12-15")
+        let index = DiscoverySnapshotIndex(parts: [.init(
+            schemaVersion: 1, festivals: [], performanceEvents: [], localEvents: [merchant]
+        )])
+
+        let beforeKoreanMidnight = ISO8601DateFormatter().date(from: "2026-12-15T14:59:59Z")!
+        let afterKoreanMidnight = ISO8601DateFormatter().date(from: "2026-12-15T15:00:00Z")!
+        XCTAssertEqual(index.events(lat: 37.41, lng: 126.64, radius: 20_000, now: beforeKoreanMidnight).map(\.id), ["merchant"])
+        XCTAssertTrue(index.events(lat: 37.41, lng: 126.64, radius: 20_000, now: afterKoreanMidnight).isEmpty)
+    }
 }
 
 private actor SnapshotTestTransport {
