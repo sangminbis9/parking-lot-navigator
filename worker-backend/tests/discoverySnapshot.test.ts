@@ -186,6 +186,20 @@ describe("incremental discovery snapshot", () => {
     expect(f.manifest().count).toBe(1);
     expect(JSON.parse(f.objects.get(`${SNAPSHOT_PREFIX}status.json`)!.text).healthy).toBe(true);
   });
+  it("keeps stamping checkedAt while a build is in flight", async () => {
+    const f = fixture([row(1)]);
+    const statusKey = `${SNAPSHOT_PREFIX}status.json`;
+    await runSnapshotJob(f.env, { type: "discovery-snapshot", force: true });
+    expect(f.queue).toHaveLength(1); // build started, deliberately not drained
+    const state = JSON.parse(f.objects.get(`${SNAPSHOT_PREFIX}incremental-build.json`)!.text);
+    expect(JSON.parse(f.objects.get(statusKey)!.text).pending).toBe(true);
+    f.objects.delete(statusKey); // a heartbeat that returns without writing leaves it gone
+    await runSnapshotJob(f.env, { type: "discovery-snapshot" });
+    const beat = JSON.parse(f.objects.get(statusKey)!.text);
+    expect(beat.healthy).toBe(true);
+    expect(beat.pendingSince).toBe(state.generatedAt);
+    expect(Date.now() - Date.parse(beat.checkedAt)).toBeLessThan(15 * 60_000);
+  });
   it("recovers queue-send failure at the checkpoint after backoff", async () => {
     const f = fixture([row(1)]);
     f.send.mockRejectedValueOnce(new Error("queue unavailable"));

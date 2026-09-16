@@ -16,6 +16,7 @@
 
 - GET /api/discovery-snapshot/manifest.json: schemaVersion=1, version(UUID), generatedAt, revision, parts[{sha256,bytes,count}], count.
 - GET /api/discovery-snapshot/status.json: 발행 검사 시각 checkedAt, healthy, pending/pendingSince 또는 error/retryAt. 데이터 변경 시각과 발행기 확인 시각을 분리한다. 원본 공급자 전체의 건강도를 보증하는 지표는 아니다.
+- checkedAt은 매분 heartbeat가 반드시 갱신한다. 빌드가 진행 중인 회차도 예외가 아니다. 빌드 중에는 pending=true이고 pendingSince는 진행 중인 빌드의 generatedAt이다. 이 값이 멈추면 정적 미러와 릴리스 게이트는 발행기 정지로 판정한다.
 - GET /api/discovery-snapshot/parts/<sha256>.json: 공개 DTO만. raw payload·관리 메모 제외.
 - R2 직접 키는 discovery/v1/ 하위다. catalog.json, incremental-build.json, queue-budget.json 등 내부 키는 HTTP 공개 경로에서 404다.
 - manifest/status 캐시 30초, 해시 파일 1년 immutable, ETag 지원. D1 장애 시 SQL API로 우회하지 않는다.
@@ -60,6 +61,8 @@
 1. 기존 R2 바인딩 확인 → D1 0032 적용 → Worker 배포.
 2. Worker 체크포인트 전진과 실제 rowsRead 확인. CLI 한 행 조회만으로 한도 해제를 판단하지 않는다.
 3. node worker-backend/scripts/verify-discovery-snapshot.mjs: 전체 manifest/파일 해시·바이트·건수·좌표 확인. 데이터가 오래되어도 정상 무변경일 수 있으므로 48시간 생성일 제한 대신 발행기 최근 15분 검사와 10분 미만 backlog를 검사한다.
+   - 데이터 무결성은 DISCOVERY_SNAPSHOT_BASE_URL(정적 미러)에서, 발행기 건강도(checkedAt 15분·backlog 10분)는 API_BASE_URL(원본)에서 각각 확인한다. 미러의 checkedAt은 원본 값을 그대로 복사한 사본이라 미러 갱신 주기만큼 늙는다. 미러 자체는 mirroredAt 24시간 한도로만 검사한다. GitHub 예약 실행이 요청한 5분 간격 대신 하루 몇 회만 발화하므로 미러의 사본 시각으로 발행기 생존을 판정하면 정상 상태에서도 배포가 막힌다.
+   - 두 환경 변수 중 DISCOVERY_SNAPSHOT_BASE_URL이 없으면 양쪽 모두 원본을 본다. 동작은 종전과 같다.
 4. Codemagic 시뮬레이터 검증 후 TestFlight. 완성 데이터 검증 전 TestFlight 금지. App Store 공개는 별도 승인 사항.
 5. 최초 다운로드 크기/시간/메모리, 종료 후 재개, 오프라인, 변경/삭제/취소, 지도 이동, 주차 갱신을 실기기로 확인한다.
 

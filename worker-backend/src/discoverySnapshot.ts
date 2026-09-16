@@ -41,6 +41,15 @@ async function enqueue(env: Required<SnapshotEnvironment>, job: SnapshotJob): Pr
   // the minute sweep can enqueue it later without poisoning global health.
 }
 
+// Every heartbeat stamps checkedAt, including the minutes a build is in flight.
+// The release gate and the static mirror both read a frozen checkedAt as a dead
+// publisher, so returning early without writing here fails them for real.
+const putHealthy = (bucket: R2Bucket, pendingSince: string | null) =>
+  bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: true,
+    pending: pendingSince !== null, ...(pendingSince === null ? {} : { pendingSince }),
+    checkedAt: new Date().toISOString() }),
+    { httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=30" } });
+
 export interface SnapshotPart {
   schemaVersion: 1;
   festivals: Festival[];
@@ -148,6 +157,8 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
   if (!job.version) {
     if (current?.format === 2 && current.phase !== "complete"
       && Date.now() - Date.parse(current.generatedAt) < MAX_BUILD_AGE_MS) {
+      // No dirty row in hand here; the running build's own start is the backlog age.
+      await putHealthy(bucket, current.generatedAt);
       await enqueue(env, { type: "discovery-snapshot", version: current.version });
       return;
     }
@@ -158,9 +169,7 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
       ORDER BY CASE kind WHEN 'local' THEN 0 ELSE 1 END, changed_at, bucket LIMIT 1`)
       .first<DirtySection>();
     if (!pending) {
-      await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: true,
-        pending: false, checkedAt: new Date().toISOString() }),
-        { httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=30" } });
+      await putHealthy(bucket, null);
       return;
     }
     // Coalesce ordinary collection writes for up to 2 minutes. Local/merchant rows
@@ -169,8 +178,7 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
     const catalog = catalogObject ? await catalogObject.json<Catalog>() : null;
     if (catalog?.ready && pending.kind === "discovery" && !job.force
       && Date.now() - Date.parse(pending.changed_at) < 120_000) {
-      await bucket.put(STATUS_KEY, JSON.stringify({ schemaVersion: 1, healthy: true,
-        pending: true, pendingSince: pending.changed_at, checkedAt: new Date().toISOString() }));
+      await putHealthy(bucket, pending.changed_at);
       return;
     }
     const state: BuildState = { format: 2, version: crypto.randomUUID(), generatedAt: new Date().toISOString(),
@@ -179,7 +187,10 @@ async function advanceSnapshot(env: Required<SnapshotEnvironment>, job: Snapshot
     const saved = await bucket.put(STATE_KEY, encoded(state, MAX_MANIFEST_BYTES), {
       onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: "*" },
     });
-    if (saved) await enqueue(env, { type: "discovery-snapshot", version: state.version });
+    if (saved) {
+      await putHealthy(bucket, pending.changed_at);
+      await enqueue(env, { type: "discovery-snapshot", version: state.version });
+    }
     return;
   }
   if (!current || current.format !== 2 || current.version !== job.version || current.phase === "complete") return;

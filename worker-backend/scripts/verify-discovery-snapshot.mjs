@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 
 // Release gate: verify the complete published dataset, never just /health.
-const base = process.env.DISCOVERY_SNAPSHOT_BASE_URL?.trim()
-  || `${(process.env.API_BASE_URL || "https://parking-lot-navigator-api.parkingnav.workers.dev").replace(/\/$/, "")}/api/discovery-snapshot`;
+const origin = `${(process.env.API_BASE_URL || "https://parking-lot-navigator-api.parkingnav.workers.dev").replace(/\/$/, "")}/api/discovery-snapshot`;
+const base = process.env.DISCOVERY_SNAPSHOT_BASE_URL?.trim() || origin;
 const root = new URL(`${base.replace(/\/$/, "")}/`);
-if (root.protocol !== "https:") throw new Error("Snapshot release URL must use HTTPS");
+// Publisher liveness is an origin question. The mirror copies checkedAt verbatim,
+// so its value ages with the mirror job's cadence, not the publisher's health.
+const statusRoot = new URL(`${origin}/`);
+for (const url of [root, statusRoot]) if (url.protocol !== "https:") throw new Error("Snapshot release URL must use HTTPS");
 const check = (condition, message) => { if (!condition) throw new Error(message); };
-async function download(path, maxBytes) {
-  const response = await fetch(new URL(path, root), { signal: AbortSignal.timeout(30_000) });
+async function download(path, maxBytes, from = root) {
+  const response = await fetch(new URL(path, from), { signal: AbortSignal.timeout(30_000) });
   check(response.ok, `${path}: HTTP ${response.status}`);
   check(response.body, `${path}: missing response body`);
   const chunks = [];
@@ -24,12 +27,20 @@ check(manifest.schemaVersion === 1 && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12
 const age = Date.now() - Date.parse(manifest.generatedAt);
 check(Number.isFinite(age) && age >= -300_000, "Invalid snapshot publication time");
 // Unchanged data may legitimately be older than 48h. Check the publisher separately.
-const status = JSON.parse(await download("status.json", 16 * 1024));
+const status = JSON.parse(await download("status.json", 16 * 1024, statusRoot));
 const checkAge = Date.now() - Date.parse(status.checkedAt);
 check(status.schemaVersion === 1 && status.healthy === true && Number.isFinite(checkAge)
   && checkAge >= -300_000 && checkAge < 15 * 60_000, "Publisher unhealthy or not checked in 15 minutes");
 check(!status.pending || Date.now() - Date.parse(status.pendingSince) < 10 * 60_000,
   "Publication backlog is stale");
+if (base !== origin) {
+  // The mirror republishes at most every 10 minutes when its job runs, but GitHub's
+  // scheduler fires it a few times a day. Bound the mirror on its own clock, wide
+  // enough for that cadence and still tight enough to catch a dead mirror job.
+  const mirrored = Date.now() - Date.parse(JSON.parse(await download("status.json", 16 * 1024)).mirroredAt);
+  check(Number.isFinite(mirrored) && mirrored >= -300_000 && mirrored < 24 * 60 * 60_000,
+    "Static mirror has not been republished in 24 hours");
+}
 check(Array.isArray(manifest.parts) && Number.isSafeInteger(manifest.count) && manifest.count > 0, "Cannot release against an empty snapshot");
 let bytes = 0;
 let count = 0;
