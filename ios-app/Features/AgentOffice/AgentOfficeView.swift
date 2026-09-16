@@ -162,6 +162,7 @@ private struct OfficeFloorView: View {
                 ) {
                     withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
                 }
+                .frame(width: min(270, size.width - 24))
                 .padding(.top, 8)
                 .padding(.trailing, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -1038,74 +1039,138 @@ private extension AgentOfficeAgent {
     }
 }
 
-// Pixel-style info badge: agent status + recent 5 activities with timestamps.
+// Pixel-style info badge: current responsibility, work state and recent activity.
 private struct AgentInfoBadge: View {
     let agent: AgentOfficeAgent
     var recentActivity: [AgentActivityEvent] = []
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(agent.status.color)
-                .frame(width: 4)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(agent.status.color.opacity(0.14))
+                    AgentPortrait(agent: agent, compact: true)
+                }
+                .frame(width: 42, height: 42)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Rectangle()
-                        .fill(agent.status.color)
-                        .frame(width: 5, height: 5)
-                    Text(agent.status.title)
-                        .font(.festival(size: 8, weight: .bold))
-                        .foregroundStyle(FestivalDesign.readable(agent.status.color))
-                    Spacer()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.name)
+                        .font(.festival(size: 13, weight: .heavy))
+                        .foregroundStyle(FestivalDesign.navy)
+                    Text(agent.role)
+                        .font(.festival(size: 9, weight: .semibold))
+                        .foregroundStyle(FestivalDesign.navy.opacity(0.65))
+                }
+
+                Spacer(minLength: 4)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Rectangle()
+                            .fill(agent.status.color)
+                            .frame(width: 5, height: 5)
+                        Text(agent.status.title)
+                            .font(.festival(size: 8, weight: .bold))
+                            .foregroundStyle(FestivalDesign.readable(agent.status.color))
+                    }
+
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
                             .font(.festival(size: 8, weight: .bold))
                             .foregroundStyle(FestivalDesign.navy.opacity(0.5))
-                            .frame(width: 22, height: 22)
+                            .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("말풍선 닫기")
+                    .accessibilityLabel("에이전트 정보 닫기")
                 }
-                Text(agent.name)
-                    .font(.festival(size: 12, weight: .heavy))
-                    .foregroundStyle(FestivalDesign.navy)
-                Text(agent.role)
-                    .font(.festival(size: 8))
-                    .foregroundStyle(FestivalDesign.navy.opacity(0.65))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-                if !recentActivity.isEmpty {
-                    Rectangle()
-                        .fill(FestivalDesign.navy.opacity(0.15))
-                        .frame(height: 1)
-                        .padding(.top, 2)
-                    ForEach(recentActivity.indices, id: \.self) { i in
-                        let ev = recentActivity[i]
-                        HStack(alignment: .top, spacing: 4) {
-                            Text(shortTime(ev.ts))
+            Rectangle()
+                .fill(FestivalDesign.navy.opacity(0.12))
+                .frame(height: 1)
+
+            infoSection(title: "현재 업무", value: agent.line)
+            infoSection(title: "처리 방향", value: agent.reply)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("최근 활동")
+                    .font(.festival(size: 8, weight: .bold))
+                    .foregroundStyle(FestivalDesign.secondaryText)
+
+                if recentActivity.isEmpty {
+                    Text("아직 기록된 활동이 없어요.")
+                        .font(.festival(size: 9))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                } else {
+                    ForEach(recentActivity.indices, id: \.self) { index in
+                        let event = recentActivity[index]
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(shortTime(event.ts))
                                 .font(.festival(size: 7))
                                 .foregroundStyle(FestivalDesign.secondaryText)
-                                .frame(width: 32, alignment: .leading)
-                            Text(formatActivityLine(ev) ?? ev.action)
+                                .frame(width: 34, alignment: .leading)
+                            Text(activitySummary(event))
                                 .font(.festival(size: 8))
                                 .foregroundStyle(FestivalDesign.navy)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
         }
-        .frame(width: 190)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(FestivalDesign.surface)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(agent.status.color)
+                .frame(width: 4)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(agent.status.color.opacity(0.45), lineWidth: 1.5))
         .festivalShadow(.medium)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func infoSection(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.festival(size: 8, weight: .bold))
+                .foregroundStyle(FestivalDesign.secondaryText)
+            Text(value)
+                .font(.festival(size: 9))
+                .foregroundStyle(FestivalDesign.navy)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func activitySummary(_ event: AgentActivityEvent) -> String {
+        if let formatted = formatActivityLine(event), !formatted.isEmpty {
+            return formatted
+        }
+        if let reason = event.reason, !reason.isEmpty {
+            return reason
+        }
+        if let title = event.targetTitle, !title.isEmpty {
+            return title
+        }
+
+        switch event.action {
+        case "found": return "새 후보를 발견했어요."
+        case "validate": return "데이터를 검증했어요."
+        case "reconsider": return "보류 항목을 다시 검토했어요."
+        case "post": return "게시판에 반영했어요."
+        case "publish": return "스냅샷을 발행했어요."
+        case "notify": return "알림을 전달했어요."
+        case "sync": return "데이터를 동기화했어요."
+        case "error": return "작업 중 오류가 발생했어요."
+        default: return "작업 상태를 확인했어요."
+        }
     }
 
     private func shortTime(_ ts: String) -> String {
