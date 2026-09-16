@@ -46,7 +46,7 @@
 **공개 데이터 소스 9개** — `worker-backend/src/discoverySchedule.ts`의 `DISCOVERY_PROVIDER_CHUNKS`에 등록된 청크와 1:1 대응한다:
 `tourapi-festival`, `tourapi-area-festival`, `tourapi-keyword-festival`, `public-data-culture-festival`,
 `seoul-culture-event`, `culture-portal`, `kopis`, `city-scraped`, `akei-trade-expo`.
-로컬 매장 이벤트는 별도 파이프라인(`worker-backend/src/localEventDiscovery.ts`, Naver 검색 API + Kakao Local).
+로컬 매장 이벤트의 자동 수집 파이프라인은 2026-09-16 폐기했다. 기존 수집 핀은 D1과 정적 스냅샷에 유지하며, 신규 로컬 이벤트는 인증된 사장님 등록 경로로만 받는다.
 
 | 영상의 주장 | 근거 |
 |---|---|

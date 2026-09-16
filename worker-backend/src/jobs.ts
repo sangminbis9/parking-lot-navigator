@@ -17,12 +17,12 @@ import { akeiTargetMonths } from "./akeiTradeExpoDiscovery.js";
  * 스케줄러 invocation 안에서 shard를 직접 돌린다.
  *
  * 예상 메시지/일 (근거는 docs/operations/worker-limits.md):
- *   고정분 816건 — discovery-chunk 168(=7회/시×24) · tagging/fee/geocode/image 72×4=288
- *   · program-select 144 · notification-plan 24 + dispatch 48 · local-events 24
+ *   고정분 792건 — discovery-chunk 168(=7회/시×24) · tagging/fee/geocode/image 72×4=288
+ *   · program-select 144 · notification-plan 24 + dispatch 48
  *   · agent-head/image 16 · city-festival-site 72 · akei-page 최대 30 · prune 2
  *   변동분 — program-page 576(=144회×4건), 그 뒤 subpage/ai 최대 1,152
  *
- *   최악 ≈ 2,544건 ≈ 7,632 ops/day. 스냅샷 650건=1,950 ops 포함 9,582.
+ *   최악 ≈ 2,520건 ≈ 7,560 ops/day. 스냅샷 650건=1,950 ops 포함 9,510.
  *   현실 ≈ 1,700건 ≈ 5,100 ops/day (한도의 51%)
  *   사장님 즉시 Slack 알림은 정상 시 waitUntil 직송이라 Queue 0건이다.
  *   Slack 실패 때만 메시지 1건(재시도 없는 정상 복구 약 3 ops)을 추가한다.
@@ -33,7 +33,6 @@ import { akeiTargetMonths } from "./akeiTradeExpoDiscovery.js";
 export type BackgroundJob =
   | import("./discoverySnapshot.js").SnapshotJob
   | { type: "discovery-chunk"; chunkIndex: number }
-  | { type: "local-events"; chunkIndex: number }
   | { type: "tagging" }
   | { type: "fee-backfill" }
   | { type: "geocode-backfill" }
@@ -75,15 +74,6 @@ export async function sendJobs(env: Env, jobs: BackgroundJob[]): Promise<void> {
   } catch (error) {
     console.error("queue send failed", error);
   }
-}
-
-/** 로컬 이벤트 청크 수. 3시간마다 한 칸씩 돌아 하루 8칸을 쓴다. */
-export const LOCAL_EVENT_CHUNK_COUNT = 12;
-
-export function currentLocalEventChunkIndex(now: Date, chunkCount: number): number {
-  if (chunkCount <= 1) return 0;
-  const slot = Math.floor(now.getTime() / (3 * 60 * 60 * 1000));
-  return ((slot % chunkCount) + chunkCount) % chunkCount;
 }
 
 // 직접 I/O를 하는 실시간 주차와 스냅샷 복구는 별도 invocation으로 분리한다.
@@ -135,12 +125,8 @@ export function plannedJobs(scheduledAt: Date): BackgroundJob[] {
   if (minute === 0) jobs.push({ type: "notification-plan" });
   else if (minute % 30 === 0) jobs.push({ type: "notification-dispatch" });
 
-  if (minute === 15) {
-    jobs.push({
-      type: "local-events",
-      chunkIndex: currentLocalEventChunkIndex(scheduledAt, LOCAL_EVENT_CHUNK_COUNT),
-    });
-    if (hour === 6) jobs.push({ type: "prune-sync-runs" }, { type: "prune-analytics" });
+  if (minute === 15 && hour === 6) {
+    jobs.push({ type: "prune-sync-runs" }, { type: "prune-analytics" });
   }
 
   // 예전에는 Promise.all로 한 invocation에서 둘을 같이 돌려 CPU를 나눠 썼다.

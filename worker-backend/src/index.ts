@@ -28,7 +28,6 @@ import {
   queryLocalEvents,
   updateAdminLocalEvent,
 } from "./localEvents.js";
-import { syncLocalEventDiscovery } from "./localEventDiscovery.js";
 import { runCityFestivalDiscovery } from "./cityFestivalDiscovery.js";
 import { CITY_FESTIVAL_SITES } from "./cityFestivalSites.js";
 import {
@@ -48,10 +47,8 @@ import { runProgramCrawl, runProgramStage, selectProgramCrawlTargets } from "./p
 import {
   DAILY_SLACK_REPORT_CRON,
   DISPATCH_CRON,
-  LOCAL_EVENT_CHUNK_COUNT,
   REALTIME_PARKING_CRON,
   SNAPSHOT_RECOVERY_CRON,
-  currentLocalEventChunkIndex,
   plannedJobs,
   realtimeShardIndex,
   sendJobs,
@@ -113,15 +110,11 @@ export type Env = {
   DISCOVERY_SYNC_FETCH_TIMEOUT_MS?: string;
   FESTIVAL_PROVIDER_ENABLED: string;
   EVENT_PROVIDER_ENABLED: string;
-  LOCAL_EVENT_PROVIDER_ENABLED: string;
-  LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE: string;
   CITY_FESTIVAL_AUTO_PUBLISH_MIN_SCORE?: string;
   CITY_FESTIVAL_GEOCODE_MISS_BUDGET?: string;
   CITY_FESTIVAL_DETAIL_FETCH_BUDGET?: string;
-  LOCAL_EVENT_SEARCH_MAX_QUERIES: string;
   NAVER_CLIENT_ID?: string;
   NAVER_CLIENT_SECRET?: string;
-  NAVER_SEARCH_BASE_URL: string;
   KAKAO_REST_API_KEY?: string;
   KAKAO_LOCAL_BASE_URL: string;
   SEOUL_OPEN_DATA_KEY?: string;
@@ -320,12 +313,6 @@ const discoveryClusterSchema = z.object({
 const discoverySyncSchema = z.object({
   kinds: z.string().optional(),
   chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
-});
-
-const localEventDiscoverySyncSchema = z.object({
-  dryRun: optionalBoolean,
-  chunkIndex: z.coerce.number().int().min(0).max(63).optional(),
-  chunkCount: z.coerce.number().int().min(1).max(64).optional(),
 });
 
 const cityFestivalDiscoverySyncSchema = z.object({
@@ -1220,31 +1207,6 @@ app.get("/agent-office/activity", async (c) => {
   }
 });
 
-app.post("/admin/sync-local-events", async (c) => {
-  const authResponse = authorizeAdminSync(c.req.raw, c.env);
-  if (authResponse) return authResponse;
-  if (!c.env.DB) {
-    return c.json({ error: "d1_not_configured" }, 503);
-  }
-
-  const query = localEventDiscoverySyncSchema.parse(queryObject(c.req.raw.url));
-  const chunkCount = query.chunkCount ?? LOCAL_EVENT_CHUNK_COUNT;
-  const chunkIndex =
-    query.chunkIndex ?? currentLocalEventChunkIndex(new Date(), chunkCount);
-  try {
-    const result = await syncLocalEventDiscovery({
-      db: c.env.DB,
-      env: c.env,
-      dryRun: query.dryRun ?? false,
-      chunkIndex,
-      chunkCount,
-    });
-    return c.json(result);
-  } catch (error) {
-    return c.json(syncErrorResponse(error), 502);
-  }
-});
-
 app.post("/admin/sync-city-festivals", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -1524,8 +1486,6 @@ async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
       return runSnapshotJob(env, job);
     case "discovery-chunk":
       return syncDiscoveryChunkScheduled(env, job.chunkIndex);
-    case "local-events":
-      return syncLocalEventsScheduled(env, job.chunkIndex);
     case "tagging":
       return runTaggingScheduled(env);
     case "fee-backfill":
@@ -1989,23 +1949,6 @@ async function syncDiscoveryChunkScheduled(
       `discovery chunk ${chunkIndex}/${DISCOVERY_PROVIDER_CHUNK_COUNT}`,
       error,
     );
-  }
-}
-
-async function syncLocalEventsScheduled(
-  env: Env,
-  chunkIndex: number,
-): Promise<void> {
-  try {
-    await syncLocalEventDiscovery({
-      db: env.DB!,
-      env,
-      chunkIndex,
-      chunkCount: LOCAL_EVENT_CHUNK_COUNT,
-    });
-  } catch (error) {
-    console.error("local event discovery sync failed", error);
-    await notifyOpsFailure(env, "local event discovery sync", error);
   }
 }
 

@@ -270,11 +270,11 @@ final class AgentOfficeViewModel: ObservableObject {
             AgentOfficeAgent(
                 id: "scout",
                 name: AgentOfficeAgent.displayName(forID: "scout"),
-                role: "로컬 이벤트 수집",
+                role: "기존 이벤트 보관",
                 spriteAsset: "AgentChar2",
-                status: eventCount > 0 ? .collecting : .idle,
-                line: eventCount > 0 ? "이벤트 \(eventCount)건 발견." : "현재 진행 이벤트 없음.",
-                reply: "곧 가져갑니다."
+                status: eventCount > 0 ? .monitoring : .idle,
+                line: eventCount > 0 ? "기존 이벤트 \(eventCount)건 보관 중." : "현재 보관 이벤트 없음.",
+                reply: "새 크롤링 없이 기존 핀을 지킬게요."
             ),
             AgentOfficeAgent(
                 id: "vera",

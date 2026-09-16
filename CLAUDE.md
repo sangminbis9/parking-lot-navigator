@@ -104,37 +104,18 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - 로컬 이벤트 D1 테이블은 `local_events`이고, 지도 item type은 `event`, marker type은 `local_event`이다.
 - 로컬 이벤트는 기본적으로 `approved` 상태만 앱 API에 노출된다. `pending` 데이터가 많으면 앱에서는 비어 보일 수 있다.
 
-## 현재 로컬 이벤트 수집 구조
+## 현재 로컬 이벤트 운영 구조
 
-현재 production provider는 `worker-backend/src/localEventDiscovery.ts`이고, 저장되는 `source`는 `naver_blog`다.
+2026-09-16부터 Naver Blog/Kakao Local 자동 후보 크롤러는 제거됐다. `local_events`의 기존
+`source=naver_blog` 행은 삭제·재수집하지 않고 공개 기간 동안 그대로 제공한다. 신규 로컬
+이벤트는 사장님 직접 등록(`source=merchant`), 관리자 입력, 사용자 제보 경로로만 들어온다.
 
-수집 흐름:
-
-1. Naver Search Open API(블로그)로 지역·업종 키워드 조합을 검색해 이벤트 후보 글을 모은다.
-2. 제목/본문에서 매장명과 혜택·기간 키워드를 뽑아낸다.
-3. Kakao Local Keyword Search로 그 매장명을 조회해 실제 업체(`FD6`/`CE7`)와 좌표·주소를 매칭한다.
-4. 혜택, 날짜, 매장명, 주소, 좌표, 원본 링크를 구조화한다.
-5. 점수 기준을 만족하면 `approved`, 아니면 `pending`으로 저장한다.
-
-중요:
-
-- Naver Place feed HTML 스크래핑은 실패해 폐기했다. 다시 시도하지 않는다.
-- Instagram 무단 HTML 크롤링, 로그인 세션 흉내, 봇 탐지 우회, 비공식 API 호출은 금지한다.
-- 공개 API(Naver Search / Kakao Local)만 쓴다. 우회 헤더, 로그인 쿠키, 내부 API 역호출을 추가하지 않는다.
-- 게시물 이미지 원본을 무단 저장하지 않는다. 가능하면 원본 링크 또는 허용된 이미지 URL만 참조한다.
-- 댓글 작성자, 개인 계정, 개인정보는 저장하지 않는다.
-
-주요 설정:
-
-- `LOCAL_EVENT_PROVIDER_ENABLED`
-- `LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE`
-- `LOCAL_EVENT_SEARCH_MAX_QUERIES`
-- `LOCAL_EVENT_BLOG_DISPLAY`
-- `LOCAL_EVENT_MAX_KAKAO_LOOKUPS`
-- `LOCAL_EVENT_KAKAO_RADIUS_METERS`
-- `NAVER_CLIENT_ID`
-- `NAVER_CLIENT_SECRET`
-- `KAKAO_REST_API_KEY`
+- `/api/local-events` 목록·상세와 정적 스냅샷 local section은 계속 유지한다.
+- `/admin/sync-local-events`와 `local-events` Queue job은 다시 만들지 않는다.
+- `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`은 사장님 Naver OAuth 때문에 유지한다.
+- `KAKAO_REST_API_KEY`는 사장님 주소 지오코딩과 공용 지오코딩 경로 때문에 유지한다.
+- 기존 행을 보존한다는 것은 D1에서 지우지 않는다는 뜻이다. 정상적인 종료일·게시 만료
+  필터까지 무시해 영구 노출한다는 뜻은 아니다.
 
 ## AKEI 무역박람회 수집 구조
 
@@ -420,14 +401,6 @@ Worker D1 마이그레이션:
 pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/<migration>.sql
 ```
 
-로컬 이벤트 수동 sync:
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $SYNC_ADMIN_TOKEN" \
-  "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events"
-```
-
 주의:
 
 - Worker 코드만 바꾼 경우 iOS/Codemagic 빌드는 필요 없다. Worker deploy와 필요한 D1 migration/sync가 핵심이다.
@@ -472,7 +445,7 @@ curl -X POST \
 관리용 (`Authorization: Bearer $SYNC_ADMIN_TOKEN`):
 
 - `POST /api/admin/local-events`, `PATCH /api/admin/local-events/:id`, `PATCH /api/admin/local-events/:id/status`
-- `POST /admin/sync-local-events`, `POST /admin/sync-city-festivals`, `POST /admin/sync-akei-trade-expos`, `POST /admin/sync-discovery`
+- `POST /admin/sync-city-festivals`, `POST /admin/sync-akei-trade-expos`, `POST /admin/sync-discovery`
 - `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40), `POST /admin/crawl-programs` (`maxItems` 1..8)
 - `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`
 - `GET /discover/pipeline-stats` (파이프라인 대시보드), `GET /discover/providers/health`
@@ -483,11 +456,10 @@ curl -X POST \
 
 1. Worker가 최신 master로 deploy 되었는가.
 2. 필요한 D1 migration이 remote에 적용되었는가.
-3. `/admin/sync-local-events`가 성공했는가.
-4. `local_events.status`가 `approved`인가.
-5. 좌표가 `0`이거나 `NULL`이 아닌가.
-6. 앱 요청의 `lat/lng/radiusMeters` 범위 안에 이벤트가 있는가.
-7. Naver/Kakao API key가 Worker secret/vars에 설정되어 있는가.
+3. `local_events.status`가 `approved`인가.
+4. 좌표가 `0`이거나 `NULL`이 아닌가.
+5. 앱 요청의 `lat/lng/radiusMeters` 범위 안에 이벤트가 있는가.
+6. 사장님 이벤트라면 `paid_until`이 유효하고 최신 local snapshot section에 포함됐는가.
 
 ## 개발 원칙
 

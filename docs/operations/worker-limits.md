@@ -12,7 +12,7 @@
 - 접속자는 iOS가 설치별 하루 한 번만 기존 analytics 카운터를 올린다. 기존 매 실행 집계보다 D1 쓰기가 감소한다. 서버에는 기기 ID/세션 ID가 없다.
 - 일일 보고서의 discovery full scan은 현재 약 12,700 rows/day로 D1 5,000,000 reads/day의 약 0.26%다. analytics는 PK 1행 lookup, local_events는 작은 테이블 2회 scan, R2는 성공표시 1 write/day다. Queue operations는 추가하지 않는다.
 - 사장님 직접 등록이 많으면 Slack Block Kit payload를 나누되 최대 2,000카드/일로 외부 subrequest 50 한도 아래에 둔다. 현재 등록량에서는 통상 외부 fetch 1회다. 2,000건 도달 시 전용 Queue/Worker 설계를 다시 검토한다.
-- 기존 text var 46개 + secret 17개 상태에서 Slack secret을 바로 더하면 환경변수 상한 64개를 모두 쓴다. 코드 기본값과 같던 `LOCAL_EVENT_BLOG_DISPLAY=20`, `LOCAL_EVENT_KAKAO_RADIUS_METERS=20000`을 설정에서 제거해 새 secret 등록 후 62/64로 두 칸을 남긴다. 런타임 값은 변하지 않는다.
+- 당시 Slack secret 추가를 위해 코드 기본값과 같던 로컬 이벤트 수집 설정 2개를 먼저 제거했다. 2026-09-16에는 자동 로컬 이벤트 수집기 자체를 폐기해 나머지 전용 설정도 모두 제거했으며, Naver OAuth와 Kakao 주소 검색 설정은 사장님 등록 흐름에 필요해 유지한다.
 
 ## 2026-09-15 예약 실행/정적 발행 실패 수정 — 배포 대기
 
@@ -46,7 +46,7 @@
 
 | 한도 | 값 | 넘기면 벌어지는 일 | 이 한도에 묶인 코드 |
 | --- | --- | --- | --- |
-| invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. `localEventDiscovery.ts`(Naver/Kakao 호출) |
+| invocation당 외부 fetch(subrequest) | 50 | 51번째 fetch가 `Too many subrequests by single Worker invocation`으로 throw. 초과분이 통째로 실패한다. | `feeBackfill.ts` / `imageBackfill.ts` / `geocodeBackfill.ts` 모두 회차 45건 — `wrangler.toml`의 `FEE_BACKFILL_MAX_ITEMS` / `IMAGE_BACKFILL_MAX_ITEMS` / `GEOCODE_BACKFILL_MAX_LOOKUPS` 값이고, 코드 기본값(각 45/30/25)은 var가 빠졌을 때만 쓴다. 로컬 이벤트 Naver/Kakao 크롤러는 2026-09-16 제거됨 |
 | invocation당 리소스 한도 (`exceededCpu` / `exceededResources`) | 문서상 Free CPU 10ms — **이 Worker에서는 그렇게 강제되지 않는다**(아래 절의 2026-09-04 실측: scheduled invocation이 243ms를 쓰고 `ok`) | 예외 없이 isolate가 종료된다. `try/catch`도 `notifyOpsFailure`도 타지 않고, 진행 중이던 D1 쓰기는 손실된다. **`wrangler tail --format json`의 `outcome` 필드에 `exceededCpu`로 찍힌다**(실측 2026-09-04, wrangler 4.92.0). 2026-08-18에는 tail이 킬 도중에도 `ok`만 찍어서 GraphQL `workersInvocationsAdaptive`로만 보였는데, 지금은 tail로 바로 관측된다 — 진단은 tail을 먼저 본다. | 실측상 거의 전부 `*/3` 실시간 주차 sync 한 곳이었다. Queue 분할 배포(2026-09-04) 이후 관측 창에서는 킬이 사라졌다. 아래 "무엇이 리소스 한도로 죽는가" 참고 |
 | 스크립트당 cron trigger | 5 | 6번째 스케줄은 `wrangler deploy`에서 거부된다. | 현재 수정안은 dispatch/실시간/스냅샷 복구/Slack 통계의 4개(4/5)를 쓰고, 나머지 작업은 dispatch가 Queue로 분배한다 |
 | D1 일일 행 읽기 | 5,000,000 | **2026-09-01부터 강제된다.** 그 전에는 실측 2026-08-18에 10배(5,049만/일)를 넘겨도 거부가 없었다. 예외를 던지지 않으므로 초과는 조용히 일어난다 | 상관 서브쿼리와 정렬 쿼리 전부. 2026-08-28 실측 상위 10개 합계 135만/일(한도의 27%). 아래 "D1 행 읽기 예산" 참고 |
@@ -372,14 +372,13 @@ CPU 10ms / subrequest 50건 예산을 온전히 준다.
 | `program-page` | 576 | 선정 회차마다 최대 `PROGRAM_CRAWL_MAX_ITEMS`(4)건 |
 | `program-subpage` + `program-ai` | 최대 1,152 | page 1건이 최악의 경우 둘을 차례로 낳는다 |
 | `notification-plan` + `notification-dispatch` | 24 + 48 | 정각 계획, 30분마다 발송(계획 회차는 자기 발송을 직접 넣는다) |
-| `local-events` | 24 | `분 === 15` |
 | `agent-head` + `agent-image` | 8 + 8 | `분 === 30 && 시 % 3 === 0` |
 | `city-festival-site` | 1–10 | 하루 1회 팬아웃, 청크 크기 10 |
 | `akei-page` | 최대 30 | 월 3개 × 최대 10페이지(빈 페이지에서 끊는다) |
 | `prune-sync-runs` + `prune-analytics` | 2 | 하루 1회 |
 
-- 고정분 **754건**
-- **최악 ≈ 2,482건 ≈ 7,446 ops/day (한도의 74%)** — program-page가 전부 subpage와 AI까지 가는 경우
+- 스냅샷을 제외한 고정분 **792건**(후속 notification dispatch·AKEI page 포함)
+- 스냅샷 650건까지 포함한 **최악 3,170건 = 9,510 ops/day**, 490 ops 여유
 - **현실 ≈ 1,700건 ≈ 5,100 ops/day (한도의 51%)** — 상당수는 랜딩에서 끝나거나 링크가 없다
 
 `PROGRAM_CRAWL_MAX_ITEMS`가 이 예산에서 가장 민감한 손잡이다. **6보다 크게 올리면
@@ -400,7 +399,6 @@ Workers Paid($5/월) 전환 시 subrequest 50 → 1000, CPU 10ms → 30s(설정�
 같은 처리량을 얻는다 (2026-08-18, `*/20` 3분할 → `*/5` 4분할). 유료 전환은 그다음
 단계이고, 전환하면 다음이 함께 풀린다.
 
-- `LOCAL_EVENT_MAX_KAKAO_LOOKUPS`를 올려 로컬 이벤트 커버리지 확대
 - `*/5`의 tagging/fee/geocode/image 4분할 로테이션을 없애고 매 회차 전부 실행
 - `FEE_BACKFILL_MAX_ITEMS` 등 회차 상한 상향 (무료에서는 subrequest 50이 45에서 걸린다)
 

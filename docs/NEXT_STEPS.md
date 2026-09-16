@@ -2,6 +2,13 @@
 
 마지막 업데이트: 2026-09-16
 
+## 로컬 이벤트 자동 크롤러 제거 검증 (2026-09-16)
+
+1. Worker 배포 후 Queue 로그에 `local-events` 작업이 더 이상 생성되지 않고, 제거된 `/admin/sync-local-events`가 404를 반환하는지 확인한다.
+2. 기존 `source=naver_blog` 승인 행과 사장님 `source=merchant` 행이 `/api/local-events` 및 다음 정적 스냅샷에 계속 남는지 표본 확인한다. 삭제·일괄 만료·D1 마이그레이션은 수행하지 않는다.
+3. 하루 최대 24개 Queue 메시지(약 72 operations)와 최대 Naver 408회·Kakao 720회 외부 조회가 제거된다. 배포 후 24시간 Queue/D1/외부 API 사용량 감소를 확인한다.
+4. Agent Office의 행사맨 역할 문구가 `기존 이벤트 보관`으로 표시되므로 새 iOS 빌드에서 확인한다.
+
 ## 사장님 이벤트 꽃 핀 검증 (2026-09-16)
 
 1. GitHub macOS CI 또는 Codemagic에서 iOS 컴파일과 `ParkingLotNavigatorTests.testMerchantFlowerPinRendersWithRepresentativePhoto`를 실행한다.
@@ -172,13 +179,6 @@
 - `paid_until` 환불 또는 연장을 위한 admin override.
 - "내 가게 이벤트 수정/취소" 페이지 (현재 폼은 생성 전용).
 - Toss `/payment/fail` 의 더 나은 실패 UX (현재는 에러 코드/메시지만 렌더링).
-
-### 로컬 이벤트 발견
-
-- 두-패스 전환(`b511932`) 이후 퍼널 관찰: 17 Naver search + 30 Kakao subrequest (Phase 2 dedup 캐시로 실중복 대폭 감소). `local_events` 일일 delta 를 추적해 꾸준한 후보 증가를 확인.
-- Worker 유료 플랜(subrequest 50 → 1000) 업그레이드 시 `LOCAL_EVENT_MAX_KAKAO_LOOKUPS` 를 높여 커버리지 확대 가능.
-- 공식 API 가 상세 엔드포인트를 제공하는 곳에서 이벤트 설명에 대한 provider 별 상세 enrichment 추가.
-- 추가 발견 소스로 Naver Place feed 조사 (공개 best-effort 만, 헤더 우회나 로그인 쿠키 없음).
 
 ### Agent Office
 

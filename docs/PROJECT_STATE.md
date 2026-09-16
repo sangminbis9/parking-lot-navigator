@@ -2,6 +2,13 @@
 
 마지막 업데이트: 2026-09-16
 
+## 2026-09-16 로컬 이벤트 자동 크롤러 제거
+
+- Naver Blog 검색과 Kakao Local 매칭으로 후보를 만들던 `localEventDiscovery.ts`를 삭제하고, 매시간 `local-events` Queue 작업·관리자 `/admin/sync-local-events`·수동 GitHub workflow·전용 환경변수를 함께 제거했다.
+- `local_events` 테이블과 기존 `source=naver_blog` 행은 삭제하거나 갱신하지 않는다. 공개 목록/상세 API, 정적 스냅샷, 즐겨찾기·알림, 관리자 수동 등록, 사장님 직접 등록과 Slack 알림은 그대로 유지한다.
+- 계획상 하루 Queue 메시지 24개(약 72 operations), Naver 검색 최대 408회, Kakao 매칭 최대 720회를 제거한다. 스냅샷 예산 포함 Queue 최악치는 9,582 → 9,510 operations/day, 재시도 여유는 418 → 490으로 늘어난다. 실제 D1 쓰기 감소량은 배포 후 24시간 관찰이 필요하다.
+- D1 마이그레이션은 없다. Worker 배포가 필요하고, Agent Office의 행사맨 역할을 `기존 이벤트 보관`으로 바꿨으므로 해당 문구 반영에는 새 iOS 빌드가 필요하다.
+
 ## 2026-09-16 사장님 이벤트 꽃 핀·대표 사진 상시 표시
 
 - `source=merchant` 로컬 이벤트는 일반 행사 스티커와 다른 8개 꽃잎 실루엣으로 표시하고, 중앙 원형 영역에 대표 사진을 aspect-fill로 넣는다. 사진이 내려오기 전이나 등록 사진이 없는 경우에만 로컬 이벤트 글리프를 임시 표시한다.
@@ -127,7 +134,7 @@
 - Worker D1 바인딩: `DB`
 - D1 데이터베이스: `parking-lot-navigator`
 - D1 데이터베이스 id: `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`
-- Worker cron (2026-08-16 배포 기준 확인): `*/3 * * * *` 실시간 주차, `*/9 * * * *` 발견 청크, `15 * * * *` 로컬 이벤트 sync, `30 */3 * * *` head agent 리뷰, `*/5 * * * *` LLM 태깅·backfill 4분할 로테이션. 슬롯 구조는 아래 "Cloudflare 리소스" 참고.
+- Worker cron은 dispatcher `* * * * *`, 실시간 주차 `*/4 * * * *`, 스냅샷 복구 `2-57/5 * * * *`, Slack 보고 `0,10,20 11 * * *`의 4개다. 나머지 작업은 dispatcher가 분 가드에 따라 Queue로 보낸다. 자동 로컬 이벤트 크롤링 작업은 없다.
 
 ## 시크릿
 
@@ -225,8 +232,7 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
   1. **Phase 1** — 85개 지역 중심에 걸쳐 21개 이벤트형 키워드로 Naver 블로그/카페/뉴스 전체 수집. Kakao 호출 없음. `chunkIndex` 로 키워드 순서를 회전해 매 cron 호출마다 다른 키워드를 우선 처리한다.
   2. **Phase 2** — 수집된 후보를 `(지역명:정규화된 매장명)` 키로 dedup 후 Kakao Local Keyword Search 1회. 같은 매장 다수 게시물이 있어도 Kakao 조회는 1회만 소비한다.
   3. Kakao place id 로 최종 중복 제거. `end_date` 가 없는 이벤트도 점수가 임계값을 넘으면 approved 가능. `end_date` 가 어제 이전인 이벤트는 API 응답에서 제외.
-- Worker subrequest 예산: `LOCAL_EVENT_SEARCH_MAX_QUERIES = 17`, `LOCAL_EVENT_MAX_KAKAO_LOOKUPS = 30` 으로 무료 등급의 50 subrequest 상한 아래를 유지한다.
-- 자동 승인 임계값: `LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.75"`.
+- 2026-09-16부터 Naver/Kakao 자동 후보 수집은 중단됐다. 기존 수집 행은 보존하고 신규 이벤트는 사장님 등록·관리자 입력·사용자 제보 경로만 사용한다.
 - 상태 값: `pending`, `pending_payment`, `approved`, `rejected`, `expired`.
 - 공개 API (`/api/local-events`) 는 `status = 'approved'` 이고 `(is_sponsored = 0 OR paid_until > now)` 인 행만 제공한다. pending 및 미결제 머천트 이벤트는 제외된다.
 
@@ -257,15 +263,14 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 
 - D1 바인딩: `DB` (`parking-lot-navigator`, id `31c04846-57d5-4e38-82b6-2d7b3a0dfbee`).
 - R2 바인딩: `MERCHANT_IMAGES` (버킷 `merchant-images`).
-- Worker 트리거 (2026-08-16 배포 기준 확인). 계정당 cron trigger 5개 한도를 이미 다 쓰고 있어, **새 주기가 필요하면 새 cron을 만들지 말고 기존 cron에 시간/분 가드를 얹는다.**
+- Worker 트리거 (2026-09-16 코드 기준). 계정당 cron trigger 5개 중 4개를 사용한다.
 
   | cron | 하는 일 |
   | --- | --- |
-  | `*/3 * * * *` | 실시간 주차 sync |
-  | `*/9 * * * *` | 발견(discovery) provider 청크 로테이션. 시작 전 `reapStaleSyncRuns`로 무응답 sync run 마감 |
-  | `15 * * * *` | 로컬 이벤트 sync. + UTC 4시 가드 → city-festival 스크래핑, UTC 5시 가드 → AKEI 무역박람회 스크래핑, UTC 6시 가드 → `pruneOldSyncRuns`(30일 초과 `sync_runs` 삭제) (각 하루 1회) |
-  | `30 */3 * * *` | head agent 리뷰 |
-  | `*/5 * * * *` | 분 슬롯(`floor(UTC분/5) % 4`)에 따라 **한 invocation에 한 작업만** 실행 — 0 태깅 / 1 요금 / 2 지오코딩 / 3 사진 (각 하루 72회) |
+  | `* * * * *` | Queue dispatcher. discovery·backfill·프로그램·알림·에이전트·공식 행사 수집 작업을 분 가드로 배분 |
+  | `*/4 * * * *` | 실시간 주차 shard 직접 갱신 |
+  | `2-57/5 * * * *` | 스냅샷 발행 복구 |
+  | `0,10,20 11 * * *` | 20:00 KST Slack 일일 보고 및 실패 재시도 |
 
   회차 상한은 요금·지오코딩·사진 모두 45건이다(2026-08-18 상향, `wrangler.toml`의
   `FEE_BACKFILL_MAX_ITEMS`/`GEOCODE_BACKFILL_MAX_LOOKUPS`/`IMAGE_BACKFILL_MAX_ITEMS`).

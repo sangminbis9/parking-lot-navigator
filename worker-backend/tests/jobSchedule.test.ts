@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DAILY_SLACK_REPORT_CRON,
   DISPATCH_CRON,
-  LOCAL_EVENT_CHUNK_COUNT,
   REALTIME_PARKING_CRON,
   SNAPSHOT_RECOVERY_CRON,
-  currentLocalEventChunkIndex,
   plannedJobs,
   type BackgroundJob,
 } from "../src/jobs.js";
@@ -54,8 +52,8 @@ describe("plannedJobs 하루 빈도", () => {
     expect(counts["notification-dispatch"]).toBe(24);
   });
 
-  it("로컬 이벤트는 예전 `15 * * * *`와 같은 24회", () => {
-    expect(counts["local-events"]).toBe(24);
+  it("자동 로컬 이벤트 크롤링 작업을 만들지 않는다", () => {
+    expect(counts["local-events"]).toBeUndefined();
   });
 
   it("보관 정리는 하루 한 번씩", () => {
@@ -82,8 +80,8 @@ describe("plannedJobs 하루 빈도", () => {
     const deferredDispatch = 24, additionalAkeiPages = 27;
     const programChildren = 144 * 4 * 3; // page + subpage + AI
     const totalOps = (direct + deferredDispatch + additionalAkeiPages + programChildren + MAX_DAILY_SNAPSHOT_MESSAGES) * 3;
-    expect(totalOps).toBe(9582);
-    expect(10000 - totalOps).toBeGreaterThanOrEqual(400);
+    expect(totalOps).toBe(9510);
+    expect(10000 - totalOps).toBeGreaterThanOrEqual(490);
   });
 });
 
@@ -126,15 +124,6 @@ describe("plannedJobs 회차 내용", () => {
     const at = new Date(DAY_START + 27 * MINUTE);
     const job = plannedJobs(at).find((j) => j.type === "discovery-chunk");
     expect(job).toEqual({ type: "discovery-chunk", chunkIndex: currentDiscoveryChunkIndex(at) });
-  });
-
-  it("로컬 이벤트 청크 인덱스가 3시간 로테이션을 따른다", () => {
-    const at = new Date(DAY_START + 15 * MINUTE + 9 * 60 * MINUTE);
-    const job = plannedJobs(at).find((j) => j.type === "local-events");
-    expect(job).toEqual({
-      type: "local-events",
-      chunkIndex: currentLocalEventChunkIndex(at, LOCAL_EVENT_CHUNK_COUNT),
-    });
   });
 
   it("city 팬아웃은 해당 시간 슬롯의 사이트를 하나씩 낸다", () => {

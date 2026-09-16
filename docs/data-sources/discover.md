@@ -37,16 +37,11 @@ Allowed sources:
 - `official_site`: store homepage, public official pages, or other compliant public sources, subject to robots.txt, terms, and request limits.
 - `other`: compliant aggregator-assisted discovery such as official Naver Search API candidate results. These are used as candidates only and are coordinate-verified with Kakao Local before approval.
 
-Automatic candidate discovery:
-
-- `syncLocalEventDiscovery` first collects restaurant and cafe candidates from Kakao Local category search (`FD6`, `CE7`) around configured region centers.
-- For each Kakao place, it checks recent Naver Blog search results for `"place name" event` with `X-Naver-Client-Id` and `X-Naver-Client-Secret`.
-- The worker stores only search-result title, summary, source URL, Kakao place fields, and structured event fields. It does not fetch or scrape the target page body.
-- Kakao Local category search provides the candidate store identity and coordinates.
-- Candidates with verified coordinates and a clear event benefit can be auto-approved when `confidenceScore >= LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE`.
-- If a candidate is approved without a clear end date, `endDate` remains `null` and `needsReview=true`.
-- Lower-confidence candidates are saved as `pending` and stay hidden until admin approval.
-- `LOCAL_EVENT_SEARCH_MAX_QUERIES` limits the number of Kakao places processed per run.
+Automatic candidate discovery was retired on 2026-09-16. The Worker no longer searches
+Naver Blog or Kakao Local for new store-event candidates. Existing rows, including historical
+`source=naver_blog` rows, remain in `local_events` and continue through the public API and app
+snapshot until their own visibility period ends. New local events come from merchant submission,
+admin entry, or user reports; merchant address geocoding still uses Kakao Local.
 
 Prohibited collection patterns:
 

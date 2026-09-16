@@ -20,9 +20,7 @@ head_sampling_rate = 1
 # 아무것도 바꾸지 않는 항목은 두지 않는다. 이 이유로 뺀 것들:
 #   AGENT_HEAD_INCLUDE_REJECTED / AGENT_PIXEL_ENABLED ("true", headAgent.ts·imageAgent.ts)
 #   AGENT_PIXEL_BATCH_SIZE (12, imageAgent.ts DEFAULT_BATCH_SIZE)
-#   NAVER_SEARCH_BASE_URL (https://openapi.naver.com, localEventDiscovery.ts)
 #   NATIONAL_PARKING_DATA_BASE_URL (https://api.data.go.kr, index.ts)
-#   LOCAL_EVENT_BLOG_DISPLAY (20) / LOCAL_EVENT_KAKAO_RADIUS_METERS (20000)
 # 기본값과 다른 값을 쓰고 싶으면 그때 다시 적는다.
 NODE_ENV = "production"
 LOG_LEVEL = "info"
@@ -36,10 +34,6 @@ DISCOVERY_SYNC_CONCURRENCY = "4"
 DISCOVERY_SYNC_FETCH_TIMEOUT_MS = "20000"
 FESTIVAL_PROVIDER_ENABLED = "true"
 EVENT_PROVIDER_ENABLED = "true"
-LOCAL_EVENT_PROVIDER_ENABLED = "true"
-LOCAL_EVENT_AUTO_APPROVE_MIN_SCORE = "0.75"
-LOCAL_EVENT_SEARCH_MAX_QUERIES = "17"
-LOCAL_EVENT_MAX_KAKAO_LOOKUPS = "30"
 AGENT_HEAD_BATCH_SIZE = "15"
 AGENT_HEAD_MAX_BATCHES = "3"
 KAKAO_LOCAL_BASE_URL = "https://dapi.kakao.com"

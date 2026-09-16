@@ -14,6 +14,7 @@ final class AgentOfficeTests: XCTestCase {
         await viewModel.refresh()
 
         XCTAssertEqual(viewModel.agents.count, 10)
+        XCTAssertEqual(viewModel.agents.first(where: { $0.id == "scout" })?.role, "기존 이벤트 보관")
         XCTAssertEqual(viewModel.agents.first(where: { $0.id == "atlas" })?.role, "스냅샷·CDN")
         XCTAssertEqual(viewModel.agents.first(where: { $0.id == "harbor" })?.role, "사장님 이벤트·Slack")
         XCTAssertEqual(viewModel.agents.first(where: { $0.id == "relay" })?.role, "Cron·Queue")

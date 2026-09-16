@@ -141,21 +141,12 @@ Discovery cache sync:
 
 Local store event discovery:
 
-- Worker cron runs once per day at `18:15 UTC` (`03:15 KST`).
-- Manual endpoint: `POST /admin/sync-local-events?dryRun=true|false`
-- Requires `Authorization: Bearer <SYNC_ADMIN_TOKEN>`.
-- Candidate collection uses Kakao Local category search for restaurants and cafes, then official Naver Blog Search response fields for recent event posts. It does not fetch Instagram HTML, mimic sessions, bypass bot detection, or call unofficial APIs.
-- Coordinates come from Kakao Local category search with `Authorization: KakaoAK <KAKAO_REST_API_KEY>`.
-- High-confidence candidates with a verified Kakao place and clear benefit are automatically saved as `approved`. If the end date is unclear, `endDate` stays `null` and `needsReview=true`; the worker does not invent a date.
-- Lower-confidence candidates are stored as `pending` for admin review.
-- `LOCAL_EVENT_SEARCH_MAX_QUERIES` now means maximum Kakao places processed per run. Default production value is `360`.
-- Required Worker secrets: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, and `KAKAO_REST_API_KEY`. The deploy workflow syncs these from GitHub Actions secrets when they are configured.
-
-```bash
-curl -sS -X POST \
-  -H "Authorization: Bearer <SYNC_ADMIN_TOKEN>" \
-  "https://parking-lot-navigator-api.parkingnav.workers.dev/admin/sync-local-events?dryRun=true"
-```
+- Automated Naver Blog/Kakao Local candidate crawling was retired on 2026-09-16.
+- `/admin/sync-local-events` no longer exists and must not be used in smoke tests or operations.
+- Existing `local_events` rows are retained; `/api/local-events`, snapshot publication, reports,
+  admin editing, and merchant registration continue to work.
+- `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` remain required for merchant OAuth, and
+  `KAKAO_REST_API_KEY` remains required for merchant-address geocoding and other geocode paths.
 
 ## Known Public API Notes
 
