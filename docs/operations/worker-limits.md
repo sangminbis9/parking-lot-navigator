@@ -1,5 +1,11 @@
 # Worker 계정 한도
 
+## 2026-09-16 발행 예산 대기와 릴리스 게이트
+
+- Queue 발행 예산 소진은 기존 공개 릴리스를 삭제하지 않고 다음 UTC 일자의 00:01까지 변경분 발행만 미룬다. 복구 Cron은 이 기간에 D1 조회나 Queue 전송을 반복하지 않고 R2 상태의 `checkedAt`만 갱신한다.
+- Codemagic과 정적 발행 검증은 기존 manifest 전체 무결성이 확인되고 `publication_queue_budget`의 미래 `retryAt`이 26시간 이내일 때만 이 대기를 허용한다. 다른 unhealthy와 오래되거나 비정상적인 재시도 시각은 허용하지 않는다.
+- 2026-09-16 운영 CDN 13,334건/187파트/12,068,410바이트 전체 검증 성공. 수정 검증은 Worker 43파일/362테스트와 TypeScript를 통과했으며 운영 반영은 푸시·Worker 배포 후 확인한다.
+
 ## 2026-09-15 Slack 일일 통계 영향 — 배포 대기
 
 - 새 Cron 문자열 하나(`0,10,20 11 * * *`)를 추가해 trigger는 4/5다. 첫 회차는 20:00 KST, 뒤 두 회차는 Slack/R2 실패 재시도이며 이미 성공했으면 R2 `head`만 하고 끝난다. 최대 +3 invocation/day로 Worker 100,000 requests/day에 미미하다.

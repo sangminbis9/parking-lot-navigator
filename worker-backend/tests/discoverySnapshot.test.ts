@@ -223,7 +223,14 @@ describe("incremental discovery snapshot", () => {
     const prepare = vi.fn(() => { throw new Error("D1 daily row read limit exceeded"); });
     f.env.DB.prepare = prepare;
     await expect(f.publish()).rejects.toThrow("daily row");
+    const statusKey = `${SNAPSHOT_PREFIX}status.json`;
+    const paused = JSON.parse(f.objects.get(statusKey)!.text);
+    f.objects.get(statusKey)!.text = JSON.stringify({ ...paused, checkedAt: "2020-01-01T00:00:00Z" });
     await f.publish(); expect(prepare).toHaveBeenCalledTimes(1); expect(f.manifest()).toEqual(first);
+    const heartbeat = JSON.parse(f.objects.get(statusKey)!.text);
+    expect(heartbeat.error).toBe("database_daily_limit");
+    expect(heartbeat.retryAt).toBe(paused.retryAt);
+    expect(Date.now() - Date.parse(heartbeat.checkedAt)).toBeLessThan(15 * 60_000);
     const response = await serveSnapshot(new Request("https://e.com/api/discovery-snapshot/manifest.json"), f.bucket);
     expect(response.status).toBe(200);
   });

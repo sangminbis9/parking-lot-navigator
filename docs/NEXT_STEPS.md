@@ -2,6 +2,12 @@
 
 마지막 업데이트: 2026-09-16
 
+## Codemagic Publisher 예산 대기 오판 수정 (2026-09-16)
+
+1. 변경을 `master`에 푸시해 Worker 자동 배포를 실행한다. D1 마이그레이션은 없다.
+2. 배포 뒤 다음 `2-57/5` 복구 Cron에서 원본 `status.checkedAt`이 전진하고 `error=publication_queue_budget`, `retryAt=2026-09-17T00:01:00Z`가 보존되는지 확인한다.
+3. Codemagic을 새 커밋으로 다시 실행한다. 기존 CDN manifest 13,334건/187파트 전체 검증은 통과해야 하지만, 예상 밖 오류·손상·첫 릴리스 부재는 계속 차단돼야 한다.
+
 ## Agent Office 탭 개편 검증 (2026-09-16)
 
 1. Codemagic에서 iOS 컴파일과 `AgentOfficeTests`, `CoreJourneyUITests`를 실행한다. 기본 탭이 지도/이벤트/즐겨찾기/사무실/설정 순서이고 캘린더 탭이 없는지 확인한다.

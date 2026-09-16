@@ -29,9 +29,16 @@ check(Number.isFinite(age) && age >= -300_000, "Invalid snapshot publication tim
 // Unchanged data may legitimately be older than 48h. Check the publisher separately.
 const status = JSON.parse(await download("status.json", 16 * 1024, statusRoot));
 const checkAge = Date.now() - Date.parse(status.checkedAt);
-check(status.schemaVersion === 1 && status.healthy === true && Number.isFinite(checkAge)
-  && checkAge >= -300_000 && checkAge < 15 * 60_000, "Publisher unhealthy or not checked in 15 minutes");
-check(!status.pending || Date.now() - Date.parse(status.pendingSince) < 10 * 60_000,
+const retryAt = Date.parse(status.retryAt);
+const expectedBudgetPause = status.schemaVersion === 1 && status.healthy === false
+  && status.error === "publication_queue_budget" && Number.isFinite(checkAge)
+  && checkAge >= -300_000 && checkAge < 26 * 60 * 60_000 && Number.isFinite(retryAt)
+  && retryAt > Date.now() && retryAt - Date.now() <= 26 * 60 * 60_000;
+const livePublisher = status.schemaVersion === 1 && status.healthy === true && Number.isFinite(checkAge)
+  && checkAge >= -300_000 && checkAge < 15 * 60_000;
+check(livePublisher || expectedBudgetPause,
+  "Publisher unhealthy, unexpectedly deferred, or not checked in time");
+check(expectedBudgetPause || !status.pending || Date.now() - Date.parse(status.pendingSince) < 10 * 60_000,
   "Publication backlog is stale");
 if (base !== origin) {
   // The mirror republishes at most every 10 minutes when its job runs, but GitHub's

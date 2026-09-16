@@ -132,8 +132,15 @@ export async function runSnapshotJob(env: SnapshotEnvironment, job: SnapshotJob)
   const queue = env.BACKGROUND_QUEUE;
   if (!bucket || !db || !queue) throw new Error("snapshot_bindings_not_configured");
   const healthObject = await bucket.get(STATUS_KEY);
-  const health = healthObject ? await healthObject.json<{ retryAt?: string }>() : null;
-  if (health?.retryAt && Date.parse(health.retryAt) > Date.now()) return;
+  const health = healthObject ? await healthObject.json<Record<string, unknown> & { retryAt?: string }>() : null;
+  if (health?.retryAt && Date.parse(health.retryAt) > Date.now()) {
+    // A known quota/budget pause must not look like a dead scheduler. Preserve the
+    // exact deferral reason and retry boundary while proving the recovery cron is alive.
+    await bucket.put(STATUS_KEY, JSON.stringify({ ...health, schemaVersion: 1,
+      checkedAt: new Date().toISOString() }),
+    { httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=30" } });
+    return;
+  }
   try {
     await advanceSnapshot(env as Required<SnapshotEnvironment>, job);
   } catch (error) {
