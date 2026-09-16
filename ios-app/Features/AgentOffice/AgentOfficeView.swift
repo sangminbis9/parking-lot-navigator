@@ -141,8 +141,8 @@ private struct OfficeFloorView: View {
                 }
 
                 PublishedWall(items: snapshot.published)
-                    .frame(width: size.width * 0.48, height: size.height * 0.13)
-                    .position(x: size.width * 0.50, y: size.height * 0.925)
+                    .frame(width: size.width * 0.44, height: size.height * 0.10)
+                    .position(x: size.width * 0.50, y: size.height * 0.945)
                     .onTapGesture { showBoardLog = true }
             }
             .clipShape(RoundedRectangle(cornerRadius: FestivalDesign.cardRadius))
@@ -378,20 +378,26 @@ private struct AgentFrame {
     enum CarryKind { case festival, event }
 }
 
-/// 배경의 5×2 업무 포드와 같은 좌표를 사용한다. 데이터가 갱신돼도 요원은 이동하지 않고
-/// 각자 맡은 콘솔에서 상태와 최근 작업만 갱신한다.
+/// 비정형 캠퍼스형 사무실의 실제 좌석 중심과 같은 좌표를 사용한다. 좌석은 세 줄의
+/// 격자가 아니라 집중석·협업 테이블·라운지·운영석 사이에 엇갈려 배치된다.
+/// 데이터가 갱신돼도 요원은 이동하지 않고 각자 맡은 자리에서 상태와 최근 작업만 갱신한다.
 private enum StationaryOfficeLayout {
     private static let positions: [String: CGPoint] = [
-        "orion": CGPoint(x: 0.10, y: 0.53),
-        "festa": CGPoint(x: 0.30, y: 0.53),
-        "scout": CGPoint(x: 0.50, y: 0.53),
-        "vera": CGPoint(x: 0.70, y: 0.53),
-        "pixel": CGPoint(x: 0.90, y: 0.53),
-        "sentinel": CGPoint(x: 0.10, y: 0.76),
-        "echo": CGPoint(x: 0.30, y: 0.76),
-        "atlas": CGPoint(x: 0.50, y: 0.76),
-        "harbor": CGPoint(x: 0.70, y: 0.76),
-        "relay": CGPoint(x: 0.90, y: 0.76)
+        // 창가 집중석: 지도 탐색, 총괄 대시보드, 검증 레이더
+        "scout": CGPoint(x: 0.215, y: 0.405),
+        "orion": CGPoint(x: 0.495, y: 0.405),
+        "vera": CGPoint(x: 0.780, y: 0.415),
+
+        // 중앙 협업 섬: 원형 테이블, 크리에이티브 라운지, 스냅샷 콘솔, 게시 운영석
+        "festa": CGPoint(x: 0.230, y: 0.600),
+        "pixel": CGPoint(x: 0.405, y: 0.645),
+        "atlas": CGPoint(x: 0.540, y: 0.570),
+        "echo": CGPoint(x: 0.860, y: 0.600),
+
+        // 하단 운영 포드: 주차 관제, 가게 이벤트, 전달 파이프라인
+        "sentinel": CGPoint(x: 0.220, y: 0.800),
+        "harbor": CGPoint(x: 0.660, y: 0.785),
+        "relay": CGPoint(x: 0.890, y: 0.785)
     ]
 
     static func frame(for agent: AgentOfficeAgent) -> AgentFrame {
