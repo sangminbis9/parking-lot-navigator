@@ -11,9 +11,9 @@ import UserNotifications
 @MainActor
 final class NotificationRegistrationService: ObservableObject {
     /// AppDelegate가 APNs 토큰을 받으면 이 알림을 쏜다. 서비스는 그걸 듣고 재등록한다.
-    static let tokenDidChange = Notification.Name("apnsDeviceTokenDidChange")
+    nonisolated static let tokenDidChange = Notification.Name("apnsDeviceTokenDidChange")
 
-    private static let tokenKey = "apnsDeviceToken"
+    nonisolated private static let tokenKey = "apnsDeviceToken"
 
     /// APNs 콜백은 메인 스레드지만 이 두 함수는 UserDefaults만 건드리므로 격리에서 뺀다.
     nonisolated static func storeToken(_ token: String, appGroupID: String) {

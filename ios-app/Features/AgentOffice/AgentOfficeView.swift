@@ -769,6 +769,23 @@ private enum OfficeChoreography {
         return calendar.date(from: nextComponents)
     }
 
+    private static func nextMinuteOffset(after date: Date, intervalMinutes: Int,
+                                         offset: Int) -> Date? {
+        let calendar = Calendar.current
+        var base = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        base.second = 0
+        guard let start = calendar.date(from: base) else { return nil }
+        let normalizedOffset = ((offset % intervalMinutes) + intervalMinutes) % intervalMinutes
+        for delta in 0...intervalMinutes {
+            guard let candidate = calendar.date(byAdding: .minute, value: delta, to: start),
+                  candidate > date else { continue }
+            if calendar.component(.minute, from: candidate) % intervalMinutes == normalizedOffset {
+                return candidate
+            }
+        }
+        return nil
+    }
+
     private static func nextHourlyMinute(after date: Date, minute: Int) -> Date? {
         let calendar = Calendar.current
         var components = calendar.dateComponents([.year, .month, .day, .hour], from: date)
@@ -946,22 +963,6 @@ private struct AgentPortrait: View {
         }
     }
 
-    private static func nextMinuteOffset(after date: Date, intervalMinutes: Int,
-                                         offset: Int) -> Date? {
-        let calendar = Calendar.current
-        var base = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        base.second = 0
-        guard let start = calendar.date(from: base) else { return nil }
-        let normalizedOffset = ((offset % intervalMinutes) + intervalMinutes) % intervalMinutes
-        for delta in 0...intervalMinutes {
-            guard let candidate = calendar.date(byAdding: .minute, value: delta, to: start),
-                  candidate > date else { continue }
-            if calendar.component(.minute, from: candidate) % intervalMinutes == normalizedOffset {
-                return candidate
-            }
-        }
-        return nil
-    }
 }
 
 // Pixel-style info badge: agent status + recent 5 activities with timestamps.
