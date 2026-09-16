@@ -718,6 +718,7 @@ struct MapHomeView: View {
             )
         case .event(let event, let tint):
             let live = event.timelineStatus == .ongoing
+            let alwaysShowsPhoto = event.isMerchantSubmitted
             return MapPinItem(
                 id: "event-\(event.id)",
                 coordinate: coordinate,
@@ -725,7 +726,11 @@ struct MapHomeView: View {
                 showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
                 layerTint: tint,
                 isLive: live,
-                photo: live ? pinPhotos.photo(for: event.imageUrl ?? event.imageUrls.first) : nil
+                // 사장님 등록 이벤트는 진행 여부와 관계없이 꽃 핀 중앙에 대표 사진을 표시한다.
+                // 일반 이벤트는 기존처럼 진행 중일 때만 사진 핀을 사용한다.
+                photo: (live || alwaysShowsPhoto)
+                    ? pinPhotos.photo(for: event.primaryImageUrl, prioritized: alwaysShowsPhoto)
+                    : nil
             )
         }
     }

@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MerchantEventRow } from "../src/merchant/events.js";
-import { renderDashboard, renderEventDetail } from "../src/merchant/pages.js";
+import { EMPTY_FORM, renderDashboard, renderEventDetail, renderEventForm } from "../src/merchant/pages.js";
 import {
   createMerchantApp,
   resolveApprovalPeriod,
@@ -59,6 +59,35 @@ describe("merchant event period", () => {
       endDate: "2026-12-15",
       paidUntil: "2026-12-15",
     });
+  });
+});
+
+describe("merchant event representative image", () => {
+  it("requires an image in the registration form", () => {
+    const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
+    expect(html).toContain('name="image" type="file" accept="image/jpeg,image/png,image/webp" required');
+    expect(html).toContain("지도 꽃 핀 중앙에 표시됩니다");
+  });
+
+  it.each([false, true])("rejects a missing or empty image before geocoding and writing data (%s)", async (emptyFile) => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      title: "행사", description: "상세", benefit: "할인", event_type: "discount",
+      store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+    })) form.set(key, value);
+    if (emptyFile) form.set("image", new File([], "empty.jpg", { type: "image/jpeg" }));
+    const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
+    const response = await createMerchantApp().request(
+      "/event/new",
+      { method: "POST", headers: { cookie: `__merchant_session=${token}` }, body: form },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("지도 꽃 핀에 표시할 대표 이미지를 등록해 주세요");
+    expect(prepare).not.toHaveBeenCalled();
   });
 });
 

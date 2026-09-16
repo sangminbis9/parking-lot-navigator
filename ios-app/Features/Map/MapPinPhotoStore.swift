@@ -25,7 +25,7 @@ final class MapPinPhotoStore: ObservableObject {
     /// 도착 알림을 묶는 타이머. 한 장마다 알리면 그때마다 지도 핀 파이프라인이 통째로 다시 계산된다.
     private var bumpTask: Task<Void, Never>?
 
-    func photo(for urlString: String?) -> MapPinPhoto? {
+    func photo(for urlString: String?, prioritized: Bool = false) -> MapPinPhoto? {
         guard let urlString, !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
         if let image = RemoteImageCache.shared.cached(url, maxPixel: Self.maxPixel) {
             return MapPinPhoto(key: Self.styleKey(urlString), image: image)
@@ -34,7 +34,13 @@ final class MapPinPhotoStore: ObservableObject {
         if let failedAt = failedAt[urlString], Date().timeIntervalSince(failedAt) < Self.retryInterval {
             return nil
         }
-        queued.append(urlString)
+        if prioritized {
+            // 사장님 직접 등록 이벤트는 지도에서 가장 먼저 식별되어야 한다.
+            // 이미 진행 중인 요청은 건드리지 않되, 대기열에서는 일반 행사 사진보다 앞에 둔다.
+            queued.insert(urlString, at: 0)
+        } else {
+            queued.append(urlString)
+        }
         queuedKeys.insert(urlString)
         startNextLoads()
         return nil

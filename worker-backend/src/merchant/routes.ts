@@ -419,6 +419,18 @@ export function createMerchantApp() {
       );
     }
 
+    const imageEntry = form.get("image");
+    if (!(imageEntry instanceof File) || imageEntry.size === 0) {
+      return c.html(
+        renderEventForm({
+          values,
+          error: "지도 꽃 핀에 표시할 대표 이미지를 등록해 주세요.",
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+
     const geocode = await geocodeAddress(
       c.env.KAKAO_REST_API_KEY,
       c.env.KAKAO_LOCAL_BASE_URL,
@@ -437,32 +449,29 @@ export function createMerchantApp() {
     }
 
     let imageUrl: string | null = null;
-    const imageEntry = form.get("image");
-    if (imageEntry instanceof File && imageEntry.size > 0) {
-      const result = await uploadEventImage(
-        c.env.MERCHANT_IMAGES,
-        baseUrl(c.env, c.req.url),
-        session.merchantId,
-        imageEntry,
+    const result = await uploadEventImage(
+      c.env.MERCHANT_IMAGES,
+      baseUrl(c.env, c.req.url),
+      session.merchantId,
+      imageEntry,
+    );
+    if (!result.ok) {
+      const reason =
+        result.reason === "size"
+          ? "이미지 용량은 5MB 이하만 업로드할 수 있습니다."
+          : result.reason === "type"
+            ? "이미지는 JPG, PNG, WebP 형식만 지원합니다."
+            : "이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      return c.html(
+        renderEventForm({
+          values,
+          error: reason,
+          launchPromoFree: promoFree,
+        }),
+        400,
       );
-      if (!result.ok) {
-        const reason =
-          result.reason === "size"
-            ? "이미지 용량은 5MB 이하만 업로드할 수 있습니다."
-            : result.reason === "type"
-              ? "이미지는 JPG, PNG, WebP 형식만 지원합니다."
-              : "이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-        return c.html(
-          renderEventForm({
-            values,
-            error: reason,
-            launchPromoFree: promoFree,
-          }),
-          400,
-        );
-      }
-      imageUrl = result.url;
     }
+    imageUrl = result.url;
 
     const event = await createMerchantEvent(c.env.DB, {
       merchantId: session.merchantId,

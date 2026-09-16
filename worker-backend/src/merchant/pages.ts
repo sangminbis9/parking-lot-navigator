@@ -391,9 +391,9 @@ export function renderEventForm(opts: {
       <input name="end_date" type="date" value="${htmlEscape(v.endDate)}" />
       <div class="field-help">비워두면 결제 후 3개월간 게시됩니다.</div>
 
-      <label>대표 이미지</label>
-      <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
-      <div class="field-help">JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다. 선택 사항.</div>
+      <label>대표 이미지 *</label>
+      <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
+      <div class="field-help">지도 꽃 핀 중앙에 표시됩니다. JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다.</div>
 
       <div class="consent-box">
         <input type="checkbox" id="agree-legal" name="agree_legal" required />

@@ -2,6 +2,12 @@
 
 마지막 업데이트: 2026-09-16
 
+## 사장님 이벤트 꽃 핀 검증 (2026-09-16)
+
+1. GitHub macOS CI 또는 Codemagic에서 iOS 컴파일과 `ParkingLotNavigatorTests.testMerchantFlowerPinRendersWithRepresentativePhoto`를 실행한다.
+2. 송도의 기존 `테스트` 이벤트는 사진 원본이 없어 꽃 중앙 대체 글리프가 보이는지 확인한다. 사진을 포함한 신규 시험 이벤트에서는 일반 행사와 다른 분홍 꽃 모양 개별 핀 중앙에 진행 여부와 관계없이 대표 사진이 표시되고, 다운로드 전 임시 글리프가 사진 도착 후 자동 교체되는지 확인한다.
+3. 신규 등록의 대표 이미지 필수 검증을 반영하려면 Worker 배포가 필요하지만 D1 마이그레이션은 없다. 꽃 핀 UI의 TestFlight 반영에는 새 Codemagic 빌드가 필요하다.
+
 ## Codemagic Publisher 예산 대기 오판 수정 (2026-09-16)
 
 1. `eb0cc9f` master 반영 및 Worker 자동 배포 `35066318382` 성공. D1 신규 마이그레이션은 없고 운영 `status.checkedAt` 전진과 `error=publication_queue_budget`, `retryAt=2026-09-17T00:01:00Z` 보존을 확인했다.

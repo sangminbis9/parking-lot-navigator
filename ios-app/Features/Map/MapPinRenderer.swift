@@ -153,7 +153,7 @@ enum MapPinRenderer {
     static let shadowPadding: CGFloat = 5
     static let selectedScaleFactor: CGFloat = 1.2
     static let cornerRatio: CGFloat = 0.30       // 배지 모서리 둥글기(앱 카드 언어)
-    /// 사장님이 직접 등록한 매장 이벤트 전용 네온색. 지도 타일 위에서 항상 튀어야 하므로 테마를 따르지 않는다.
+    /// 사장님이 직접 등록한 매장 이벤트 전용 꽃잎 색. 지도 타일 위에서 항상 튀어야 하므로 테마를 따르지 않는다.
     static let merchantNeon = UIColor(red: 1.0, green: 0.20, blue: 0.55, alpha: 1)
     static let neonGlowPadding: CGFloat = 12     // glow가 캔버스에서 잘리지 않도록 shadowPadding 대신 쓰는 여백
     static let livePadding: CGFloat = 10         // LIVE 라벨이 배지 우상단 밖으로 걸치므로 넓히는 여백
@@ -376,18 +376,30 @@ enum MapPinRenderer {
                 drawSparkles(aboveTopOf: badgeRect, tint: neon ? merchantNeon : (border ?? accent), context: ctx)
             }
 
-            drawStickerBadge(
-                rect: badgeRect, corner: corner, accent: accent, surface: surface,
-                handDrawn: handDrawn, selected: selected, borderOverride: border, neon: neon, context: ctx
-            )
-
-            if let photo {
-                // 대표 이미지가 있으면 글리프 대신 테두리 안쪽을 이미지로 꽉 채운다.
-                drawPhoto(photo.image, in: badgeRect, corner: corner, inset: badge * 0.055, context: ctx)
+            if neon {
+                // 사장님 등록 이벤트는 일반 스티커 핀과 실루엣부터 다른 꽃 모양으로 표시한다.
+                drawMerchantFlowerBadge(in: badgeRect, surface: surface, selected: selected, context: ctx)
+                if let photo {
+                    drawCircularPhoto(photo.image, in: badgeRect, context: ctx)
+                } else {
+                    // 사진이 네트워크에서 도착하기 전까지만 쓰는 임시 중앙 글리프.
+                    let inner = badgeRect.insetBy(dx: badge * 0.29, dy: badge * 0.29)
+                    drawGlyph(category: category, glyphColor: merchantNeon.pinDeepened(0.58), in: inner, diameter: badge * 0.72, context: ctx)
+                }
             } else {
-                // 카테고리 글리프 (현행 유지)
-                let inner = badgeRect.insetBy(dx: badge * 0.20, dy: badge * 0.20)
-                drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: badge, context: ctx)
+                drawStickerBadge(
+                    rect: badgeRect, corner: corner, accent: accent, surface: surface,
+                    handDrawn: handDrawn, selected: selected, borderOverride: border, context: ctx
+                )
+
+                if let photo {
+                    // 대표 이미지가 있으면 글리프 대신 테두리 안쪽을 이미지로 꽉 채운다.
+                    drawPhoto(photo.image, in: badgeRect, corner: corner, inset: badge * 0.055, context: ctx)
+                } else {
+                    // 카테고리 글리프 (현행 유지)
+                    let inner = badgeRect.insetBy(dx: badge * 0.20, dy: badge * 0.20)
+                    drawGlyph(category: category, glyphColor: glyphColor, in: inner, diameter: badge, context: ctx)
+                }
             }
 
             if live {
@@ -408,6 +420,84 @@ enum MapPinRenderer {
         let cg = context.cgContext
         cg.saveGState()
         UIBezierPath(roundedRect: rect, cornerRadius: max(corner - inset, 2)).addClip()
+        image.draw(in: aspectFill(imageSize: image.size, in: rect))
+        cg.restoreGState()
+    }
+
+    /// 사장님 이벤트 전용 꽃 배지. 8개의 꽃잎과 밝은 중앙 링으로 일반 행사 핀과
+    /// 축소된 지도에서도 실루엣만 보고 구분할 수 있게 한다.
+    private static func drawMerchantFlowerBadge(
+        in rect: CGRect,
+        surface: UIColor,
+        selected: Bool,
+        context: UIGraphicsImageRendererContext
+    ) {
+        let cg = context.cgContext
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let petalDiameter = rect.width * 0.38
+        let petalRadius = rect.width * 0.29
+
+        cg.saveGState()
+        cg.setShadow(
+            offset: .zero,
+            blur: selected ? 8 : 6,
+            color: merchantNeon.withAlphaComponent(0.72).cgColor
+        )
+        for index in 0..<8 {
+            let angle = CGFloat(index) * .pi / 4 - .pi / 2
+            let petalCenter = CGPoint(
+                x: center.x + cos(angle) * petalRadius,
+                y: center.y + sin(angle) * petalRadius
+            )
+            let petalRect = CGRect(
+                x: petalCenter.x - petalDiameter / 2,
+                y: petalCenter.y - petalDiameter / 2,
+                width: petalDiameter,
+                height: petalDiameter
+            )
+            let fill = index.isMultiple(of: 2)
+                ? merchantNeon
+                : merchantNeon.pinMixedWithWhite(0.28)
+            fill.setFill()
+            UIBezierPath(ovalIn: petalRect).fill()
+        }
+        cg.restoreGState()
+
+        let coreDiameter = rect.width * 0.69
+        let coreRect = CGRect(
+            x: center.x - coreDiameter / 2,
+            y: center.y - coreDiameter / 2,
+            width: coreDiameter,
+            height: coreDiameter
+        )
+        surface.setFill()
+        UIBezierPath(ovalIn: coreRect).fill()
+        UIColor.white.setStroke()
+        let outerRing = UIBezierPath(ovalIn: coreRect)
+        outerRing.lineWidth = selected ? 3.2 : 2.5
+        outerRing.stroke()
+        merchantNeon.pinMixedWithWhite(0.55).setStroke()
+        let innerRing = UIBezierPath(ovalIn: coreRect.insetBy(dx: 2.2, dy: 2.2))
+        innerRing.lineWidth = 1.2
+        innerRing.stroke()
+    }
+
+    /// 꽃의 중앙에 대표 사진을 원형 aspect-fill로 넣는다.
+    private static func drawCircularPhoto(
+        _ image: UIImage,
+        in badgeRect: CGRect,
+        context: UIGraphicsImageRendererContext
+    ) {
+        let diameter = badgeRect.width * 0.60
+        let rect = CGRect(
+            x: badgeRect.midX - diameter / 2,
+            y: badgeRect.midY - diameter / 2,
+            width: diameter,
+            height: diameter
+        )
+        let cg = context.cgContext
+        cg.saveGState()
+        UIBezierPath(ovalIn: rect).addClip()
         image.draw(in: aspectFill(imageSize: image.size, in: rect))
         cg.restoreGState()
     }
@@ -467,38 +557,10 @@ enum MapPinRenderer {
         handDrawn: Bool,
         selected: Bool,
         borderOverride: UIColor? = nil,
-        neon: Bool = false,
         context: UIGraphicsImageRendererContext
     ) {
         let cg = context.cgContext
         let body = UIBezierPath(roundedRect: rect, cornerRadius: corner)
-
-        if neon {
-            // 사장님 등록 이벤트: 바깥 glow → 굵은 네온 스트로크 → 밝은 코어 순으로 네온 튜브를 만든다.
-            // 선택 시에도 코랄로 덮지 않는다. 확대와 스파크만으로 선택을 표현해도 충분하다.
-            if handDrawn {
-                let outline = UIColor(red: 0.176, green: 0.161, blue: 0.145, alpha: 1)
-                outline.withAlphaComponent(0.85).setFill()
-                UIBezierPath(roundedRect: rect.offsetBy(dx: 2.5, dy: 3.5), cornerRadius: corner).fill()
-            }
-            cg.saveGState()
-            cg.setShadow(offset: .zero, blur: 7, color: merchantNeon.withAlphaComponent(0.9).cgColor)
-            surface.setFill()
-            body.fill()
-            cg.restoreGState()
-
-            cg.saveGState()
-            cg.setShadow(offset: .zero, blur: 3.5, color: merchantNeon.withAlphaComponent(0.95).cgColor)
-            merchantNeon.setStroke()
-            body.lineWidth = selected ? 3.6 : 3.0
-            body.stroke()
-            cg.restoreGState()
-
-            merchantNeon.pinMixedWithWhite(0.55).setStroke()
-            body.lineWidth = selected ? 1.5 : 1.2
-            body.stroke()
-            return
-        }
 
         if handDrawn {
             // 핀은 밝은 지도 타일 위에 놓이므로, 다크모드에서도 외곽선은 차콜을 유지해야 실루엣이 남는다.

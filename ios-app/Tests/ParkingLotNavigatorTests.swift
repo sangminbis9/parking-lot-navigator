@@ -263,6 +263,26 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertTrue(busy === busyAgain)
     }
 
+    func testMerchantFlowerPinRendersWithRepresentativePhoto() {
+        let photoImage = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
+            UIColor.systemTeal.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        }
+        let photo = MapPinPhoto(key: "merchant-test", image: photoImage)
+        let image = MapPinRenderer.image(
+            category: .localEvent,
+            theme: .honey,
+            selected: false,
+            neon: true,
+            photo: photo
+        )
+        let regular = MapPinRenderer.image(category: .localEvent, theme: .honey, selected: false)
+
+        XCTAssertGreaterThan(image.size.width, 0)
+        XCTAssertGreaterThan(image.size.height, 0)
+        XCTAssertGreaterThan(image.size.width, regular.size.width)
+    }
+
 }
 
 private extension Festival {
