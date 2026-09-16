@@ -384,20 +384,20 @@ private struct AgentFrame {
 private enum StationaryOfficeLayout {
     private static let positions: [String: CGPoint] = [
         // 창가 집중석: 지도 탐색, 총괄 대시보드, 검증 레이더
-        "scout": CGPoint(x: 0.215, y: 0.405),
-        "orion": CGPoint(x: 0.495, y: 0.405),
-        "vera": CGPoint(x: 0.780, y: 0.415),
+        "scout": CGPoint(x: 0.215, y: 0.355),
+        "orion": CGPoint(x: 0.495, y: 0.355),
+        "vera": CGPoint(x: 0.780, y: 0.365),
 
         // 중앙 협업 섬: 원형 테이블, 크리에이티브 라운지, 스냅샷 콘솔, 게시 운영석
-        "festa": CGPoint(x: 0.230, y: 0.600),
-        "pixel": CGPoint(x: 0.405, y: 0.645),
-        "atlas": CGPoint(x: 0.540, y: 0.570),
-        "echo": CGPoint(x: 0.860, y: 0.600),
+        "festa": CGPoint(x: 0.230, y: 0.550),
+        "pixel": CGPoint(x: 0.405, y: 0.595),
+        "atlas": CGPoint(x: 0.540, y: 0.520),
+        "echo": CGPoint(x: 0.860, y: 0.550),
 
         // 하단 운영 포드: 주차 관제, 가게 이벤트, 전달 파이프라인
-        "sentinel": CGPoint(x: 0.220, y: 0.800),
-        "harbor": CGPoint(x: 0.660, y: 0.785),
-        "relay": CGPoint(x: 0.890, y: 0.785)
+        "sentinel": CGPoint(x: 0.220, y: 0.750),
+        "harbor": CGPoint(x: 0.660, y: 0.735),
+        "relay": CGPoint(x: 0.890, y: 0.735)
     ]
 
     static func frame(for agent: AgentOfficeAgent) -> AgentFrame {
