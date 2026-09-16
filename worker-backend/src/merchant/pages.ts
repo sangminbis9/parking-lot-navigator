@@ -313,7 +313,7 @@ export function renderEventDetail(event: MerchantEventRow): string {
           <h2 id="withdraw-title">이 이벤트를 내릴까요?</h2>
           <div class="withdraw-warning">
             <ul>
-              <li>다음 데이터 갱신 후 앱 지도와 목록에서 이벤트가 사라집니다.</li>
+              <li>앱 지도와 목록에서 사라지기까지 보통 몇 시간, 길면 반나절 정도 걸릴 수 있습니다.</li>
               <li>종료한 이벤트는 이 화면에서 다시 게시할 수 없습니다.</li>
               <li><strong>사장님 요청에 따른 조기 종료는 남은 게시 기간에 대한 환불이 제공되지 않습니다.</strong></li>
             </ul>
