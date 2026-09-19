@@ -38,6 +38,9 @@ const baseStyle = `
   label { display: block; font-size: 13px; font-weight: 600; color: var(--festival-navy); margin: 14px 0 6px; }
   input, textarea, select { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--festival-cream-deep); background: var(--festival-surface); font-size: 15px; color: var(--festival-navy); font-family: inherit; }
   input:focus, textarea:focus, select:focus { outline: 2px solid var(--festival-coral); outline-offset: -1px; border-color: var(--festival-coral); }
+  /* iOS Safari gives date inputs an intrinsic width that ignores width:100%. */
+  input[type=date] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; min-height: 46px; }
+  input[type=date]::-webkit-date-and-time-value { text-align: left; }
   textarea { resize: vertical; min-height: 96px; }
   .field-help { font-size: 12px; color: var(--festival-muted); margin-top: 4px; }
   .card { background: var(--festival-surface); border: 1px solid var(--festival-cream-deep); border-radius: 12px; padding: 20px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(38, 54, 69, 0.07); }
