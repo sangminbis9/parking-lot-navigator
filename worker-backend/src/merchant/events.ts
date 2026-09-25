@@ -244,6 +244,152 @@ export async function listMerchantEvents(
   return result.results ?? [];
 }
 
+export type AdminMerchantEventRow = MerchantEventRow & {
+  merchant_name: string | null;
+  merchant_provider: string | null;
+  merchant_contact_name: string | null;
+  merchant_phone: string | null;
+  merchant_contact_email: string | null;
+};
+
+/** 관리자 목록. 사장님 등록 경로(source='merchant')만 다룬다. */
+export async function listAllMerchantEvents(
+  db: D1Database,
+): Promise<AdminMerchantEventRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT e.id, e.merchant_id, e.title, e.description, e.benefit, e.event_type, e.status,
+              e.store_name, e.address, e.lat, e.lng, e.start_date, e.end_date, e.image_url,
+              e.source, e.source_url, e.paid_until, e.payment_key, e.payment_amount,
+              e.rejection_reason, e.created_at, e.updated_at,
+              m.display_name AS merchant_name, m.provider AS merchant_provider,
+              m.contact_name AS merchant_contact_name, m.phone AS merchant_phone,
+              m.contact_email AS merchant_contact_email
+       FROM local_events e
+       LEFT JOIN merchants m ON m.id = e.merchant_id
+       WHERE e.source = 'merchant'
+       ORDER BY e.created_at DESC
+       LIMIT 500`,
+    )
+    .all<AdminMerchantEventRow>();
+  return result.results ?? [];
+}
+
+export async function getAdminMerchantEvent(
+  db: D1Database,
+  id: string,
+): Promise<AdminMerchantEventRow | null> {
+  return await db
+    .prepare(
+      `SELECT e.id, e.merchant_id, e.title, e.description, e.benefit, e.event_type, e.status,
+              e.store_name, e.address, e.lat, e.lng, e.start_date, e.end_date, e.image_url,
+              e.source, e.source_url, e.paid_until, e.payment_key, e.payment_amount,
+              e.rejection_reason, e.created_at, e.updated_at,
+              m.display_name AS merchant_name, m.provider AS merchant_provider,
+              m.contact_name AS merchant_contact_name, m.phone AS merchant_phone,
+              m.contact_email AS merchant_contact_email
+       FROM local_events e
+       LEFT JOIN merchants m ON m.id = e.merchant_id
+       WHERE e.id = ? AND e.source = 'merchant'
+       LIMIT 1`,
+    )
+    .bind(id)
+    .first<AdminMerchantEventRow>();
+}
+
+export type AdminMerchantEventUpdate = {
+  title: string;
+  description: string;
+  benefit: string;
+  eventType: MerchantEventType;
+  storeName: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  imageUrl: string | null;
+  couponUrl: string | null;
+  sourceItemId: string | null;
+};
+
+/**
+ * 관리자 수정. 결제·게시 기간(paid_until)·merchant_id·status는 건드리지 않는다.
+ * 바뀐 컬럼은 incremental snapshot trigger가 잡아 다음 local snapshot에 반영된다.
+ */
+export async function adminUpdateMerchantEvent(
+  db: D1Database,
+  id: string,
+  input: AdminMerchantEventUpdate,
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE local_events
+       SET title = ?, description = ?, benefit = ?, event_type = ?,
+           store_name = ?, address = ?, lat = ?, lng = ?,
+           start_date = ?, end_date = ?, image_url = ?,
+           source_url = ?, source_item_id = ?, updated_at = ?
+       WHERE id = ? AND source = 'merchant'`,
+    )
+    .bind(
+      input.title,
+      input.description,
+      input.benefit,
+      input.eventType,
+      input.storeName,
+      input.address,
+      input.lat,
+      input.lng,
+      input.startDate,
+      input.endDate,
+      input.imageUrl,
+      input.couponUrl,
+      input.sourceItemId,
+      new Date().toISOString(),
+      id,
+    )
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/** 관리자 숨기기. 지우지 않고 rejected + 사유로 남긴다. */
+export async function adminHideMerchantEvent(
+  db: D1Database,
+  id: string,
+  reason: string,
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE local_events
+       SET status = 'rejected', rejection_reason = ?, approved_at = NULL, updated_at = ?
+       WHERE id = ? AND source = 'merchant' AND status <> 'rejected'`,
+    )
+    .bind(reason, new Date().toISOString(), id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * 관리자 다시 게시. 숨긴(rejected) 이벤트와 종료된(expired) 이벤트만 되돌린다.
+ * 게시 기간은 원래 paid_until을 그대로 쓰므로, 그 날짜가 지났으면 다시 게시해도 앱에 보이지 않는다.
+ */
+export async function adminPublishMerchantEvent(
+  db: D1Database,
+  id: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE local_events
+       SET status = 'approved', rejection_reason = NULL, approved_at = ?, updated_at = ?
+       WHERE id = ? AND source = 'merchant'
+         AND status IN ('rejected', 'expired') AND paid_until IS NOT NULL`,
+    )
+    .bind(now, now, id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 export type GeocodeResult = {
   lat: number;
   lng: number;

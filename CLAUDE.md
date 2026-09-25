@@ -452,6 +452,17 @@ pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote -
 - `GET /api/admin/event-reports`, `PATCH /api/admin/event-reports/:id` (신고 처리 상태)
 - `GET /api/admin/analytics` (날짜별 집계 조회)
 
+사장님 이벤트 관리 화면 (Bearer 토큰이 아니라 사장님 로그인 세션 + `MERCHANT_ADMIN_IDS` secret):
+
+- `GET /merchant/admin`, `GET /merchant/admin/event/:id`, `POST /merchant/admin/event/:id/edit|hide|publish`
+- `MERCHANT_ADMIN_IDS`는 쉼표로 구분한 `merchants.id` 목록이다. 목록에 없는 계정에는 대시보드 링크도 안 보이고 URL은 404다.
+- 숨기기는 `status='rejected'` + 사유(확인 대화상자 필수), 다시 게시는 `approved`로 되돌린다. 행은 지우지 않는다.
+  `paid_until`이 이미 지났으면 다시 게시해도 앱에 안 보인다. 반영은 local snapshot 경로라 몇 시간~반나절 걸린다.
+- 등록자 성함·전화번호·이메일은 `/merchant/event/new`에서 필수이고 이벤트가 아니라 `merchants`
+  (`contact_name` / `phone` / `contact_email`, migration `0033`)에 저장된다. `display_name`/`email`은
+  OAuth 로그인마다 덮어써지므로 쓰지 않는다. 전화번호는 서버 `normalizeKoreanPhone`(store.ts)과
+  폼 스크립트 `formatPhone`이 같은 규칙으로 하이픈을 넣는다. 관리자 상세 화면에만 보이고 앱·Slack에는 안 나간다.
+
 앱에서 이벤트가 안 보일 때 먼저 확인할 것:
 
 1. Worker가 최신 master로 deploy 되었는가.

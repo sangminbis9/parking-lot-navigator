@@ -1,6 +1,7 @@
 import type { MerchantRow } from "./store.js";
 import {
   MERCHANT_WITHDRAWAL_REASON,
+  type AdminMerchantEventRow,
   type MerchantEventRow,
   type MerchantEventType,
 } from "./events.js";
@@ -237,6 +238,7 @@ function eventRow(event: MerchantEventRow): string {
 export function renderDashboard(
   merchant: MerchantRow,
   events: MerchantEventRow[],
+  isAdmin = false,
 ): string {
   const name = merchant.display_name ?? "사업자";
   const eventList = events.length
@@ -257,6 +259,7 @@ export function renderDashboard(
     ${eventList}
     <a class="btn btn-link" href="/merchant/event/new">새 이벤트 등록</a>
   </div>
+  ${isAdmin ? `<a class="btn btn-secondary" href="/merchant/admin">전체 이벤트 관리 (관리자)</a>` : ""}
 </div>
 `,
   );
@@ -403,12 +406,19 @@ export const EMPTY_FORM: EventFormValues = {
   endDate: "",
 };
 
+/** 등록자 연락처. 이벤트가 아니라 사장님 계정(merchants)에 저장된다. */
+export type ContactValues = { name: string; phone: string; email: string };
+
+export const EMPTY_CONTACT: ContactValues = { name: "", phone: "", email: "" };
+
 export function renderEventForm(opts: {
   values: EventFormValues;
+  contact?: ContactValues;
   error?: string;
   launchPromoFree: boolean;
 }): string {
   const v = opts.values;
+  const contact = opts.contact ?? EMPTY_CONTACT;
   const options = EVENT_TYPE_OPTIONS.map(
     ([key, label]) =>
       `<option value="${key}"${v.eventType === key ? " selected" : ""}>${htmlEscape(label)}</option>`,
@@ -468,6 +478,17 @@ export function renderEventForm(opts: {
       <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
       <div class="field-help">지도 꽃 핀 중앙에 표시됩니다. JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다.</div>
 
+      <label>등록자 성함 *</label>
+      <input name="contact_name" required maxlength="30" autocomplete="name" value="${htmlEscape(contact.name)}" placeholder="예: 홍길동" />
+
+      <label>등록자 전화번호 *</label>
+      <input name="contact_phone" type="tel" inputmode="numeric" required maxlength="13" autocomplete="tel" value="${htmlEscape(contact.phone)}" placeholder="010-0000-0000" />
+      <div class="field-help">숫자만 입력하면 하이픈이 자동으로 들어갑니다.</div>
+
+      <label>등록자 이메일 *</label>
+      <input name="contact_email" type="email" required maxlength="254" autocomplete="email" value="${htmlEscape(contact.email)}" placeholder="example@email.com" />
+      <div class="field-help">이벤트 확인이 필요할 때 운영팀이 연락드립니다. 앱에는 공개되지 않습니다.</div>
+
       <div class="consent-box">
         <input type="checkbox" id="agree-legal" name="agree_legal" required />
         <div>
@@ -484,6 +505,30 @@ export function renderEventForm(opts: {
 <script>
 (function() {
   const form = document.querySelector('form');
+  const phoneInput = form.querySelector('input[name=contact_phone]');
+  // 서버 normalizeKoreanPhone(store.ts)과 같은 규칙으로 입력 중 하이픈을 넣는다.
+  function formatPhone(value) {
+    let d = value.replace(/\\D/g, '');
+    if (/^02/.test(d)) {
+      d = d.slice(0, 10);
+      if (d.length <= 2) return d;
+      if (d.length <= 5) return d.slice(0, 2) + '-' + d.slice(2);
+      if (d.length <= 9) return d.slice(0, 2) + '-' + d.slice(2, 5) + '-' + d.slice(5);
+      return d.slice(0, 2) + '-' + d.slice(2, 6) + '-' + d.slice(6);
+    }
+    if (/^1[568]/.test(d)) {
+      d = d.slice(0, 8);
+      return d.length <= 4 ? d : d.slice(0, 4) + '-' + d.slice(4);
+    }
+    d = d.slice(0, 11);
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return d.slice(0, 3) + '-' + d.slice(3);
+    if (d.length <= 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
+    return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  }
+  phoneInput.addEventListener('input', function() {
+    phoneInput.value = formatPhone(phoneInput.value);
+  });
   const fileInput = form.querySelector('input[type=file]');
   const submitBtn = form.querySelector('button[type=submit]');
   const originalLabel = submitBtn.textContent;
@@ -697,6 +742,191 @@ export function renderMessage(title: string, message: string): string {
     <h1>${htmlEscape(title)}</h1>
     <p>${htmlEscape(message)}</p>
     <a class="btn btn-secondary" href="/merchant">처음으로</a>
+  </div>
+</div>
+`,
+  );
+}
+
+function adminEventRow(event: AdminMerchantEventRow): string {
+  const meta = [
+    htmlEscape(event.store_name),
+    htmlEscape(event.merchant_name ?? event.merchant_provider ?? "사업자 미상"),
+    `등록 ${htmlEscape(event.created_at.slice(0, 10))}`,
+  ];
+  if (event.paid_until) meta.push(`~ ${htmlEscape(event.paid_until)}`);
+  return `<div class="event-row">
+    <div class="event-title">${htmlEscape(event.title)}${statusBadge(event)}</div>
+    <div class="event-meta">${meta.join(" · ")}</div>
+    <a class="muted" href="/merchant/admin/event/${htmlEscape(event.id)}">관리 →</a>
+  </div>`;
+}
+
+export function renderAdminList(events: AdminMerchantEventRow[]): string {
+  const list = events.length
+    ? events.map(adminEventRow).join("\n")
+    : `<p class="muted">사장님이 등록한 이벤트가 없습니다.</p>`;
+  return layout(
+    "이벤트 관리",
+    `
+<div class="topbar">
+  <h2>관리자 · 전체 이벤트</h2>
+  <a class="muted" href="/merchant/dashboard">대시보드</a>
+</div>
+<div class="container">
+  <div class="card">
+    <h1>사장님 이벤트 ${events.length}건</h1>
+    ${list}
+  </div>
+</div>
+`,
+  );
+}
+
+export function renderAdminEventDetail(opts: {
+  event: AdminMerchantEventRow;
+  values?: EventFormValues;
+  error?: string;
+}): string {
+  const { event } = opts;
+  const id = htmlEscape(event.id);
+  const v: EventFormValues = opts.values ?? {
+    title: event.title,
+    description: event.description ?? "",
+    benefit: event.benefit ?? "",
+    eventType: event.event_type,
+    storeName: event.store_name,
+    address: event.address,
+    couponUrl: event.source_url ?? "",
+    startDate: event.start_date ?? "",
+    endDate: event.end_date ?? "",
+  };
+  const options = EVENT_TYPE_OPTIONS.map(
+    ([value, label]) =>
+      `<option value="${value}"${value === v.eventType ? " selected" : ""}>${htmlEscape(label)}</option>`,
+  ).join("");
+  const image = event.image_url
+    ? `<img class="event-image" src="${htmlEscape(event.image_url)}" alt="${htmlEscape(event.title)} 대표 이미지" />`
+    : "";
+  const errorBanner = opts.error
+    ? `<div class="error-banner">${htmlEscape(opts.error)}</div>`
+    : "";
+  const payment = event.payment_amount === null
+    ? "결제 없음"
+    : `₩${event.payment_amount.toLocaleString("ko-KR")}`;
+  const hide = event.status !== "rejected"
+    ? `
+    <button type="button" class="btn btn-danger" id="hide-open">앱에서 숨기기</button>
+    <dialog class="withdraw-modal" id="hide-modal" aria-labelledby="hide-title">
+      <form method="post" action="/merchant/admin/event/${id}/hide" id="hide-form">
+        <input type="hidden" name="confirmation" value="hide" />
+        <div class="withdraw-modal-body">
+          <h2 id="hide-title">이 이벤트를 숨길까요?</h2>
+          <div class="withdraw-warning">
+            <ul>
+              <li>앱 지도와 목록에서 사라지기까지 보통 몇 시간, 길면 반나절 정도 걸립니다.</li>
+              <li>데이터와 결제 기록은 지우지 않습니다. 이 화면에서 다시 게시할 수 있습니다.</li>
+              <li>사장님 화면에는 '반려'로 표시됩니다. 결제 환불은 자동으로 되지 않습니다.</li>
+            </ul>
+          </div>
+          <label for="hide-reason">숨기는 사유 *</label>
+          <textarea id="hide-reason" name="reason" required maxlength="300" placeholder="예: 허위 혜택, 부적절한 이미지"></textarea>
+          <div class="withdraw-actions">
+            <button type="button" class="btn btn-secondary" id="hide-cancel">돌아가기</button>
+            <button type="submit" class="btn btn-danger">확인하고 숨기기</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <script>
+    (function() {
+      var modal = document.getElementById('hide-modal');
+      var form = document.getElementById('hide-form');
+      document.getElementById('hide-open').addEventListener('click', function() {
+        if (typeof modal.showModal === 'function') {
+          modal.showModal();
+          return;
+        }
+        var reason = window.prompt('숨기는 사유를 입력하면 이벤트를 앱에서 숨깁니다.');
+        if (reason) {
+          form.elements.reason.value = reason;
+          form.submit();
+        }
+      });
+      document.getElementById('hide-cancel').addEventListener('click', function() { modal.close(); });
+      modal.addEventListener('click', function(e) { if (e.target === modal) modal.close(); });
+    })();
+    </script>`
+    : "";
+  const canPublish = (event.status === "rejected" || event.status === "expired") && event.paid_until;
+  const publish = canPublish
+    ? `
+    <form method="post" action="/merchant/admin/event/${id}/publish">
+      <button type="submit" class="btn btn-primary">다시 게시하기</button>
+    </form>
+    <p class="muted">게시 기간은 원래 값(~ ${htmlEscape(event.paid_until ?? "")})을 그대로 씁니다. 그 날짜가 지났으면 다시 게시해도 앱에 보이지 않습니다.</p>`
+    : event.status === "rejected" || event.status === "expired"
+      ? `<p class="muted">결제·무료 등록을 한 번도 마치지 않은 이벤트라 다시 게시할 수 없습니다.</p>`
+      : "";
+  return layout(
+    "이벤트 관리",
+    `
+<div class="topbar">
+  <h2>관리자 · 이벤트</h2>
+  <a class="muted" href="/merchant/admin">전체 목록</a>
+</div>
+<div class="container">
+  <div class="card">
+    ${image}
+    <h1>${htmlEscape(event.title)}${statusBadge(event)}</h1>
+    <p class="muted">${htmlEscape(event.store_name)} · ${htmlEscape(event.address)}</p>
+    <div class="detail-label">사업자</div>
+    <div class="detail-value">${htmlEscape(event.merchant_name ?? "-")} (${htmlEscape(event.merchant_provider ?? "-")}) · ${htmlEscape(event.merchant_id ?? "-")}</div>
+    <div class="detail-label">등록자 연락처</div>
+    <div class="detail-value">${htmlEscape(event.merchant_contact_name ?? "-")} · ${htmlEscape(event.merchant_phone ?? "-")} · ${htmlEscape(event.merchant_contact_email ?? "-")}</div>
+    <div class="detail-label">상태 사유</div>
+    <div class="detail-value">${htmlEscape(event.rejection_reason ?? "-")}</div>
+    <div class="detail-label">게시 만료일 / 결제</div>
+    <div class="detail-value">${htmlEscape(event.paid_until ?? "-")} · ${htmlEscape(payment)}</div>
+    <div class="detail-label">등록 / 최근 수정</div>
+    <div class="detail-value">${htmlEscape(event.created_at)} / ${htmlEscape(event.updated_at)}</div>
+    <div class="detail-label">이벤트 ID</div>
+    <div class="detail-value">${id}</div>
+  </div>
+  <div class="card">
+    <h2>내용 수정</h2>
+    ${errorBanner}
+    <form method="post" action="/merchant/admin/event/${id}/edit" enctype="multipart/form-data">
+      <label>이벤트 제목 *</label>
+      <input name="title" required maxlength="80" value="${htmlEscape(v.title)}" />
+      <label>혜택 요약 *</label>
+      <input name="benefit" required maxlength="60" value="${htmlEscape(v.benefit)}" />
+      <label>이벤트 유형 *</label>
+      <select name="event_type">${options}</select>
+      <label>상세 설명 *</label>
+      <textarea name="description" required maxlength="500">${htmlEscape(v.description)}</textarea>
+      <label>매장명 *</label>
+      <input name="store_name" required maxlength="60" value="${htmlEscape(v.storeName)}" />
+      <label>매장 주소 *</label>
+      <input name="address" required maxlength="120" value="${htmlEscape(v.address)}" />
+      <div class="field-help">주소를 바꾸면 지도 위치를 다시 찾습니다.</div>
+      <label>네이버 쿠폰 링크</label>
+      <input name="coupon_url" type="url" maxlength="500" value="${htmlEscape(v.couponUrl)}" />
+      <label>시작일</label>
+      <input name="start_date" type="date" value="${htmlEscape(v.startDate)}" />
+      <label>종료일</label>
+      <input name="end_date" type="date" value="${htmlEscape(v.endDate)}" />
+      <div class="field-help">날짜를 비우면 기존 값을 유지합니다.</div>
+      <label>대표 이미지 교체</label>
+      <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
+      <div class="field-help">선택하지 않으면 기존 이미지를 유지합니다. 최대 5MB.</div>
+      <button class="btn btn-primary" type="submit">수정 저장</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>앱 노출</h2>
+    ${publish}
+    ${hide}
   </div>
 </div>
 `,

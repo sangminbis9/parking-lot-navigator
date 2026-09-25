@@ -10,6 +10,7 @@ import {
 } from "./oauth.js";
 import {
   EMPTY_FORM,
+  type ContactValues,
   renderDashboard,
   renderEventDetail,
   renderEventForm,
@@ -18,10 +19,22 @@ import {
   renderMessage,
   renderPaymentFail,
   renderTossPayment,
+  renderAdminEventDetail,
+  renderAdminList,
   type EventFormValues,
 } from "./pages.js";
-import { getMerchantById, upsertMerchant } from "./store.js";
 import {
+  getMerchantById,
+  normalizeKoreanPhone,
+  updateMerchantContact,
+  upsertMerchant,
+} from "./store.js";
+import {
+  adminHideMerchantEvent,
+  adminPublishMerchantEvent,
+  adminUpdateMerchantEvent,
+  getAdminMerchantEvent,
+  listAllMerchantEvents,
   createMerchantEvent,
   geocodeAddress,
   getMerchantEventById,
@@ -56,6 +69,8 @@ export type MerchantEnv = {
   KAKAO_CLIENT_SECRET?: string;
   KAKAO_LOCAL_BASE_URL?: string;
   MERCHANT_SESSION_SECRET?: string;
+  /** 쉼표로 구분한 merchants.id 목록. 여기 있는 계정만 /merchant/admin을 본다. */
+  MERCHANT_ADMIN_IDS?: string;
   MERCHANT_PUBLIC_BASE_URL?: string;
   TOSS_CLIENT_KEY?: string;
   TOSS_SECRET_KEY?: string;
@@ -193,6 +208,27 @@ async function loadSession(
   return verifySessionToken(token, env.MERCHANT_SESSION_SECRET);
 }
 
+function isMerchantAdmin(env: MerchantEnv, merchantId: string): boolean {
+  return (env.MERCHANT_ADMIN_IDS ?? "")
+    .split(",")
+    .some((id) => id.trim() === merchantId);
+}
+
+function logAdminAction(
+  action: string,
+  eventId: string,
+  adminId: string,
+  reason?: string,
+): void {
+  console.log(JSON.stringify({
+    event: "merchant_admin_action",
+    action,
+    eventId,
+    adminId,
+    reason,
+  }));
+}
+
 export function createMerchantApp() {
   const app = new Hono<{ Bindings: MerchantEnv }>();
 
@@ -217,7 +253,9 @@ export function createMerchantApp() {
       return c.redirect("/merchant");
     }
     const events = await listMerchantEvents(c.env.DB, merchant.id);
-    return c.html(renderDashboard(merchant, events));
+    return c.html(
+      renderDashboard(merchant, events, isMerchantAdmin(c.env, merchant.id)),
+    );
   });
 
   app.post("/logout", (c) => {
@@ -342,9 +380,15 @@ export function createMerchantApp() {
   app.get("/event/new", async (c) => {
     const session = await loadSession(c.env, c.req.header("cookie"));
     if (!session) return c.redirect("/merchant");
+    const merchant = await getMerchantById(c.env.DB, session.merchantId);
     return c.html(
       renderEventForm({
         values: EMPTY_FORM,
+        contact: {
+          name: merchant?.contact_name ?? "",
+          phone: merchant?.phone ?? "",
+          email: merchant?.contact_email ?? merchant?.email ?? "",
+        },
         launchPromoFree: launchPromoEnabled(c.env),
       }),
     );
@@ -365,16 +409,47 @@ export function createMerchantApp() {
       startDate: String(form.get("start_date") ?? "").trim(),
       endDate: String(form.get("end_date") ?? "").trim(),
     };
+    const contact: ContactValues = {
+      name: String(form.get("contact_name") ?? "").trim(),
+      phone: String(form.get("contact_phone") ?? "").trim(),
+      email: String(form.get("contact_email") ?? "").trim(),
+    };
 
     const missing = (
       ["title", "description", "benefit", "storeName", "address"] as const
     ).filter((key) => !values[key]);
     const promoFree = launchPromoEnabled(c.env);
-    if (missing.length > 0) {
+    if (missing.length > 0 || !contact.name || !contact.phone || !contact.email) {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error: "필수 항목을 모두 입력해 주세요.",
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+
+    const phone = normalizeKoreanPhone(contact.phone);
+    if (!phone) {
+      return c.html(
+        renderEventForm({
+          values,
+          contact,
+          error: "등록자 전화번호를 확인해 주세요. 예: 010-0000-0000",
+          launchPromoFree: promoFree,
+        }),
+        400,
+      );
+    }
+    contact.phone = phone;
+    if (contact.name.length > 30 || contact.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
+      return c.html(
+        renderEventForm({
+          values,
+          contact,
+          error: "등록자 성함과 이메일 주소를 확인해 주세요.",
           launchPromoFree: promoFree,
         }),
         400,
@@ -390,6 +465,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error: periodError,
           launchPromoFree: promoFree,
         }),
@@ -402,6 +478,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error:
             "네이버 쿠폰 링크는 네이버 예약·플레이스 주소만 등록할 수 있습니다. 쿠폰 페이지의 https 주소를 그대로 붙여넣어 주세요.",
           launchPromoFree: promoFree,
@@ -414,6 +491,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error: "이용약관, 개인정보처리방침, 환불·취소 정책에 동의해야 등록할 수 있습니다.",
           launchPromoFree: promoFree,
         }),
@@ -426,6 +504,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error: "지도 꽃 핀에 표시할 대표 이미지를 등록해 주세요.",
           launchPromoFree: promoFree,
         }),
@@ -442,6 +521,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error:
             "주소에서 위치를 찾지 못했습니다. 도로명 주소로 다시 입력해 주세요.",
           launchPromoFree: promoFree,
@@ -467,6 +547,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error: reason,
           launchPromoFree: promoFree,
         }),
@@ -474,6 +555,8 @@ export function createMerchantApp() {
       );
     }
     imageUrl = result.url;
+
+    await updateMerchantContact(c.env.DB, session.merchantId, contact);
 
     const event = await createMerchantEvent(c.env.DB, {
       merchantId: session.merchantId,
@@ -500,6 +583,7 @@ export function createMerchantApp() {
       return c.html(
         renderEventForm({
           values,
+          contact,
           error:
             "이미 등록된 네이버 쿠폰 링크입니다. 등록한 이벤트 목록을 확인해 주세요.",
           launchPromoFree: promoFree,
@@ -775,6 +859,154 @@ export function createMerchantApp() {
       }),
       400,
     );
+  });
+
+  // 관리자 영역. 관리자가 아니면 존재 자체를 드러내지 않도록 404로 답한다.
+  const loadAdmin = async (env: MerchantEnv, cookie: string | undefined) => {
+    const session = await loadSession(env, cookie);
+    return session && isMerchantAdmin(env, session.merchantId) ? session : null;
+  };
+
+  app.get("/admin", async (c) => {
+    if (!(await loadAdmin(c.env, c.req.header("cookie")))) return c.notFound();
+    return c.html(renderAdminList(await listAllMerchantEvents(c.env.DB)));
+  });
+
+  app.get("/admin/event/:id", async (c) => {
+    if (!(await loadAdmin(c.env, c.req.header("cookie")))) return c.notFound();
+    const event = await getAdminMerchantEvent(c.env.DB, c.req.param("id"));
+    if (!event) return c.notFound();
+    return c.html(renderAdminEventDetail({ event }));
+  });
+
+  app.post("/admin/event/:id/edit", async (c) => {
+    const admin = await loadAdmin(c.env, c.req.header("cookie"));
+    if (!admin) return c.notFound();
+    const event = await getAdminMerchantEvent(c.env.DB, c.req.param("id"));
+    if (!event) return c.notFound();
+    const form = await c.req.formData();
+    const values: EventFormValues = {
+      title: String(form.get("title") ?? "").trim(),
+      description: String(form.get("description") ?? "").trim(),
+      benefit: String(form.get("benefit") ?? "").trim(),
+      eventType: parseEventType(String(form.get("event_type") ?? "")),
+      storeName: String(form.get("store_name") ?? "").trim(),
+      address: String(form.get("address") ?? "").trim(),
+      couponUrl: String(form.get("coupon_url") ?? "").trim(),
+      startDate: String(form.get("start_date") ?? "").trim(),
+      endDate: String(form.get("end_date") ?? "").trim(),
+    };
+    const fail = (error: string, status: 400 | 409) =>
+      c.html(renderAdminEventDetail({ event, values, error }), status);
+
+    const missing = (
+      ["title", "description", "benefit", "storeName", "address"] as const
+    ).filter((key) => !values[key]);
+    if (missing.length > 0) return fail("필수 항목을 모두 입력해 주세요.", 400);
+
+    // 비운 날짜는 기존 값을 유지한다. 지난 종료일도 관리자는 그대로 둘 수 있어야 하므로
+    // 오늘 기준 검사는 하지 않는다.
+    const startDate = normalizeDate(values.startDate) ?? event.start_date;
+    const endDate = normalizeDate(values.endDate) ?? event.end_date;
+    const periodError = validateEventPeriod(startDate ?? "", endDate ?? "", "");
+    if (periodError) return fail(periodError, 400);
+
+    const couponLink = parseNaverCouponLink(values.couponUrl);
+    if (couponLink === undefined) {
+      return fail("네이버 쿠폰 링크는 네이버 예약·플레이스 주소만 등록할 수 있습니다.", 400);
+    }
+
+    let address = event.address;
+    let lat = event.lat;
+    let lng = event.lng;
+    if (values.address !== event.address) {
+      const geocode = await geocodeAddress(
+        c.env.KAKAO_REST_API_KEY,
+        c.env.KAKAO_LOCAL_BASE_URL,
+        values.address,
+      );
+      if (!geocode) return fail("주소에서 위치를 찾지 못했습니다. 도로명 주소로 다시 입력해 주세요.", 400);
+      address = geocode.refinedAddress;
+      lat = geocode.lat;
+      lng = geocode.lng;
+    }
+
+    let imageUrl = event.image_url;
+    const imageEntry = form.get("image");
+    if (imageEntry instanceof File && imageEntry.size > 0) {
+      const result = await uploadEventImage(
+        c.env.MERCHANT_IMAGES,
+        baseUrl(c.env, c.req.url),
+        event.merchant_id ?? admin.merchantId,
+        imageEntry,
+      );
+      if (!result.ok) {
+        return fail(
+          result.reason === "size"
+            ? "이미지 용량은 5MB 이하만 업로드할 수 있습니다."
+            : result.reason === "type"
+              ? "이미지는 JPG, PNG, WebP 형식만 지원합니다."
+              : "이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          400,
+        );
+      }
+      imageUrl = result.url;
+    }
+
+    const updated = await adminUpdateMerchantEvent(c.env.DB, event.id, {
+      title: values.title,
+      description: values.description,
+      benefit: values.benefit,
+      eventType: values.eventType,
+      storeName: values.storeName,
+      address,
+      lat,
+      lng,
+      startDate,
+      endDate,
+      imageUrl,
+      couponUrl: couponLink?.url ?? null,
+      sourceItemId: couponSourceItemId(couponLink),
+    }).catch((error: unknown) => {
+      if (String(error).includes("UNIQUE")) return null;
+      throw error;
+    });
+    if (updated === null) return fail("다른 이벤트에 이미 등록된 네이버 쿠폰 링크입니다.", 409);
+    logAdminAction("edit", event.id, admin.merchantId);
+    return c.redirect(`/merchant/admin/event/${event.id}`, 303);
+  });
+
+  app.post("/admin/event/:id/hide", async (c) => {
+    const admin = await loadAdmin(c.env, c.req.header("cookie"));
+    if (!admin) return c.notFound();
+    const form = await c.req.formData().catch(() => null);
+    const reason = String(form?.get("reason") ?? "").trim().slice(0, 300);
+    if (!form || form.get("confirmation") !== "hide" || !reason) {
+      return c.html(
+        renderMessage("확인이 필요함", "숨기는 사유를 입력하고 확인 버튼을 눌러 주세요."),
+        400,
+      );
+    }
+    const id = c.req.param("id");
+    if (!(await adminHideMerchantEvent(c.env.DB, id, reason))) {
+      return c.html(renderMessage("숨길 수 없음", "이미 숨겼거나 없는 이벤트입니다."), 409);
+    }
+    logAdminAction("hide", id, admin.merchantId, reason);
+    return c.redirect(`/merchant/admin/event/${id}`, 303);
+  });
+
+  app.post("/admin/event/:id/publish", async (c) => {
+    const admin = await loadAdmin(c.env, c.req.header("cookie"));
+    if (!admin) return c.notFound();
+    const id = c.req.param("id");
+    if (!(await adminPublishMerchantEvent(c.env.DB, id))) {
+      return c.html(
+        renderMessage("다시 게시할 수 없음", "숨겼거나 종료된 이벤트 중 결제·무료 등록을 마친 것만 다시 게시할 수 있습니다."),
+        409,
+      );
+    }
+    logAdminAction("publish", id, admin.merchantId);
+    return c.redirect(`/merchant/admin/event/${id}`, 303);
   });
 
   return app;

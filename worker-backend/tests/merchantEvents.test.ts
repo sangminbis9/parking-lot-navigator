@@ -8,6 +8,7 @@ import {
   validateEventPeriod,
 } from "../src/merchant/routes.js";
 import { createSessionToken } from "../src/merchant/session.js";
+import { normalizeKoreanPhone } from "../src/merchant/store.js";
 
 const event: MerchantEventRow = {
   id: "event-1",
@@ -77,6 +78,7 @@ describe("merchant event representative image", () => {
     for (const [key, value] of Object.entries({
       title: "행사", description: "상세", benefit: "할인", event_type: "discount",
       store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+      contact_name: "홍길동", contact_phone: "01012345678", contact_email: "owner@example.com",
     })) form.set(key, value);
     if (emptyFile) form.set("image", new File([], "empty.jpg", { type: "image/jpeg" }));
     const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
@@ -88,6 +90,62 @@ describe("merchant event representative image", () => {
 
     expect(response.status).toBe(400);
     expect(await response.text()).toContain("지도 꽃 핀에 표시할 대표 이미지를 등록해 주세요");
+    expect(prepare).not.toHaveBeenCalled();
+  });
+});
+
+describe("merchant registrant contact", () => {
+  it.each([
+    ["01012345678", "010-1234-5678"],
+    ["010-1234-5678", "010-1234-5678"],
+    ["0111234567", "011-123-4567"],
+    ["0212345678", "02-1234-5678"],
+    ["021234567", "02-123-4567"],
+    ["0311234567", "031-123-4567"],
+    ["07012345678", "070-1234-5678"],
+    ["15881234", "1588-1234"],
+  ])("normalizes %s to %s", (input, expected) => {
+    expect(normalizeKoreanPhone(input)).toBe(expected);
+  });
+
+  it.each(["", "1234", "010123", "010123456789", "02123456789", "12345678"])(
+    "rejects invalid phone %s",
+    (input) => {
+      expect(normalizeKoreanPhone(input)).toBeNull();
+    },
+  );
+
+  it("renders required contact fields with phone auto-formatting", () => {
+    const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
+    expect(html).toContain('name="contact_name" required');
+    expect(html).toContain('name="contact_phone" type="tel" inputmode="numeric" required');
+    expect(html).toContain('name="contact_email" type="email" required');
+    expect(html).toContain("phoneInput.value = formatPhone(phoneInput.value)");
+  });
+
+  it.each([
+    [{ contact_phone: "" }, "필수 항목을 모두 입력해 주세요"],
+    [{ contact_phone: "12345" }, "등록자 전화번호를 확인해 주세요"],
+    [{ contact_email: "not-an-email" }, "등록자 성함과 이메일 주소를 확인해 주세요"],
+  ])("rejects invalid contact %o before touching the database", async (override, message) => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      title: "행사", description: "상세", benefit: "할인", event_type: "discount",
+      store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+      contact_name: "홍길동", contact_phone: "01012345678", contact_email: "owner@example.com",
+      ...override,
+    })) form.set(key, value);
+    const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
+    const response = await createMerchantApp().request(
+      "/event/new",
+      { method: "POST", headers: { cookie: `__merchant_session=${token}` }, body: form },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain(message);
     expect(prepare).not.toHaveBeenCalled();
   });
 });
@@ -232,5 +290,119 @@ describe("merchant event detail", () => {
     expect(detail).toContain("직접 종료");
     expect(detail).toContain("사장님이 게시를 조기 종료했습니다");
     expect(detail).not.toContain("이벤트 내리기");
+  });
+});
+
+describe("merchant admin", () => {
+  const secret = "test-session-secret";
+  const adminEnv = (prepare: unknown) => ({
+    DB: { prepare } as unknown as D1Database,
+    MERCHANT_SESSION_SECRET: secret,
+    MERCHANT_ADMIN_IDS: " admin-1 , admin-2",
+  });
+  const adminEvent = { ...event, merchant_name: "사장님", merchant_provider: "kakao" };
+  const post = async (merchantId: string, path: string, body: string, prepare: unknown) => {
+    const token = await createSessionToken({ merchantId, provider: "kakao" }, secret);
+    return createMerchantApp().request(
+      path,
+      {
+        method: "POST",
+        headers: {
+          cookie: `__merchant_session=${token}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body,
+      },
+      adminEnv(prepare),
+    );
+  };
+
+  it("hides the admin area from non-admin merchants", async () => {
+    const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+    const prepare = vi.fn();
+    const response = await createMerchantApp().request(
+      "/admin",
+      { headers: { cookie: `__merchant_session=${token}` } },
+      adminEnv(prepare),
+    );
+    expect(response.status).toBe(404);
+    expect(prepare).not.toHaveBeenCalled();
+    expect((await post("merchant-1", "/admin/event/event-1/publish", "", prepare)).status).toBe(404);
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("lists every merchant event for an admin", async () => {
+    const token = await createSessionToken({ merchantId: "admin-2", provider: "naver" }, secret);
+    const prepare = vi.fn(() => ({ all: async () => ({ results: [adminEvent] }) }));
+    const response = await createMerchantApp().request(
+      "/admin",
+      { headers: { cookie: `__merchant_session=${token}` } },
+      adminEnv(prepare),
+    );
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("테스트 이벤트");
+    expect(html).toContain('href="/merchant/admin/event/event-1"');
+  });
+
+  it("shows the admin link on the dashboard only for admins", () => {
+    const merchant = {
+      id: "admin-1", provider: "kakao" as const, provider_user_id: "p", display_name: null,
+      email: null, created_at: event.created_at, updated_at: event.updated_at,
+    };
+    expect(renderDashboard(merchant, [], true)).toContain('href="/merchant/admin"');
+    expect(renderDashboard(merchant, [], false)).not.toContain('href="/merchant/admin"');
+  });
+
+  it.each(["reason=spam", "confirmation=hide", "confirmation=hide&reason=%20"])(
+    "does not hide without confirmation and a reason (%s)",
+    async (body) => {
+      const prepare = vi.fn();
+      const response = await post("admin-1", "/admin/event/event-1/hide", body, prepare);
+      expect(response.status).toBe(400);
+      expect(prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it("hides an event as rejected with the reason after confirmation", async () => {
+    const bind = vi.fn(() => ({ run: async () => ({ meta: { changes: 1 } }) }));
+    const prepare = vi.fn(() => ({ bind }));
+    const response = await post(
+      "admin-1", "/admin/event/event-1/hide", "confirmation=hide&reason=%ED%97%88%EC%9C%84", prepare,
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/merchant/admin/event/event-1");
+    expect(prepare.mock.calls[0][0]).toContain("status = 'rejected'");
+    expect(bind.mock.calls[0][0]).toBe("허위");
+  });
+
+  it("re-publishes a hidden event", async () => {
+    const prepare = vi.fn(() => ({ bind: () => ({ run: async () => ({ meta: { changes: 1 } }) }) }));
+    const response = await post("admin-1", "/admin/event/event-1/publish", "", prepare);
+    expect(response.status).toBe(303);
+    expect(prepare.mock.calls[0][0]).toContain("status = 'approved'");
+  });
+
+  it("refuses to re-publish when nothing matched", async () => {
+    const prepare = vi.fn(() => ({ bind: () => ({ run: async () => ({ meta: { changes: 0 } }) }) }));
+    const response = await post("admin-1", "/admin/event/event-1/publish", "", prepare);
+    expect(response.status).toBe(409);
+  });
+
+  it("keeps coordinates and dates when the admin edits text only", async () => {
+    const update = vi.fn(() => ({ run: async () => ({ meta: { changes: 1 } }) }));
+    const prepare = vi.fn((sql: string) =>
+      sql.includes("UPDATE local_events")
+        ? { bind: update }
+        : { bind: () => ({ first: async () => adminEvent }) });
+    const body = new URLSearchParams({
+      title: "고친 제목", description: "상세 설명", benefit: "10% 할인", event_type: "discount",
+      store_name: "테스트 매장", address: event.address, coupon_url: "", start_date: "", end_date: "",
+    }).toString();
+    const response = await post("admin-1", "/admin/event/event-1/edit", body, prepare);
+    expect(response.status).toBe(303);
+    const args = update.mock.calls[0] as unknown[];
+    expect(args[0]).toBe("고친 제목");
+    expect(args.slice(5, 10)).toEqual([event.address, 37.39, 126.64, "2026-09-15", "2026-09-20"]);
   });
 });
