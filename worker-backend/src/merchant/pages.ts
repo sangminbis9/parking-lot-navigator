@@ -1,5 +1,6 @@
 import type { MerchantRow } from "./store.js";
 import {
+  isRenewableEvent,
   MERCHANT_WITHDRAWAL_REASON,
   type AdminMerchantEventRow,
   type MerchantEventRow,
@@ -176,9 +177,9 @@ export function renderLanding(opts: {
     );
   }
   const pricingLine = opts.launchPromoFree
-    ? `<p>3개월 게시 <s>₩10,000</s> → <strong style="color:#dc2626;">오픈 기념 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
-    <p class="muted">별도 공지 전까지 결제 없이 무료로 등록할 수 있어요.</p>`
-    : `<p>3개월 게시 ₩10,000. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>`;
+    ? `<p>월 <s>₩9,900</s> → <strong style="color:#dc2626;">2026년 12월 31일까지 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
+    <p class="muted">2026년 12월 31일까지 결제 없이 무료로 게시할 수 있어요. 2027년부터는 월 ₩9,900입니다.</p>`
+    : `<p>월 ₩9,900(1개월 게시). 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>`;
   return layout(
     "사업자 이벤트 등록",
     `
@@ -205,7 +206,9 @@ function statusBadge(event: MerchantEventRow): string {
   }
   switch (event.status) {
     case "approved":
-      return `<span class="badge badge-approved">게시 중</span>`;
+      return isRenewableEvent(event)
+        ? `<span class="badge badge-expired">게시 종료</span>`
+        : `<span class="badge badge-approved">게시 중</span>`;
     case "pending_payment":
       return `<span class="badge badge-pending">결제 대기</span>`;
     case "pending":
@@ -222,12 +225,19 @@ function eventRow(event: MerchantEventRow): string {
   meta.push(htmlEscape(event.store_name));
   if (event.paid_until) meta.push(`~ ${htmlEscape(event.paid_until)}`);
   else if (event.end_date) meta.push(`종료 ${htmlEscape(event.end_date)}`);
+  const renewable = isRenewableEvent(event);
   const actionHref =
     event.status === "pending_payment"
       ? `/merchant/event/${event.id}/pay`
-      : `/merchant/event/${event.id}`;
+      : renewable
+        ? `/merchant/event/${event.id}/renew`
+        : `/merchant/event/${event.id}`;
   const actionLabel =
-    event.status === "pending_payment" ? "결제 계속하기" : "상세 보기";
+    event.status === "pending_payment"
+      ? "결제 계속하기"
+      : renewable
+        ? "연장/재등록"
+        : "상세 보기";
   return `<div class="event-row">
     <div class="event-title">${htmlEscape(event.title)}${statusBadge(event)}</div>
     <div class="event-meta">${meta.join(" · ")}</div>
@@ -283,6 +293,9 @@ function eventStatusNote(event: MerchantEventRow): string {
   if (isMerchantWithdrawn(event)) {
     return "사장님이 게시를 조기 종료했습니다. 현재 앱에 표시되지 않으며 이벤트와 결제 기록은 보관됩니다.";
   }
+  if (event.status === "approved" && isRenewableEvent(event)) {
+    return "게시 기간이 끝나 현재 앱에 표시되지 않습니다. 연장/재등록으로 다시 게시할 수 있습니다.";
+  }
   switch (event.status) {
     case "approved":
       return "게시 승인되었습니다. 앱이 다음 이벤트 데이터를 갱신하면 지도와 로컬 이벤트 목록에 표시됩니다.";
@@ -304,8 +317,10 @@ export function renderEventDetail(event: MerchantEventRow): string {
   const period = `${htmlEscape(event.start_date ?? "게시 승인일")} ~ ${htmlEscape(event.end_date ?? event.paid_until ?? "종료일 미정")}`;
   const action = event.status === "pending_payment"
     ? `<a class="btn btn-primary" href="/merchant/event/${htmlEscape(event.id)}/pay">등록 계속하기</a>`
-    : "";
-  const withdrawal = event.status === "approved"
+    : isRenewableEvent(event)
+      ? `<a class="btn btn-primary" href="/merchant/event/${htmlEscape(event.id)}/renew">연장/재등록</a>`
+      : "";
+  const withdrawal = event.status === "approved" && !isRenewableEvent(event)
     ? `
     <div class="danger-zone">
       <h2>게시 종료</h2>
@@ -320,7 +335,7 @@ export function renderEventDetail(event: MerchantEventRow): string {
           <div class="withdraw-warning">
             <ul>
               <li>앱 지도와 목록에서 사라지기까지 보통 몇 시간, 길면 반나절 정도 걸릴 수 있습니다.</li>
-              <li>종료한 이벤트는 이 화면에서 다시 게시할 수 없습니다.</li>
+              <li>종료한 이벤트는 연장/재등록으로 다시 게시할 수 있으며, 이때 새로 결제해야 합니다.</li>
               <li><strong>사장님 요청에 따른 조기 종료는 남은 게시 기간에 대한 환불이 제공되지 않습니다.</strong></li>
             </ul>
           </div>
@@ -418,8 +433,11 @@ export function renderEventForm(opts: {
   contact?: ContactValues;
   error?: string;
   launchPromoFree: boolean;
+  /** 연장/재등록: 이 이벤트를 고쳐 다시 게시한다. 이미지는 바꿀 때만 올린다. */
+  renewEventId?: string;
 }): string {
   const v = opts.values;
+  const renewId = opts.renewEventId;
   const contact = opts.contact ?? EMPTY_CONTACT;
   const options = EVENT_TYPE_OPTIONS.map(
     ([key, label]) =>
@@ -430,32 +448,37 @@ export function renderEventForm(opts: {
     : "";
   const submitLabel = opts.launchPromoFree
     ? "무료로 등록하기"
-    : "결제 단계로 이동";
+    : renewId
+      ? "결제하기"
+      : "결제 단계로 이동";
   const footerNote = opts.launchPromoFree
-    ? `오픈 기념 프로모션: 별도 공지 전까지 <s>₩10,000</s> 무료로 3개월간 노출됩니다.`
-    : `₩10,000 결제가 완료되면 3개월간 앱에 노출됩니다.`;
+    ? `오픈 기념 프로모션: 월 <s>₩9,900</s> → 2026년 12월 31일까지 무료로 노출됩니다.`
+    : `월 ₩9,900 결제가 완료되면 1개월간 앱에 노출됩니다.`;
   // 무료 등록은 2026-12-31까지만 게시된다(routes.ts FREE_REGISTRATION_LAST_DAY).
   const dateMax = opts.launchPromoFree ? ` max="2026-12-31"` : "";
   const endDateHelp = opts.launchPromoFree
-    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 상시 이벤트는 3개월 또는 2026년 12월 31일 중 빠른 날까지 게시됩니다."
-    : "상시 이벤트는 결제 후 3개월간 게시됩니다.";
+    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 상시 이벤트는 2026년 12월 31일까지 게시됩니다."
+    : "상시 이벤트는 결제 후 1개월간 게시됩니다.";
   const submitScript = opts.launchPromoFree
     ? `
   form.addEventListener('submit', function(e) {
     if (!window.confirm('무료 등록은 2026년 12월 31일까지만 게시됩니다.\\n2027년부터는 유료로 전환되어 다시 등록하셔야 합니다. 등록할까요?')) e.preventDefault();
   });`
     : "";
+  const formAction = renewId
+    ? `/merchant/event/${htmlEscape(renewId)}/renew`
+    : "/merchant/event/new";
   return layout(
-    "이벤트 등록",
+    renewId ? "연장/재등록" : "이벤트 등록",
     `
 <div class="topbar">
-  <h2>새 이벤트</h2>
+  <h2>${renewId ? "연장/재등록" : "새 이벤트"}</h2>
   <a class="muted" href="/merchant/dashboard">취소</a>
 </div>
 <div class="container">
   <div class="card">
     ${errorBanner}
-    <form method="post" action="/merchant/event/new" enctype="multipart/form-data">
+    <form method="post" action="${formAction}" enctype="multipart/form-data">
       <label>이벤트 제목 *</label>
       <input name="title" required maxlength="80" value="${htmlEscape(v.title)}" placeholder="예: 첫 방문 시 음료 1잔 무료" />
 
@@ -488,9 +511,9 @@ export function renderEventForm(opts: {
       <label style="display:flex; gap:8px; align-items:center; font-weight:normal;"><input type="checkbox" name="no_end_date" value="1" style="width:auto;"${v.noEndDate ? " checked" : ""} /> 상시 이벤트 (종료일 없음)</label>
       <div class="field-help">${endDateHelp}</div>
 
-      <label>대표 이미지 *</label>
-      <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
-      <div class="field-help">지도 꽃 핀 중앙에 표시됩니다. JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다.</div>
+      <label>대표 이미지${renewId ? "" : " *"}</label>
+      <input name="image" type="file" accept="image/jpeg,image/png,image/webp"${renewId ? "" : " required"} />
+      <div class="field-help">${renewId ? "바꿀 때만 올려 주세요. 비워 두면 기존 이미지를 그대로 씁니다. " : ""}지도 꽃 핀 중앙에 표시됩니다. JPG/PNG/WebP, 최대 5MB. 업로드 시 자동으로 리사이즈/압축됩니다.</div>
 
       <label>등록자 성함 *</label>
       <input name="contact_name" required maxlength="30" autocomplete="name" value="${htmlEscape(contact.name)}" placeholder="예: 홍길동" />
@@ -623,14 +646,14 @@ export function renderFreeClaim(opts: { event: MerchantEventRow }): string {
   <div class="card">
     <h1>${htmlEscape(opts.event.title)}</h1>
     <p class="muted">${htmlEscape(opts.event.store_name)} · ${htmlEscape(opts.event.address)}</p>
-    <p>3개월 게시 요금 <s>₩10,000</s> → <strong style="color:#dc2626;">오픈 기념 무료</strong></p>
+    <p>게시 요금 월 <s>₩9,900</s> → <strong style="color:#dc2626;">2026년 12월 31일까지 무료</strong></p>
     <p class="muted">별도 공지 전까지 결제 없이 등록할 수 있어요. 등록 즉시 앱 지도와 리스트에 노출됩니다.</p>
   </div>
   <div class="card">
     <form method="post" action="/merchant/event/${htmlEscape(opts.event.id)}/claim-free">
       <button class="btn btn-primary" type="submit">무료로 등록 완료</button>
     </form>
-    <p class="muted" style="margin-top: 10px;">등록 후 3개월간 노출됩니다.</p>
+    <p class="muted" style="margin-top: 10px;">등록 후 2026년 12월 31일까지 노출됩니다.</p>
   </div>
 </div>
 `,
@@ -646,12 +669,13 @@ export function renderTossPayment(opts: {
   failUrl: string;
   customerName: string;
 }): string {
-  const orderName = `${opts.event.title} (3개월 게시)`.slice(0, 100);
+  const orderName = `${opts.event.title} (1개월 게시)`.slice(0, 100);
   const config = {
     clientKey: opts.clientKey,
     customerKey: opts.customerKey,
     amount: opts.amount,
-    orderId: opts.event.id,
+    // 토스 orderId는 결제마다 달라야 한다. 연장 결제도 같은 이벤트라 시각을 붙인다.
+    orderId: `${opts.event.id}_${Date.now().toString(36)}`,
     orderName,
     customerName: opts.customerName,
     successUrl: opts.successUrl,
@@ -668,7 +692,7 @@ export function renderTossPayment(opts: {
   <div class="card">
     <h1>${htmlEscape(opts.event.title)}</h1>
     <p class="muted">${htmlEscape(opts.event.store_name)} · ${htmlEscape(opts.event.address)}</p>
-    <p>3개월 게시 요금 <strong>₩${opts.amount.toLocaleString("ko-KR")}</strong></p>
+    <p>1개월 게시 요금 <strong>₩${opts.amount.toLocaleString("ko-KR")}</strong></p>
   </div>
   <div class="card">
     <div id="payment-method"></div>

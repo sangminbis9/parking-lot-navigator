@@ -1,7 +1,13 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { describe, expect, it, vi } from "vitest";
-import type { MerchantEventRow } from "../src/merchant/events.js";
-import { EMPTY_FORM, renderDashboard, renderEventDetail, renderEventForm } from "../src/merchant/pages.js";
+import { isRenewableEvent, type MerchantEventRow } from "../src/merchant/events.js";
+import {
+  EMPTY_FORM,
+  renderDashboard,
+  renderEventDetail,
+  renderEventForm,
+  renderTossPayment,
+} from "../src/merchant/pages.js";
 import {
   createMerchantApp,
   resolveApprovalPeriod,
@@ -27,7 +33,8 @@ const event: MerchantEventRow = {
   image_url: null,
   source: "merchant",
   source_url: "https://m.place.naver.com/place/123",
-  paid_until: "2026-12-15",
+  // 연장 가능 여부가 실제 시계에 걸리지 않도록 먼 미래로 둔다.
+  paid_until: "2099-12-31",
   payment_key: "free_launch_promo",
   payment_amount: 0,
   rejection_reason: null,
@@ -47,8 +54,8 @@ describe("merchant event period", () => {
       new Date("2026-09-15T03:00:00.000Z"),
     )).toEqual({
       startDate: "2026-09-15",
-      endDate: "2026-12-15",
-      paidUntil: "2026-12-15",
+      endDate: "2026-10-15",
+      paidUntil: "2026-10-15",
     });
   });
 
@@ -58,8 +65,8 @@ describe("merchant event period", () => {
       new Date("2026-09-15T03:00:00.000Z"),
     )).toEqual({
       startDate: "2026-09-15",
-      endDate: "2026-12-15",
-      paidUntil: "2026-12-15",
+      endDate: "2026-10-15",
+      paidUntil: "2026-10-15",
     });
   });
 });
@@ -453,5 +460,135 @@ describe("merchant admin", () => {
     const args = update.mock.calls[0] as unknown[];
     expect(args[0]).toBe("고친 제목");
     expect(args.slice(5, 10)).toEqual([event.address, 37.39, 126.64, "2026-09-15", "2026-09-20"]);
+  });
+});
+
+describe("merchant event renewal", () => {
+  const merchant = {
+    id: "merchant-1",
+    provider: "kakao",
+    provider_user_id: "provider-1",
+    display_name: "사장님",
+    email: null,
+    contact_name: "홍길동",
+    phone: "010-1234-5678",
+    contact_email: "owner@example.com",
+    created_at: event.created_at,
+    updated_at: event.updated_at,
+  };
+  const ended: MerchantEventRow = {
+    ...event,
+    paid_until: "2026-12-31",
+    end_date: "2026-12-31",
+    image_url: "https://example.com/image.png",
+  };
+  const now = new Date("2027-01-05T03:00:00.000Z");
+
+  it("treats hidden, withdrawn and past-paid events as renewable", () => {
+    expect(isRenewableEvent({ status: "rejected", paid_until: "2026-12-31" }, now)).toBe(true);
+    expect(isRenewableEvent({ status: "expired", paid_until: null }, now)).toBe(true);
+    expect(isRenewableEvent({ status: "approved", paid_until: "2026-12-31" }, now)).toBe(true);
+    expect(isRenewableEvent({ status: "approved", paid_until: "2027-01-05" }, now)).toBe(false);
+    expect(isRenewableEvent({ status: "pending_payment", paid_until: null }, now)).toBe(false);
+  });
+
+  it("links renewable events to the prefilled renew form", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    try {
+      expect(renderDashboard(merchant, [ended])).toContain('href="/merchant/event/event-1/renew"');
+      expect(renderEventDetail(ended)).toContain("연장/재등록");
+      expect(renderEventDetail(ended)).not.toContain("이벤트 내리기");
+    } finally {
+      vi.useRealTimers();
+    }
+    const form = renderEventForm({ values: EMPTY_FORM, launchPromoFree: false, renewEventId: "event-1" });
+    expect(form).toContain('action="/merchant/event/event-1/renew"');
+    expect(form).toContain("결제하기");
+    expect(form).not.toMatch(/name="image"[^>]*required/);
+  });
+
+  it("puts the event id prefix on a unique Toss orderId", () => {
+    expect(renderTossPayment({
+      event: { ...ended, status: "pending_payment" },
+      clientKey: "test_ck",
+      customerKey: "merchant-1",
+      amount: 9900,
+      successUrl: "https://example.com/s",
+      failUrl: "https://example.com/f",
+      customerName: "홍길동",
+    })).toMatch(/event-1_[0-9a-z]+/);
+  });
+
+  it("renews an ended event in place and sends the merchant to payment", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    try {
+      const secret = "test-session-secret";
+      const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+      const renew = vi.fn(async () => ({ meta: { changes: 1 } }));
+      const prepare = vi.fn((sql: string) => {
+        if (sql.includes("UPDATE local_events")) return { bind: () => ({ run: renew }) };
+        if (sql.includes("UPDATE merchants")) return { bind: () => ({ run: async () => ({ meta: { changes: 1 } }) }) };
+        return { bind: () => ({ first: async () => ended }) };
+      });
+      const body = new URLSearchParams({
+        title: ended.title,
+        description: ended.description ?? "",
+        benefit: ended.benefit ?? "",
+        event_type: ended.event_type,
+        store_name: ended.store_name,
+        address: ended.address,
+        start_date: "2027-01-05",
+        end_date: "2027-01-20",
+        contact_name: "홍길동",
+        contact_phone: "01012345678",
+        contact_email: "owner@example.com",
+        agree_legal: "1",
+      });
+      const response = await createMerchantApp().request(
+        "/event/event-1/renew",
+        {
+          method: "POST",
+          headers: {
+            cookie: `__merchant_session=${token}`,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: body.toString(),
+        },
+        {
+          DB: { prepare } as unknown as D1Database,
+          MERCHANT_SESSION_SECRET: secret,
+          MERCHANT_LAUNCH_PROMO_FREE: "false",
+        },
+      );
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe("/merchant/event/event-1/pay");
+      expect(renew).toHaveBeenCalledOnce();
+      expect(prepare.mock.calls.some(([sql]) => sql.includes("status = 'pending_payment'"))).toBe(true);
+      expect(prepare.mock.calls.some(([sql]) => sql.includes("INSERT INTO local_events"))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refuses to renew an event that is still published", async () => {
+    const secret = "test-session-secret";
+    const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+    const prepare = vi.fn(() => ({ bind: () => ({ first: async () => event }) }));
+    const response = await createMerchantApp().request(
+      "/event/event-1/renew",
+      {
+        method: "POST",
+        headers: {
+          cookie: `__merchant_session=${token}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+    expect(response.status).toBe(409);
   });
 });

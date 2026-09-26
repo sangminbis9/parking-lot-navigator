@@ -496,6 +496,10 @@ pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator -
 - `MERCHANT_ADMIN_IDS`는 쉼표로 구분한 `merchants.id` 목록이다. 목록에 없는 계정에는 대시보드 링크도 안 보이고 URL은 404다.
 - 숨기기는 `status='rejected'` + 사유(확인 대화상자 필수), 다시 게시는 `approved`로 되돌린다. 행은 지우지 않는다.
   `paid_until`이 이미 지났으면 다시 게시해도 앱에 안 보인다. 반영은 local snapshot 경로라 몇 시간~반나절 걸린다.
+- 사장님 쪽 연장/재등록(`/merchant/event/:id/renew`): 게시 기간이 끝났거나(`paid_until` 경과) 숨김·종료된
+  이벤트를 기존 내용이 채워진 폼으로 다시 제출하면 같은 행이 `pending_payment`로 돌아가 결제(`/pay`)로 간다.
+  요금은 월 9,900원 / 1개월(`EVENT_PRICE_KRW`/`EVENT_DURATION_MONTHS`), 무료 프로모션 등록은 2026-12-31까지 게시.
+  만료 배치는 없다 — 앱은 `paid_until`로 숨기므로 2027-01-01에 무료 이벤트가 일제히 내려간다.
 - 등록자 성함·전화번호·이메일은 `/merchant/event/new`에서 필수이고 이벤트가 아니라 `merchants`
   (`contact_name` / `phone` / `contact_email`, migration `0033`)에 저장된다. `display_name`/`email`은
   OAuth 로그인마다 덮어써지므로 쓰지 않는다. 전화번호는 서버 `normalizeKoreanPhone`(store.ts)과

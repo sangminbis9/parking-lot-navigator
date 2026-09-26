@@ -145,7 +145,7 @@
 4. `wrangler.toml` 에 `MERCHANT_LAUNCH_PROMO_FREE = "false"` 를 추가해 무료 프로모를 종료한다.
 5. `pnpm -C worker-backend exec wrangler secret put TOSS_SECRET_KEY` 로 `live_gsk_...` 를 설정한다.
 6. `pnpm -C worker-backend run deploy`.
-7. 개인 카드로 실제 10,000원 테스트 결제를 1회 실행한다. D1 행이 `approved` 로 바뀌고, `paid_until = startDate + 3 months` 이며, `/api/local-events` 가 노출하는지 확인한다.
+7. 개인 카드로 실제 9,900원 테스트 결제를 1회 실행한다. D1 행이 `approved` 로 바뀌고, `paid_until = startDate + 1 month` 이며, `/api/local-events` 가 노출하는지 확인한다.
 
 ## iOS 빌드 / 릴리스
 

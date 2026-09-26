@@ -39,8 +39,10 @@ import {
   geocodeAddress,
   getMerchantEventById,
   listMerchantEvents,
+  isRenewableEvent,
   markEventApproved,
   MERCHANT_WITHDRAWAL_REASON,
+  renewMerchantEvent,
   withdrawMerchantEvent,
   parseNaverCouponLink,
   couponSourceItemId,
@@ -79,8 +81,8 @@ export type MerchantEnv = {
   BACKGROUND_QUEUE?: Queue<BackgroundJob>;
 };
 
-const EVENT_PRICE_KRW = 10000;
-const EVENT_DURATION_MONTHS = 3;
+const EVENT_PRICE_KRW = 9900;
+const EVENT_DURATION_MONTHS = 1;
 // 무료 등록은 2026년까지만 연다. 2027년부터는 유료로 다시 등록해야 한다.
 export const FREE_REGISTRATION_LAST_DAY = "2026-12-31";
 
@@ -153,8 +155,8 @@ export function resolveApprovalPeriod(
   )
     .toISOString()
     .slice(0, 10);
-  const paidUntil =
-    lastDay && lastDay < fullPeriodEnd ? lastDay : fullPeriodEnd;
+  // 무료 등록(lastDay)은 결제 기간과 무관하게 lastDay까지 게시한다.
+  const paidUntil = lastDay ?? fullPeriodEnd;
   const existingStart = event.start_date;
   const existingEnd = event.end_date;
   const periodStillUsable = Boolean(
@@ -400,9 +402,57 @@ export function createMerchantApp() {
     );
   });
 
-  app.post("/event/new", async (c) => {
+  app.get("/event/:id/renew", async (c) => {
     const session = await loadSession(c.env, c.req.header("cookie"));
     if (!session) return c.redirect("/merchant");
+    const event = await getMerchantEventById(c.env.DB, c.req.param("id"));
+    if (!event || event.merchant_id !== session.merchantId) {
+      return c.html(renderMessage("이벤트를 찾을 수 없음", "다시 시도해 주세요."), 404);
+    }
+    if (!isRenewableEvent(event)) return c.redirect(`/merchant/event/${event.id}`);
+    const merchant = await getMerchantById(c.env.DB, session.merchantId);
+    // 이미 지난 기간은 그대로 내면 검증에 걸린다. 비워 두고 사장님이 새로 고르게 한다.
+    const periodPassed = Boolean(event.end_date && event.end_date < koreaDay(new Date()));
+    return c.html(
+      renderEventForm({
+        values: {
+          title: event.title,
+          description: event.description ?? "",
+          benefit: event.benefit ?? "",
+          eventType: event.event_type,
+          storeName: event.store_name,
+          address: event.address,
+          couponUrl: event.source_url ?? "",
+          startDate: periodPassed ? "" : (event.start_date ?? ""),
+          endDate: periodPassed ? "" : (event.end_date ?? ""),
+          // 상시 이벤트는 승인 때 종료일을 게시 기간 끝으로 채웠다.
+          noEndDate: !event.end_date || event.end_date === event.paid_until,
+        },
+        contact: {
+          name: merchant?.contact_name ?? "",
+          phone: merchant?.phone ?? "",
+          email: merchant?.contact_email ?? merchant?.email ?? "",
+        },
+        launchPromoFree: launchPromoEnabled(c.env),
+        renewEventId: event.id,
+      }),
+    );
+  });
+
+  // 새 등록과 연장/재등록은 같은 폼·검증을 쓴다. 연장은 이미지가 선택이고 행을 새로 만들지 않는다.
+  app.on("POST", ["/event/new", "/event/:id/renew"], async (c) => {
+    const session = await loadSession(c.env, c.req.header("cookie"));
+    if (!session) return c.redirect("/merchant");
+    let renewing: MerchantEventRow | null = null;
+    if (c.req.path.endsWith("/renew")) {
+      renewing = await getMerchantEventById(c.env.DB, c.req.param("id") ?? "");
+      if (!renewing || renewing.merchant_id !== session.merchantId || !isRenewableEvent(renewing)) {
+        return c.html(
+          renderMessage("연장/재등록 불가", "이 이벤트는 지금 연장/재등록할 수 없습니다. 대시보드에서 상태를 확인해 주세요."),
+          409,
+        );
+      }
+    }
     const form = await c.req.formData();
     const values: EventFormValues = {
       title: String(form.get("title") ?? "").trim(),
@@ -436,6 +486,7 @@ export function createMerchantApp() {
           contact,
           error: "필수 항목을 모두 입력해 주세요.",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
@@ -449,6 +500,7 @@ export function createMerchantApp() {
           contact,
           error: "등록자 전화번호를 확인해 주세요. 예: 010-0000-0000",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
@@ -461,6 +513,7 @@ export function createMerchantApp() {
           contact,
           error: "등록자 성함과 이메일 주소를 확인해 주세요.",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
@@ -483,6 +536,7 @@ export function createMerchantApp() {
           contact,
           error: periodError,
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
@@ -497,6 +551,7 @@ export function createMerchantApp() {
           error:
             "네이버 쿠폰 링크는 네이버 예약·플레이스 주소만 등록할 수 있습니다. 쿠폰 페이지의 https 주소를 그대로 붙여넣어 주세요.",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
@@ -509,13 +564,15 @@ export function createMerchantApp() {
           contact,
           error: "이용약관, 개인정보처리방침, 환불·취소 정책에 동의해야 등록할 수 있습니다.",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
     }
 
     const imageEntry = form.get("image");
-    if (!(imageEntry instanceof File) || imageEntry.size === 0) {
+    const newImage = imageEntry instanceof File && imageEntry.size > 0 ? imageEntry : null;
+    if (!newImage && !renewing) {
       return c.html(
         renderEventForm({
           values,
@@ -527,11 +584,15 @@ export function createMerchantApp() {
       );
     }
 
-    const geocode = await geocodeAddress(
-      c.env.KAKAO_REST_API_KEY,
-      c.env.KAKAO_LOCAL_BASE_URL,
-      values.address,
-    );
+    // 연장 때 주소가 그대로면 저장된 좌표를 쓴다(Kakao 호출 절약).
+    const geocode =
+      renewing && values.address === renewing.address && renewing.lat !== null && renewing.lng !== null
+        ? { refinedAddress: renewing.address, lat: renewing.lat, lng: renewing.lng }
+        : await geocodeAddress(
+            c.env.KAKAO_REST_API_KEY,
+            c.env.KAKAO_LOCAL_BASE_URL,
+            values.address,
+          );
     if (!geocode) {
       return c.html(
         renderEventForm({
@@ -540,19 +601,22 @@ export function createMerchantApp() {
           error:
             "주소에서 위치를 찾지 못했습니다. 도로명 주소로 다시 입력해 주세요.",
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
     }
 
-    let imageUrl: string | null = null;
-    const result = await uploadEventImage(
-      c.env.MERCHANT_IMAGES,
-      baseUrl(c.env, c.req.url),
-      session.merchantId,
-      imageEntry,
-    );
-    if (!result.ok) {
+    let imageUrl: string | null = renewing?.image_url ?? null;
+    const result = newImage
+      ? await uploadEventImage(
+          c.env.MERCHANT_IMAGES,
+          baseUrl(c.env, c.req.url),
+          session.merchantId,
+          newImage,
+        )
+      : null;
+    if (result && !result.ok) {
       const reason =
         result.reason === "size"
           ? "이미지 용량은 5MB 이하만 업로드할 수 있습니다."
@@ -565,13 +629,54 @@ export function createMerchantApp() {
           contact,
           error: reason,
           launchPromoFree: promoFree,
+          renewEventId: renewing?.id,
         }),
         400,
       );
     }
-    imageUrl = result.url;
+    if (result) imageUrl = result.url;
 
     await updateMerchantContact(c.env.DB, session.merchantId, contact);
+
+    if (renewing) {
+      const renewed = await renewMerchantEvent(c.env.DB, renewing.id, session.merchantId, {
+        title: values.title,
+        description: values.description,
+        benefit: values.benefit,
+        eventType: values.eventType,
+        storeName: values.storeName,
+        address: geocode.refinedAddress,
+        lat: geocode.lat,
+        lng: geocode.lng,
+        startDate: normalizeDate(values.startDate),
+        endDate: normalizeDate(values.endDate),
+        imageUrl,
+        couponUrl: couponLink?.url ?? null,
+        sourceItemId: couponSourceItemId(couponLink),
+      }).catch((error: unknown) => {
+        if (String(error).includes("UNIQUE")) return null;
+        throw error;
+      });
+      if (renewed === null) {
+        return c.html(
+          renderEventForm({
+            values,
+            contact,
+            error: "이미 등록된 네이버 쿠폰 링크입니다. 등록한 이벤트 목록을 확인해 주세요.",
+            launchPromoFree: promoFree,
+            renewEventId: renewing.id,
+          }),
+          409,
+        );
+      }
+      if (!renewed) {
+        return c.html(
+          renderMessage("연장/재등록 불가", "이벤트 상태가 변경되었습니다. 대시보드에서 다시 확인해 주세요."),
+          409,
+        );
+      }
+      return c.redirect(`/merchant/event/${renewing.id}/pay`);
+    }
 
     const event = await createMerchantEvent(c.env.DB, {
       merchantId: session.merchantId,
@@ -806,7 +911,8 @@ export function createMerchantApp() {
     const amount = Number(amountRaw);
     if (
       !paymentKey ||
-      orderId !== event.id ||
+      // 결제마다 orderId가 달라야 해서 `${event.id}_<시각>`으로 보낸다(renderTossPayment).
+      !orderId?.startsWith(`${event.id}_`) ||
       !Number.isFinite(amount) ||
       amount !== EVENT_PRICE_KRW
     ) {

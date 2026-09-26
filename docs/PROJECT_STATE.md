@@ -56,7 +56,7 @@
 
 - 운영의 `테스트` 이벤트는 `approved`, 좌표·`paid_until` 정상인데 `start_date=2026-09-15`, `end_date=2026-05-21`로 기간이 역전되어 앱 만료 필터에서 빠지고 있었다. 대시보드의 `상세 보기`가 연결한 `GET /merchant/event/:id` 라우트도 구현되지 않아 404가 발생했다.
 - 사장님 소유 이벤트 상세 페이지를 추가했다. 승인/결제대기/검수/만료/반려 상태, 매장·주소·혜택·설명·유형·기간·이미지를 표시하고 결제대기는 등록 계속하기로 연결한다. 다른 사장님의 이벤트는 404로 보호하고 비로그인은 로그인 화면으로 보낸다.
-- 새 등록은 잘못된 날짜·종료일 과거·시작/종료 역전을 서버에서 거부한다. 승인일 기준 3개월 게시 만료를 계산하고, 날짜를 비웠거나 승인 시 이미 무효가 된 기간은 `start_date`/`end_date`에도 실제 게시 기간을 기록한다. 따라서 종료일이 없는 이벤트가 앱의 14일 fallback 때문에 조기 소멸하지 않는다.
+- 새 등록은 잘못된 날짜·종료일 과거·시작/종료 역전을 서버에서 거부한다. 승인일 기준 1개월 게시 만료를 계산하고(무료 프로모션 등록은 2026-12-31까지), 날짜를 비웠거나 승인 시 이미 무효가 된 기간은 `start_date`/`end_date`에도 실제 게시 기간을 기록한다. 따라서 종료일이 없는 이벤트가 앱의 14일 fallback 때문에 조기 소멸하지 않는다.
 - iOS 스냅샷 인덱스는 과거 데이터 중 `source=merchant`, 스폰서 행의 종료일이 시작일보다 앞선 경우에만 `paidUntil`을 방어적으로 사용한다. 정상적으로 종료된 이벤트는 되살리지 않는다.
 - 운영 `테스트` 행은 2026-09-15~2026-12-15로 보정했고 공개 상세/반경 목록 API에서 조회됨을 확인했다. Worker `0753508a-5713-4dce-a390-1722b2b38f63` 배포 완료. Worker TypeScript와 전체 42파일/358테스트 통과. iOS 컴파일은 Windows에서 미실행이다.
 - 원본 스냅샷 발행은 현재 `publication_queue_budget`, `retryAt=2026-09-16T00:01:00Z`(09:01 KST) 대기 중이다. D1 수정 트리거가 local bucket 8을 dirty 처리했으므로 한도 해제 후 우선 발행되며, 그 전에도 공개 `/api/local-events`는 정상이다.
@@ -257,7 +257,8 @@ deploy CI 는 `wrangler versions secret put` 을 사용해 여러 secret 을 하
 - 인증: Naver Login OAuth 와 Kakao Login OAuth. 세션은 HttpOnly Secure SameSite=Lax 쿠키 안의 HS256 JWT 이며 `MERCHANT_SESSION_SECRET` 으로 서명된다. CSRF state 쿠키가 OAuth 콜백을 보호한다.
 - 이벤트 폼: 제목, 설명, 혜택, 이벤트 종류, 매장명, 주소(Kakao 지오코딩, 키워드 폴백), 시작/종료일, 이미지(R2 버킷 `merchant-images` 에 직접 업로드, 최대 5 MB jpeg/png/webp, 업로드 전 클라이언트에서 최대 1600px / 품질 0.85 로 압축).
 - R2 이미지 제공: `GET /merchant/images/:key` 가 immutable 캐시 헤더로 R2 에서 스트리밍한다.
-- 가격: 이벤트당 `EVENT_PRICE_KRW = 10000`, `EVENT_DURATION_MONTHS = 3`. `paid_until = startDate + 3 months`.
+- 가격: 이벤트당 월 `EVENT_PRICE_KRW = 9900`, `EVENT_DURATION_MONTHS = 1`. `paid_until = startDate + 1 month`. 무료 프로모션 등록은 `paid_until = 2026-12-31`.
+- 연장/재등록: 게시가 끝난 이벤트(`paid_until` 경과·관리자 숨김 `rejected`·사장님 종료 `expired`)는 대시보드·상세에서 `연장/재등록`을 누르면 `/merchant/event/:id/renew`에서 기존 내용이 채워진 폼으로 열린다. 제출하면 같은 행을 `pending_payment`로 되돌리고 `/pay`로 보낸다(새 행을 만들지 않는다, 이미지·주소는 바뀐 경우에만 다시 올리거나 지오코딩). Toss `orderId`는 결제마다 달라야 해서 `<eventId>_<시각>` 형식이고 success 콜백은 접두사로 대조한다. 2027-01-01부터는 `MERCHANT_LAUNCH_PROMO_FREE=false` + Toss live 키로 전환해야 결제 위젯이 뜬다.
 - 결제 통합: Toss Payments **결제위젯 v2** (`https://js.tosspayments.com/v2/standard`).
   - 테스트 키(현재): `wrangler.toml` 의 `TOSS_CLIENT_KEY = test_gck_docs_...`, wrangler secret 의 `TOSS_SECRET_KEY = test_gsk_docs_...`.
   - 프로덕션 키는 "API 개별 연동 키" 가 아니라 **결제위젯 연동 키** 계열(`live_gck_...` / `live_gsk_...`)이어야 한다.

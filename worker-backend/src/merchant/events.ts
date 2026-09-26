@@ -352,6 +352,65 @@ export async function adminUpdateMerchantEvent(
   return (result.meta.changes ?? 0) > 0;
 }
 
+function koreaToday(now: Date): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** 게시가 끝나 사장님이 연장/재등록할 수 있는 이벤트: 숨김(rejected)·종료(expired)·기간 만료. */
+export function isRenewableEvent(
+  event: Pick<MerchantEventRow, "status" | "paid_until">,
+  now = new Date(),
+): boolean {
+  if (event.status === "rejected" || event.status === "expired") return true;
+  return event.status === "approved" && Boolean(event.paid_until && event.paid_until < koreaToday(now));
+}
+
+/**
+ * 연장/재등록. 내용을 고치고 결제 대기로 되돌린다. 게시는 결제(또는 무료 등록)가
+ * 끝나야 markEventApproved로 다시 시작된다. 조건은 isRenewableEvent와 같다.
+ */
+export async function renewMerchantEvent(
+  db: D1Database,
+  id: string,
+  merchantId: string,
+  input: AdminMerchantEventUpdate,
+): Promise<boolean> {
+  const now = new Date();
+  const result = await db
+    .prepare(
+      `UPDATE local_events
+       SET title = ?, description = ?, benefit = ?, event_type = ?,
+           store_name = ?, address = ?, lat = ?, lng = ?,
+           start_date = ?, end_date = ?, image_url = ?,
+           source_url = ?, source_item_id = ?,
+           status = 'pending_payment', rejection_reason = NULL, updated_at = ?
+       WHERE id = ? AND merchant_id = ? AND source = 'merchant'
+         AND (status IN ('rejected', 'expired')
+              OR (status = 'approved' AND paid_until < ?))`,
+    )
+    .bind(
+      input.title,
+      input.description,
+      input.benefit,
+      input.eventType,
+      input.storeName,
+      input.address,
+      input.lat,
+      input.lng,
+      input.startDate,
+      input.endDate,
+      input.imageUrl,
+      input.couponUrl,
+      input.sourceItemId,
+      now.toISOString(),
+      id,
+      merchantId,
+      koreaToday(now),
+    )
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 /** 관리자 숨기기. 지우지 않고 rejected + 사유로 남긴다. */
 export async function adminHideMerchantEvent(
   db: D1Database,
