@@ -15,7 +15,7 @@
 2026-09-11 재검사에서 확인된 상태(모두 코드/설정/실행 근거 기준):
 
 1. ✅ 해결 — `PrivacyInfo.xcprivacy` 존재 + 1st-party 정합성 유지. App Privacy 답변 문서는 248줄로 확장되어 검색 기록 서버 수집 제거(`99f2fc2`)까지 반영됨
-2. ✅ 해결 — 법무 페이지 3종이 production에 배포되어 응답함(`/legal/privacy`·`/legal/terms`·`/legal/refund-policy` 모두 HTTP 200, 2026-09-11 확인). **ASC App Privacy 입력도 완료**(2026-09-11, 사용자 확인). 남은 일은 사업자등록 후 보호책임자란 갱신뿐
+2. ✅ 해결 — 법무 페이지 3종이 production에 배포되어 응답함(`/legal/privacy`·`/legal/terms`·`/legal/refund-policy` 모두 HTTP 200, 2026-09-11 확인). **ASC App Privacy 입력도 완료**(2026-09-11, 사용자 확인). 보호책임자란도 사업자 정보(상호 이벤트다·대표·사업자등록번호)로 갱신·배포됨(2026-09-26)
 3. 🟡 하향 조정 — iOS 외부 Crash SDK(Sentry/Crashlytics)는 **이번 출시 범위에서 도입하지 않기로 결정**(사용자 지시). 대신 조용히 삼켜지던 실패 경로 4곳에 `AppLogger` 로깅을 넣고 `try!`·위험한 force unwrap이 없음을 확인했다. 출시 후 조기 도입 항목으로 남긴다
 4. ✅ 해결 — Worker Cron 실패 알림(`notifyOpsFailure`) 코드가 production에 배포됨. Workers 관측(`observability.enabled = true`, `head_sampling_rate = 1`)도 켜져 있다. `OPS_ALERT_WEBHOOK_URL` secret 설정 여부는 코드로 확인 불가 — 사용자 확인 필요
 5. 🟢 해결 — App Store 스크린샷: CI 캡처 5장은 지워졌고 사용자 편집본 6.5" 7장 + 13" 7장으로 교체됨(`docs/release/screenshots/README.md`, 2026-09-12 규격 확인). 앱 소개 문구까지 제출해 심사 통과(2026-09-26, 사용자 보고)
@@ -47,6 +47,7 @@
 
 ## 변경 로그
 
+- 2026-09-26 (@2f0880e + 미커밋분): 해결 3건(공개 `/api/*` rate limit, CORS 제거, 개인정보처리방침 보호책임자란 사업자 정보 갱신), 상태변경 2건(사업자등록 완료 — 통신판매업신고만 사용자 확인 필요, Kakao Mobility 확인 경로 명시). 검증: worker-backend typecheck 통과, 45파일 408개 통과, production 배포 후 외부 Origin 요청에 CORS 헤더 없음·`/legal/privacy` 새 문구 확인.
 - 2026-09-26 (@6d87b30, App Store 심사 통과 반영): 해결 4건(앱 소개 문구, 제출 build TestFlight 확인, 스크린샷 업로드 주의사항, App Privacy 질문지 ASC 입력 — 모두 App Store 심사 통과(2026-09-26, 사용자 보고)), 상태변경 1건(AgentOffice AI 고지 🟡→🟠 — 고지 없이 심사 통과, 선택 사항으로 하향). 로드맵 "제출 직전" 항목 중 심사 관련 todo 삭제. 출처: 사용자 보고(ASC 결과는 저장소로 확인 불가).
 - 2026-09-26 (@ac4e815, 출시 전 최종 재점검): 해결 4건(앱 내 데이터 출처 표기 — Settings에 행사·주차장 제공처 명시 `a82f33a`, Settings 환불·취소 정책 링크 `a82f33a`, 고객지원 페이지 `/legal/support` 신설 `723077c`, D1 일일 행 쓰기 실측 — 24시간 상위 10개 60,240행/한도 100,000), 상태변경 8건(스크린샷 CI 5장→사용자 편집본 6.5"·13" 각 7장, 축제 중복 병합이 응답 단계에서 파이프라인 단계로 이동 `0034`·`0035`, 로컬 매장 이벤트 밀도의 전제 변경 — 자동 수집 폐지 `989edbe`, AgentOffice AI 고지 🟠→🟡 탭 승격 `d69c348`, iOS 테스트 3→12파일, accessibilityLabel 12/100→13/112 파일, 빌드번호 296→301, Toss 키 위치 `wrangler.toml:60`→`:59`), 신규 2건(스크린샷 README 파일명 불일치·colormap PNG, D1 읽기 한도 51%로 상승). 검증: worker-backend typecheck 통과, worker-backend 44파일 404개 통과, backend 23파일 73개 통과, production `/legal/privacy`·`/legal/terms`·`/legal/refund-policy`·`/legal/support`·`/health` 모두 HTTP 200.
 - 2026-09-11 (@8054ae5, 스크린샷 확보): 해결 1건(App Store 스크린샷 5장 — CI 시뮬레이터 캡처 파이프라인 신설 후 `docs/release/screenshots/`에 커밋). P0 표 5번 행이 닫히고 남은 차단 요소는 앱 소개 문구 1건이다.
@@ -64,10 +65,10 @@
 | ------------------------------------------ | -------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PrivacyInfo.xcprivacy` (Privacy Manifest) | 있음 + 1st-party 정합성 정리 완료 | 🟢 OK | 해결됨 — PreciseLocation만 1st-party 선언, 크래시 SDK 미연동에 맞춰 CrashData/Performance 선언 제거(2026-05-31). 추후 Sentry 도입 시 CrashData 재선언 필요 |
 | App Store Privacy 질문지 답변 | 문서 존재 (`docs/release/app-store-privacy-answers.md`, 248줄, 2026-09-11 확인) | 🟢 OK | 항목별 답변이 코드 근거와 함께 정리됨. 검색 기록 서버 수집 제거(`99f2fc2`)와 APNs 토큰 수집이 반영되어 있음. ASC 입력 완료(2026-09-11) + App Store 심사 통과(2026-09-26, 사용자 보고) |
-| 개인정보처리방침 호스팅 URL | production 배포됨 — `GET /legal/privacy` HTTP 200 (2026-09-11 확인) | 🟡 P1 | 호스팅·ASC 입력 완료(App Store 심사 통과, 2026-09-26 사용자 보고). 남은 일: 보호책임자란은 사업자등록 후 갱신 |
+| 개인정보처리방침 호스팅 URL | production 배포됨 — `GET /legal/privacy` HTTP 200 (2026-09-11 확인) | 🟡 P1 | 호스팅·ASC 입력 완료(App Store 심사 통과, 2026-09-26 사용자 보고). 보호책임자란 갱신·배포 완료(2026-09-26, `legal/routes.ts` 6절, production 응답 확인) |
 | 이용약관 / 환불·취소 정책 | production 배포됨 — `/legal/terms`·`/legal/refund-policy` 모두 HTTP 200 (2026-09-11 확인) | 🟢 OK | 해결됨(2026-09-12, `a82f33a`) — Settings에 "환불·취소 정책"(`SettingsView.swift:251`)과 "고객지원"(`:252`, `/legal/support`) 링크 추가. 2026-09-26 production 4개 legal 경로 모두 HTTP 200 재확인 |
 | 위치 권한 문구 (NSLocation\*) | 이벤트·축제·주차 추천 UX에 맞게 갱신됨 | 🟢 OK | 해결됨 (AppInfo.plist NSLocationWhenInUseUsageDescription) |
-| Kakao Mobility SDK 상용 라이선스           | 체크리스트 미확정 — `KakaoSDKNavi`가 여전히 링크됨(`ios-app/project.yml:71`, 2026-09-26 확인). 계약 여부는 코드로 확인 불가 — 사용자 확인 필요 | 🟡 P1             | 상용 배포 전 Kakao Mobility 계약 필요. 없으면 길안내 SDK 제거하거나 외부 앱 호출로 대체                                                                                                                    |
+| Kakao Mobility SDK 상용 라이선스           | 체크리스트 미확정 — `KakaoSDKNavi`가 여전히 링크됨(`ios-app/project.yml:71`, 2026-09-26 확인). 계약 여부는 코드로 확인 불가 — 사용자 확인 필요 | 🟡 P1             | 상용 배포 전 Kakao Mobility 계약 필요. 없으면 길안내 SDK 제거하거나 외부 앱 호출로 대체. 확인 경로: Kakao Developers 콘솔의 카카오내비 권한·쿼터, DevTalk 카카오내비 문의 또는 Kakao Mobility 제휴 문의로 서면 답변 확보                                                                                                                    |
 | Kakao Maps SDK · 공공데이터 출처 표기 | 해결됨(2026-09-12, `a82f33a`) — Settings에 "행사·공연 제공처"(TourAPI·KOPIS·문화포털·AKEI·서울 열린데이터광장·data.go.kr·지자체 누리집, `SettingsView.swift:212`)와 "주차장 제공처"(data.go.kr·서울 열린데이터광장·한국교통안전공단·공항공사·카카오, `:224`) 표기 | 🟢 OK | 유지. 제공처를 새로 붙이면(예: IFEZ `918479a`처럼 지자체 소스) 이 목록도 같이 갱신한다. 지도 화면의 Kakao 로고/저작권 표기는 SDK가 그리므로 가리지 않는지만 확인 |
 | ITSAppUsesNonExemptEncryption              | `false` 명시됨                                     | 🟢 OK             | 유지                                                                                                                                                                                                       |
 | Sign in with Apple                         | 없음                                               | 🟠 P2             | 앱 자체엔 로그인 없음(머천트만 Naver/Kakao on Web). 앱 내 3rd-party 로그인 도입 시 Apple Sign-In 동등 제공 의무                                                                                            |
@@ -80,8 +81,8 @@
 | 항목                                          | 현재 상태                                | 우선순위 | 권장 조치                                                                                                                                |
 | --------------------------------------------- | ---------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Worker 시크릿 회전 절차                       | 문서화 부족                              | 🟡 P1    | `KAKAO_REST_API_KEY`, `NAVER_*`, `SEOUL_*`, `MERCHANT_SESSION_SECRET`, `TOSS_SECRET_KEY` 회전 주기/방법 runbook 작성                     |
-| Rate limit / abuse 방지                       | Worker에 미적용 (2026-09-26 재확인 — `worker-backend/src`·`wrangler.toml`에 rate limit 구현·binding 없음) | 🟡 P1    | `/api/*` 에 IP/UA 기반 rate limit (Cloudflare Rate Limiting Rules 또는 Hono 미들웨어). 머천트 OAuth callback, R2 이미지 업로드 폭주 방어 |
-| CORS 정책                                     | 부분 개선 — `/admin`·`/api/admin` 경로는 CORS 헤더를 주지 않도록 제외됨(`index.ts:353` `publicCors`, 2026-09-26 위치 재확인). 공개 `/api/*`는 여전히 기본 `cors()`(모든 origin 허용) | 🟡 P1    | 관리 경로 노출은 닫혔다. 공개 API도 머천트 웹 origin + 앱(Origin 헤더 없음)만 허용하도록 좁히는 것을 권장. 앱은 CORS preflight를 보내지 않으므로 회귀 위험은 낮다 |
+| Rate limit / abuse 방지                       | 🟢 해결 (2026-09-26) — `/api/*`(admin 제외)에 IP별 Workers Rate Limiting binding 적용: GET 600회/분, 그 외 60회/분, 초과 시 429 + `Retry-After`. binding 없거나 실패하면 통과(`tests/apiRateLimit.test.ts`) | 🟢 OK    | 한도는 위치별 근사치. 이동통신 CGNAT로 한 IP를 여러 사용자가 나눌 수 있어 429 발생 추이를 Workers Logs로 관찰. 머천트 OAuth callback, R2 이미지 업로드 폭주 방어 |
+| CORS 정책                                     | 🟢 해결 (2026-09-26) — CORS 미들웨어 제거. 소비자는 iOS 앱과 같은 origin의 `/merchant`·`/legal`뿐이라 어떤 경로도 `Access-Control-Allow-Origin`을 주지 않는다(production에서 외부 Origin 요청·preflight 확인) | 🟢 OK    | 다른 origin의 웹 클라이언트가 생기면 그 origin만 허용 목록으로 추가 |
 | `local_events.pending`/`pending_payment` 노출 | 공개 API에서 제외됨                      | 🟢 OK    | 유지                                                                                                                                     |
 | Admin 토큰 노출 경로                          | `Authorization: Bearer SYNC_ADMIN_TOKEN` | 🟠 P2    | 평문 토큰 1개라 로테이션 비용 큼. JWT 만료/scoped token 도입 검토                                                                        |
 | 머천트 이미지 EXIF/위치 메타                  | 클라이언트 1600px 압축만                 | 🟠 P2    | 업로드 시 EXIF GPS 제거. R2 PUT 직전 sharp/Squoosh로 normalize                                                                           |
@@ -94,7 +95,7 @@
 | 항목                        | 현재 상태              | 우선순위          | 권장 조치                                                                       |
 | --------------------------- | ---------------------- | ----------------- | ------------------------------------------------------------------------------- |
 | Toss 라이브 키 전환         | 테스트 키 사용 중 — `wrangler.toml:59` `TOSS_CLIENT_KEY`가 `test_` 접두 (2026-09-26 재확인) | 🔴 P0 (수익화 시점) | `live_gck_*` / `live_gsk_*` 발급(사업자등록 필수). 발급 후 wrangler secret 교체 |
-| 사업자등록 / 통신판매업신고 | 미진행                 | 🔴 P0 (수익화 시) | 유료 머천트 광고 게재는 통신판매업 해당 가능성. 법무 검토 후 신고               |
+| 사업자등록 / 통신판매업신고 | 사업자등록 완료(간이과세자, 2026-05-18 개업, 사용자 제공 증명서로 확인). 통신판매업신고는 코드로 확인 불가 — 사용자 확인 필요 | 🔴 P0 (수익화 시) | 유료 머천트 광고 게재는 통신판매업 해당 가능성. 법무 검토 후 신고               |
 | 세금계산서 / 부가세 처리    | 없음                   | 🟡 P1             | 10,000원 × 3개월 상품 → 부가세 포함 표기, 매출 집계 보고 흐름 정의              |
 | 머천트 환불 흐름            | 없음                   | 🟡 P1             | Toss `cancel` API + `local_events.status='refunded'` 추가, 관리자 화면에서 처리 |
 | 머천트 약관 동의 체크박스   | 구현됨                 | 🟢 OK             | 해결됨(2026-07-25) — 이벤트 등록 결제 폼에 필수 체크박스, 이용약관·개인정보처리방침·환불정책 링크 포함, 미체크 시 서버에서 거부(`worker-backend/src/merchant/pages.ts:333-339`, `routes.ts:322`) |

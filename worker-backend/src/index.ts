@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { z, ZodError } from "zod";
 import type { MapItem, DiscoverPerformancesResponse } from "@parking/shared-types";
 import { syncNationalParkingPage } from "./nationalParkingSync.js";
@@ -165,6 +164,9 @@ export type Env = {
   // background job queue (producer + consumer가 같은 스크립트다).
   // 로컬 dev/테스트에서는 binding이 없을 수 있어 optional로 둔다 — sendJobs가 조용히 넘어간다.
   BACKGROUND_QUEUE?: Queue<BackgroundJob>;
+  // 공개 /api/* IP별 요청 제한(wrangler.toml [[ratelimits]]). 없으면 제한 없이 통과한다.
+  API_READ_LIMITER?: RateLimit;
+  API_WRITE_LIMITER?: RateLimit;
 };
 
 type BackendModules = {
@@ -348,14 +350,24 @@ const syncNationalParkingSchema = z.object({
   dryRun: optionalBoolean,
 });
 
-// 앱이 쓰는 공개 API에만 CORS를 연다. admin 경로는 Bearer 토큰으로 보호되지만,
-// 브라우저에서 임의 origin이 응답 본문을 읽을 이유가 없으므로 CORS 헤더를 주지 않는다.
-const publicCors = cors();
-app.use("*", async (c, next) => {
+// 공개 /api/*에 IP당 분당 요청 수 상한을 둔다. CORS 헤더는 주지 않는다 — 소비자는 iOS 앱과
+// 같은 origin의 /merchant·/legal 페이지뿐이라 다른 origin의 브라우저가 응답을 읽을 이유가 없다.
+// 한도는 Cloudflare 위치별·근사치라 남용 차단용이지 정확한 과금 계량이 아니다. binding이 없거나
+// limit()이 실패하면 요청을 통과시킨다 — 제한기 장애가 앱 API 전체를 막지 않게 하려는 것이다.
+app.use("/api/*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  if (path === "/admin" || path.startsWith("/admin/")) return next();
   if (path === "/api/admin" || path.startsWith("/api/admin/")) return next();
-  return publicCors(c, next);
+  const limiter = c.req.method === "GET" || c.req.method === "HEAD" ? c.env.API_READ_LIMITER : c.env.API_WRITE_LIMITER;
+  const key = c.req.header("CF-Connecting-IP");
+  if (!limiter || !key) return next();
+  let allowed = true;
+  try {
+    allowed = (await limiter.limit({ key })).success;
+  } catch (error) {
+    console.warn("rate limiter failed", error);
+  }
+  if (!allowed) return c.json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+  return next();
 });
 
 app.route("/merchant", createMerchantApp());

@@ -109,3 +109,15 @@ bucket_name = "discovery-snapshots"
 
 [ai]
 binding = "AI"
+
+# 공개 /api/* IP별 분당 요청 제한(src/index.ts). 앱 첫 실행 때 스냅샷 part를 최대 128개 받으므로
+# 읽기 한도는 그보다 넉넉하게 둔다. 이동통신 CGNAT로 여러 사용자가 한 IP를 나눌 수 있다.
+[[ratelimits]]
+name = "API_READ_LIMITER"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }
+
+[[ratelimits]]
+name = "API_WRITE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
