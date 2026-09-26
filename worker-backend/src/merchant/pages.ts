@@ -432,6 +432,17 @@ export function renderEventForm(opts: {
   const footerNote = opts.launchPromoFree
     ? `오픈 기념 프로모션: 별도 공지 전까지 <s>₩10,000</s> 무료로 3개월간 노출됩니다.`
     : `₩10,000 결제가 완료되면 3개월간 앱에 노출됩니다.`;
+  // 무료 등록은 2026-12-31까지만 게시된다(routes.ts FREE_REGISTRATION_LAST_DAY).
+  const dateMax = opts.launchPromoFree ? ` max="2026-12-31"` : "";
+  const endDateHelp = opts.launchPromoFree
+    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 비워두면 3개월 또는 2026년 12월 31일 중 빠른 날까지 게시됩니다."
+    : "비워두면 결제 후 3개월간 게시됩니다.";
+  const submitScript = opts.launchPromoFree
+    ? `
+  form.addEventListener('submit', function(e) {
+    if (!window.confirm('무료 등록은 2026년 12월 31일까지만 게시됩니다.\\n2027년부터는 유료로 전환되어 다시 등록하셔야 합니다. 등록할까요?')) e.preventDefault();
+  });`
+    : "";
   return layout(
     "이벤트 등록",
     `
@@ -467,12 +478,12 @@ export function renderEventForm(opts: {
       <div class="field-help">이미 네이버에서 쿠폰을 운영하고 계신가요? 링크를 연결하면 이벤트다에서도 홍보하고, 손님이 앱에서 바로 쿠폰 페이지로 이동합니다. 선택 사항.</div>
 
       <label>시작일</label>
-      <input name="start_date" type="date" value="${htmlEscape(v.startDate)}" />
+      <input name="start_date" type="date"${dateMax} value="${htmlEscape(v.startDate)}" />
       <div class="field-help">비워두면 결제 완료 시점부터 시작합니다.</div>
 
       <label>종료일</label>
-      <input name="end_date" type="date" value="${htmlEscape(v.endDate)}" />
-      <div class="field-help">비워두면 결제 후 3개월간 게시됩니다.</div>
+      <input name="end_date" type="date"${dateMax} value="${htmlEscape(v.endDate)}" />
+      <div class="field-help">${endDateHelp}</div>
 
       <label>대표 이미지 *</label>
       <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
@@ -505,7 +516,7 @@ export function renderEventForm(opts: {
 <script>
 (function() {
   const form = document.querySelector('form');
-  const phoneInput = form.querySelector('input[name=contact_phone]');
+  const phoneInput = form.querySelector('input[name=contact_phone]');${submitScript}
   // 서버 normalizeKoreanPhone(store.ts)과 같은 규칙으로 입력 중 하이픈을 넣는다.
   function formatPhone(value) {
     let d = value.replace(/\\D/g, '');

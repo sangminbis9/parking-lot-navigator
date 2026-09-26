@@ -81,6 +81,8 @@ export type MerchantEnv = {
 
 const EVENT_PRICE_KRW = 10000;
 const EVENT_DURATION_MONTHS = 3;
+// 무료 등록은 2026년까지만 연다. 2027년부터는 유료로 다시 등록해야 한다.
+export const FREE_REGISTRATION_LAST_DAY = "2026-12-31";
 
 function launchPromoEnabled(env: MerchantEnv): boolean {
   const raw = (env.MERCHANT_LAUNCH_PROMO_FREE ?? "").trim().toLowerCase();
@@ -142,14 +144,17 @@ export function validateEventPeriod(
 export function resolveApprovalPeriod(
   event: Pick<MerchantEventRow, "start_date" | "end_date">,
   now: Date,
+  lastDay?: string,
 ): { startDate: string; endDate: string; paidUntil: string } {
   const activatedOn = koreaDay(now);
-  const paidUntil = addMonths(
+  const fullPeriodEnd = addMonths(
     new Date(`${activatedOn}T00:00:00Z`),
     EVENT_DURATION_MONTHS,
   )
     .toISOString()
     .slice(0, 10);
+  const paidUntil =
+    lastDay && lastDay < fullPeriodEnd ? lastDay : fullPeriodEnd;
   const existingStart = event.start_date;
   const existingEnd = event.end_date;
   const periodStillUsable = Boolean(
@@ -157,9 +162,10 @@ export function resolveApprovalPeriod(
       existingEnd >= activatedOn &&
       (!existingStart || existingEnd >= existingStart),
   );
+  const endDate = periodStillUsable ? existingEnd! : paidUntil;
   return {
     startDate: periodStillUsable ? (existingStart ?? activatedOn) : activatedOn,
-    endDate: periodStillUsable ? existingEnd! : paidUntil,
+    endDate: lastDay && endDate > lastDay ? lastDay : endDate,
     paidUntil,
   };
 }
@@ -456,11 +462,13 @@ export function createMerchantApp() {
       );
     }
 
-    const periodError = validateEventPeriod(
-      values.startDate,
-      values.endDate,
-      koreaDay(new Date()),
-    );
+    const periodError =
+      validateEventPeriod(values.startDate, values.endDate, koreaDay(new Date())) ??
+      (promoFree &&
+      (values.startDate > FREE_REGISTRATION_LAST_DAY ||
+        values.endDate > FREE_REGISTRATION_LAST_DAY)
+        ? "무료 등록은 2026년 12월 31일까지 게시하는 이벤트만 가능합니다. 2027년부터는 유료로 전환되어 다시 등록하셔야 합니다."
+        : null);
     if (periodError) {
       return c.html(
         renderEventForm({
@@ -762,7 +770,7 @@ export function createMerchantApp() {
         400,
       );
     }
-    const period = resolveApprovalPeriod(event, new Date());
+    const period = resolveApprovalPeriod(event, new Date(), FREE_REGISTRATION_LAST_DAY);
     await markEventApproved(c.env.DB, {
       id: event.id,
       paymentKey: "free_launch_promo",

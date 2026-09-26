@@ -177,6 +177,9 @@ struct SettingsView: View {
                 .font(.festival(.subheadline))
                 .foregroundStyle(FestivalDesign.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("2026년 12월 31일까지 무료입니다!!")
+                .font(.festival(.subheadline, weight: .bold))
+                .foregroundStyle(FestivalDesign.coralText)
             Link(destination: merchantURL) {
                 HStack(spacing: 8) {
                     Image(systemName: "building.2.fill")

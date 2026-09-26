@@ -64,6 +64,28 @@ describe("merchant event period", () => {
   });
 });
 
+describe("free registration last day", () => {
+  it("caps the free publication period at 2026-12-31", () => {
+    expect(resolveApprovalPeriod(
+      { start_date: null, end_date: null },
+      new Date("2026-11-01T03:00:00.000Z"),
+      "2026-12-31",
+    )).toEqual({
+      startDate: "2026-11-01",
+      endDate: "2026-12-31",
+      paidUntil: "2026-12-31",
+    });
+  });
+
+  it("limits the date pickers and confirms the paid transition on submit", () => {
+    const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
+    expect(html).toContain('name="end_date" type="date" max="2026-12-31"');
+    expect(html).toContain("2027년부터는 유료로 전환되어 다시 등록하셔야 합니다");
+    const paid = renderEventForm({ values: EMPTY_FORM, launchPromoFree: false });
+    expect(paid).not.toContain('max="2026-12-31"');
+  });
+});
+
 describe("merchant event representative image", () => {
   it("requires an image in the registration form", () => {
     const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
