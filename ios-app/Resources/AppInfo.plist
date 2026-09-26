@@ -20,8 +20,7 @@
   <true/>
   <key>LSApplicationQueriesSchemes</key>
   <array>
-    <string>kakaonavi</string>
-    <string>kakaonavi-sdk</string>
+    <string>kakaomap</string>
   </array>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>

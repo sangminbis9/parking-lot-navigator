@@ -1,7 +1,6 @@
 import SwiftUI
 import MapKit
 import UIKit
-import KakaoSDKNavi
 
 struct NavigationLaunchView: View {
     let destination: Destination
@@ -101,9 +100,9 @@ struct NavigationLaunchView: View {
             .tint(FestivalDesign.navy)
 
             Button {
-                openKakaoNavi()
+                openKakaoMap()
             } label: {
-                Label("카카오내비로 열기", systemImage: "location.north.line.fill")
+                Label("카카오맵으로 열기", systemImage: "location.north.line.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -154,23 +153,20 @@ struct NavigationLaunchView: View {
         ])
     }
 
-    private func openKakaoNavi() {
+    private func openKakaoMap() {
         AnalyticsService.shared.track(.navigationStart)
-        let destination = NaviLocation(
-            name: parkingLot.name,
-            x: String(parkingLot.lng),
-            y: String(parkingLot.lat)
-        )
-        let option = NaviOption(coordType: .WGS84)
-        guard let url = NaviApi.shared.navigateUrl(destination: destination, option: option) else {
-            UIApplication.shared.open(NaviApi.webNaviInstallUrl)
+        // 출발지(sp)를 비우면 카카오맵이 현재 위치에서 길찾기를 시작한다.
+        let appURL = URL(string: "kakaomap://route?ep=\(parkingLot.lat),\(parkingLot.lng)&by=CAR")
+        if let appURL, UIApplication.shared.canOpenURL(appURL) {
+            UIApplication.shared.open(appURL)
             return
         }
-
-        if UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-        } else {
-            UIApplication.shared.open(NaviApi.webNaviInstallUrl)
+        // 앱이 없으면 웹 길찾기 링크로 연다.
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: ",/")
+        let name = parkingLot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        if let webURL = URL(string: "https://map.kakao.com/link/to/\(name),\(parkingLot.lat),\(parkingLot.lng)") {
+            UIApplication.shared.open(webURL)
         }
     }
 
