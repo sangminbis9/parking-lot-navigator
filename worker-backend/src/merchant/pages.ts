@@ -392,6 +392,8 @@ export type EventFormValues = {
   couponUrl: string;
   startDate: string;
   endDate: string;
+  /** 상시 이벤트: 종료일 없이 게시 기간(paid_until) 끝까지 노출한다. */
+  noEndDate?: boolean;
 };
 
 export const EMPTY_FORM: EventFormValues = {
@@ -435,8 +437,8 @@ export function renderEventForm(opts: {
   // 무료 등록은 2026-12-31까지만 게시된다(routes.ts FREE_REGISTRATION_LAST_DAY).
   const dateMax = opts.launchPromoFree ? ` max="2026-12-31"` : "";
   const endDateHelp = opts.launchPromoFree
-    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 비워두면 3개월 또는 2026년 12월 31일 중 빠른 날까지 게시됩니다."
-    : "비워두면 결제 후 3개월간 게시됩니다.";
+    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 상시 이벤트는 3개월 또는 2026년 12월 31일 중 빠른 날까지 게시됩니다."
+    : "상시 이벤트는 결제 후 3개월간 게시됩니다.";
   const submitScript = opts.launchPromoFree
     ? `
   form.addEventListener('submit', function(e) {
@@ -482,7 +484,8 @@ export function renderEventForm(opts: {
       <div class="field-help">비워두면 결제 완료 시점부터 시작합니다.</div>
 
       <label>종료일</label>
-      <input name="end_date" type="date"${dateMax} value="${htmlEscape(v.endDate)}" />
+      <input name="end_date" type="date"${dateMax} value="${v.noEndDate ? "" : htmlEscape(v.endDate)}"${v.noEndDate ? " disabled" : " required"} />
+      <label style="display:flex; gap:8px; align-items:center; font-weight:normal;"><input type="checkbox" name="no_end_date" value="1" style="width:auto;"${v.noEndDate ? " checked" : ""} /> 상시 이벤트 (종료일 없음)</label>
       <div class="field-help">${endDateHelp}</div>
 
       <label>대표 이미지 *</label>
@@ -517,6 +520,12 @@ export function renderEventForm(opts: {
 (function() {
   const form = document.querySelector('form');
   const phoneInput = form.querySelector('input[name=contact_phone]');${submitScript}
+  const endInput = form.querySelector('input[name=end_date]');
+  form.querySelector('input[name=no_end_date]').addEventListener('change', function(e) {
+    endInput.disabled = e.target.checked;
+    endInput.required = !e.target.checked;
+    if (e.target.checked) endInput.value = '';
+  });
   // 서버 normalizeKoreanPhone(store.ts)과 같은 규칙으로 입력 중 하이픈을 넣는다.
   function formatPhone(value) {
     let d = value.replace(/\\D/g, '');

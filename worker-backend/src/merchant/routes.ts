@@ -414,7 +414,11 @@ export function createMerchantApp() {
       couponUrl: String(form.get("coupon_url") ?? "").trim(),
       startDate: String(form.get("start_date") ?? "").trim(),
       endDate: String(form.get("end_date") ?? "").trim(),
+      noEndDate: form.get("no_end_date") === "1",
     };
+    // 상시 이벤트는 종료일을 비워 두고 승인 때 게시 기간 끝(paid_until)으로 채운다.
+    // NULL로 남기면 목록 쿼리가 시작 14일 뒤 숨긴다(localEvents.ts).
+    if (values.noEndDate) values.endDate = "";
     const contact: ContactValues = {
       name: String(form.get("contact_name") ?? "").trim(),
       phone: String(form.get("contact_phone") ?? "").trim(),
@@ -463,6 +467,9 @@ export function createMerchantApp() {
     }
 
     const periodError =
+      (!values.noEndDate && !values.endDate
+        ? "종료일을 선택하거나 상시 이벤트를 체크해 주세요."
+        : null) ??
       validateEventPeriod(values.startDate, values.endDate, koreaDay(new Date())) ??
       (promoFree &&
       (values.startDate > FREE_REGISTRATION_LAST_DAY ||

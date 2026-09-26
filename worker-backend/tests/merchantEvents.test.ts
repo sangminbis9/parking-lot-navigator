@@ -84,6 +84,33 @@ describe("free registration last day", () => {
     const paid = renderEventForm({ values: EMPTY_FORM, launchPromoFree: false });
     expect(paid).not.toContain('max="2026-12-31"');
   });
+
+  it("requires an end date unless the ongoing checkbox is checked", async () => {
+    const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
+    expect(html).toContain('value="" required />');
+    expect(html).toContain('name="no_end_date" value="1"');
+    const ongoing = renderEventForm({ values: { ...EMPTY_FORM, noEndDate: true }, launchPromoFree: true });
+    expect(ongoing).toContain('value="" disabled />');
+    expect(ongoing).toContain('value="1" style="width:auto;" checked');
+
+    const secret = "test-session-secret";
+    const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      title: "행사", description: "상세", benefit: "할인", event_type: "discount",
+      store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+      contact_name: "홍길동", contact_phone: "01012345678", contact_email: "owner@example.com",
+    })) form.set(key, value);
+    const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
+    const response = await createMerchantApp().request(
+      "/event/new",
+      { method: "POST", headers: { cookie: `__merchant_session=${token}` }, body: form },
+      { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+    );
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("종료일을 선택하거나 상시 이벤트를 체크해 주세요");
+    expect(prepare).not.toHaveBeenCalled();
+  });
 });
 
 describe("merchant event representative image", () => {
@@ -99,7 +126,7 @@ describe("merchant event representative image", () => {
     const form = new FormData();
     for (const [key, value] of Object.entries({
       title: "행사", description: "상세", benefit: "할인", event_type: "discount",
-      store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+      store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on", no_end_date: "1",
       contact_name: "홍길동", contact_phone: "01012345678", contact_email: "owner@example.com",
     })) form.set(key, value);
     if (emptyFile) form.set("image", new File([], "empty.jpg", { type: "image/jpeg" }));
