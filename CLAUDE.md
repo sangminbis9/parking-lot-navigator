@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `300` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `301` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -62,7 +62,7 @@ func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWit
   - `ongoingOnly`는 API를 넓게(365일) 호출하고 클라이언트에서 `festival.status == .ongoing`만 통과시킨다.
   - `custom`은 API를 최대(365일)로 호출하고 클라이언트에서 날짜 겹침으로 2차 필터링한다.
 - `FestivalFilter`: `dateRange: FestivalDateRange`, `customFromDate: String?` ("yyyy-MM-dd"), `customToDate: String?`, `regions: [String]`, `radiusKm: Int?`, `primaryCategories: Set<FestivalPrimaryCategory>`
-  - 기본값: `dateRange = .ongoingOnly`, `radiusKm = 50`, 나머지 빈 값
+  - 기본값: `dateRange = .oneYear`, `radiusKm = 50`, 나머지 빈 값 (build 301부터. 예전 `.ongoingOnly`는 아직 시작 안 한 축제를 통째로 숨겼다)
   - `statuses: [DiscoverStatus]` 필드는 제거됨 — 기간 필터가 대체
 
 **공유 구조 (`ios-app/App/AppRootView.swift`)**
@@ -398,7 +398,7 @@ pnpm --filter @parking/backend preflight
 Worker D1 마이그레이션:
 
 ```bash
-pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/<migration>.sql
+pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator --remote
 ```
 
 주의:
@@ -406,6 +406,44 @@ pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote -
 - Worker 코드만 바꾼 경우 iOS/Codemagic 빌드는 필요 없다. Worker deploy와 필요한 D1 migration/sync가 핵심이다.
 - Swift/iOS UI를 바꾼 경우에만 Codemagic 또는 Xcode 빌드를 고려한다.
 - D1 schema를 바꾸면 반드시 새 migration을 추가한다. 기존 migration을 임의 수정하지 않는다.
+- migration은 `d1 execute --file`로 적용하지 않는다. 그 방식은 `d1_migrations`에 기록을 남기지 않아
+  push 후 CI(`deploy-worker.yml`)의 `migrations apply`가 같은 파일을 다시 돌리다 실패하고 deploy가
+  건너뛰어진다(2026-09-26 `0033`에서 `duplicate column name`). 이미 수동 적용했다면
+  `d1_migrations`에 파일 이름을 INSERT해 둔다.
+
+## 축제 중복 병합 (migration `0034`·`0035`, `festivalMerge.ts`)
+
+같은 축제를 여러 provider(TourAPI·city 스크래핑·KOPIS 등)가 따로 보내면 `discovery_items`에 행이
+여러 개 생긴다. `/api/festivals`는 응답 때 `dedupeFestivals`로 합치지만, 정적 스냅샷은
+`snapshot_bucket`(id 해시) 단위로 part를 만들어 같은 묶음이 서로 다른 part에 흩어지고 앱에
+중복 핀이 떴다. 그래서 병합을 파이프라인 단계로 올려 결과를 행에 적는다.
+
+- **컬럼** — `merged_into`(흡수된 행 → 대표 행 id), `merge_donors_json`(대표 행에만, 흡수한 행들의
+  공개 필드). 행은 지우지 않고 **인덱스도 없다**(쓰기 증폭 방지). 두 컬럼이 바뀌면 0034 트리거가
+  그 버킷의 `snapshot_sections`를 올린다.
+- **job은 CPU 10ms 안에 끝나야 한다.** 처음엔 전 행(8천여 건)을 매회 제목 정규화·묶음해
+  node 실측 25~50ms였다 — 무료 플랜이면 invocation이 예외 없이 죽는다. 그래서:
+  - migration `0035`가 정규화 키 `merge_title_key`/`merge_word_key`를 행에 저장한다(인덱스 없음,
+    0032 스냅샷 트리거 컬럼 목록에도 없음). 제목이 바뀌면 트리거가 두 키를 NULL로 되돌린다.
+  - `runFestivalMerge`는 SQL 창 함수 한 번으로 "진행/예정 행 중 같은 키가 둘 이상" + "키가 빈 행" +
+    "이미 병합 표시가 있는 행"만 읽는다. 키가 빈 행이 있으면 회차당 `FILL_LIMIT`(400)건 채우고
+    **묶지 않고 끝낸다**(그 회차의 집계에 새 키가 빠져 있어서다).
+  - 표시가 이미 맞는 묶음(대표 1개 + 나머지 전원이 대표를 가리킴)은 건드리지 않는다. 전체 행을 읽어
+    `pickCanonicalFestival`로 대표를 다시 고르는 것은 어긋난 묶음과, donor 내용 변화를 반영하는
+    하루 한 번 순번 몫(최소 id 해시 % 24 == UTC 시)뿐이고 회차당 `MAX_CLUSTERS_PER_RUN`(20)개로 자른다.
+    실측(node, 운영 데이터 복사본): 후보 482행/186묶음, 20묶음 재계산에 약 6ms, 키 400건 채우기 약 4.6ms.
+  - 값이 실제로 바뀐 행만 UPDATE하므로 변화 없으면 쓰기 0건. 묶음에서 빠진 행은 표시를 지운다.
+  - 2026-09-26 배포 때 진행/예정 행 4,172건 키는 로컬에서 계산해 `d1 execute --file`로 한 번에
+    채웠다(데이터 UPDATE라 migration 추적과 무관). 첫 병합은 186묶음이라 20개씩 약 10시간에 수렴한다.
+- **스케줄** — Queue를 쓰지 않는다(일일 op 여유 490을 이미 다 씀). `SNAPSHOT_RECOVERY_CRON`
+  invocation의 **UTC 47분** 가드에서 매시간 돌고, 바뀐 버킷은 다음 복구 회차(52분)가 발행한다.
+  수동 실행은 `POST /admin/merge-festivals`.
+- **합치는 규칙 (`mergeFestivalFields`)** — id·좌표·기간·source는 대표 행 것. 설명·부제·요금·할인·
+  예매·연령·프로그램·주최는 **더 긴 쪽**, 장소명·주소·URL·대표 이미지·연락처는 **비었을 때만**
+  채운다(주소를 긴 쪽으로 바꾸면 핀 좌표와 어긋난다). 이미지 목록·태그는 더 긴 목록,
+  `primaryCategory`는 비었을 때만. 대표는 정보가 많은 행, 동점이면 작은 id(결정적).
+- **알려진 한계** — 공연 레이어(`performanceEvents`)는 KOPIS 행 기준이라 흡수 여부와 무관하게 남는다.
+- 회귀 테스트: `tests/festivalMerge.test.ts`.
 
 ## 행사 정보 오류 신고와 익명 사용 집계 (migration `0030`)
 
@@ -447,7 +485,7 @@ pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote -
 - `POST /api/admin/local-events`, `PATCH /api/admin/local-events/:id`, `PATCH /api/admin/local-events/:id/status`
 - `POST /admin/sync-city-festivals`, `POST /admin/sync-akei-trade-expos`, `POST /admin/sync-discovery`
 - `POST /admin/backfill-fees`, `POST /admin/backfill-images` (`maxItems` 1..45), `POST /admin/backfill-geocodes` (`maxLookups` 1..40), `POST /admin/crawl-programs` (`maxItems` 1..8)
-- `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`
+- `POST /admin/run-upcoming-notifications`, `POST /admin/run-tagging`, `POST /admin/run-head-review`, `POST /admin/merge-festivals`
 - `GET /discover/pipeline-stats` (파이프라인 대시보드), `GET /discover/providers/health`
 - `GET /api/admin/event-reports`, `PATCH /api/admin/event-reports/:id` (신고 처리 상태)
 - `GET /api/admin/analytics` (날짜별 집계 조회)

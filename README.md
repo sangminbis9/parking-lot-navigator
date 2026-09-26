@@ -79,8 +79,8 @@ Mac이 없다면 Codemagic으로 빌드합니다. 자세한 절차는 `docs/rele
 ## Worker 배포
 
 ```bash
+pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator --remote
 pnpm -C worker-backend run deploy
-pnpm -C worker-backend exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/<migration>.sql
 ```
 
 Worker 코드만 바꾼 경우 iOS 빌드는 필요 없습니다. D1 스키마를 바꾸면 항상 새 마이그레이션을 추가합니다.

@@ -92,6 +92,7 @@ import {
 } from "./upcomingNotifications.js";
 import { registerNotificationDevice } from "./notificationRegistration.js";
 import { runSnapshotJob, serveSnapshot } from "./discoverySnapshot.js";
+import { runFestivalMerge } from "./festivalMerge.js";
 import { publishRealtimeShard, realtimeItemsInRegion, realtimeShardKey, type RealtimeShard } from "./realtimeSnapshot.js";
 
 export type Env = {
@@ -1360,6 +1361,17 @@ app.post("/admin/run-image-enrichment", async (c) => {
   }
 });
 
+app.post("/admin/merge-festivals", async (c) => {
+  const authResponse = authorizeAdminSync(c.req.raw, c.env);
+  if (authResponse) return authResponse;
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  try {
+    return c.json(await runFestivalMerge(c.env.DB));
+  } catch (error) {
+    return c.json(syncErrorResponse(error), 502);
+  }
+});
+
 app.post("/admin/run-tagging", async (c) => {
   const authResponse = authorizeAdminSync(c.req.raw, c.env);
   if (authResponse) return authResponse;
@@ -1427,6 +1439,13 @@ export default {
       return;
     }
     if (controller.cron === SNAPSHOT_RECOVERY_CRON) {
+      // 축제 중복 병합(festivalMerge.ts)은 매시간 47분에 여기서 돈다. Queue 메시지를 쓰지 않아
+      // 일일 op 예산을 건드리지 않고, 바뀐 병합 표시는 트리거가 다음 복구 회차(52분)에 넘긴다.
+      if (env.DB && scheduledAt.getUTCMinutes() === 47) {
+        ctx.waitUntil(runFestivalMerge(env.DB).then(result => {
+          console.log(JSON.stringify({ event: "festival_merge", ...result }));
+        }).catch(error => console.error("festival merge failed", error)));
+      }
       if (!env.DISCOVERY_SNAPSHOTS || !env.BACKGROUND_QUEUE) return;
       ctx.waitUntil(runSnapshotJob(env, { type: "discovery-snapshot" }).catch(error => {
         console.error("snapshot recovery check failed", error);

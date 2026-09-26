@@ -141,6 +141,12 @@ export interface DiscoveryItemRow {
   data_updated_at: string | null;
   primary_category: string | null;
   category_tags_json: string | null;
+  // migration 0034 (festivalMerge.ts). 조회 쿼리가 컬럼을 고르는 경우 없을 수 있다.
+  merged_into?: string | null;
+  merge_donors_json?: string | null;
+  // migration 0035. 병합 job만 쓰는 제목 키.
+  merge_title_key?: string | null;
+  merge_word_key?: string | null;
 }
 
 type DiscoveryItem = Festival | FreeEvent;
@@ -252,7 +258,25 @@ export function dedupeFestivals(
   festivals: Festival[],
   clusterFilter?: (cluster: Festival[]) => boolean,
 ): Festival[] {
-  const clusters: Festival[][] = [];
+  const result: Festival[] = [];
+  for (const cluster of clusterFestivals(festivals)) {
+    if (clusterFilter && !clusterFilter(cluster)) continue;
+    const base = pickCanonicalFestival(cluster);
+    result.push(mergeFestivalFields(base, cluster.filter((f) => f !== base)));
+  }
+  return result;
+}
+
+// 중복 판정에 필요한 필드만 요구한다 — 병합 job(festivalMerge.ts)은 D1에서 가벼운 컬럼만
+// 읽어 전체를 묶고, 여러 건짜리 묶음만 전체 행을 다시 읽는다. titleKey/wordKey는 행에 저장해 둔
+// 제목 키(migration 0035)다 — 있으면 정규식 정규화를 건너뛴다(Worker CPU 10ms 한도).
+export type FestivalClusterKey = Pick<
+  Festival,
+  "title" | "source" | "lat" | "lng" | "startDate" | "endDate"
+> & { titleKey?: string; wordKey?: string };
+
+export function clusterFestivals<T extends FestivalClusterKey>(festivals: T[]): T[][] {
+  const clusters: T[][] = [];
   // 제목 키가 같은 묶음만 후보로 본다. 전체 묶음을 훑는 방식(O(n²))은 좌표 미상 항목이
   // 지역 대표 좌표(예: 서울 37.5665/126.978)에 천 건 넘게 쌓인 뒤로 Worker CPU 한도를
   // 넘겨 /api/festivals·/api/performances가 503(error code 1102)으로 죽었다.
@@ -265,8 +289,8 @@ export function dedupeFestivals(
   };
 
   for (const festival of festivals) {
-    const titleKey = festivalDedupeKey(festival);
-    const wordKey = wordOrderInvariantKey(festival.title);
+    const titleKey = festival.titleKey ?? festivalDedupeKey(festival);
+    const wordKey = festival.wordKey ?? wordOrderInvariantKey(festival.title);
     // 두 키 중 하나만 같아도 후보이므로 합집합을 만들고, 원래 동작대로 먼저 만들어진
     // 묶음이 이기도록 인덱스 오름차순으로 확인한다.
     const candidates = [
@@ -287,61 +311,71 @@ export function dedupeFestivals(
     register(clustersByTitleKey, titleKey, index);
     register(clustersByWordKey, wordKey, index);
   }
-
-  const result: Festival[] = [];
-  for (const cluster of clusters) {
-    if (clusterFilter && !clusterFilter(cluster)) continue;
-    result.push(mergeFestivalCluster(cluster));
-  }
-  return result;
+  return clusters;
 }
 
 // 같은 축제라도 provider마다 채우는 필드가 다르다(한쪽은 설명만, 다른 쪽은 이미지·요금만).
-// 가장 정보가 많은 항목을 기준으로 삼고 비어 있는 필드만 다른 항목에서 채운다.
+// 가장 정보가 많은 항목을 기준으로 삼고, 다른 항목에서 더 긴 문구·더 많은 목록을 가져온다.
 // id·좌표·기간·source는 기준 항목 것을 유지한다 — 지도 핀과 상세 조회가 한 출처를 가리켜야 하고,
 // 기간을 합치면 provider 한 곳의 잘못된 날짜가 노출 기간을 부풀린다.
-const MERGEABLE_TEXT_FIELDS: readonly (keyof Festival)[] = [
+// 장소명·주소도 핀 좌표와 어긋나지 않게 비어 있을 때만 채운다. URL·전화번호는 길이가
+// 품질을 뜻하지 않으므로 역시 비어 있을 때만 채운다.
+const LONGEST_TEXT_FIELDS: readonly (keyof Festival)[] = [
   "subtitle",
   "description",
+  "admissionFee",
+  "discountInfo",
+  "bookingInfo",
+  "ageLimit",
+  "programInfo",
+  "organizerName",
+];
+const FILL_ONLY_TEXT_FIELDS: readonly (keyof Festival)[] = [
   "venueName",
   "address",
   "sourceUrl",
   "imageUrl",
-  "admissionFee",
-  "discountInfo",
-  "bookingInfo",
   "contactPhone",
-  "ageLimit",
-  "programInfo",
-  "organizerName",
 ];
 const MERGEABLE_LIST_FIELDS: readonly (keyof Festival)[] = [
   "imageUrls",
   "tags",
   "categoryTags",
 ];
+export const FESTIVAL_MERGE_FIELDS: readonly (keyof Festival)[] = [
+  ...LONGEST_TEXT_FIELDS,
+  ...FILL_ONLY_TEXT_FIELDS,
+  ...MERGEABLE_LIST_FIELDS,
+  "primaryCategory",
+];
 
-function mergeFestivalCluster(cluster: Festival[]): Festival {
-  const base = cluster.reduce((best, f) =>
-    festivalRichnessScore(f) > festivalRichnessScore(best) ? f : best,
-  );
-  if (cluster.length === 1) return base;
+// 점수가 같으면 id가 작은 쪽 — 입력 순서와 무관해야 API 응답과 스냅샷이 같은 id를 고른다.
+export function pickCanonicalFestival<T extends Festival>(cluster: T[]): T {
+  return cluster.reduce((best, f) => {
+    const diff = festivalRichnessScore(f) - festivalRichnessScore(best);
+    return diff > 0 || (diff === 0 && f.id < best.id) ? f : best;
+  });
+}
 
+export function mergeFestivalFields(base: Festival, donors: Partial<Festival>[]): Festival {
+  if (donors.length === 0) return base;
   const merged = { ...base } as unknown as Record<string, unknown>;
-  const donors = cluster.filter((f) => f !== base);
-  for (const field of MERGEABLE_TEXT_FIELDS) {
+  for (const field of LONGEST_TEXT_FIELDS) {
+    for (const donor of donors) {
+      const value = donor[field];
+      if (hasText(value) && textLength(value) > textLength(merged[field])) merged[field] = value;
+    }
+  }
+  for (const field of FILL_ONLY_TEXT_FIELDS) {
     if (hasText(merged[field])) continue;
     const donor = donors.find((f) => hasText(f[field]));
     if (donor) merged[field] = donor[field];
   }
   for (const field of MERGEABLE_LIST_FIELDS) {
-    const current = merged[field];
-    if (Array.isArray(current) && current.length > 0) continue;
-    const donor = donors.find((f) => {
-      const value = f[field];
-      return Array.isArray(value) && value.length > 0;
-    });
-    if (donor) merged[field] = donor[field];
+    for (const donor of donors) {
+      const value = donor[field];
+      if (Array.isArray(value) && value.length > listLength(merged[field])) merged[field] = value;
+    }
   }
   if (merged.primaryCategory == null) {
     const donor = donors.find((f) => f.primaryCategory != null);
@@ -350,14 +384,22 @@ function mergeFestivalCluster(cluster: Festival[]): Festival {
   return merged as unknown as Festival;
 }
 
+function textLength(value: unknown): number {
+  return typeof value === "string" ? value.trim().length : 0;
+}
+
+function listLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 function hasText(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
 // 제목 키가 이미 같다고 확인된 두 항목이 실제로 같은 회차인지(좌표·기간) 본다.
 function isSameFestivalOccurrence(
-  representative: Festival,
-  festival: Festival,
+  representative: FestivalClusterKey,
+  festival: FestivalClusterKey,
 ): boolean {
   const maxDistance =
     PRECISE_COORDINATE_SOURCES.has(representative.source) &&
@@ -399,7 +441,7 @@ function festivalYear(title: string): number | null {
   return matched ? Number(matched[1]) : null;
 }
 
-function festivalDedupeKey(festival: Festival): string {
+export function festivalDedupeKey(festival: FestivalClusterKey): string {
   return normalizeFestivalTitle(festival.title);
 }
 
@@ -440,7 +482,7 @@ function festivalCoreTitle(title: string): string {
 // 공백 기준 단어 집합을 정렬해 비교 — 단어 순서만 바뀐 제목을 완전 일치로 인식한다.
 // (문자 단위로 쪼개지 않는 이유는 위 상수 설명 참고: 서로 다른 단어가 섞인 제목까지
 // 같은 축제로 오판하는 걸 막기 위함.)
-function wordOrderInvariantKey(title: string): string {
+export function wordOrderInvariantKey(title: string): string {
   return festivalCoreTitle(title)
     .split(/\s+/)
     .map((token) => token.trim())
@@ -451,7 +493,7 @@ function wordOrderInvariantKey(title: string): string {
 
 // provider마다 같은 축제의 시작/종료일을 며칠씩 다르게 보고하는 경우가 있어(예: 사전 행사 포함
 // 여부) 완전 일치 대신 기간이 실제로 겹치는지로 판단한다.
-function dateRangesOverlap(a: Festival, b: Festival): boolean {
+function dateRangesOverlap(a: FestivalClusterKey, b: FestivalClusterKey): boolean {
   if (!a.startDate || !a.endDate || !b.startDate || !b.endDate) {
     return a.startDate === b.startDate;
   }

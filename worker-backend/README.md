@@ -46,10 +46,7 @@ Apply schema migrations after creating the database:
 
 ```powershell
 cd worker-backend
-pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0001_parking_lots.sql
-pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0002_realtime_parking_status.sql
-pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0003_discovery_items.sql
-pnpm exec wrangler d1 execute parking-lot-navigator --remote --file ./migrations/0004_local_events.sql
+pnpm exec wrangler d1 migrations apply parking-lot-navigator --remote
 ```
 
 Preview one national parking data page without writing to D1:

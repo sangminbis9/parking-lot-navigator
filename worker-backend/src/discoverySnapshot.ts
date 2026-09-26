@@ -1,5 +1,5 @@
 import type { Festival, FreeEvent, LocalEvent } from "@parking/shared-types";
-import { isRegionFallbackCoordinate, mapFestivalRow, mapEventRow, PERFORMANCE_EVENT_SOURCES,
+import { isRegionFallbackCoordinate, mapFestivalRow, mapEventRow, mergeFestivalFields, PERFORMANCE_EVENT_SOURCES,
   type DiscoveryItemRow } from "./discoveryCache.js";
 import { mapLocalEventRow, type LocalEventRow } from "./localEvents.js";
 
@@ -97,7 +97,13 @@ export function snapshotItems(rows: DiscoveryItemRow[], _at: Date): SnapshotPart
       || isRegionFallbackCoordinate(row.lat, row.lng)) continue;
     // Public DTOs only; raw_payload/reviewer notes must never enter public storage.
     // Status is recomputed on-device. Stabilize it here so midnight alone doesn't change hashes.
-    part.festivals.push({ ...mapFestivalRow(row, row.lat, row.lng), status: "upcoming" });
+    // 다른 행에 흡수된 행은 빼고, 대표 행에는 흡수한 행들의 정보를 합친다(festivalMerge.ts).
+    // 공연 레이어(performanceEvents)는 KOPIS 행 기준이라 흡수 여부와 무관하게 남긴다.
+    if (!row.merged_into) {
+      const festival = mapFestivalRow(row, row.lat, row.lng);
+      const donors = parseDonors(row.merge_donors_json);
+      part.festivals.push({ ...mergeFestivalFields(festival, donors), status: "upcoming" });
+    }
     if (PERFORMANCE_EVENT_SOURCES.has(row.source)) {
       part.performanceEvents.push({ ...mapEventRow(row, row.lat, row.lng), status: "upcoming" });
     }
@@ -109,7 +115,16 @@ export function snapshotLocalItems(rows: LocalEventRow[]): SnapshotPart {
     .filter(row => row.status === "approved" && validCoordinate(row.lat, row.lng))
     .map(row => mapLocalEventRow(row, row.lat!, row.lng!)) };
 }
-function validCoordinate(lat: number | null, lng: number | null): boolean {
+function parseDonors(json: string | null | undefined): Partial<Festival>[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+export function validCoordinate(lat: number | null, lng: number | null): boolean {
   return lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng)
     && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0);
 }

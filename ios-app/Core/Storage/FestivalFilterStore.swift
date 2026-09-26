@@ -42,7 +42,7 @@ struct FestivalFilter: Codable, Hashable {
 
     static let `default` = FestivalFilter(
         regions: [], primaryCategories: [],
-        dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
+        dateRange: .oneYear, customFromDate: nil, customToDate: nil
     )
 
     /// 거리 반경은 더 이상 사용자가 고르지 않는다. 예전 "전국" 선택과 같은 값으로 항상 조회한다.
@@ -50,7 +50,7 @@ struct FestivalFilter: Codable, Hashable {
 
     var isEmpty: Bool {
         regions.isEmpty && primaryCategories.isEmpty
-            && dateRange == .ongoingOnly
+            && dateRange == Self.default.dateRange
     }
 
     func matches(_ festival: Festival) -> Bool {
@@ -176,7 +176,7 @@ struct FestivalFilter: Codable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? []
         primaryCategories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .primaryCategories) ?? []
-        dateRange = try c.decodeIfPresent(FestivalDateRange.self, forKey: .dateRange) ?? .ongoingOnly
+        dateRange = try c.decodeIfPresent(FestivalDateRange.self, forKey: .dateRange) ?? Self.default.dateRange
         customFromDate = try c.decodeIfPresent(String.self, forKey: .customFromDate)
         customToDate = try c.decodeIfPresent(String.self, forKey: .customToDate)
     }
