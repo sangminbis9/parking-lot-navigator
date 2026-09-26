@@ -34,14 +34,13 @@ enum FestivalDateRange: String, Codable, CaseIterable {
 }
 
 struct FestivalFilter: Codable, Hashable {
-    var regions: [String]
     var primaryCategories: Set<FestivalPrimaryCategory>
     var dateRange: FestivalDateRange
     var customFromDate: String?
     var customToDate: String?
 
     static let `default` = FestivalFilter(
-        regions: [], primaryCategories: [],
+        primaryCategories: [],
         dateRange: .oneYear, customFromDate: nil, customToDate: nil
     )
 
@@ -49,7 +48,7 @@ struct FestivalFilter: Codable, Hashable {
     var radiusMeters: Int { 200_000 }
 
     var isEmpty: Bool {
-        regions.isEmpty && primaryCategories.isEmpty
+        primaryCategories.isEmpty
             && dateRange == Self.default.dateRange
     }
 
@@ -64,18 +63,6 @@ struct FestivalFilter: Codable, Hashable {
             }
         default:
             break
-        }
-        if !regions.isEmpty {
-            let selectedProvinces = regions.filter { Self.koreanRegions.contains($0) }
-            let selectedCities = regions.filter { !Self.koreanRegions.contains($0) }
-            var matched = false
-            if !selectedProvinces.isEmpty {
-                if let province = Self.province(from: festival.address), selectedProvinces.contains(province) { matched = true }
-            }
-            if !matched, !selectedCities.isEmpty {
-                if selectedCities.contains(where: { festival.address.contains($0) }) { matched = true }
-            }
-            if !matched { return false }
         }
         if !primaryCategories.isEmpty {
             guard let category = festival.primaryCategory, primaryCategories.contains(category) else { return false }
@@ -105,7 +92,7 @@ struct FestivalFilter: Codable, Hashable {
         ("경상북도", "경북"), ("경상남도", "경남")
     ]
 
-    // 광역시도 → 하위 도시/구 계층. 키는 address.contains() 매칭에 사용.
+    // 광역시도 → 하위 도시/구 계층. 지역 선택 UI(RegionAccordionPicker)와 NotificationRegionKey가 쓴다.
     static let regionHierarchy: [(name: String, cities: [String])] = [
         ("서울", ["강남구", "강동구", "강서구", "관악구", "광진구", "노원구", "마포구",
                   "서초구", "성동구", "성북구", "송파구", "영등포구", "용산구", "은평구", "종로구", "중구"]),
@@ -159,13 +146,13 @@ struct FestivalFilter: Codable, Hashable {
 
     static let allCityNames: Set<String> = Set(regionHierarchy.flatMap(\.cities))
 
+    // 예전 저장값의 regions 키는 지도 지역 필터 제거(build 304)로 읽지 않는다 - 지도는 항상 전 지역을 보여 준다.
     enum CodingKeys: String, CodingKey {
-        case regions, primaryCategories, dateRange, customFromDate, customToDate
+        case primaryCategories, dateRange, customFromDate, customToDate
     }
 
-    init(regions: [String], primaryCategories: Set<FestivalPrimaryCategory>,
+    init(primaryCategories: Set<FestivalPrimaryCategory>,
          dateRange: FestivalDateRange, customFromDate: String?, customToDate: String?) {
-        self.regions = regions
         self.primaryCategories = primaryCategories
         self.dateRange = dateRange
         self.customFromDate = customFromDate
@@ -174,7 +161,6 @@ struct FestivalFilter: Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        regions = try c.decodeIfPresent([String].self, forKey: .regions) ?? []
         primaryCategories = try c.decodeIfPresent(Set<FestivalPrimaryCategory>.self, forKey: .primaryCategories) ?? []
         dateRange = try c.decodeIfPresent(FestivalDateRange.self, forKey: .dateRange) ?? Self.default.dateRange
         customFromDate = try c.decodeIfPresent(String.self, forKey: .customFromDate)

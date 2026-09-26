@@ -161,7 +161,7 @@ enum NotificationPreferencesStore {
     }
 
     /// 시도(광역) 및 하위 도시/구 중심 좌표. 지역 선택 시 백그라운드 발견 조회의 중심점으로 사용한다.
-    /// 키는 이름 그대로다(축제 필터 `FestivalFilter.regions`가 이 형태를 쓴다).
+    /// 키는 이름 그대로다.
     /// 중복 이름(남구·동구·서구·북구·중구·강서구·고성군 등)은 이 표에 넣을 수 없어 빠져 있고,
     /// 알림 관심 지역은 `NotificationRegionKey.centroid(for:)`가 광역시도 좌표로 대신 받는다.
     static let regionCentroids: [String: (lat: Double, lng: Double)] = [

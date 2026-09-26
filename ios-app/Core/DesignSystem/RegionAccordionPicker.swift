@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// `qualified: true`면 도시 키를 `NotificationRegionKey` 형식("경기|수원시")으로 저장한다.
 /// 알림 관심 지역은 서울 중구와 부산 중구를 구분해야 해서 이 모드를 쓴다.
-/// 축제 필터는 주소 문자열 매칭이라 예전 형식(false)을 그대로 쓴다.
+/// 행사 탭 지역 필터도 주소에서 광역시도·시군구를 뽑아 비교하므로 같은 모드를 쓴다.
 struct RegionAccordionPicker: View {
     @Binding var selected: [String]
     var qualified: Bool = false

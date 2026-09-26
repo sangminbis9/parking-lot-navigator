@@ -107,7 +107,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
     func testFestivalFilterMatchesOngoingOnly() {
         let filter = FestivalFilter(
-            regions: [], primaryCategories: [],
+            primaryCategories: [],
             dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
         )
         let ongoing = Festival.mock(status: .ongoing)
@@ -118,7 +118,7 @@ final class ParkingLotNavigatorTests: XCTestCase {
 
     func testFestivalFilterMatchesCustomDateRange() {
         let filter = FestivalFilter(
-            regions: [], primaryCategories: [],
+            primaryCategories: [],
             dateRange: .custom, customFromDate: "2026-07-10", customToDate: "2026-07-20"
         )
         // 겹치는 축제: 7/5~7/12
@@ -142,13 +142,12 @@ final class ParkingLotNavigatorTests: XCTestCase {
         XCTAssertNil(FestivalFilter.province(from: "킨텍스로 217"))
     }
 
-    func testFestivalFilterMatchesProvinceByAddressSuffix() {
-        let filter = FestivalFilter(
-            regions: ["경기"], primaryCategories: [],
-            dateRange: .ongoingOnly, customFromDate: nil, customToDate: nil
-        )
+    func testFestivalFilterIgnoresLegacySavedRegions() throws {
+        // 지도 필터의 지역 선택이 없어졌다. 예전 저장값에 지역이 남아 있어도 모든 지역을 보여 준다.
+        let legacy = #"{"regions":["경기"],"primaryCategories":[],"dateRange":"ongoingOnly"}"#
+        let filter = try JSONDecoder().decode(FestivalFilter.self, from: Data(legacy.utf8))
         XCTAssertTrue(filter.matches(Festival.mock(status: .ongoing, address: "경기도 고양시 킨텍스로 217")))
-        XCTAssertFalse(filter.matches(Festival.mock(status: .ongoing, address: "서울특별시 중구 세종대로 110")))
+        XCTAssertTrue(filter.matches(Festival.mock(status: .ongoing, address: "서울특별시 중구 세종대로 110")))
     }
 
     func testPerformanceItemFestivalId() {

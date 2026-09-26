@@ -68,10 +68,8 @@ struct SearchView: View {
     @State private var queryDebounceTask: Task<Void, Never>?
     @State private var allItems: [DiscoverTabItem] = []
     @State private var filteredItems: [DiscoverTabItem] = []
-    @State private var availableSources: [String] = []
     @State private var availableFestivalCategories: [FestivalPrimaryCategory] = []
     @State private var availableEventCategories: [LocalEventPrimaryCategory] = []
-    @State private var availableRegions: [String] = []
     @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 32
     @State private var showsScrollToTop = false
@@ -256,10 +254,8 @@ struct SearchView: View {
                 DiscoverTabFilterSheet(
                     applied: $filters,
                     kind: selectedKind,
-                    sources: availableSources,
                     festivalCategories: availableFestivalCategories,
-                    eventCategories: availableEventCategories,
-                    regions: availableRegions
+                    eventCategories: availableEventCategories
                 )
             }
         }
@@ -485,23 +481,22 @@ struct SearchView: View {
         let items = festivals.filter { !eventIds.contains($0.id) }.map(DiscoverTabItem.festival)
             + events.map(DiscoverTabItem.event)
         allItems = items
-        availableSources = uniqueValues(items.map(\.source))
         availableFestivalCategories = FestivalPrimaryCategory.allCases.filter { category in
             items.contains { $0.festivalCategory == category }
         }
         availableEventCategories = LocalEventPrimaryCategory.allCases.filter { category in
             items.contains { $0.eventCategory == category }
         }
-        availableRegions = uniqueValues(items.map(\.regionText))
         recomputeFilteredItems()
     }
 
     private func recomputeFilteredItems() {
         let trimmed = debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let searched = trimmed.isEmpty ? allItems : allItems.filter { $0.searchText.contains(trimmed) }
+        let bounds = filters.dateBounds()
         let scoped = searched
             .filter { selectedKind.includes($0) }
-            .filter { filters.includes($0) }
+            .filter { filters.includes($0, bounds: bounds) }
 
         if case .distance = sort, let coord = locationProvider.coordinate {
             // 거리순 정렬: 비교마다 CLLocation을 생성하면 O(n log n) 할당 → 미리 1회 계산
@@ -525,18 +520,18 @@ struct SearchView: View {
     }
 
     private var activeFilterLabels: [String] {
-        let statusLabels = Array(filters.selectedStatuses.map(\.displayText)).sorted()
+        var dateLabels: [String] = []
+        if filters.dateRange == .custom, let from = filters.customFromDate, let to = filters.customToDate {
+            dateLabels = ["\(from) ~ \(to)"]
+        } else if filters.dateRange != DiscoverTabFilters.defaultDateRange {
+            dateLabels = [filters.dateRange.displayLabel]
+        }
         let festivalLabels = filters.selectedFestivalCategories.map(\.displayName).sorted()
         let eventLabels = filters.selectedEventCategories.map(\.displayName).sorted()
-        return statusLabels
+        return dateLabels
             + festivalLabels
             + eventLabels
-            + filters.selectedRegions.sorted()
-            + filters.selectedSources.sorted()
-    }
-
-    private func uniqueValues(_ values: [String]) -> [String] {
-        Array(Set(values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+            + filters.selectedRegions.map(NotificationRegionKey.displayName)
     }
 
     private func retryDiscoverDownload() {
@@ -703,16 +698,15 @@ struct DiscoverTabItem: Identifiable {
     let address: String
     let dateText: String
     let startDate: String
+    let endDate: String
     let status: DiscoverStatus
     /// 축제·공연·박람회·가게 이벤트를 가르는 단일 기준. 종류 배지 문구·색과 토글 분류가 모두 여기서 나온다.
     let domain: DiscoverDomain
-    let source: String
     let imageUrl: String?
     let searchText: String
     let destination: Destination
     let presentation: DiscoverPresentation
     let tags: [String]
-    let regionText: String
     let festivalCategory: FestivalPrimaryCategory?
     let eventCategory: LocalEventPrimaryCategory?
     let lat: Double
@@ -731,9 +725,9 @@ struct DiscoverTabItem: Identifiable {
             address: festival.address,
             dateText: "\(festival.startDate) - \(festival.endDate)",
             startDate: festival.startDate,
+            endDate: festival.endDate,
             status: festival.status,
             domain: festival.discoverDomain,
-            source: festival.source,
             imageUrl: festival.primaryImageUrl,
             searchText: [
                 festival.title,
@@ -741,12 +735,12 @@ struct DiscoverTabItem: Identifiable {
                 festival.venueName,
                 festival.address,
                 festival.source,
+                DiscoverTabItem.regionSearchTerms(from: festival.address),
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: festival.discoverDestination,
             presentation: festival.discoverPresentation,
             tags: smartTags,
-            regionText: DiscoverTabItem.regionText(from: festival.address),
             festivalCategory: festival.primaryCategory,
             eventCategory: nil,
             lat: festival.lat,
@@ -767,9 +761,9 @@ struct DiscoverTabItem: Identifiable {
             address: event.address,
             dateText: event.dateText,
             startDate: event.startDate,
+            endDate: event.endDate ?? event.startDate,
             status: event.timelineStatus,
             domain: event.discoverDomain,
-            source: event.source,
             imageUrl: event.primaryImageUrl,
             searchText: [
                 event.title,
@@ -779,12 +773,12 @@ struct DiscoverTabItem: Identifiable {
                 event.source,
                 event.benefit,
                 event.shortDescription,
+                DiscoverTabItem.regionSearchTerms(from: event.address),
                 smartTags.joined(separator: " ")
             ].compactMap { $0 }.joined(separator: " ").lowercased(),
             destination: event.discoverDestination,
             presentation: event.discoverPresentation,
             tags: smartTags,
-            regionText: DiscoverTabItem.regionText(from: event.address),
             festivalCategory: nil,
             eventCategory: event.primaryCategory,
             lat: event.lat,
@@ -813,29 +807,13 @@ struct DiscoverTabItem: Identifiable {
         return false
     }
 
-    private static func regionText(from address: String) -> String {
-        let token = address
-            .split(whereSeparator: { $0.isWhitespace || $0 == "," })
-            .map(String.init)
-            .first ?? address
-        if token.hasPrefix("서울") { return "서울" }
-        if token.hasPrefix("부산") { return "부산" }
-        if token.hasPrefix("대구") { return "대구" }
-        if token.hasPrefix("인천") { return "인천" }
-        if token.hasPrefix("광주") { return "광주" }
-        if token.hasPrefix("대전") { return "대전" }
-        if token.hasPrefix("울산") { return "울산" }
-        if token.hasPrefix("세종") { return "세종" }
-        if token.hasPrefix("경기") { return "경기" }
-        if token.hasPrefix("강원") { return "강원" }
-        if token.hasPrefix("충북") || token.hasPrefix("충청북") { return "충북" }
-        if token.hasPrefix("충남") || token.hasPrefix("충청남") { return "충남" }
-        if token.hasPrefix("전북") || token.hasPrefix("전라북") { return "전북" }
-        if token.hasPrefix("전남") || token.hasPrefix("전라남") { return "전남" }
-        if token.hasPrefix("경북") || token.hasPrefix("경상북") { return "경북" }
-        if token.hasPrefix("경남") || token.hasPrefix("경상남") { return "경남" }
-        if token.hasPrefix("제주") { return "제주" }
-        return token
+    /// 주소를 지역 검색어로 푼다. 주소가 "충청남도 천안시 …"여도 "충남"·"충남 천안"으로 찾을 수 있게
+    /// 광역시도 단축명과 시/군/구(접미사 뺀 이름 포함)를 덧붙인다.
+    private static func regionSearchTerms(from address: String) -> String? {
+        let parsed = NotificationRegionKey.parse(address: address)
+        guard let province = parsed.province else { return nil }
+        guard let district = parsed.district else { return province }
+        return "\(province) \(district) \(province) \(FestivalFilter.cityDisplayName(district))"
     }
 }
 
@@ -935,28 +913,55 @@ private enum DiscoverTabSort: String, CaseIterable, Identifiable {
 }
 
 private struct DiscoverTabFilters: Equatable {
-    var selectedSources: Set<String> = []
+    /// 지도 탭 필터(`FestivalFilter`)와 같은 기간 선택지와 기본값을 쓴다.
+    static let defaultDateRange: FestivalDateRange = .oneYear
+
+    var dateRange: FestivalDateRange = Self.defaultDateRange
+    var customFromDate: String?
+    var customToDate: String?
     var selectedFestivalCategories: Set<FestivalPrimaryCategory> = []
     var selectedEventCategories: Set<LocalEventPrimaryCategory> = []
-    var selectedStatuses: Set<DiscoverStatus> = []
-    var selectedRegions: Set<String> = []
+    /// `NotificationRegionKey` 형식("서울" / "서울|중구"). 비면 전 지역.
+    var selectedRegions: [String] = []
 
     var hasFilters: Bool {
         count > 0
     }
 
     var count: Int {
-        selectedSources.count
-            + selectedFestivalCategories.count
+        selectedFestivalCategories.count
             + selectedEventCategories.count
-            + selectedStatuses.count
             + selectedRegions.count
+            + (dateRange == Self.defaultDateRange ? 0 : 1)
     }
 
-    func includes(_ item: DiscoverTabItem) -> Bool {
-        if !selectedSources.isEmpty && !selectedSources.contains(item.source) { return false }
-        if !selectedStatuses.isEmpty && !selectedStatuses.contains(item.status) { return false }
-        if !selectedRegions.isEmpty && !selectedRegions.contains(item.regionText) { return false }
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// 기간을 "yyyy-MM-dd" 구간으로 바꾼다. 항목마다 날짜를 계산하지 않도록 목록 한 번에 한 번만 부른다.
+    /// 프리셋은 "오늘부터 N일 안에 시작"이고, 이미 진행 중인 행사는 시작일이 과거라 늘 통과한다.
+    func dateBounds(now: Date = Date()) -> (from: String?, to: String?) {
+        switch dateRange {
+        case .ongoingOnly:
+            return (nil, nil)
+        case .custom:
+            return (customFromDate, customToDate)
+        default:
+            let horizon = Calendar.current.date(byAdding: .day, value: dateRange.upcomingWithinDays, to: now) ?? now
+            return (nil, Self.dayFormatter.string(from: horizon))
+        }
+    }
+
+    func includes(_ item: DiscoverTabItem, bounds: (from: String?, to: String?)) -> Bool {
+        if dateRange == .ongoingOnly, item.status != .ongoing { return false }
+        // 이벤트 날짜에 시각이 붙어 와도 날짜끼리만 비교한다.
+        if let to = bounds.to, String(item.startDate.prefix(10)) > to { return false }
+        if let from = bounds.from, String(item.endDate.prefix(10)) < from { return false }
+        if !NotificationRegionKey.matches(address: item.address, regions: selectedRegions) { return false }
         if item.isFestival, !selectedFestivalCategories.isEmpty {
             guard let category = item.festivalCategory, selectedFestivalCategories.contains(category) else {
                 return false
@@ -977,41 +982,67 @@ private struct DiscoverTabFilterSheet: View {
     @Binding var applied: DiscoverTabFilters
     @State private var filters: DiscoverTabFilters
     let kind: DiscoverTabKind
-    let sources: [String]
     let festivalCategories: [FestivalPrimaryCategory]
     let eventCategories: [LocalEventPrimaryCategory]
-    let regions: [String]
+
+    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+    private var maxCustomDate: Date {
+        Calendar.current.date(byAdding: .year, value: 1, to: today) ?? today
+    }
+
+    private let customDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private var fromDate: Date {
+        filters.customFromDate.flatMap { customDateFormatter.date(from: $0) } ?? today
+    }
+
+    private var toDate: Date {
+        filters.customToDate.flatMap { customDateFormatter.date(from: $0) } ?? today
+    }
+
+    private func selectCustomFrom(_ date: Date) {
+        filters.dateRange = .custom
+        filters.customFromDate = customDateFormatter.string(from: date)
+        if toDate < date {
+            filters.customToDate = filters.customFromDate
+        }
+    }
+
+    private func selectCustomTo(_ date: Date) {
+        filters.dateRange = .custom
+        filters.customToDate = customDateFormatter.string(from: date)
+    }
 
     init(
         applied: Binding<DiscoverTabFilters>,
         kind: DiscoverTabKind,
-        sources: [String],
         festivalCategories: [FestivalPrimaryCategory],
-        eventCategories: [LocalEventPrimaryCategory],
-        regions: [String]
+        eventCategories: [LocalEventPrimaryCategory]
     ) {
         _applied = applied
         _filters = State(initialValue: applied.wrappedValue)
         self.kind = kind
-        self.sources = sources
         self.festivalCategories = festivalCategories
         self.eventCategories = eventCategories
-        self.regions = regions
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    statusSection
+                    dateRangeSection
+                    regionSection
                     if kind != .localEvents {
                         festivalCategorySection
                     }
                     if kind == .all || kind == .localEvents {
                         eventCategorySection
                     }
-                    filterSection(title: "지역", values: regions, selection: $filters.selectedRegions)
-                    filterSection(title: "주관사/출처", values: sources, selection: $filters.selectedSources)
                 }
                 .padding(16)
             }
@@ -1037,25 +1068,82 @@ private struct DiscoverTabFilterSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private var statusSection: some View {
+    // 지도 탭 필터의 "조회 기간"과 같은 선택지·동작이다.
+    private var dateRangeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("상태")
+            Text("조회 기간")
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
             FlowLayout(spacing: 8) {
-                ForEach([DiscoverStatus.ongoing, .upcoming], id: \.self) { status in
-                    filterChip(
-                        title: status.displayText,
-                        isSelected: filters.selectedStatuses.contains(status)
-                    ) {
-                        if filters.selectedStatuses.contains(status) {
-                            filters.selectedStatuses.remove(status)
-                        } else {
-                            filters.selectedStatuses.insert(status)
-                        }
+                ForEach(FestivalDateRange.allCases.filter { $0 != .custom }, id: \.self) { range in
+                    filterChip(title: range.displayLabel, isSelected: filters.dateRange == range) {
+                        filters.dateRange = range
+                        filters.customFromDate = nil
+                        filters.customToDate = nil
+                    }
+                }
+                filterChip(title: FestivalDateRange.custom.displayLabel, isSelected: filters.dateRange == .custom) {
+                    if filters.dateRange != .custom {
+                        filters.dateRange = .custom
+                        filters.customFromDate = customDateFormatter.string(from: today)
+                        filters.customToDate = customDateFormatter.string(from: today)
                     }
                 }
             }
+            if filters.dateRange == .custom {
+                VStack(alignment: .leading, spacing: 6) {
+                    DatePicker(
+                        "시작일",
+                        selection: Binding(
+                            get: { fromDate },
+                            set: { selectCustomFrom($0) }
+                        ),
+                        in: today...maxCustomDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.compact)
+                    .environment(\.locale, Locale(identifier: "ko_KR"))
+                    .font(.festival(size: 13))
+
+                    DatePicker(
+                        "종료일",
+                        selection: Binding(
+                            get: { toDate },
+                            set: { selectCustomTo($0) }
+                        ),
+                        in: fromDate...maxCustomDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.compact)
+                    .environment(\.locale, Locale(identifier: "ko_KR"))
+                    .font(.festival(size: 13))
+                }
+                .padding(10)
+                .background(FestivalDesign.cream.opacity(0.5))
+                .clipShape(FestivalDesign.chipShape)
+            }
+        }
+        .padding(14)
+        .festivalCard()
+    }
+
+    // 행사 주소 기준. 서울 중구와 부산 중구를 가르도록 "광역시도|시군구" 키로 저장한다.
+    private var regionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("지역")
+                    .font(.festival(.headline))
+                    .foregroundStyle(FestivalDesign.navy)
+                Spacer()
+                if filters.selectedRegions.isEmpty {
+                    Text("전체")
+                        .font(.festival(.caption, weight: .semibold))
+                        .foregroundStyle(FestivalDesign.secondaryText)
+                } else {
+                    StatusBadge(text: "\(filters.selectedRegions.count)", kind: .source)
+                }
+            }
+            RegionAccordionPicker(selected: $filters.selectedRegions, qualified: true)
         }
         .padding(14)
         .festivalCard()
@@ -1169,40 +1257,6 @@ private struct DiscoverTabFilterSheet: View {
         .buttonStyle(.plain)
     }
 
-    private func filterSection(title: String, values: [String], selection: Binding<Set<String>>, prefix: String = "") -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(.festival(.headline))
-                    .foregroundStyle(FestivalDesign.navy)
-                Spacer()
-                if !selection.wrappedValue.isEmpty {
-                    StatusBadge(text: "\(selection.wrappedValue.count)", kind: .source)
-                }
-            }
-
-            if values.isEmpty {
-                Text("선택할 항목이 없습니다")
-                    .font(.festival(.subheadline))
-                    .foregroundStyle(FestivalDesign.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                FlowLayout(spacing: 8) {
-                    ForEach(values, id: \.self) { value in
-                        filterChip(
-                            title: "\(prefix)\(value)",
-                            isSelected: selection.wrappedValue.contains(value)
-                        ) {
-                            toggle(value, in: selection)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .festivalCard()
-    }
-
     private func filterChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
@@ -1219,14 +1273,6 @@ private struct DiscoverTabFilterSheet: View {
                 )
         }
         .buttonStyle(.plain)
-    }
-
-    private func toggle(_ value: String, in selection: Binding<Set<String>>) {
-        if selection.wrappedValue.contains(value) {
-            selection.wrappedValue.remove(value)
-        } else {
-            selection.wrappedValue.insert(value)
-        }
     }
 }
 

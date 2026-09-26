@@ -548,9 +548,6 @@ struct CalendarTabView: View {
     private var filterDescription: String {
         let f = filterModel.filter
         var parts: [String] = []
-        if !f.regions.isEmpty {
-            parts.append("\(f.regions.count)\u{AC1C} \u{C9C0}\u{C5ED}") // N개 지역
-        }
         if !f.primaryCategories.isEmpty {
             parts.append("\u{CE74}\u{D14C}\u{ACE0}\u{B9AC} \(f.primaryCategories.count)") // 카테고리 N
         }

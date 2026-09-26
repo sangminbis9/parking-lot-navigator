@@ -49,7 +49,6 @@ struct FilterSheetView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     dateRangeSection
-                    regionSection
                     categorySection
                 }
                 .padding(20)
@@ -134,12 +133,6 @@ struct FilterSheetView: View {
                     .clipShape(FestivalDesign.chipShape)
                 }
             }
-        }
-    }
-
-    private var regionSection: some View {
-        sectionWrapper(title: "지역", subtitle: "도시 ▾ 를 눌러 세부 지역 선택") {
-            RegionAccordionPicker(selected: $draft.regions)
         }
     }
 

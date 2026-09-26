@@ -817,7 +817,7 @@ struct MapHomeView: View {
         locationProvider.authorizationStatus == .notDetermined
     }
 
-    /// 아직 위치를 쓸 수 없으면 마지막 위치 → 저장된 지역 → 서울 순으로 시작 지점을 정한다.
+    /// 아직 위치를 쓸 수 없으면 마지막 위치 → 서울 순으로 시작 지점을 정한다.
     /// 권한이 이미 허용됐더라도 GPS 좌표는 몇 초 뒤에나 도착한다. 그동안 서울 기본값으로
     /// 첫 조회를 하면 사용자 주변에는 핀이 한 개도 없는 상태로 로딩이 끝난다.
     private func applyFallbackCenterIfNeeded() {
@@ -845,7 +845,7 @@ struct MapHomeView: View {
 
     /// 위치를 아직 못 정했으면 시스템 팝업 대신 이 안내가 먼저 뜬다.
     /// 권한이 막혔으면 지금 어느 지역 기준으로 보고 있는지 밝히고 해결 경로를 같이 준다.
-    /// 어느 쪽이든 "지역 선택"으로 전국 어디든 직접 골라 볼 수 있어 앱이 막히지 않는다.
+    /// 어느 쪽이든 지도를 옮겨 전국 어디든 둘러볼 수 있어 앱이 막히지 않는다.
     @ViewBuilder
     private var locationPermissionNotice: some View {
         if isLocationUndetermined {
@@ -886,16 +886,10 @@ struct MapHomeView: View {
                     .font(.festival(.caption, weight: .semibold))
                     .foregroundStyle(FestivalDesign.navy)
                     .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 14) {
-                    Button(primaryTitle, action: primaryAction)
-                        .font(.festival(.caption, weight: .bold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(FestivalDesign.tealText)
-                    Button("지역 선택") { presentingFestivalFilter = true }
-                        .font(.festival(.caption, weight: .bold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(FestivalDesign.secondaryText)
-                }
+                Button(primaryTitle, action: primaryAction)
+                    .font(.festival(.caption, weight: .bold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(FestivalDesign.tealText)
             }
             Spacer(minLength: 0)
         }

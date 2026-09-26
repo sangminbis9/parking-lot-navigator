@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `303` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `304` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -61,9 +61,10 @@ func nearbyPerformances(lat: Double, lng: Double, radiusMeters: Int, upcomingWit
   - `upcomingWithinDays`: ongoingOnly=365, oneMonth=30, twoMonths=60, threeMonths=90, sixMonths=180, oneYear=365, custom=365
   - `ongoingOnly`는 API를 넓게(365일) 호출하고 클라이언트에서 `festival.status == .ongoing`만 통과시킨다.
   - `custom`은 API를 최대(365일)로 호출하고 클라이언트에서 날짜 겹침으로 2차 필터링한다.
-- `FestivalFilter`: `dateRange: FestivalDateRange`, `customFromDate: String?` ("yyyy-MM-dd"), `customToDate: String?`, `regions: [String]`, `radiusKm: Int?`, `primaryCategories: Set<FestivalPrimaryCategory>`
-  - 기본값: `dateRange = .oneYear`, `radiusKm = 50`, 나머지 빈 값 (build 301부터. 예전 `.ongoingOnly`는 아직 시작 안 한 축제를 통째로 숨겼다)
+- `FestivalFilter`: `dateRange: FestivalDateRange`, `customFromDate: String?` ("yyyy-MM-dd"), `customToDate: String?`, `primaryCategories: Set<FestivalPrimaryCategory>`
+  - 기본값: `dateRange = .oneYear`, 나머지 빈 값 (build 301부터. 예전 `.ongoingOnly`는 아직 시작 안 한 축제를 통째로 숨겼다)
   - `statuses: [DiscoverStatus]` 필드는 제거됨 — 기간 필터가 대체
+  - `regions` 필드는 build 304에서 제거됨 — 지도·캘린더 탭은 항상 전 지역을 보여 준다. 예전 저장값의 `regions` 키는 디코딩 때 무시한다. 거리 반경도 고르지 않고 `radiusMeters`는 200km 고정.
 
 **공유 구조 (`ios-app/App/AppRootView.swift`)**
 
@@ -87,12 +88,18 @@ func nearbyFestivals(lat: Double, lng: Double, radiusMeters: Int, upcomingWithin
 - `upcomingWithinDays`는 `filter.dateRange.upcomingWithinDays`에서 계산한다.
 - Worker `/api/festivals`는 `upcomingWithinDays: 0–365`를 지원한다.
 
-**FilterSheetView 섹션 순서 (build 177 이후)**
+**FilterSheetView 섹션 순서 (build 304 이후)**
 
 1. 조회 기간 (`dateRangeSection`) — 프리셋 칩 6개 + "날짜 직접 선택" 칩 + DatePicker (custom 시)
-2. 거리 반경
-3. 지역
-4. 카테고리
+2. 카테고리
+
+**이벤트 탭 필터 (`ios-app/Features/Search/SearchView.swift`, build 304 이후)**
+
+이벤트 탭(`SearchView`)은 `FestivalFilterModel`을 공유하지 않고 자체 `DiscoverTabFilters`를 쓴다.
+
+- 섹션: 조회 기간(지도 필터와 같은 `FestivalDateRange` 프리셋 + 직접 선택, 기본 `.oneYear`) → 지역 → 카테고리. 출처·상태 필터는 없다.
+- 지역은 `RegionAccordionPicker(qualified: true)`로 고르고 `NotificationRegionKey.matches(address:regions:)`로 행사 주소와 비교한다. 비어 있으면 전체 표시.
+- 검색어는 제목 등과 함께 주소에서 뽑은 광역시도·시군구 이름(`regionSearchTerms`)도 매칭한다.
 
 ---
 

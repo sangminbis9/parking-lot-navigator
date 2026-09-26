@@ -124,16 +124,9 @@ final class FestivalSyncService: ObservableObject {
     }
 
     /// 위젯이 무엇을 기준으로 축제를 모을지 정한다.
-    /// - 지역 필터가 있으면 그 지역 중심 좌표에서 직접 조회한다. 전국을 한 번에 받아 주소로
-    ///   거르던 방식은 서버가 조회 중심에서 가까운 순으로 잘라 주기 때문에, 먼 지역을 고르면
-    ///   결과가 통째로 비는 문제가 있었다.
-    /// - 지역이 없으면 사용자 위치를 쓰고, 위치를 전혀 모르면 서울로 떨어뜨리는 대신
-    ///   전국 기준임을 명시한다.
+    /// 사용자 위치를 쓰고, 위치를 전혀 모르면 서울로 떨어뜨리는 대신 전국 기준임을 명시한다.
+    /// (지도 필터의 지역 선택은 build 304에서 없어져 지역 기준 조회도 함께 빠졌다.)
     private func resolveBasis(filter: FestivalFilter, coordinate: (lat: Double, lng: Double)?) -> SyncBasis {
-        let regionPoints = Self.regionQueryPoints(filter.regions)
-        if !regionPoints.isEmpty {
-            return SyncBasis(kind: .region, label: Self.regionLabel(filter.regions), queries: regionPoints)
-        }
         if let coord = coordinate ?? LastKnownLocationStore.load(appGroupID: appGroupID) {
             return SyncBasis(
                 kind: .location,
@@ -150,25 +143,6 @@ final class FestivalSyncService: ObservableObject {
                 radiusMeters: Self.nationwideRadiusMeters
             )]
         )
-    }
-
-    /// 선택 지역을 그 지역 중심 좌표 조회로 바꾼다. 좌표를 모르는 이름은 건너뛴다.
-    private static func regionQueryPoints(_ regions: [String]) -> [QueryPoint] {
-        regions.prefix(maxRegionQueries).compactMap { region in
-            guard let centroid = NotificationPreferencesStore.regionCentroids[region] else { return nil }
-            let isProvince = FestivalFilter.koreanRegions.contains(region)
-            return QueryPoint(
-                lat: centroid.lat,
-                lng: centroid.lng,
-                radiusMeters: isProvince ? provinceRadiusMeters : cityRadiusMeters
-            )
-        }
-    }
-
-    private static func regionLabel(_ regions: [String]) -> String {
-        guard !regions.isEmpty else { return "전국" }
-        if regions.count <= 2 { return regions.joined(separator: "·") }
-        return "\(regions[0])·\(regions[1]) 외 \(regions.count - 2)"
     }
 
     /// 정렬 점수(낮을수록 먼저). 진행 중을 앞에 두고, 시작이 임박할수록,
@@ -239,9 +213,6 @@ final class FestivalSyncService: ObservableObject {
 
     private static let koreaCenter: (lat: Double, lng: Double) = (lat: 36.35, lng: 127.80)
     private static let nationwideRadiusMeters = 460_000
-    private static let provinceRadiusMeters = 120_000
-    private static let cityRadiusMeters = 40_000
-    private static let maxRegionQueries = 4
     private static let maxCachedItems = 20
     private static let maxThumbnailDownloads = 8
     private nonisolated static let thumbnailMaxPixel: CGFloat = 240
