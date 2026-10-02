@@ -492,22 +492,28 @@ struct SearchView: View {
 
     private func recomputeFilteredItems() {
         let trimmed = debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let searched = trimmed.isEmpty ? allItems : allItems.filter { $0.searchText.contains(trimmed) }
+        // 지난 행사는 목록을 둘러볼 때는 숨기고, 이름으로 찾을 때만 보여 준다.
+        let searched = trimmed.isEmpty
+            ? allItems.filter { $0.status != .ended }
+            : allItems.filter { $0.searchText.contains(trimmed) }
         let bounds = filters.dateBounds()
         let scoped = searched
             .filter { selectedKind.includes($0) }
             .filter { filters.includes($0, bounds: bounds) }
 
+        let sorted: [DiscoverTabItem]
         if case .distance = sort, let coord = locationProvider.coordinate {
             // 거리순 정렬: 비교마다 CLLocation을 생성하면 O(n log n) 할당 → 미리 1회 계산
             let userLoc = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-            filteredItems = scoped
+            sorted = scoped
                 .map { ($0, CLLocation(latitude: $0.lat, longitude: $0.lng).distance(from: userLoc)) }
                 .sorted { $0.1 < $1.1 }
                 .map(\.0)
         } else {
-            filteredItems = scoped.sorted(by: sort.comparator(userLocation: locationProvider.coordinate))
+            sorted = scoped.sorted(by: sort.comparator(userLocation: locationProvider.coordinate))
         }
+        // 어떤 정렬이든 지난 행사는 맨 뒤로 보낸다.
+        filteredItems = sorted.filter { $0.status != .ended } + sorted.filter { $0.status == .ended }
     }
 
     private func scheduleQueryDebounce(_ newValue: String) {
@@ -578,11 +584,13 @@ struct SearchView: View {
         errorMessage = nil
         partialLoadNotice = nil
 
+        // 종료 30일 안의 축제도 받아 둔다. 검색어가 있을 때만 "지난 행사"로 보여 준다.
         async let festivalItems = apiClient.nearbyFestivals(
             lat: koreaCenter.latitude,
             lng: koreaCenter.longitude,
             radiusMeters: discoverRadiusMeters,
-            upcomingWithinDays: 365
+            upcomingWithinDays: 365,
+            pastWithinDays: FestivalFavoritesStore.endedRetentionDays
         )
         async let eventItems = apiClient.nearbyEvents(
             lat: koreaCenter.latitude,
@@ -1382,7 +1390,11 @@ struct DiscoverTabRow: View {
                 // 태그 색은 DiscoverTagStyle 규칙을 따른다. 맨 앞만 분류 토글 색을 꽉 채우고 나머지는 옅게.
                 HStack(spacing: DiscoverTagStyle.Size.regular.spacing) {
                     DiscoverTagChip(text: item.typeText, tint: item.domain.tint, isLead: true)
-                    DiscoverTagChip(text: item.status.displayText, tint: item.domain.tint)
+                    DiscoverTagChip(
+                        text: item.status.displayText,
+                        tint: item.status == .ended ? FestivalDesign.coral : item.domain.tint,
+                        isLead: item.status == .ended
+                    )
                     if item.isSponsored {
                         DiscoverTagChip(text: "스폰서", tint: item.domain.tint)
                     }

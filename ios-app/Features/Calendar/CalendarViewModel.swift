@@ -39,7 +39,7 @@ final class CalendarViewModel: ObservableObject {
                 lng: coord.lng,
                 radiusMeters: filter.radiusMeters,
                 upcomingWithinDays: filter.dateRange.upcomingWithinDays,
-                pastWithinDays: 90
+                pastWithinDays: FestivalFavoritesStore.endedRetentionDays
             )
             await apply(festivals: raw, filter: filter)
             state = .loaded

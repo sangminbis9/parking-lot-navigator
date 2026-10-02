@@ -248,7 +248,11 @@ private struct DiscoverResultHeader: View {
 
             HStack(spacing: DiscoverTagStyle.Size.regular.spacing) {
                 DiscoverTagChip(text: presentation.typeText, tint: tint, isLead: true)
-                DiscoverTagChip(text: presentation.status.displayText, tint: tint)
+                DiscoverTagChip(
+                    text: presentation.status.displayText,
+                    tint: presentation.status == .ended ? FestivalDesign.coral : tint,
+                    isLead: presentation.status == .ended
+                )
                 Spacer(minLength: 0)
                 if let onToggleFavorite {
                     Button(action: onToggleFavorite) {
@@ -274,6 +278,13 @@ private struct DiscoverResultHeader: View {
                 .font(.festival(.title3, weight: .bold))
                 .foregroundStyle(FestivalDesign.navy)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if presentation.status == .ended {
+                Label("이미 끝난 행사예요. 다음 회차 일정은 주최측에 확인해 주세요.", systemImage: "calendar.badge.exclamationmark")
+                    .font(.festival(.subheadline, weight: .semibold))
+                    .foregroundStyle(FestivalDesign.coralText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let subtitle = presentation.subtitle, !subtitle.isEmpty {
                 Text(subtitle)

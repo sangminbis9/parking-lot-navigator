@@ -727,8 +727,12 @@ async function syncDiscoveryKind(
     .map((batch) => batch.centerId);
   const items = dedupeItems(batches.flatMap((batch) => batch.items));
   const sources = countSources(items);
+  const cutoffDay = endedRetentionCutoffDay();
   const validItems = items.filter(
-    (item) => Number.isFinite(item.lat) && Number.isFinite(item.lng),
+    (item) =>
+      Number.isFinite(item.lat) &&
+      Number.isFinite(item.lng) &&
+      !isPastEndedRetention(item, cutoffDay),
   );
   const skipped = items.length - validItems.length;
   const counts = await upsertDiscoveryItems(db, validItems, generatedAt);
@@ -1432,6 +1436,48 @@ export async function pruneStaleDiscovery(
     .bind(type, minSeenAt)
     .run();
   return result.meta.changes ?? 0;
+}
+
+/// 종료일이 이 일수보다 지난 행사는 D1에서 지운다. 앱은 지난 30일까지만 "지난 행사"로
+/// 검색에 노출하므로(/api/festivals pastWithinDays) 그보다 오래된 행은 읽기·쓰기·스냅샷 크기만 쓴다.
+export const DISCOVERY_ENDED_RETENTION_DAYS = 30;
+/// 첫 실행에 쌓인 종료 행을 한 번에 지우면 행당 인덱스 수만큼(약 12행) 쓰기가 나가
+/// 하루 쓰기 한도(100,000행)를 넘을 수 있다. 하루 1회 × 이 상한으로 며칠에 나눠 지운다.
+const DISCOVERY_ENDED_PRUNE_LIMIT = 1000;
+
+export function endedRetentionCutoffDay(now: Date = new Date()): string {
+  return seoulDayString(
+    new Date(now.getTime() - DISCOVERY_ENDED_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+  );
+}
+
+/// 다시 받은 종료 행사를 또 넣었다 지우는 왕복을 막는다. 날짜를 모르면 남긴다.
+function isPastEndedRetention(item: DiscoveryItem, cutoffDay: string): boolean {
+  const end = (item.endDate || item.startDate || "").slice(0, 10);
+  return end !== "" && end < cutoffDay;
+}
+
+export async function pruneEndedDiscovery(
+  db: D1Database,
+  limit: number = DISCOVERY_ENDED_PRUNE_LIMIT,
+): Promise<number> {
+  // 빈 문자열은 어떤 날짜보다 작으므로 NULLIF로 "날짜 모름"과 같이 취급해 남긴다.
+  const result = await db
+    .prepare(
+      `DELETE FROM discovery_items WHERE id IN (
+         SELECT id FROM discovery_items
+         WHERE type = 'festival'
+           AND substr(COALESCE(NULLIF(end_date, ''), NULLIF(start_date, '')), 1, 10) < ?
+         LIMIT ?)`,
+    )
+    .bind(endedRetentionCutoffDay(), limit)
+    .run();
+  const changes =
+    (result.meta as { changes?: number } | undefined)?.changes ?? 0;
+  if (changes > 0) {
+    console.info(`pruneEndedDiscovery deleted ${changes} rows ended over ${DISCOVERY_ENDED_RETENTION_DAYS}d ago`);
+  }
+  return changes;
 }
 
 export function mapFestivalRow(

@@ -3,6 +3,9 @@ import Foundation
 enum DiscoverStatus: String, Codable, Hashable {
     case ongoing
     case upcoming
+    /// 서버는 보내지 않는다. 종료일이 지난 축제를 앱이 직접 표시하려고 둔 값이다
+    /// (서버 enum에 넣으면 이 값을 모르는 옛 빌드가 응답 전체를 디코딩하지 못한다).
+    case ended
 
     var displayText: String {
         switch self {
@@ -10,7 +13,15 @@ enum DiscoverStatus: String, Codable, Hashable {
             return "\u{C9C4}\u{D589} \u{C911}"
         case .upcoming:
             return "\u{C608}\u{C815}"
+        case .ended:
+            return "지난 행사"
         }
+    }
+
+    /// 종료일이 오늘(KST)보다 앞이면 서버 상태와 무관하게 `.ended`.
+    /// 서버 `derivedStatus`는 시작일만 보므로 지난 행사도 "진행 중"으로 온다.
+    static func resolved(_ status: DiscoverStatus, endDate: String, now: Date = Date()) -> DiscoverStatus {
+        String(endDate.prefix(10)) < FestivalDateSupport.dayKey(now) ? .ended : status
     }
 }
 
@@ -64,7 +75,7 @@ struct Festival: Codable, Hashable, Identifiable {
         description = try c.decodeIfPresent(String.self, forKey: .description)
         startDate = try c.decode(String.self, forKey: .startDate)
         endDate = try c.decode(String.self, forKey: .endDate)
-        status = try c.decode(DiscoverStatus.self, forKey: .status)
+        status = DiscoverStatus.resolved(try c.decode(DiscoverStatus.self, forKey: .status), endDate: endDate)
         venueName = try c.decodeIfPresent(String.self, forKey: .venueName)
         address = try c.decode(String.self, forKey: .address)
         lat = try c.decode(Double.self, forKey: .lat)

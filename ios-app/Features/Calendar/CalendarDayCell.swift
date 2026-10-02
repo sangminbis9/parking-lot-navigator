@@ -99,6 +99,8 @@ struct CalendarDayCell: View {
             return FestivalDesign.teal
         case .upcoming:
             return FestivalDesign.lantern
+        case .ended:
+            return FestivalDesign.secondaryText
         }
     }
 }

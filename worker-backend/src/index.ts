@@ -11,6 +11,7 @@ import {
   queryPerformancesFromCache,
   queryPerformancePageFromCache,
   pruneOldSyncRuns,
+  pruneEndedDiscovery,
   reapStaleSyncRuns,
   syncDiscoveryCache,
   syncDiscoveryChunk,
@@ -1547,6 +1548,8 @@ async function runBackgroundJob(env: Env, job: BackgroundJob): Promise<void> {
       return sendMerchantEventCreatedSlack(env, job.eventId).then(() => undefined);
     case "prune-sync-runs": {
       await pruneOldSyncRuns(env.DB!);
+      // 새 Queue job을 만들지 않으려고(일일 op 여유 없음) 하루 1회 정리 회차에 얹는다.
+      await pruneEndedDiscovery(env.DB!);
       return;
     }
     case "prune-analytics": {

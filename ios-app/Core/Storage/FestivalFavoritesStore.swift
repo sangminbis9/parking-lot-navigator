@@ -45,12 +45,15 @@ struct SavedFestival: Codable, Hashable, Identifiable {
 }
 
 extension SavedFestival {
+    var status: DiscoverStatus {
+        let today = FestivalDateSupport.dayKey(Date())
+        return DiscoverStatus.resolved(startDate <= today ? .ongoing : .upcoming, endDate: endDate)
+    }
+
     /// 캘린더 어젠다용 폴백 Festival. 현재 위치·필터 기준 근처 축제 목록에 없는 즐겨찾기도
     /// 어젠다에 표시하기 위해, 캐시된 최소 필드만으로 구성한다(상세 필드는 정보 없음으로 표시됨).
     var asFestival: Festival {
-        let today = String(Date().formatted(.iso8601.year().month().day()).prefix(10))
-        let status: DiscoverStatus = (startDate <= today && endDate >= today) ? .ongoing : .upcoming
-        return Festival(
+        Festival(
             id: id,
             title: title,
             subtitle: venueName,
@@ -101,7 +104,7 @@ extension SavedFestival {
             dateText: startDate == endDate ? startDate : "\(startDate) - \(endDate)",
             venueName: venueName,
             address: address,
-            status: .upcoming,
+            status: status,
             typeText: domain.displayName,
             domain: domain,
             source: source,
@@ -144,8 +147,18 @@ final class FestivalFavoritesStore: ObservableObject {
         self.appGroupID = appGroupID
         self.onSave = onSave
         self.onRemove = onRemove
-        self.saved = Self.load(appGroupID: appGroupID)
+        let loaded = Self.load(appGroupID: appGroupID)
+        // 서버는 종료 30일이 지난 축제를 지운다. 기기 사본도 같은 기준으로 지워야
+        // 즐겨찾기에만 몇 달씩 남아 있지 않는다.
+        let cutoff = FestivalDateSupport.dayKey(
+            FestivalDateSupport.calendar.date(byAdding: .day, value: -Self.endedRetentionDays, to: Date()) ?? Date()
+        )
+        self.saved = loaded.filter { String($0.endDate.prefix(10)) >= cutoff }
+        if saved.count != loaded.count { persist() }
     }
+
+    /// Worker `DISCOVERY_ENDED_RETENTION_DAYS`와 같은 값.
+    nonisolated static let endedRetentionDays = 30
 
     func contains(id: String) -> Bool {
         saved.contains { $0.id == id }

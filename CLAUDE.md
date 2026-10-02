@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `305` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `306` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -417,6 +417,25 @@ pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator -
   push 후 CI(`deploy-worker.yml`)의 `migrations apply`가 같은 파일을 다시 돌리다 실패하고 deploy가
   건너뛰어진다(2026-09-26 `0033`에서 `duplicate column name`). 이미 수동 적용했다면
   `d1_migrations`에 파일 이름을 INSERT해 둔다.
+
+## 지난 행사 보존 30일 (`pruneEndedDiscovery`)
+
+종료일이 지난 축제는 30일 동안만 남긴다. 그 기간에는 지도 핀으로 나오지 않고, 검색해야만 "지난 행사"로 보인다.
+30일이 지나면 D1에서 지운다.
+
+- **서버** — `DISCOVERY_ENDED_RETENTION_DAYS = 30`(`discoveryCache.ts`). 기준일은 KST `오늘 - 30일`이고,
+  비교값은 `end_date`, 없으면 `start_date`다. 둘 다 비면 지우지 않는다. 지우는 일은 `prune-sync-runs`
+  job(UTC 06:15)에 얹었다 — Queue 일일 op에 여유가 없어서다. 한 회차에 1,000행까지만 지운다
+  (`discovery_items` 행 하나가 인덱스까지 쓰기 약 12행이다). 0032 삭제 트리거가 스냅샷 section을 올린다.
+  sync가 지운 행을 다시 넣지 않도록 upsert 전에 같은 기준으로 거른다.
+- **서버 status는 그대로 `ongoing|upcoming`** — `ended`를 서버 enum에 넣으면 옛 앱 빌드가 응답 전체를
+  디코딩하지 못한다. 앱이 `DiscoverStatus.resolved`로 종료일 < 오늘(KST)이면 `.ended`로 바꾼다(build 306).
+- **앱** — 이벤트 탭은 `pastWithinDays: 30`으로 받되 검색어가 있을 때만 `.ended`를 보여 주고 맨 뒤로 정렬한다.
+  행과 상세 화면에는 산호색 "지난 행사" 칩이 붙고, 상세 화면에는 종료 안내 문구가 한 줄 붙는다.
+  지도는 `pastWithinDays` 0 그대로라 핀이 없다. 캘린더는 90일 → 30일.
+- **즐겨찾기** — 기기 `UserDefaults` 사본이라 서버에서 지워도 남는다. `FestivalFavoritesStore` init이
+  종료 30일이 지난 항목을 지우고 저장한다. 서버 삭제만으로는 이 현상이 고쳐지지 않는다.
+- 회귀 테스트: `tests/pruneEndedDiscovery.test.ts`.
 
 ## 축제 중복 병합 (migration `0034`·`0035`, `festivalMerge.ts`)
 
