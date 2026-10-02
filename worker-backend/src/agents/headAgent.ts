@@ -113,10 +113,11 @@ function truncate(value: string, max: number): string {
   return value.slice(0, max) + "…";
 }
 
+/** UPDATE가 실제로 행을 바꿨으면 true. id가 없거나 0행이면 false. */
 export async function applyHeadVerdict(
   db: D1Database,
   verdict: HeadVerdict,
-): Promise<void> {
+): Promise<boolean> {
   const nextStatus =
     verdict.verdict === "approve"
       ? "approved"
@@ -124,7 +125,7 @@ export async function applyHeadVerdict(
         ? "rejected"
         : "pending";
   const now = new Date().toISOString();
-  await db
+  const result = await db
     .prepare(
       `UPDATE local_events
          SET status = ?,
@@ -148,6 +149,7 @@ export async function applyHeadVerdict(
       verdict.id,
     )
     .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 export async function logAgentActivity(
@@ -201,8 +203,78 @@ export type HeadReviewResult = {
   reconsidered: number;
   rescued: number;
   errors: string[];
+  /** 최근 실패 기록 때문에 이번 회차를 건너뛰었으면 그 이유. */
+  skippedReason?: string;
   generatedAt: string;
 };
+
+/** 같은 후보 묶음이 실패하면 이 시간 동안 다시 고르지 않는다. 영구 제외가 아니다. */
+export const HEAD_FAILED_TARGET_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+export type HeadErrorKind =
+  | "quota"
+  | "run_failed"
+  | "empty_response"
+  | "json_parse_failed"
+  | "other";
+
+export function headErrorKind(message: string): HeadErrorKind {
+  if (message.startsWith("workers_ai_run_failed")) {
+    // 4006 = Workers AI 무료 Neuron 일일 한도 소진. UTC 자정에 풀린다.
+    return /\b4006\b|daily free allocation/i.test(message) ? "quota" : "run_failed";
+  }
+  if (message.startsWith("workers_ai_empty_response")) return "empty_response";
+  if (message.startsWith("workers_ai_json_parse_failed")) return "json_parse_failed";
+  return "other";
+}
+
+type RecentErrorRow = { ts: string; reason: string | null; payload_json: string | null };
+
+type HeadCooldown = { skipReason: string | null; excludedIds: Set<string> };
+
+/**
+ * 최근 orion error 기록으로 이번 회차를 정한다.
+ * - 오늘(UTC) 이미 Neuron 한도 오류가 났으면 회차 전체를 건너뛴다 — 같은 날 다시 불러도
+ *   같은 오류뿐이고, error 행만 쌓인다.
+ * - 그 밖의 실패는 그 묶음의 후보 id를 24시간 동안 고르지 않는다. 다른 후보는 계속 본다.
+ */
+export async function loadHeadCooldown(
+  db: D1Database,
+  now: Date,
+): Promise<HeadCooldown> {
+  const since = new Date(now.getTime() - HEAD_FAILED_TARGET_COOLDOWN_MS).toISOString();
+  const { results } = await db
+    .prepare(
+      `SELECT ts, reason, payload_json FROM agent_activity
+        WHERE agent_id = 'orion' AND action = 'error' AND ts > ?
+        ORDER BY ts DESC
+        LIMIT 50`,
+    )
+    .bind(since)
+    .all<RecentErrorRow>();
+  const today = now.toISOString().slice(0, 10);
+  let skipReason: string | null = null;
+  const excludedIds = new Set<string>();
+  for (const row of results ?? []) {
+    const kind = headErrorKind(row.reason ?? "");
+    if (kind === "quota") {
+      if (row.ts.slice(0, 10) === today) skipReason = "workers_ai_quota_cooldown";
+      continue;
+    }
+    for (const id of payloadTargetIds(row.payload_json)) excludedIds.add(id);
+  }
+  return { skipReason, excludedIds };
+}
+
+function payloadTargetIds(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const ids = (JSON.parse(json) as { targetIds?: unknown }).targetIds;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 type LocalEventRow = {
   id: string;
@@ -246,6 +318,19 @@ export async function runHeadReview(
     ? "('pending', 'approved', 'rejected')"
     : "('pending', 'approved')";
 
+  let cooldown: HeadCooldown;
+  try {
+    cooldown = await loadHeadCooldown(db, new Date(generatedAt));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
+    result.errors.push(`head_review_cooldown_query:${message.slice(0, 100)}`);
+    return result;
+  }
+  if (cooldown.skipReason) {
+    result.skippedReason = cooldown.skipReason;
+    return result;
+  }
+
   let rows: LocalEventRow[];
   try {
     const queryResult = await db
@@ -262,17 +347,25 @@ export async function runHeadReview(
                    AND aa.agent_id = 'orion'
                    AND aa.action IN ('validate', 'reconsider')
               )
-              OR le.short_description IS NULL
+              OR (le.short_description IS NULL AND le.status <> 'rejected')
             )
           ORDER BY le.short_description ASC, le.updated_at DESC
           LIMIT ?`,
       )
-      .bind(limit)
+      .bind(limit + cooldown.excludedIds.size)
       .all<LocalEventRow>();
-    rows = queryResult.results ?? [];
+    rows = (queryResult.results ?? [])
+      .filter((row) => !cooldown.excludedIds.has(row.id))
+      .slice(0, limit);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
     result.errors.push(`head_review_query:${message.slice(0, 100)}`);
+    // 사무실 화면이 "후보 조회 실패"를 구분해 보여 줄 수 있게 한 줄만 남긴다(원문은 남기지 않는다).
+    await logAgentActivity(db, {
+      agentId: "orion",
+      action: "query_error",
+      reason: "head_review_query_failed",
+    });
     return result;
   }
   result.considered = rows.length;
@@ -310,9 +403,14 @@ export async function runHeadReview(
         agentId: "orion",
         action: "error",
         reason: message.slice(0, 200),
-        payload: { batchSize: batch.length },
+        payload: {
+          kind: headErrorKind(message),
+          batchSize: batch.length,
+          targetIds: batch.map((row) => row.id),
+        },
       });
-      continue;
+      // 다음 묶음도 대개 같은 이유(한도·장애)로 실패한다. 회차당 error 한 행이면 충분하다.
+      break;
     }
     const verdictById = new Map(verdicts.map((v) => [v.id, v]));
     for (const row of batch) {
@@ -328,12 +426,26 @@ export async function runHeadReview(
         });
         continue;
       }
+      let applied = false;
+      let applyError = "no_row_updated";
       try {
-        await applyHeadVerdict(db, verdict);
+        applied = await applyHeadVerdict(db, verdict);
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "unknown_error";
-        result.errors.push(`head_apply:${message.slice(0, 80)}`);
+        applyError = error instanceof Error ? error.message : "unknown_error";
+      }
+      if (!applied) {
+        // 판정을 DB에 못 썼으면 성공 카운터·validate·post를 남기지 않는다.
+        result.errors.push(`head_apply:${applyError.slice(0, 80)}`);
+        await logAgentActivity(db, {
+          agentId: "orion",
+          action: "apply_error",
+          targetKind: "local_event",
+          targetId: row.id,
+          targetTitle: row.title,
+          verdict: verdict.verdict,
+          reason: `head_apply_failed:${applyError.slice(0, 120)}`,
+        });
+        continue;
       }
       result.reviewed += 1;
       if (verdict.verdict === "approve") result.approved += 1;

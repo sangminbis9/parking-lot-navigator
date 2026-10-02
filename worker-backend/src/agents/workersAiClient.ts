@@ -13,11 +13,14 @@ export type AiCallOptions = {
   model?: string;
 };
 
-type AiTextResponse = {
-  response?: string;
+type AiRawResponse = {
+  // JSON mode(response_format)일 때 Workers AI는 `response`를 이미 파싱된 객체로
+  // 돌려준다. 타입 정의는 string뿐이라 string만 보던 예전 코드는 정상 응답을
+  // `workers_ai_empty_response`로 버렸다(2026-10 운영 activity 로그).
+  response?: unknown;
 };
 
-export async function callAiText(opts: AiCallOptions): Promise<string> {
+async function runAi(opts: AiCallOptions): Promise<unknown> {
   if (!opts.ai) throw new Error("workers_ai_binding_missing");
   const messages: Array<{ role: string; content: string }> = [];
   if (opts.systemInstruction) {
@@ -39,21 +42,27 @@ export async function callAiText(opts: AiCallOptions): Promise<string> {
     const message = error instanceof Error ? error.message : "unknown_error";
     throw new Error(`workers_ai_run_failed:${message.slice(0, 400)}`);
   }
-  const data = raw as AiTextResponse;
-  const text = typeof data?.response === "string" ? data.response.trim() : "";
+  return (raw as AiRawResponse | null)?.response;
+}
+
+export async function callAiText(opts: AiCallOptions): Promise<string> {
+  const response = await runAi(opts);
+  const text = typeof response === "string" ? response.trim() : "";
   if (!text) throw new Error("workers_ai_empty_response");
   return text;
 }
 
 export async function callAiJson<T>(opts: AiCallOptions): Promise<T> {
-  const text = await callAiText({ ...opts, jsonMode: true });
+  const response = await runAi({ ...opts, jsonMode: true });
+  if (response !== null && typeof response === "object") return response as T;
+  const text = typeof response === "string" ? response.trim() : "";
+  if (!text) throw new Error("workers_ai_empty_response");
   const cleaned = stripCodeFence(text);
   try {
     return JSON.parse(cleaned) as T;
   } catch (error) {
-    throw new Error(
-      `workers_ai_json_parse_failed:${(error as Error).message}:${cleaned.slice(0, 200)}`,
-    );
+    // 원문은 붙이지 않는다 — 이 메시지가 agent_activity.reason으로 앱에 노출된다.
+    throw new Error(`workers_ai_json_parse_failed:${(error as Error).message.slice(0, 120)}`);
   }
 }
 

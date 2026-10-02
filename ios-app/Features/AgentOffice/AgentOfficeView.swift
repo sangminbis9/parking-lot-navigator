@@ -113,6 +113,8 @@ private struct OfficeFloorView: View {
     let activity: [AgentActivityEvent]
     @State private var selectedAgentId: String?
     @State private var showBoardLog = false
+    @State private var bubbleScheduler = AgentBubbleScheduler()
+    @State private var bubbles: [String: String] = [:]
 
     var body: some View {
         GeometryReader { proxy in
@@ -133,7 +135,7 @@ private struct OfficeFloorView: View {
                     AgentRunner(
                         agent: agent,
                         frame: frame,
-                        spokenLine: liveLine(for: agent.id),
+                        spokenLine: bubbles[agent.id],
                         onTap: {
                             withAnimation(.spring(duration: 0.2)) {
                                 selectedAgentId = selectedAgentId == agent.id ? nil : agent.id
@@ -158,7 +160,7 @@ private struct OfficeFloorView: View {
             if let sid = selectedAgentId, let sel = agents.first(where: { $0.id == sid }) {
                 AgentInfoBadge(
                     agent: sel,
-                    recentActivity: activity.filter { $0.agentId == sid }.prefix(5).map { $0 }
+                    recentActivity: Array(AgentActivityFeed.collapse(activity.filter { $0.agentId == sid }).prefix(5))
                 ) {
                     withAnimation(.spring(duration: 0.2)) { selectedAgentId = nil }
                 }
@@ -173,24 +175,20 @@ private struct OfficeFloorView: View {
         .sheet(isPresented: $showBoardLog) {
             BoardLogSheet(activity: activity)
         }
+        .task {
+            // 말풍선은 실제 최근 활동에서만, 한 번에 최대 2개·간격을 두고 띄운다.
+            while !Task.isCancelled {
+                let next = bubbleScheduler.tick(activity: activity, now: Date())
+                if next != bubbles {
+                    withAnimation(.easeInOut(duration: 0.2)) { bubbles = next }
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
-
-    private func liveLine(for agentId: String) -> String? {
-        guard let event = activity.first(where: { $0.agentId == agentId }) else { return nil }
-        guard isRecentActivity(event.ts) else { return nil }
-        return formatActivityLine(event)
-    }
-}
-
-private func isRecentActivity(_ timestamp: String) -> Bool {
-    guard let date = AgentOfficeDateParser.formatter.date(from: timestamp) else {
-        return false
-    }
-    return Date().timeIntervalSince(date) < 120
 }
 
 private enum AgentOfficeDateParser {
-    static let formatter = ISO8601DateFormatter()
     static let wakeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ko_KR")
@@ -198,45 +196,6 @@ private enum AgentOfficeDateParser {
         formatter.dateStyle = .none
         return formatter
     }()
-}
-
-private func formatActivityLine(_ event: AgentActivityEvent) -> String? {
-    let title = event.targetTitle ?? ""
-    switch (event.agentId, event.action) {
-    case ("scout", "found"):
-        return title.isEmpty ? "후보 발견" : "발견: \(title)"
-    case ("festa", "found"):
-        return title.isEmpty ? "축제 후보 발견" : "발견: \(title)"
-    case ("orion", "validate"):
-        let prefix: String
-        switch event.verdict {
-        case "approve": prefix = "승인"
-        case "reject":  prefix = "거절"
-        default:        prefix = "보류"
-        }
-        if let reason = event.reason, !reason.isEmpty {
-            return "\(prefix): \(reason)"
-        }
-        return title.isEmpty ? prefix : "\(prefix): \(title)"
-    case ("orion", "reconsider"):
-        let prefix = event.verdict == "approve" ? "복구 승인" : "재검토"
-        if let reason = event.reason, !reason.isEmpty {
-            return "\(prefix): \(reason)"
-        }
-        return title.isEmpty ? prefix : "\(prefix): \(title)"
-    case ("orion", "error"):
-        return "헤드 LLM 오류"
-    case ("pixel", "image_enrich"):
-        return title.isEmpty ? "대표 사진 보강" : "사진 보강: \(title)"
-    case ("pixel", "image_error"):
-        return event.reason ?? "사진 보강 오류"
-    case ("pixel", "image_skip"):
-        return event.reason ?? "사진 후보 없음"
-    case ("echo", "post"):
-        return title.isEmpty ? "게시판 등록" : "게시: \(title)"
-    default:
-        return event.reason
-    }
 }
 
 private struct AgentRoleStrip: View {
@@ -336,8 +295,8 @@ private struct ActivityFeed: View {
             Text("최근 활동")
                 .font(.festival(.headline))
                 .foregroundStyle(FestivalDesign.navy)
-            ForEach(events.prefix(12)) { event in
-                ActivityRow(event: event)
+            ForEach(AgentActivityFeed.collapse(events).prefix(12)) { group in
+                ActivityRow(event: group.event, count: group.count)
             }
         }
         .padding(14)
@@ -347,6 +306,7 @@ private struct ActivityFeed: View {
 
 private struct ActivityRow: View {
     let event: AgentActivityEvent
+    var count: Int = 1
 
     private var accent: Color {
         switch event.verdict {
@@ -377,11 +337,16 @@ private struct ActivityRow: View {
                         .font(.festival(.caption))
                         .foregroundStyle(FestivalDesign.secondaryText)
                     Spacer()
+                    if count > 1 {
+                        Text("×\(count)")
+                            .font(.festival(.caption2, weight: .bold))
+                            .foregroundStyle(FestivalDesign.secondaryText)
+                    }
                     Text(shortTime(event.ts))
                         .font(.festival(.caption2))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 }
-                Text(formatActivityLine(event) ?? (event.targetTitle ?? "—"))
+                Text(AgentActivityText.line(for: event) ?? (event.targetTitle ?? "—"))
                     .font(.festival(.subheadline))
                     .foregroundStyle(FestivalDesign.navy)
                     .lineLimit(2)
@@ -390,7 +355,7 @@ private struct ActivityRow: View {
     }
 
     private func shortTime(_ ts: String) -> String {
-        if let date = AgentOfficeDateParser.formatter.date(from: ts) {
+        if let date = AgentOfficeDates.parse(ts) {
             return date.formatted(date: .omitted, time: .shortened)
         }
         return ts
@@ -964,6 +929,7 @@ private struct AgentRunner: View {
             if let line = spokenLine {
                 PixelBubble(text: line, speaker: agent.name, accent: agent.status.color)
                     .offset(x: bubbleXOffset, y: -44)
+                    .accessibilityHidden(true)
             }
 
             Text(agent.name)
@@ -979,7 +945,7 @@ private struct AgentRunner: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(agent.name), \(agent.role)\(spokenLine.map { ", \($0)" } ?? "")")
+        .accessibilityLabel(AgentOfficeAccessibility.runnerLabel(for: agent))
     }
 
     private var bubbleXOffset: CGFloat {
@@ -1042,7 +1008,7 @@ private extension AgentOfficeAgent {
 // Pixel-style info badge: current responsibility, work state and recent activity.
 private struct AgentInfoBadge: View {
     let agent: AgentOfficeAgent
-    var recentActivity: [AgentActivityEvent] = []
+    var recentActivity: [AgentActivityGroup] = []
     let onDismiss: () -> Void
 
     var body: some View {
@@ -1105,14 +1071,14 @@ private struct AgentInfoBadge: View {
                         .font(.festival(size: 9))
                         .foregroundStyle(FestivalDesign.secondaryText)
                 } else {
-                    ForEach(recentActivity.indices, id: \.self) { index in
-                        let event = recentActivity[index]
+                    ForEach(recentActivity) { group in
+                        let event = group.event
                         HStack(alignment: .top, spacing: 6) {
                             Text(shortTime(event.ts))
                                 .font(.festival(size: 7))
                                 .foregroundStyle(FestivalDesign.secondaryText)
                                 .frame(width: 34, alignment: .leading)
-                            Text(activitySummary(event))
+                            Text(activitySummary(event) + (group.count > 1 ? " ×\(group.count)" : ""))
                                 .font(.festival(size: 8))
                                 .foregroundStyle(FestivalDesign.navy)
                                 .lineLimit(2)
@@ -1150,11 +1116,8 @@ private struct AgentInfoBadge: View {
     }
 
     private func activitySummary(_ event: AgentActivityEvent) -> String {
-        if let formatted = formatActivityLine(event), !formatted.isEmpty {
+        if let formatted = AgentActivityText.line(for: event), !formatted.isEmpty {
             return formatted
-        }
-        if let reason = event.reason, !reason.isEmpty {
-            return reason
         }
         if let title = event.targetTitle, !title.isEmpty {
             return title
@@ -1174,7 +1137,7 @@ private struct AgentInfoBadge: View {
     }
 
     private func shortTime(_ ts: String) -> String {
-        guard let date = AgentOfficeDateParser.formatter.date(from: ts) else { return "--:--" }
+        guard let date = AgentOfficeDates.parse(ts) else { return "--:--" }
         return AgentOfficeDateParser.wakeFormatter.string(from: date)
     }
 }
@@ -1511,8 +1474,8 @@ private struct BoardLogSheet: View {
                         Text("최근 활동")
                             .font(.festival(.headline))
                             .foregroundStyle(FestivalDesign.navy)
-                        ForEach(Array(activity.prefix(20))) { event in
-                            ActivityRow(event: event)
+                        ForEach(AgentActivityFeed.collapse(activity).prefix(20)) { group in
+                            ActivityRow(event: group.event, count: group.count)
                         }
                     }
                     .padding(14)

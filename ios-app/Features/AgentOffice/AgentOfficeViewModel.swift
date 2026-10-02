@@ -214,7 +214,7 @@ final class AgentOfficeViewModel: ObservableObject {
                 updatedAt: Date()
             )
             snapshot = nextSnapshot
-            agents = Self.buildAgents(snapshot: nextSnapshot)
+            agents = Self.buildAgents(snapshot: nextSnapshot, activity: recentActivity)
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
@@ -227,7 +227,7 @@ final class AgentOfficeViewModel: ObservableObject {
                 merchantEventCount: 0,
                 updatedAt: Date()
             )
-            agents = Self.errorAgents(message: error.localizedDescription)
+            agents = Self.errorAgents()
         }
 
     }
@@ -237,16 +237,20 @@ final class AgentOfficeViewModel: ObservableObject {
     private static func summary(parking: [ProviderHealth], discovery: [ProviderHealth], festivals: Int, events: Int, missingImages: Int) -> String {
         let p = providerCounts(parking)
         let d = providerCounts(discovery)
-        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 기기 스냅샷 축제 \(festivals)건 이벤트 \(events)건 · 사진 보강 \(missingImages)건"
+        return "주차 \(p.up)/\(p.total) 정상 · 탐색 \(d.up)/\(d.total) 정상 · 서울 인근 표본 축제 \(festivals)건 이벤트 \(events)건 · 사진 없음 \(missingImages)건"
     }
 
-    private static func buildAgents(snapshot: AgentOfficeSnapshot) -> [AgentOfficeAgent] {
+    /// 상태 문구는 실제 근거가 있는 것만 말한다. 활동 기록을 남기는 에이전트는 orion·pixel·echo뿐이고,
+    /// 축제맨/행사맨 숫자는 서울 30km 표본(최대 8건)이라 전체 수집량처럼 말하지 않는다.
+    static func buildAgents(snapshot: AgentOfficeSnapshot, activity: [AgentActivityEvent] = [], now: Date = Date()) -> [AgentOfficeAgent] {
         let p = providerCounts(snapshot.parkingProviders)
         let d = providerCounts(snapshot.discoveryProviders)
-        let stale = p.stale + d.stale
         let festivalCount = snapshot.festivals.count
         let eventCount = snapshot.events.count
         let missingImages = snapshot.missingImageCount
+        let orion = evidence(agentId: "orion", activity: activity, now: now, workingStatus: .thinking)
+        let pixel = evidence(agentId: "pixel", activity: activity, now: now, workingStatus: .validating)
+        let echo = evidence(agentId: "echo", activity: activity, now: now, workingStatus: .monitoring)
 
         return [
             AgentOfficeAgent(
@@ -254,27 +258,27 @@ final class AgentOfficeViewModel: ObservableObject {
                 name: AgentOfficeAgent.displayName(forID: "orion"),
                 role: "운영 총괄",
                 spriteAsset: "AgentChar0",
-                status: .thinking,
-                line: snapshot.summary,
-                reply: stale > 0 ? "지연 신호 \(stale)개 확인했어요." : "잘 진행 중이에요."
+                status: orion.status,
+                line: orion.line,
+                reply: orion.reply
             ),
             AgentOfficeAgent(
                 id: "festa",
                 name: AgentOfficeAgent.displayName(forID: "festa"),
                 role: "공공 축제 수집",
                 spriteAsset: "AgentChar1",
-                status: festivalCount > 0 ? .collecting : .idle,
-                line: festivalCount > 0 ? "축제 \(festivalCount)건 정리했어요." : "오늘은 새 축제가 없네요.",
-                reply: "보고드릴게요."
+                status: .idle,
+                line: festivalCount > 0 ? "서울 인근 표본 축제 \(festivalCount)건 확인" : noActivityLine,
+                reply: "표본은 서울 30km·최대 8건이라 전체 수집량이 아니에요."
             ),
             AgentOfficeAgent(
                 id: "scout",
                 name: AgentOfficeAgent.displayName(forID: "scout"),
                 role: "기존 이벤트 보관",
                 spriteAsset: "AgentChar2",
-                status: eventCount > 0 ? .monitoring : .idle,
-                line: eventCount > 0 ? "기존 이벤트 \(eventCount)건 보관 중." : "현재 보관 이벤트 없음.",
-                reply: "새 크롤링 없이 기존 핀을 지킬게요."
+                status: .idle,
+                line: eventCount > 0 ? "서울 인근 표본 이벤트 \(eventCount)건 확인" : noActivityLine,
+                reply: "표본은 서울 30km·최대 8건이라 전체 보관량이 아니에요."
             ),
             AgentOfficeAgent(
                 id: "vera",
@@ -282,17 +286,23 @@ final class AgentOfficeViewModel: ObservableObject {
                 role: "품질·누락 검증",
                 spriteAsset: "AgentChar3",
                 status: validatorStatus(parking: p, discovery: d),
-                line: "데이터 품질 확인 중.",
-                reply: p.down + d.down > 0 ? "실패 항목 표시했어요." : "검증 통과 중이에요."
+                line: p.total + d.total == 0
+                    ? checkingLine
+                    : "소스 상태 주차 \(p.up)/\(p.total) · 탐색 \(d.up)/\(d.total) 정상",
+                reply: p.down + d.down > 0
+                    ? "응답 실패 소스 \(p.down + d.down)개"
+                    : (p.stale + d.stale > 0 ? "지연 소스 \(p.stale + d.stale)개" : "소스 상태 기준, 이상 신호 없음")
             ),
             AgentOfficeAgent(
                 id: "pixel",
                 name: AgentOfficeAgent.displayName(forID: "pixel"),
                 role: "이미지 보강",
                 spriteAsset: "AgentChar5",
-                status: missingImages > 0 ? .validating : .idle,
-                line: missingImages > 0 ? "사진 없는 항목 \(missingImages)건 보강 중." : "이미지 큐 비었어요.",
-                reply: "원문 대표 이미지를 찾고 있어요."
+                status: pixel.status,
+                line: pixel.line,
+                reply: pixel.hasEvidence
+                    ? pixel.reply
+                    : (missingImages > 0 ? "서울 인근 표본 중 사진 없는 항목 \(missingImages)건" : pixel.reply)
             ),
             AgentOfficeAgent(
                 id: "sentinel",
@@ -301,29 +311,27 @@ final class AgentOfficeViewModel: ObservableObject {
                 spriteAsset: "AgentChar4",
                 status: healthStatus(for: p),
                 line: p.total == 0
-                    ? "주차 피드가 응답하지 않아요."
-                    : "주차 \(p.up)/\(p.total) 정상\(p.stale > 0 ? ", 지연 \(p.stale)" : "").",
-                reply: "패트롤 계속할게요."
+                    ? checkingLine
+                    : "주차 \(p.up)/\(p.total) 정상\(p.stale > 0 ? ", 지연 \(p.stale)" : "")",
+                reply: p.down > 0 ? "응답 실패 피드 \(p.down)개" : "피드 상태 기준이에요."
             ),
             AgentOfficeAgent(
                 id: "echo",
                 name: AgentOfficeAgent.displayName(forID: "echo"),
                 role: "게시·알림",
                 spriteAsset: "AgentChar6",
-                status: snapshot.published.isEmpty ? .idle : .monitoring,
-                line: snapshot.published.isEmpty ? "게시판 정리 중." : "게시판에 \(snapshot.published.count)건 붙였어요.",
-                reply: "푸시 일정 잡아둘게요."
+                status: echo.status,
+                line: echo.line,
+                reply: echo.reply
             ),
             AgentOfficeAgent(
                 id: "atlas",
                 name: AgentOfficeAgent.displayName(forID: "atlas"),
                 role: "스냅샷·CDN",
                 spriteAsset: "AgentAtlas",
-                status: snapshot.published.isEmpty ? .idle : .monitoring,
-                line: snapshot.published.isEmpty
-                    ? "다음 변경 묶음을 기다려요."
-                    : "기기용 행사 스냅샷 \(snapshot.published.count)건을 점검 중.",
-                reply: "변경된 섹션만 안전하게 발행할게요."
+                status: .idle,
+                line: checkingLine,
+                reply: noActivityLine
             ),
             AgentOfficeAgent(
                 id: "harbor",
@@ -332,28 +340,60 @@ final class AgentOfficeViewModel: ObservableObject {
                 spriteAsset: "AgentHarbor",
                 status: snapshot.merchantEventCount > 0 ? .monitoring : .idle,
                 line: snapshot.merchantEventCount > 0
-                    ? "현재 범위 사장님 이벤트 \(snapshot.merchantEventCount)건 확인."
-                    : "새 사장님 등록을 기다려요.",
-                reply: "등록 정보와 사진을 즉시 전달할게요."
+                    ? "서울 인근 사장님 이벤트 \(snapshot.merchantEventCount)건 게시 중"
+                    : noActivityLine,
+                reply: "새 등록은 Slack으로 전달돼요."
             ),
             AgentOfficeAgent(
                 id: "relay",
                 name: AgentOfficeAgent.displayName(forID: "relay"),
                 role: "Cron·Queue",
                 spriteAsset: "AgentRelay",
-                status: .monitoring,
-                line: "수집·주차·발행 작업의 분리 일정을 감시 중.",
-                reply: "실패 작업만 재시도 큐로 보낼게요."
+                status: .idle,
+                line: checkingLine,
+                reply: noActivityLine
             )
         ]
     }
 
-    private static func errorAgents(message: String) -> [AgentOfficeAgent] {
+    static let noActivityLine = "최근 활동 없음"
+    static let checkingLine = "상태 확인 중"
+    /// 이 시간 안의 기록이면 "일하는 중", 오류는 하루 동안 상태에 남긴다.
+    static let workingWindow: TimeInterval = 10 * 60
+    static let errorWindow: TimeInterval = 24 * 60 * 60
+
+    private struct Evidence {
+        let status: AgentOfficeStatus
+        let line: String
+        let reply: String
+        let hasEvidence: Bool
+    }
+
+    private static func evidence(agentId: String, activity: [AgentActivityEvent], now: Date, workingStatus: AgentOfficeStatus) -> Evidence {
+        guard let event = activity.first(where: { $0.agentId == agentId }),
+              let date = AgentOfficeDates.parse(event.ts),
+              let line = AgentActivityText.line(for: event) else {
+            return Evidence(status: .idle, line: noActivityLine, reply: "기록이 생기면 여기에 보여 드려요.", hasEvidence: false)
+        }
+        let age = now.timeIntervalSince(date)
+        let status: AgentOfficeStatus
+        if AgentActivityText.isError(event) {
+            let isQuota = line == AgentActivityText.headErrorLabel(reason: "4006")
+            status = age < errorWindow ? (isQuota ? .blocked : .error) : .idle
+        } else {
+            status = age < workingWindow ? workingStatus : .idle
+        }
+        let reply = "마지막 기록 " + date.formatted(.relative(presentation: .named))
+        return Evidence(status: status, line: line, reply: reply, hasEvidence: true)
+    }
+
+    /// 오류 원문(`localizedDescription`)은 화면에 내보내지 않는다.
+    static func errorAgents() -> [AgentOfficeAgent] {
         let base = buildAgents(snapshot: .empty)
         return base.map { agent in
             switch agent.id {
             case "orion":
-                return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .error, line: "백엔드에 연결할 수 없어요.", reply: message)
+                return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .error, line: "백엔드에 연결할 수 없어요.", reply: "잠시 후 다시 불러올게요.")
             case "sentinel", "atlas", "relay":
                 return AgentOfficeAgent(id: agent.id, name: agent.name, role: agent.role, spriteAsset: agent.spriteAsset, status: .blocked, line: "헬스 엔드포인트 응답 없음.", reply: "재시도 대기 중.")
             default:
@@ -392,8 +432,8 @@ final class AgentOfficeViewModel: ObservableObject {
     private static func validatorStatus(parking: ProviderCounts, discovery: ProviderCounts) -> AgentOfficeStatus {
         if parking.down + discovery.down > 0 { return .error }
         if parking.stale + discovery.stale > 0 { return .blocked }
-        if parking.degraded + discovery.degraded > 0 { return .monitoring }
-        return .validating
+        if parking.total + discovery.total == 0 { return .idle }
+        return .monitoring
     }
 }
 
