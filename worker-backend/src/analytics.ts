@@ -10,6 +10,8 @@ import { seoulDayString } from "./kstDate.js";
 //
 // 라벨은 자유 문자열이 아니라 이벤트마다 정해진 값만 받는다. 자유 입력을 허용하면
 // 카디널리티가 터져 쓰기 예산을 먹고, 검색어 같은 개인정보가 흘러들 수 있다.
+// 예외는 사장님 대시보드 조회수용 `local_event_view` 하나다. 라벨이 행사 id인데,
+// 실제로 있는 사장님 등록 이벤트 id만 받으므로 카디널리티가 그 이벤트 수로 묶인다.
 const ANALYTICS_EVENTS = {
   app_open: [],
   map_loaded: [],
@@ -27,6 +29,10 @@ const ANALYTICS_EVENTS = {
 } as const satisfies Record<string, readonly string[]>;
 
 export type AnalyticsEventName = keyof typeof ANALYTICS_EVENTS;
+
+/** 사장님 이벤트 상세를 연 기기 수. 앱이 기기·이벤트당 한 번만 보낸다. */
+export const LOCAL_EVENT_VIEW = "local_event_view";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const analyticsBatchSchema = z.object({
   events: z
@@ -50,6 +56,14 @@ function normalize(
 ): { name: string; label: string; count: number }[] {
   const merged = new Map<string, { name: string; label: string; count: number }>();
   for (const entry of batch.events) {
+    if (entry.name === LOCAL_EVENT_VIEW) {
+      if (!entry.label || !UUID_PATTERN.test(entry.label)) continue;
+      const key = `${entry.name} ${entry.label}`;
+      const existing = merged.get(key);
+      if (existing) existing.count += entry.count;
+      else merged.set(key, { name: entry.name, label: entry.label, count: entry.count });
+      continue;
+    }
     const allowedLabels = ANALYTICS_EVENTS[entry.name as AnalyticsEventName];
     if (!allowedLabels) continue;
     const label = entry.label ?? "";
@@ -69,7 +83,20 @@ export async function recordAnalytics(
   batch: AnalyticsBatch,
   now: Date = new Date(),
 ): Promise<number> {
-  const entries = normalize(batch);
+  let entries = normalize(batch);
+  const viewIds = entries.filter((e) => e.name === LOCAL_EVENT_VIEW).map((e) => e.label);
+  if (viewIds.length > 0) {
+    // 형식만 맞는 임의 id로 행을 늘리지 못하게, 사장님이 등록한 이벤트만 남긴다.
+    const found = await db
+      .prepare(
+        `SELECT id FROM local_events
+          WHERE merchant_id IS NOT NULL AND id IN (${viewIds.map(() => "?").join(",")})`,
+      )
+      .bind(...viewIds)
+      .all<{ id: string }>();
+    const known = new Set((found.results ?? []).map((r) => String(r.id)));
+    entries = entries.filter((e) => e.name !== LOCAL_EVENT_VIEW || known.has(e.label));
+  }
   if (entries.length === 0) return 0;
   const day = seoulDayString(now);
   const updatedAt = now.toISOString();
@@ -107,6 +134,27 @@ export async function queryAnalyticsDaily(
     label: String(r.label),
     count: Number(r.count ?? 0),
   }));
+}
+
+/** 이벤트 id별 누적 조회 기기 수. 보관 기간(ANALYTICS_RETENTION_DAYS) 안의 합이다. */
+export async function queryLocalEventViews(
+  db: D1Database,
+  eventIds: string[],
+): Promise<Map<string, number>> {
+  const views = new Map<string, number>();
+  if (eventIds.length === 0) return views;
+  const result = await db
+    .prepare(
+      `SELECT label, SUM(count) AS total FROM analytics_daily
+        WHERE event = ? AND label IN (${eventIds.map(() => "?").join(",")})
+        GROUP BY label`,
+    )
+    .bind(LOCAL_EVENT_VIEW, ...eventIds)
+    .all<Record<string, unknown>>();
+  for (const row of result.results ?? []) {
+    views.set(String(row.label), Number(row.total ?? 0));
+  }
+  return views;
 }
 
 export async function pruneOldAnalytics(

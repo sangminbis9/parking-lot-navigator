@@ -220,11 +220,12 @@ function statusBadge(event: MerchantEventRow): string {
   }
 }
 
-function eventRow(event: MerchantEventRow): string {
+function eventRow(event: MerchantEventRow, views: number): string {
   const meta: string[] = [];
   meta.push(htmlEscape(event.store_name));
   if (event.paid_until) meta.push(`~ ${htmlEscape(event.paid_until)}`);
   else if (event.end_date) meta.push(`종료 ${htmlEscape(event.end_date)}`);
+  meta.push(`조회 ${views.toLocaleString("ko-KR")}명`);
   const renewable = isRenewableEvent(event);
   const actionHref =
     event.status === "pending_payment"
@@ -249,10 +250,11 @@ export function renderDashboard(
   merchant: MerchantRow,
   events: MerchantEventRow[],
   isAdmin = false,
+  views: Map<string, number> = new Map(),
 ): string {
   const name = merchant.display_name ?? "사업자";
   const eventList = events.length
-    ? events.map(eventRow).join("\n")
+    ? events.map((event) => eventRow(event, views.get(event.id) ?? 0)).join("\n")
     : `<p class="muted">등록한 이벤트가 없습니다. 첫 이벤트를 등록해 보세요.</p>`;
   return layout(
     "대시보드",
@@ -267,6 +269,7 @@ export function renderDashboard(
   <div class="card">
     <h1>등록한 이벤트</h1>
     ${eventList}
+    ${events.length ? `<p class="muted">조회는 앱에서 이벤트 상세를 연 기기 수입니다. 같은 기기는 한 번만 셉니다.</p>` : ""}
     <a class="btn btn-link" href="/merchant/event/new">새 이벤트 등록</a>
   </div>
   ${isAdmin ? `<a class="btn btn-secondary" href="/merchant/admin">전체 이벤트 관리 (관리자)</a>` : ""}

@@ -50,6 +50,7 @@ import {
   type MerchantEventType,
   type MerchantEventRow,
 } from "./events.js";
+import { queryLocalEventViews } from "../analytics.js";
 import { addMonths, confirmTossPayment } from "./toss.js";
 import type { BackgroundJob } from "../jobs.js";
 import { sendMerchantEventCreatedSlackCard } from "./slack.js";
@@ -261,8 +262,12 @@ export function createMerchantApp() {
       return c.redirect("/merchant");
     }
     const events = await listMerchantEvents(c.env.DB, merchant.id);
+    const views = await queryLocalEventViews(
+      c.env.DB,
+      events.map((event) => event.id),
+    );
     return c.html(
-      renderDashboard(merchant, events, isMerchantAdmin(c.env, merchant.id)),
+      renderDashboard(merchant, events, isMerchantAdmin(c.env, merchant.id), views),
     );
   });
 

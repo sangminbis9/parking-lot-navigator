@@ -93,6 +93,9 @@ struct ParkingResultsView: View {
         .task {
             if let reportEventKind {
                 AnalyticsService.shared.track(.eventDetailOpen, label: reportEventKind)
+                if reportEventKind == "local_event" {
+                    AnalyticsService.shared.trackLocalEventView(id: rawEventId)
+                }
                 hasReported = EventReportedStore.contains(kind: reportEventKind, id: rawEventId)
             }
             AnalyticsService.shared.track(.parkingView)

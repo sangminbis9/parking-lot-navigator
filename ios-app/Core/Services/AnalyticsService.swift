@@ -20,6 +20,8 @@ enum AnalyticsEvent: String {
     case merchantRegisterTap = "merchant_register_tap"
     case emptyResult = "empty_result"
     case apiError = "api_error"
+    /// 라벨이 로컬 이벤트 id다. 사장님 대시보드 조회수로 쓰이고 기기·이벤트당 한 번만 보낸다.
+    case localEventView = "local_event_view"
 }
 
 actor AnalyticsBuffer {
@@ -71,6 +73,12 @@ final class AnalyticsService {
         guard isEnabled else { return }
         let key = label.map { "\(event.rawValue)|\($0)" } ?? event.rawValue
         Task { await buffer.add(key) }
+    }
+
+    /// 같은 기기가 같은 이벤트를 여러 번 열어도 한 명으로 센다.
+    func trackLocalEventView(id: String, gate: SeenEventGate = SeenEventGate()) {
+        guard isEnabled, gate.markSeen(id) else { return }
+        track(.localEventView, label: id)
     }
 
     /// 서버에 기기 식별자를 보내지 않고 설치별 KST 하루 최대 한 번만 app_open을 센다.
@@ -140,6 +148,27 @@ final class DailyActiveGate {
         let day = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
         guard defaults.string(forKey: key) != day else { return false }
         defaults.set(day, forKey: key)
+        return true
+    }
+}
+
+/// 이 기기에서 조회수를 이미 보낸 로컬 이벤트 id. 최근 500개만 남긴다.
+final class SeenEventGate {
+    private let defaults: UserDefaults
+    private let key: String
+    private let limit = 500
+
+    init(defaults: UserDefaults = .standard, key: String = "analytics.seenLocalEventIds") {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    /// 처음 보는 id면 기록하고 true.
+    func markSeen(_ id: String) -> Bool {
+        var ids = defaults.stringArray(forKey: key) ?? []
+        guard !ids.contains(id) else { return false }
+        ids.append(id)
+        defaults.set(Array(ids.suffix(limit)), forKey: key)
         return true
     }
 }

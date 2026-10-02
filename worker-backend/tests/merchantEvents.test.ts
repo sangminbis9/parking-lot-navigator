@@ -216,10 +216,11 @@ describe("merchant event detail", () => {
       email: null,
       created_at: event.created_at,
       updated_at: event.updated_at,
-    }, [event]);
+    }, [event], false, new Map([["event-1", 1234]]));
     const detail = renderEventDetail(event);
 
     expect(dashboard).toContain('href="/merchant/event/event-1"');
+    expect(dashboard).toContain("조회 1,234명");
     expect(detail).toContain("테스트 이벤트");
     expect(detail).toContain("10% 할인");
     expect(detail).toContain("게시 승인되었습니다");

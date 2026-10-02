@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `309` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `310` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -490,6 +490,10 @@ pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator -
   이벤트·라벨만 받는다 — 클라이언트가 무엇을 보내든 좌표·검색어가 저장될 자리가 없다.
   `api_error`는 **경로를 라벨로 쓰지 않는다**(요청 URL에 좌표가 들어 있다).
   보관은 `ANALYTICS_RETENTION_DAYS`, 정리는 `pruneOldAnalytics`가 cron에서 돈다.
+- **사장님 이벤트 조회수** — `local_event_view` 하나만 라벨이 행사 id다. 앱이 로컬 이벤트 상세를 열 때
+  기기·이벤트당 한 번만 보내고(`SeenEventGate`, 최근 500개), 서버는 `local_events.merchant_id`가 있는
+  id만 받는다(조회 1회). 대시보드 `/merchant/dashboard`가 `queryLocalEventViews`로 보관 기간(180일) 합을
+  "조회 N명"으로 보여 준다. 재설치하면 다시 센다 — 사람 수의 근사치다.
 
 ## API 기준
 
