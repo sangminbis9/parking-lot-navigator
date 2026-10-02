@@ -34,8 +34,10 @@ struct SavedEvent: Codable, Hashable, Identifiable {
         self.id = rawId
         self.title = presentation.title
         self.eventType = presentation.typeText
-        self.startDate = presentation.dateText.components(separatedBy: " - ").first ?? ""
-        self.endDate = presentation.dateText.components(separatedBy: " - ").last
+        let dateParts = presentation.dateText.components(separatedBy: " - ")
+        self.startDate = dateParts.first ?? ""
+        // 종료일 없는 상시 이벤트는 dateText가 시작일 하나뿐이다 — 시작일을 종료일로 저장하면 30일 뒤 지워진다.
+        self.endDate = dateParts.count > 1 ? dateParts.last : nil
         self.storeName = presentation.venueName ?? ""
         self.address = presentation.address
         self.lat = destination.lat
@@ -145,7 +147,19 @@ final class LocalEventFavoritesStore: ObservableObject {
 
     init(appGroupID: String) {
         self.appGroupID = appGroupID
-        self.saved = Self.load(appGroupID: appGroupID)
+        let loaded = Self.load(appGroupID: appGroupID)
+        // 축제 즐겨찾기와 같은 기준: 종료 30일이 지난 사본은 지운다.
+        // 종료일이 없는 상시 이벤트는 남긴다.
+        let cutoff = FestivalDateSupport.dayKey(
+            FestivalDateSupport.calendar.date(
+                byAdding: .day, value: -FestivalFavoritesStore.endedRetentionDays, to: Date()
+            ) ?? Date()
+        )
+        self.saved = loaded.filter { event in
+            guard let endDate = event.endDate, !endDate.isEmpty else { return true }
+            return String(endDate.prefix(10)) >= cutoff
+        }
+        if saved.count != loaded.count { persist() }
     }
 
     func contains(id: String) -> Bool {
