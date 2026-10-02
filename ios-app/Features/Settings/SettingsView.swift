@@ -555,7 +555,7 @@ struct ThemeSettingsView: View {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.festival(.subheadline, weight: .bold))
-                            .foregroundStyle(FestivalDesign.coralText)
+                            .foregroundStyle(FestivalDesign.readable(palette.coral))
                     }
                 }
 
@@ -571,11 +571,12 @@ struct ThemeSettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(11)
-            .background(isSelected ? palette.tealSoft.opacity(0.9) : palette.cream.opacity(0.28))
+            // 선택 표시는 그 테마의 메인색으로 — 보조색(tealSoft)을 깔면 어떤 테마인지 읽히지 않았다.
+            .background(isSelected ? palette.coral.opacity(0.16) : palette.cream.opacity(0.28))
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
-                    .stroke(isSelected ? FestivalDesign.coral : palette.creamDeep.opacity(0.5), lineWidth: isSelected ? 1.5 : 1)
+                    .stroke(isSelected ? palette.coral : palette.creamDeep.opacity(0.5), lineWidth: isSelected ? 2 : 1)
             )
         }
         .buttonStyle(.plain)
