@@ -571,8 +571,8 @@ struct ThemeSettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(11)
-            // 선택 표시는 그 테마의 메인색으로 — 보조색(tealSoft)을 깔면 어떤 테마인지 읽히지 않았다.
-            .background(isSelected ? palette.coral.opacity(0.16) : palette.cream.opacity(0.28))
+            // 배경은 선택 여부와 무관하게 그 테마의 바탕색 그대로 두고, 선택은 테두리로만 표시한다.
+            .background(palette.cream.opacity(0.28))
             .clipShape(FestivalDesign.controlShape)
             .overlay(
                 FestivalDesign.controlShape
