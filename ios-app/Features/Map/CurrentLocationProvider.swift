@@ -16,7 +16,7 @@ final class CurrentLocationProvider: NSObject, ObservableObject, CLLocationManag
         authorizationStatus = manager.authorizationStatus
     }
 
-    /// 시스템 권한 팝업을 띄울 수 있는 유일한 경로. 사용자가 명시적으로 위치를 요청했을 때만 부른다.
+    /// 시스템 권한 팝업을 띄울 수 있는 유일한 경로. 첫 실행(`ParkingLotNavigatorApp`)과 사용자가 위치를 요청했을 때만 부른다.
     func request() {
         // UI 테스트는 시스템 권한 팝업을 다룰 수 없다. 이 인자가 있으면 요청 자체를 건너뛴다.
         if ProcessInfo.processInfo.arguments.contains("-uiTestingDenyLocation") { return }

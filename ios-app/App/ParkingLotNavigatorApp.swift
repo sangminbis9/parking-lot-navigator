@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import KakaoMapsSDK
 import KakaoSDKCommon
 
@@ -15,6 +16,8 @@ struct ParkingLotNavigatorApp: App {
     @StateObject private var notificationRegistration: NotificationRegistrationService
     @StateObject private var festivalFavorites: FestivalFavoritesStore
     @StateObject private var eventFavorites: LocalEventFavoritesStore
+    /// 첫 실행 위치 권한 팝업용. 팝업이 떠 있는 동안 manager가 살아 있어야 해서 앱 수명으로 잡아 둔다.
+    @StateObject private var launchLocation = CurrentLocationProvider()
     private let apiClient: APIClientProtocol = APIClient()
 
     init() {
@@ -71,6 +74,16 @@ struct ParkingLotNavigatorApp: App {
                        index + 1 < args.count,
                        let url = URL(string: args[index + 1]) {
                         DeepLinkRouter.shared.handle(url)
+                    }
+                    // 첫 실행이면 알림 → 위치 순으로 시스템 권한 팝업을 띄운다. 이미 답한 권한은 다시 묻지 않는다.
+                    // 알림 요청은 사용자가 답할 때까지 기다리므로 두 팝업이 겹치지 않는다.
+                    // UI 테스트는 시스템 팝업을 다룰 수 없어 건너뛴다.
+                    if !args.contains("-uiTesting") {
+                        let center = UNUserNotificationCenter.current()
+                        if await center.notificationSettings().authorizationStatus == .notDetermined {
+                            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                        }
+                        launchLocation.request()
                     }
                     // 서버가 D-30/D-7/D-1 발송 대상을 고르므로, 실행할 때마다 토큰과 설정을 맞춰 둔다.
                     await notificationRegistration.registerForRemoteNotificationsIfAuthorized()
