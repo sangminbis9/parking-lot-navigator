@@ -42,6 +42,8 @@ struct MapHomeView: View {
     /// 첫 조회 응답과 그 핀이 다 자리 잡았는지. 그 전까지는 로딩 표시를 내리지 않는다.
     @State private var hasSettledAfterInitialLoad = false
     @State private var presentingFestivalFilter = false
+    /// 위치를 거부한 사용자가 내 위치 버튼을 눌렀을 때 띄우는 안내. iOS는 한 번 거부된 권한 팝업을 다시 띄워 주지 않는다.
+    @State private var showingLocationSettingsAlert = false
     /// 위치 없이 볼 때 지도의 기준이 된 지역 이름. 안내 문구가 "서울"로 고정되지 않게 한다.
     @State private var fallbackLocationLabel = FallbackLocation.seoul.label
     /// 레이어 토글 높이. SF Symbol마다 높이가 달라 토글이 들쭉날쭉해 보이는 걸 막는다.
@@ -1091,7 +1093,7 @@ struct MapHomeView: View {
                         moveMap(to: coordinate, zoomLevel: 15)
                     } else if isLocationDenied {
                         // 권한이 막힌 상태에서 request()는 아무 일도 하지 않아 버튼이 고장난 것처럼 보인다.
-                        openLocationSettings()
+                        showingLocationSettingsAlert = true
                     } else {
                         shouldCenterOnNextLocation = true
                         locationProvider.request()
@@ -1101,6 +1103,12 @@ struct MapHomeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\u{B0B4} \u{C704}\u{CE58}\u{B85C} \u{C774}\u{B3D9}")
+                .alert("위치 권한이 꺼져 있어요", isPresented: $showingLocationSettingsAlert) {
+                    Button("설정으로 이동") { openLocationSettings() }
+                    Button("취소", role: .cancel) {}
+                } message: {
+                    Text("내 위치로 이동하려면 설정에서 위치 접근을 '앱을 사용하는 동안'으로 바꿔 주세요.")
+                }
             }
         }
     }

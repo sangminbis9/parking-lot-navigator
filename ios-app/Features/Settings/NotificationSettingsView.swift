@@ -8,6 +8,8 @@ struct NotificationSettingsView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var permissionDenied = false
+    /// 이미 거부한 사용자가 알림을 켰을 때 띄우는 안내. iOS는 한 번 거부된 권한 팝업을 다시 띄워 주지 않는다.
+    @State private var showingNotificationSettingsAlert = false
 
     var body: some View {
         ScrollView {
@@ -36,6 +38,16 @@ struct NotificationSettingsView: View {
             Task { await registrationService.sync(prefs: prefs) }
         }
         .task { await registrationService.sync(prefs: model.prefs) }
+        .alert("알림 권한이 꺼져 있어요", isPresented: $showingNotificationSettingsAlert) {
+            Button("설정으로 이동") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(url)
+                }
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("알림을 받으려면 설정에서 알림 허용을 켜 주세요.")
+        }
     }
 
     // MARK: - 상단 안내 / 권한
@@ -347,8 +359,12 @@ struct NotificationSettingsView: View {
     private func handleDiscoveryToggle(_ enabled: Bool) {
         if enabled {
             Task {
+                // 아직 묻지 않았으면 시스템 팝업이 뜨고, 이미 거부했으면 설정으로 안내한다.
+                // 팝업에서 방금 거부한 경우까지 안내를 띄우면 같은 질문을 두 번 하게 된다.
+                let wasDenied = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
                 let granted = await discoveryService.requestAuthorizationIfNeeded()
                 permissionDenied = !granted
+                showingNotificationSettingsAlert = wasDenied
                 discoveryService.scheduleNextRefresh()
             }
         } else {
