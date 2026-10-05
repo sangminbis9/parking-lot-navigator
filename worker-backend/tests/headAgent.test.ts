@@ -90,6 +90,7 @@ function fakeDb(opts: {
   const activity: Activity[] = [...(opts.activity ?? [])];
   const db = {
     activity,
+    selectSql: [] as string[],
     prepare(sql: string) {
       return {
         bind(...args: unknown[]) {
@@ -104,6 +105,7 @@ function fakeDb(opts: {
               };
             }
             if (s.startsWith("SELECT le.id")) {
+              db.selectSql.push(s);
               const limit = args[0] as number;
               return {
                 results: opts.events.slice(0, limit).map((e) => ({
@@ -180,6 +182,12 @@ describe("runHeadReview", () => {
     const result = await runHeadReview(db as unknown as D1Database, env(approveAll));
     expect(result.reviewed).toBe(0);
     expect(db.activity.every((a) => a.action === "apply_error")).toBe(true);
+  });
+
+  it("never selects legacy naver_blog rows for review", async () => {
+    const db = fakeDb({ events });
+    await runHeadReview(db as unknown as D1Database, env(approveAll));
+    expect(db.selectSql[0]).toContain("le.source <> 'naver_blog'");
   });
 
   it("counts and logs on success", async () => {

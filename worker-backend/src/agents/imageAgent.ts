@@ -152,6 +152,7 @@ async function queryLocalEventTargets(
       `SELECT 'local_event' AS target_kind, id, title, source_url, image_url
          FROM local_events le
         WHERE le.status IN ('approved', 'pending')
+          AND le.source <> 'naver_blog'
           AND (le.image_url IS NULL OR trim(le.image_url) = '')
           AND le.source_url IS NOT NULL
           AND le.source_url LIKE 'http%'

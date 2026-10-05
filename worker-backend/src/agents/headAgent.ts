@@ -340,6 +340,7 @@ export async function runHeadReview(
                 le.source_url, le.status, le.rejection_reason, le.confidence_score
            FROM local_events le
           WHERE le.status IN ${statusClause}
+            AND le.source <> 'naver_blog'
             AND (
               NOT EXISTS (
                 SELECT 1 FROM agent_activity aa
