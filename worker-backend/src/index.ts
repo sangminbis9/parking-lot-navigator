@@ -59,6 +59,7 @@ import { sendDailySlackReport } from "./dailySlackReport.js";
 import { runImageBackfill } from "./imageBackfill.js";
 import { runGeocodeBackfill } from "./geocodeBackfill.js";
 import { runHeadReview } from "./agents/headAgent.js";
+import { handleHeadSlackInteraction } from "./agents/headSlack.js";
 import { runImageEnrichment } from "./agents/imageAgent.js";
 import { runTagging } from "./llmTagging.js";
 import { createMerchantApp } from "./merchant/routes.js";
@@ -153,6 +154,8 @@ export type Env = {
   OPS_ALERT_WEBHOOK_URL?: string;
   // Slack Incoming Webhook. URL 자체가 credential이므로 wrangler secret으로만 설정한다.
   SLACK_DAILY_REPORT_WEBHOOK_URL?: string;
+  // Slack 앱 Signing Secret. Head 승인/거절 버튼(Interactivity) 요청의 서명 검증에 쓴다. wrangler secret.
+  SLACK_SIGNING_SECRET?: string;
   // APNs (다가오는 행사 알림 서버 발송). 넷 중 하나라도 없으면 발송을 건너뛴다.
   APNS_KEY_ID?: string;
   APNS_TEAM_ID?: string;
@@ -1348,6 +1351,12 @@ app.post("/admin/backfill-geocodes", async (c) => {
   } catch (error) {
     return c.json(syncErrorResponse(error), 502);
   }
+});
+
+// Slack 앱 Interactivity Request URL. 인증은 Slack 서명(SLACK_SIGNING_SECRET)이 대신한다.
+app.post("/api/slack/interactions", async (c) => {
+  if (!c.env.DB) return c.json({ error: "d1_not_configured" }, 503);
+  return handleHeadSlackInteraction(c.env.DB, c.env, c.req.raw);
 });
 
 app.post("/admin/run-head-review", async (c) => {

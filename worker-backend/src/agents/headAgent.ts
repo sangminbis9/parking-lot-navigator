@@ -1,4 +1,5 @@
 import { callAiJson } from "./workersAiClient.js";
+import { sendHeadReviewSlack, type HeadSlackEnv } from "./headSlack.js";
 
 export type HeadCandidate = {
   id: string;
@@ -185,7 +186,7 @@ function randomId(): string {
   return crypto.randomUUID();
 }
 
-export type HeadReviewEnv = {
+export type HeadReviewEnv = HeadSlackEnv & {
   AI?: Ai;
   AGENT_HEAD_ENABLED?: string;
   AGENT_HEAD_BATCH_SIZE?: string;
@@ -210,6 +211,9 @@ export type HeadReviewResult = {
 
 /** 같은 후보 묶음이 실패하면 이 시간 동안 다시 고르지 않는다. 영구 제외가 아니다. */
 export const HEAD_FAILED_TARGET_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/** 회차당 Slack 카드 상한. Worker subrequest 50건 한도를 지키려는 값이다. 못 보낸 행은 앱 에이전트 탭에 남는다. */
+const SLACK_CARDS_PER_RUN = 10;
 
 export type HeadErrorKind =
   | "quota"
@@ -350,6 +354,11 @@ export async function runHeadReview(
               )
               OR (le.short_description IS NULL AND le.status <> 'rejected')
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_activity ad
+               WHERE ad.target_id = le.id
+                 AND ad.action IN ('slack_approve', 'slack_reject')
+            )
           ORDER BY le.short_description ASC, le.updated_at DESC
           LIMIT ?`,
       )
@@ -373,6 +382,7 @@ export async function runHeadReview(
   if (rows.length === 0) return result;
 
   const batches = chunkArray(rows, batchSize).slice(0, maxBatches);
+  let slackCards = 0;
   for (const batch of batches) {
     const payload: HeadCandidate[] = batch.map((row) => ({
       id: row.id,
@@ -467,6 +477,12 @@ export async function runHeadReview(
         reason: verdict.reason,
         payload: { confidenceScore: row.confidence_score },
       });
+      // 반려·보류로 새로 바뀐 행만 Slack으로 보낸다(rejected 재검토가 또 rejected면 조용히 넘어간다).
+      const nextStatus = verdict.verdict === "reject" ? "rejected" : "pending";
+      if (verdict.verdict !== "approve" && row.status !== nextStatus && slackCards < SLACK_CARDS_PER_RUN) {
+        slackCards += 1;
+        await sendHeadReviewSlack(db, env, row.id, verdict);
+      }
       if (verdict.verdict === "approve") {
         await logAgentActivity(db, {
           agentId: "echo",
