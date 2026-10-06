@@ -348,6 +348,7 @@ struct MapHomeView: View {
             discover: discoverCacheKey,
             clip: discoverClipKey,
             zoomLevel: mapZoomLevel,
+            labelScaleStep: Int((log2(mercatorToScreenScale) * 8).rounded()),
             selectedDiscoverPinID: selectedDiscoverPinID,
             showsRealtimeParking: viewModel.showsRealtimeParkingLayer,
             showsFreeParking: viewModel.showsFreeParkingLayer,
@@ -390,12 +391,16 @@ struct MapHomeView: View {
 
     /// 행사 핀 제목은 줌과 상관없이 켜고, 다른 핀 배지나 먼저 놓인 제목과 겹칠 때만 끈다.
     /// 우선순위가 높은 핀(사장님 등록 > 진행 중 > 나머지)부터 자리를 잡는다.
-    /// ponytail: 화면 좌표는 줌 레벨 메르카토르 근사라 실제 지도와 몇 pt 어긋날 수 있다. 어긋남이 눈에 띄면 MapProjector로 바꾼다.
+    /// 화면 좌표는 정수 줌 메르카토르에 실제 지도 배율(`mercatorToScreenScale`)을 곱해 pt로 맞춘다.
     private func applyingTitleLabels(to items: [MapPinItem]) -> [MapPinItem] {
         let k = MapPinRenderer.scale * UIScreen.main.scale
         let badge = MapPinRenderer.baseDiameter * k
         let belowBadge = MapPinRenderer.baseDiameter * (MapPinRenderer.floatGapRatio + MapPinRenderer.groundShadowRatio) * k
-        let points = items.map { mercatorPoint(for: $0.coordinate, zoomLevel: mapZoomLevel) }
+        let screenScale = mercatorToScreenScale
+        let points = items.map { item -> CGPoint in
+            let p = mercatorPoint(for: item.coordinate, zoomLevel: mapZoomLevel)
+            return CGPoint(x: p.x * screenScale, y: p.y * screenScale)
+        }
         // 핀 본체 영역. 개별 핀은 바닥 중앙, 클러스터는 중심이 앵커다.
         let bodies: [CGRect] = zip(items, points).map { item, p in
             if case .cluster = item.kind {
@@ -835,6 +840,21 @@ struct MapHomeView: View {
     private func overlayKey(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> String {
         let cell = overlayCell(for: coordinate, zoomLevel: zoomLevel)
         return "\(cell.x):\(cell.y)"
+    }
+
+    /// 실제 지도 pt ÷ 정수 줌 메르카토르 단위. 핀치 줌은 정수 레벨 사이에 멈출 수 있어
+    /// `mapZoomLevel`(정수)만으로 재면 핀 간격을 최대 절반으로 작게 봐서 제목을 너무 많이 끈다.
+    /// 지도가 아직 없으면 1(근사 그대로).
+    private var mercatorToScreenScale: CGFloat {
+        let a = mapViewport.center
+        let b = CLLocationCoordinate2D(latitude: a.latitude, longitude: a.longitude + 0.01)
+        guard let pa = mapProjector.screenPoint(for: a), let pb = mapProjector.screenPoint(for: b) else { return 1 }
+        let ma = mercatorPoint(for: a, zoomLevel: mapZoomLevel)
+        let mb = mercatorPoint(for: b, zoomLevel: mapZoomLevel)
+        let mercator = hypot(mb.x - ma.x, mb.y - ma.y)
+        let screen = hypot(pb.x - pa.x, pb.y - pa.y)
+        guard mercator > 0, screen > 0, screen.isFinite else { return 1 }
+        return screen / mercator
     }
 
     private func mercatorPoint(for coordinate: CLLocationCoordinate2D, zoomLevel: Int) -> CGPoint {
@@ -2657,6 +2677,8 @@ private final class MapPinCache {
         let discover: DiscoverKey
         let clip: ClipKey
         let zoomLevel: Int
+        /// 같은 정수 줌에서도 실제 화면 배율이 바뀌면 제목 충돌을 다시 계산한다(1/8 옥타브 단위).
+        let labelScaleStep: Int
         let selectedDiscoverPinID: String?
         let showsRealtimeParking: Bool
         let showsFreeParking: Bool
