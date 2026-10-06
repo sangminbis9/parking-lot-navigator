@@ -685,7 +685,7 @@ struct MapHomeView: View {
                 switch item {
                 case .festival(let f) where festivalFilterModel.filter.matches(f) && seenIds.insert(f.id).inserted:
                     sources.append(.festival(f, layerTint: Self.performanceTint))
-                case .event(let e) where seenIds.insert(e.id).inserted:
+                case .event(let e) where festivalFilterModel.filter.matches(performance: e) && seenIds.insert(e.id).inserted:
                     sources.append(.event(e, layerTint: Self.performanceTint))
                 default:
                     break
@@ -699,7 +699,9 @@ struct MapHomeView: View {
             guard seenIds.insert(f.id).inserted else { continue }
             sources.append(.festival(f, layerTint: isTradeExpo ? Self.tradeExpoTint : FestivalDesign.uiCoral))
         }
-        if viewModel.showsLocalEventLayer {
+        // 가게 이벤트 카테고리(할인·무료 증정 등)는 필터의 축제 카테고리 칩 어디에도 속하지 않는다.
+        // 칩을 하나라도 고르면 그 칩과 무관한 가게 이벤트가 섞여 보이므로 숨긴다.
+        if viewModel.showsLocalEventLayer && festivalFilterModel.filter.primaryCategories.isEmpty {
             for e in viewModel.events where seenIds.insert(e.id).inserted {
                 sources.append(.event(e, layerTint: FestivalDesign.uiTeal))
             }

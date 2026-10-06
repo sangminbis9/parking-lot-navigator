@@ -372,7 +372,13 @@ struct CalendarTabView: View {
         let dayFormatter = CalendarViewModel.dayFormatter
         let items: [PerformanceItem] = {
             guard let day = selectedDay else { return [] }
-            return performanceViewModel.performancesForDay(day, calendar: calendar, formatter: dayFormatter)
+            let filter = filterModel.filter
+            return performanceViewModel.performancesForDay(day, calendar: calendar, formatter: dayFormatter).filter { item in
+                switch item {
+                case .festival(let f): return filter.matches(f)
+                case .event(let e): return filter.matches(performance: e)
+                }
+            }
         }()
 
         return VStack(alignment: .leading, spacing: 12) {

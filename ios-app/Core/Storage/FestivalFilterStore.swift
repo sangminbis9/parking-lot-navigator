@@ -70,6 +70,12 @@ struct FestivalFilter: Codable, Hashable {
         return true
     }
 
+    /// 공연(KOPIS)은 Festival이 아니라 FreeEvent로 와서 `matches`를 거치지 않았다.
+    /// 카테고리는 `festivalCategory`에 담겨 오고, 태깅 전(nil)이면 공연이므로 음악·공연으로 본다.
+    func matches(performance event: FreeEvent) -> Bool {
+        primaryCategories.isEmpty || primaryCategories.contains(event.festivalCategory ?? .musicPerformance)
+    }
+
     // 17개 광역시도 단축명 (태그 기반 매칭)
     static let koreanRegions: Set<String> = [
         "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
