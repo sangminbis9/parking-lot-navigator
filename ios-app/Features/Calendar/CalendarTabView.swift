@@ -217,10 +217,23 @@ struct CalendarTabView: View {
                 .frame(width: 32, height: 32)
                 .background(FestivalDesign.cream.opacity(0.6))
                 .clipShape(Circle())
+                .overlay(alignment: .topTrailing) {
+                    if filterModel.filter.activeCount > 0 {
+                        Text("\(filterModel.filter.activeCount)")
+                            .font(.festival(size: 10, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(FestivalDesign.coral)
+                            .clipShape(Capsule())
+                            .offset(x: 4, y: -4)
+                    }
+                }
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("\u{D544}\u{D130}") // 필터
+        .accessibilityValue(filterModel.filter.activeCount > 0 ? "\(filterModel.filter.activeCount)개 적용됨" : "미적용")
     }
 
     private var quickJumpRow: some View {

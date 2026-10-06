@@ -1087,7 +1087,8 @@ struct MapHomeView: View {
         Button {
             presentingFestivalFilter = true
         } label: {
-            Label("필터", systemImage: "line.3.horizontal.decrease.circle")
+            Label(festivalFilterModel.filter.activeCount > 0 ? "필터 \(festivalFilterModel.filter.activeCount)" : "필터",
+                  systemImage: "line.3.horizontal.decrease.circle")
                 .font(.festival(.caption, weight: .bold))
                 .lineLimit(1)
                 .padding(.horizontal, 10)
@@ -1109,7 +1110,7 @@ struct MapHomeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("축제 필터")
         // 적용 여부가 색으로만 드러나므로 보이스오버에도 상태를 알린다.
-        .accessibilityValue(festivalFilterModel.filter.isEmpty ? "미적용" : "적용됨")
+        .accessibilityValue(festivalFilterModel.filter.activeCount > 0 ? "\(festivalFilterModel.filter.activeCount)개 적용됨" : "미적용")
     }
 
     private func layerToggle(

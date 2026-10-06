@@ -164,6 +164,10 @@ struct AppRootView: View {
                 festivalSync.syncIfStale(coordinate: nil)
             } else if phase == .background {
                 discoveryService.scheduleNextRefresh()
+                // 앱을 나갔다 돌아오면 필터는 기본값부터 다시 시작한다. 저장값도 덮어써 위젯과 맞춘다.
+                if festivalFilterModel.filter != .default {
+                    festivalFilterModel.update(.default)
+                }
             }
         }
         // 알림센터는 탭이 아니라 시트다. 어느 탭에서 열든 원래 보던 화면으로 그대로 돌아간다.

@@ -52,6 +52,11 @@ struct FestivalFilter: Codable, Hashable {
             && dateRange == Self.default.dateRange
     }
 
+    /// 필터 버튼 옆에 보여 줄 적용 개수. 카테고리 칩 하나당 1, 기간이 기본값과 다르면 1.
+    var activeCount: Int {
+        primaryCategories.count + (dateRange == Self.default.dateRange ? 0 : 1)
+    }
+
     func matches(_ festival: Festival) -> Bool {
         switch dateRange {
         case .ongoingOnly:
