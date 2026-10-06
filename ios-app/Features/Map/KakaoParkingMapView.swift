@@ -27,11 +27,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
         tap.delaysTouchesBegan = false
         tap.delaysTouchesEnded = false
         tap.delegate = context.coordinator
-        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
-        pinch.cancelsTouchesInView = false
-        pinch.delaysTouchesBegan = false
-        pinch.delaysTouchesEnded = false
-        pinch.delegate = context.coordinator
         context.coordinator.latestCamera = MapCameraTarget(coordinate: center, zoomLevel: zoomLevel)
         context.coordinator.latestPins = pins
         context.coordinator.selectedPinID = selectedPinID
@@ -42,7 +37,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
         context.coordinator.onPinRenderPending = onPinRenderPending
         projector?.coordinator = context.coordinator
         view.addGestureRecognizer(tap)
-        view.addGestureRecognizer(pinch)
         PerfTrace.measure("map.makeUIView") {
             context.coordinator.createController(view)
             context.coordinator.prepareEngineIfNeeded()
@@ -107,8 +101,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
         private var cameraStoppedEventHandler: DisposableEventHandler?
         private var cameraStartedEventHandler: DisposableEventHandler?
         private var registeredDynamicStyleIDs: Set<String> = []
-        private var suppressDiscoverLabelsAfterGesture = false
-        private var showAllDiscoverLabelsAfterZoomIn = false
         /// 이번 패스에서 못 올린 핀이 남았는지. 남으면 다음 런루프에 이어서 올린다.
         private var pendingPinChunk = false
         private var pinChunkScheduled = false
@@ -175,30 +167,10 @@ struct KakaoParkingMapView: UIViewRepresentable {
             let location = gesture.location(in: container)
             lastTapPoint = location
             if let tappedPin = pin(at: location) {
-                suppressDiscoverLabelsAfterGesture = false
                 onPinTap?(tappedPin, location)
                 return
             }
             onTap?()
-        }
-
-        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-            guard gesture.state == .ended || gesture.state == .cancelled else { return }
-            if gesture.scale > 1.06 {
-                updateDiscoverLabelVisibility(suppressLabels: false, showAllLabels: false)
-            } else if gesture.scale < 0.94 {
-                updateDiscoverLabelVisibility(suppressLabels: true, showAllLabels: false)
-            }
-        }
-
-        private func updateDiscoverLabelVisibility(suppressLabels: Bool, showAllLabels: Bool) {
-            guard suppressDiscoverLabelsAfterGesture != suppressLabels ||
-                showAllDiscoverLabelsAfterZoomIn != showAllLabels else {
-                return
-            }
-            suppressDiscoverLabelsAfterGesture = suppressLabels
-            showAllDiscoverLabelsAfterZoomIn = showAllLabels
-            render()
         }
 
         func gestureRecognizer(
@@ -248,19 +220,12 @@ struct KakaoParkingMapView: UIViewRepresentable {
             configureLabelsIfNeeded()
             configureCameraEventsIfNeeded()
             if shouldMoveCamera {
-                suppressDiscoverLabelsAfterGesture = false
-                showAllDiscoverLabelsAfterZoomIn = false
                 moveCamera(on: mapView)
                 renderedCamera = latestCamera
             }
             let pinSnapshot = PerfTrace.measure("map.buildSnapshots", "\(latestPins.count)") {
                 latestPins.map {
-                    MapPinSnapshot(
-                        pin: $0,
-                        showsDiscoverLabels: showsDiscoverLabels,
-                        showsAllDiscoverLabels: showsAllDiscoverLabels,
-                        isSelected: $0.id == selectedPinID
-                    )
+                    MapPinSnapshot(pin: $0, isSelected: $0.id == selectedPinID)
                 }
             }
             if renderedPinSnapshot != pinSnapshot || pendingPinChunk {
@@ -277,14 +242,6 @@ struct KakaoParkingMapView: UIViewRepresentable {
                   snapshotPins.count == renderedPinSnapshot.count,
                   let mapView = controller?.getView("mapview") as? KakaoMap else { return }
             renderPins(on: mapView, pins: snapshotPins, snapshots: renderedPinSnapshot)
-        }
-
-        private var showsDiscoverLabels: Bool {
-            !suppressDiscoverLabelsAfterGesture && (latestCamera.zoomLevel >= 17 || showAllDiscoverLabelsAfterZoomIn)
-        }
-
-        private var showsAllDiscoverLabels: Bool {
-            !suppressDiscoverLabelsAfterGesture && showAllDiscoverLabelsAfterZoomIn
         }
 
         private var shouldMoveCamera: Bool {
@@ -644,14 +601,10 @@ private struct MapPinSnapshot: Equatable {
     let poiID: String
     let rank: Int
 
-    init(pin: MapPinItem, showsDiscoverLabels: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool) {
+    init(pin: MapPinItem, isSelected: Bool) {
         id = pin.id
         coordinate = pin.coordinate
-        styleID = pin.styleID(
-            showsDiscoverLabel: showsDiscoverLabels,
-            showsAllDiscoverLabels: showsAllDiscoverLabels,
-            isSelected: isSelected
-        )
+        styleID = pin.styleID(isSelected: isSelected)
         poiID = pin.poiID
         rank = pin.displayPriority
     }
@@ -696,7 +649,7 @@ private extension MapPinItem {
         return sanitized
     }
 
-    func styleID(showsDiscoverLabel: Bool = false, showsAllDiscoverLabels: Bool = false, isSelected: Bool = false) -> String {
+    func styleID(isSelected: Bool = false) -> String {
         let theme = pinStyleThemeKey
         switch kind {
         case .currentLocation:
@@ -711,9 +664,9 @@ private extension MapPinItem {
             }
             return isSelected ? "parking-\(theme)-sel" : "parking-\(theme)"
         case .festival(let festival):
-            return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected)
+            return discoverStyleID(category: MapPinCategory.forFestival(festival), title: festival.title, theme: theme, isSelected: isSelected)
         case .event(let event):
-            return discoverStyleID(category: MapPinCategory.forEvent(event), title: event.title, theme: theme, showsDiscoverLabel: showsDiscoverLabel, showsAllDiscoverLabels: showsAllDiscoverLabels, isSelected: isSelected, neon: event.usesMerchantNeonPin)
+            return discoverStyleID(category: MapPinCategory.forEvent(event), title: event.title, theme: theme, isSelected: isSelected, neon: event.usesMerchantNeonPin)
         case .cluster(let cluster):
             return "cluster-\(cluster.isParking ? "p" : "d")-\(cluster.count)-\(cluster.tint.stableStyleKey)-\(theme)"
         }
@@ -729,10 +682,10 @@ private extension MapPinItem {
     private var liveStyleKey: String { isLive ? "-live" : "" }
     private var photoStyleKey: String { photo.map { "-p\($0.key)" } ?? "" }
 
-    private func discoverStyleID(category: MapPinCategory, title: String, theme: String, showsDiscoverLabel: Bool, showsAllDiscoverLabels: Bool, isSelected: Bool, neon: Bool = false) -> String {
+    private func discoverStyleID(category: MapPinCategory, title: String, theme: String, isSelected: Bool, neon: Bool = false) -> String {
         let base = "disc-\(category.rawValue)\(layerTintStyleKey)\(neon ? "-neon" : "")\(liveStyleKey)\(photoStyleKey)-\(theme)"
         if isSelected { return "\(base)-sel" }
-        guard showsDiscoverLabel && (showsTitleLabel || showsAllDiscoverLabels) else { return base }
+        guard showsTitleLabel else { return base }
         return "\(base)-label-\(title.stableStyleKey)"
     }
 
@@ -779,13 +732,16 @@ private extension MapPinItem {
 
 }
 
-private extension String {
+extension String {
+    /// 지도 핀 제목 캡슐에 넣는 짧은 제목. MapHomeView 겹침 판정도 같은 문자열로 폭을 잰다.
     var shortMapLabel: String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 12 else { return trimmed }
-        return "\(String(trimmed.prefix(11)))..."
+        return "\(String(trimmed.prefix(11)))…"
     }
+}
 
+private extension String {
     var stableStyleKey: String {
         let hash = unicodeScalars.reduce(UInt32(2166136261)) { partial, scalar in
             (partial ^ scalar.value) &* 16777619

@@ -331,15 +331,9 @@ enum MapPinRenderer {
         let glyphColor = accent.pinDeepened(0.62)
         let surface = FestivalDesign.ui(theme.palette.surface)
 
-        // 라벨 버블 측정
-        let labelFont = FestivalDesign.uiFont(size: 14, weight: .semibold)
-        var bubbleWidth: CGFloat = 0
-        let bubbleHeight: CGFloat = 24
-        let labelGap: CGFloat = 4
-        if let label, !label.isEmpty {
-            let textWidth = (label as NSString).size(withAttributes: [.font: labelFont]).width
-            bubbleWidth = min(ceil(textWidth + 18), 128)
-        }
+        // 라벨 캡슐 측정
+        let bubbleWidth = label.map(labelWidth) ?? 0
+        let bubbleHeight = labelHeight
         let labelZone = bubbleWidth > 0 ? bubbleHeight + labelGap : 0
         let sparkleZone = selected ? badge * 0.42 : 0
 
@@ -362,7 +356,7 @@ enum MapPinRenderer {
             ctx.cgContext.scaleBy(x: scale, y: scale)
 
             if bubbleWidth > 0, let label {
-                drawLabelBubble(label, font: labelFont, fill: neon ? merchantNeon : (border ?? accent), centerX: cx, top: pad + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
+                drawLabelBubble(label, accent: neon ? merchantNeon : (border ?? accent), surface: surface, text: FestivalDesign.ui(theme.palette.navy), centerX: cx, top: pad + sparkleZone, width: bubbleWidth, height: bubbleHeight, context: ctx)
             }
 
             let badgeRect = CGRect(x: cx - badge / 2, y: badgeTop, width: badge, height: badge)
@@ -626,10 +620,25 @@ enum MapPinRenderer {
         }
     }
 
+    // 제목 캡슐 치수(논리 pt). 지도 쪽 겹침 판정도 같은 값을 쓴다.
+    static let labelHeight: CGFloat = 20
+    static let labelGap: CGFloat = 3
+    private static let labelDot: CGFloat = 6
+    private static var labelFont: UIFont { FestivalDesign.uiFont(size: 12, weight: .semibold) }
+
+    /// 캡슐 폭 = 왼쪽 여백 7 + 색 점 6 + 간격 4 + 글자 + 오른쪽 여백 9. 빈 문자열이면 0.
+    static func labelWidth(_ label: String) -> CGFloat {
+        guard !label.isEmpty else { return 0 }
+        let textWidth = (label as NSString).size(withAttributes: [.font: labelFont]).width
+        return min(ceil(textWidth + 26), 136)
+    }
+
+    /// 배지와 같은 surface 위에 카테고리색 점 하나를 둔 캡슐. 테두리는 머리카락 두께로만 둔다.
     private static func drawLabelBubble(
         _ label: String,
-        font: UIFont,
-        fill: UIColor,
+        accent: UIColor,
+        surface: UIColor,
+        text: UIColor,
         centerX: CGFloat,
         top: CGFloat,
         width: CGFloat,
@@ -637,25 +646,30 @@ enum MapPinRenderer {
         context: UIGraphicsImageRendererContext
     ) {
         let rect = CGRect(x: centerX - width / 2, y: top, width: width, height: height)
-        let bubble = UIBezierPath(roundedRect: rect, cornerRadius: 11)
+        let capsule = UIBezierPath(roundedRect: rect, cornerRadius: height / 2)
         context.cgContext.saveGState()
-        context.cgContext.setShadow(offset: CGSize(width: 0, height: 1.5), blur: 4, color: FestivalDesign.uiNavy.withAlphaComponent(0.18).cgColor)
-        FestivalDesign.uiCream.setFill()
-        bubble.fill()
+        context.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: FestivalDesign.uiNavy.withAlphaComponent(0.16).cgColor)
+        surface.setFill()
+        capsule.fill()
         context.cgContext.restoreGState()
-        fill.withAlphaComponent(0.6).setStroke()
-        bubble.lineWidth = 1.1
-        bubble.stroke()
+        accent.withAlphaComponent(0.35).setStroke()
+        capsule.lineWidth = 0.8
+        capsule.stroke()
 
+        accent.setFill()
+        UIBezierPath(ovalIn: CGRect(x: rect.minX + 7, y: rect.midY - labelDot / 2, width: labelDot, height: labelDot)).fill()
+
+        let font = labelFont
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: FestivalDesign.uiNavy,
+            .foregroundColor: text,
             .paragraphStyle: paragraph
         ]
-        (label as NSString).draw(in: rect.insetBy(dx: 9, dy: 3), withAttributes: attributes)
+        let textX = rect.minX + 7 + labelDot + 4
+        let textRect = CGRect(x: textX, y: rect.midY - font.lineHeight / 2, width: rect.maxX - 9 - textX, height: font.lineHeight)
+        (label as NSString).draw(in: textRect, withAttributes: attributes)
     }
 
     /// 선택 표시용 스파크. 테두리와 같은 색을 써서 핀 하나가 한 색으로 읽히게 한다.

@@ -67,7 +67,6 @@ struct MapHomeView: View {
     /// 지도에서 열어본 행사 기록. 검색 화면이 검색어 없이 보여 주는 카드 목록이다.
     @StateObject private var recentDiscover = RecentDiscoverStore()
     private let overlayReleaseZoomLevel = 15
-    private let discoverNameLabelZoomLevel = 17
     /// 같은 지점에 이만큼 이상 몰리면 부채꼴 분산 대신 "장소 스택" 클러스터로 묶는다.
     private let placeStackThreshold = 4
     /// 클러스터 멤버가 이 반경(m) 안에 모여 있으면 줌인해도 안 풀리는 "같은 장소"로 보고 목록 시트를 띄운다.
@@ -386,7 +385,62 @@ struct MapHomeView: View {
             items.append(contentsOf: freeParkingPins)
         }
         items.append(contentsOf: discoverPins)
-        return items
+        return applyingTitleLabels(to: items)
+    }
+
+    /// 행사 핀 제목은 줌과 상관없이 켜고, 다른 핀 배지나 먼저 놓인 제목과 겹칠 때만 끈다.
+    /// 우선순위가 높은 핀(사장님 등록 > 진행 중 > 나머지)부터 자리를 잡는다.
+    /// ponytail: 화면 좌표는 줌 레벨 메르카토르 근사라 실제 지도와 몇 pt 어긋날 수 있다. 어긋남이 눈에 띄면 MapProjector로 바꾼다.
+    private func applyingTitleLabels(to items: [MapPinItem]) -> [MapPinItem] {
+        let k = MapPinRenderer.scale * UIScreen.main.scale
+        let badge = MapPinRenderer.baseDiameter * k
+        let belowBadge = MapPinRenderer.baseDiameter * (MapPinRenderer.floatGapRatio + MapPinRenderer.groundShadowRatio) * k
+        let points = items.map { mercatorPoint(for: $0.coordinate, zoomLevel: mapZoomLevel) }
+        // 핀 본체 영역. 개별 핀은 바닥 중앙, 클러스터는 중심이 앵커다.
+        let bodies: [CGRect] = zip(items, points).map { item, p in
+            if case .cluster = item.kind {
+                return CGRect(x: p.x - badge * 0.65, y: p.y - badge * 0.65, width: badge * 1.3, height: badge * 1.3)
+            }
+            return CGRect(x: p.x - badge / 2, y: p.y - belowBadge - badge, width: badge, height: badge)
+        }
+
+        func title(_ item: MapPinItem) -> String? {
+            guard item.id != selectedDiscoverPinID else { return nil }
+            switch item.kind {
+            case .festival(let festival): return festival.title
+            case .event(let event): return event.title
+            default: return nil
+            }
+        }
+        let candidates = items.indices
+            .filter { title(items[$0]) != nil }
+            .sorted {
+                let (a, b) = (items[$0], items[$1])
+                if a.displayPriority != b.displayPriority { return a.displayPriority > b.displayPriority }
+                if a.isLive != b.isLive { return a.isLive }
+                return a.id < b.id
+            }
+
+        var result = items
+        var placed: [CGRect] = []
+        for index in candidates {
+            guard let label = title(items[index])?.shortMapLabel else { continue }
+            let width = MapPinRenderer.labelWidth(label) * k
+            guard width > 0 else { continue }
+            let height = MapPinRenderer.labelHeight * k
+            let rect = CGRect(
+                x: points[index].x - width / 2,
+                y: bodies[index].minY - MapPinRenderer.labelGap * k - height,
+                width: width,
+                height: height
+            )
+            let blocked = placed.contains { $0.intersects(rect) } ||
+                bodies.indices.contains { $0 != index && bodies[$0].intersects(rect) }
+            guard !blocked else { continue }
+            placed.append(rect)
+            result[index].showsTitleLabel = true
+        }
+        return result
     }
 
     private var parkingPins: [MapPinItem] {
@@ -711,7 +765,6 @@ struct MapHomeView: View {
                 id: "festival-\(festival.id)",
                 coordinate: coordinate,
                 kind: .festival(festival),
-                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
                 layerTint: tint,
                 isLive: live,
                 // 대표 이미지는 진행 중 행사만 붙인다. 이미지 유무와 LIVE 라벨이 함께 "지금 하는 행사"를 알린다.
@@ -725,7 +778,6 @@ struct MapHomeView: View {
                 id: "event-\(event.id)",
                 coordinate: coordinate,
                 kind: .event(event),
-                showsTitleLabel: mapZoomLevel >= discoverNameLabelZoomLevel,
                 layerTint: tint,
                 isLive: live,
                 // 사장님 등록 이벤트는 진행 여부와 관계없이 꽃 핀 중앙에 대표 사진을 표시한다.
