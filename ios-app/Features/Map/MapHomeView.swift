@@ -390,7 +390,8 @@ struct MapHomeView: View {
     }
 
     /// 행사 핀 제목은 줌과 상관없이 켜고, 다른 핀 배지나 먼저 놓인 제목과 겹칠 때만 끈다.
-    /// 우선순위가 높은 핀(사장님 등록 > 진행 중 > 나머지)부터 자리를 잡는다.
+    /// 지도에 앞에 쌓이는 핀(`stackRank`: 사장님 등록 > 진행 중 > 시작일이 가까운 순)부터 자리를 잡는다.
+    /// 제목은 핀 이미지와 함께 그려져 뒤에 깔린 핀을 덮으므로, 그보다 뒤에 있는 핀 배지에는 가려지지 않는다.
     /// 화면 좌표는 정수 줌 메르카토르에 실제 지도 배율(`mercatorToScreenScale`)을 곱해 pt로 맞춘다.
     private func applyingTitleLabels(to items: [MapPinItem]) -> [MapPinItem] {
         let k = MapPinRenderer.scale * UIScreen.main.scale
@@ -417,14 +418,14 @@ struct MapHomeView: View {
             default: return nil
             }
         }
+        func isAhead(_ i: Int, of j: Int) -> Bool {
+            let (a, b) = (items[i], items[j])
+            if a.stackRank != b.stackRank { return a.stackRank > b.stackRank }
+            return a.id < b.id
+        }
         let candidates = items.indices
             .filter { title(items[$0]) != nil }
-            .sorted {
-                let (a, b) = (items[$0], items[$1])
-                if a.displayPriority != b.displayPriority { return a.displayPriority > b.displayPriority }
-                if a.isLive != b.isLive { return a.isLive }
-                return a.id < b.id
-            }
+            .sorted(by: isAhead)
 
         var result = items
         var placed: [CGRect] = []
@@ -440,7 +441,7 @@ struct MapHomeView: View {
                 height: height
             )
             let blocked = placed.contains { $0.intersects(rect) } ||
-                bodies.indices.contains { $0 != index && bodies[$0].intersects(rect) }
+                bodies.indices.contains { $0 != index && isAhead($0, of: index) && bodies[$0].intersects(rect) }
             guard !blocked else { continue }
             placed.append(rect)
             result[index].showsTitleLabel = true

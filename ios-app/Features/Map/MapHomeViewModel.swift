@@ -524,6 +524,27 @@ struct MapPinItem: Identifiable {
         case .cluster: return 16
         }
     }
+
+    /// 지도에 실제로 쌓이는 순서(카카오 POI rank)와 제목 자리 다툼 순서.
+    /// 같은 `displayPriority` 안에서는 진행 중 행사가 맨 앞, 그다음은 시작일이 가까운 순이다.
+    var stackRank: Int {
+        displayPriority * 100_000 + timeliness
+    }
+
+    private var timeliness: Int {
+        let startDate: String
+        switch kind {
+        case .festival(let festival): startDate = festival.startDate
+        case .event(let event): startDate = event.startDate
+        default: return 0
+        }
+        if isLive { return 99_999 }
+        // "yyyy-MM-dd"를 달력 순서만 보존하는 작은 정수로 바꾼다(DateFormatter 없이, 핀마다 매 render 호출된다).
+        let parts = startDate.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return 0 }
+        let ordinal = (parts[0] - 2000) * 372 + parts[1] * 31 + parts[2]
+        return max(0, 99_998 - ordinal)
+    }
 }
 
 struct MapPinCluster: Identifiable {

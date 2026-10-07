@@ -405,8 +405,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
             let pendingEntries = desired
                 .filter { renderedPins[$0.key] == nil }
                 .sorted {
-                    if $0.value.pin.displayPriority != $1.value.pin.displayPriority {
-                        return $0.value.pin.displayPriority > $1.value.pin.displayPriority
+                    if $0.value.pin.stackRank != $1.value.pin.stackRank {
+                        return $0.value.pin.stackRank > $1.value.pin.stackRank
                     }
                     return $0.key < $1.key
                 }
@@ -606,7 +606,7 @@ private struct MapPinSnapshot: Equatable {
         coordinate = pin.coordinate
         styleID = pin.styleID(isSelected: isSelected)
         poiID = pin.poiID
-        rank = pin.displayPriority
+        rank = pin.stackRank
     }
 
     static func == (lhs: MapPinSnapshot, rhs: MapPinSnapshot) -> Bool {
