@@ -96,13 +96,13 @@ const baseStyle = `
   .legal-modal iframe { display: block; width: 100%; height: calc(100% - 48px); border: 0; background: #fff; }
 `;
 
-function layout(title: string, body: string): string {
+function layout(title: string, body: string, head = ""): string {
   return `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${htmlEscape(title)}</title>
+  <title>${htmlEscape(title)}</title>${head}
   <style>${baseStyle}</style>
 </head>
 <body>
@@ -155,6 +155,11 @@ function legalModal(): string {
 </script>`;
 }
 
+const APP_STORE_URL = "https://apps.apple.com/kr/app/id6762179556";
+// App Store가 배포하는 앱 아이콘. 앱 업데이트로 주소가 바뀌면 공유 미리보기에서 이미지만 빠진다.
+const APP_ICON_URL =
+  "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/bb/4b/f0/bb4bf0fb-e3ac-a705-9cda-03af9fb21d60/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg";
+
 export function renderLanding(opts: {
   naverEnabled: boolean;
   kakaoEnabled: boolean;
@@ -180,8 +185,11 @@ export function renderLanding(opts: {
     ? `<p>월 <s>₩9,900</s> → <strong style="color:#dc2626;">2026년 12월 31일까지 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
     <p class="muted">2026년 12월 31일까지 결제 없이 무료로 게시할 수 있어요. 2027년부터는 월 ₩9,900입니다.</p>`
     : `<p>월 ₩9,900(1개월 게시). 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>`;
+  const description = opts.launchPromoFree
+    ? "할인·무료 증정·한정 메뉴·오픈 이벤트를 이벤트다 앱 지도에 올리세요. 2026년 12월 31일까지 무료."
+    : "할인·무료 증정·한정 메뉴·오픈 이벤트를 이벤트다 앱 지도에 올리세요. 월 ₩9,900.";
   return layout(
-    "사업자 이벤트 등록",
+    "이벤트다 사장님 — 내 가게 이벤트 홍보",
     `
 <div class="container">
   <div class="card">
@@ -190,9 +198,30 @@ export function renderLanding(opts: {
     ${buttons.join("\n    ")}
     <p class="muted legal-note">시작하기를 누르면 ${legalLink("terms", "이용약관")} 및 ${legalLink("privacy", "개인정보처리방침")}에 동의하는 것으로 간주됩니다.</p>
   </div>
+  <div class="card">
+    <h2>등록하면 이렇게 보여요</h2>
+    <p>• 근처 축제·행사를 찾는 손님의 <strong>지도와 이벤트 목록</strong>에 가게 이벤트가 함께 뜹니다.</p>
+    <p>• 행사 알림을 켠 손님에게는 이벤트 <strong>시작 30일·7일·1일 전 알림</strong>이 갑니다.</p>
+    <p>• 대시보드에서 이벤트를 <strong>몇 명이 열어 봤는지</strong> 확인할 수 있어요.</p>
+  </div>
+  <div class="card">
+    <h2>등록은 3단계</h2>
+    <p>1. 네이버 또는 카카오로 로그인</p>
+    <p>2. 이벤트 내용·기간·가게 주소와 사진 1장 입력</p>
+    <p>3. 등록 완료 — 앱에는 몇 시간~반나절 안에 반영됩니다</p>
+    <p class="muted">할인, 무료 증정, 리뷰 이벤트, 팝업, 한정 메뉴, 오픈 이벤트 모두 올릴 수 있어요.</p>
+  </div>
+  <a class="btn btn-secondary" href="${APP_STORE_URL}">손님 화면 보기 — 이벤트다 앱 (App Store)</a>
 </div>
 ${legalModal()}
 `,
+    `
+  <meta name="description" content="${htmlEscape(description)}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="이벤트다" />
+  <meta property="og:title" content="내 가게 이벤트, 이벤트다 지도에 올리세요" />
+  <meta property="og:description" content="${htmlEscape(description)}" />
+  <meta property="og:image" content="${APP_ICON_URL}" />`,
   );
 }
 

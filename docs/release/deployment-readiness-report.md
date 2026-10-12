@@ -165,7 +165,7 @@
 | 앱 미리보기 동영상                  | 없음                                     | 🟠 P2    | 15-30초 데모 — CTR 큰 차이                                                                    |
 | 앱 이름 / 부제 / 검색 키워드 ASO    | 입력·제출 완료 — App Store 심사 통과(2026-09-26, 사용자 보고) | 🟢 OK    | 해결됨. 출시 후 검색 유입을 보고 키워드 조정. `appstore-checklist.md:33` 체크박스는 아직 미체크(문서만) |
 | 랜딩 페이지                         | 없음 — 다만 App Store 필수인 **지원 URL**은 `GET /legal/support`(앱 소개·문의·FAQ)로 확보됨(`723077c`, 2026-09-26 HTTP 200) | 🟡 P1    | `eventda.app` 또는 Worker `/` 에 소개 + 다운로드 링크 + 머천트 진입 분리                      |
-| 머천트 영업 자료                    | 없음                                     | 🟡 P1    | "월 3,333원에 동네 손님 노출" 한 장짜리 PDF/landing                                           |
+| 머천트 영업 자료                    | 확보(2026-10-13) — `docs/release/merchant-promo/`에 A4 전단(QR, PDF/PNG)과 1:1·커뮤니티·SNS 문구. `/merchant` 랜딩에 OG 미리보기·혜택·등록 3단계·App Store 링크 추가 후 배포 | 🟢 OK    | 배포는 사용자가 직접(1:1 권유·방문·홍보 허용 게시판). 동의 없는 일괄 발송은 정보통신망법 제50조 위반이라 하지 않는다 |
 | 분석(Analytics)                     | 자체 익명 집계 구현됨 — `ios-app/Core/Services/AnalyticsService.swift` → `POST /api/analytics` → `analytics_daily`(migration `0030`). 사용자 식별자·좌표·검색어를 저장할 자리가 없고 allowlist 밖 이벤트는 서버가 버린다 | 🟢 OK    | 3rd-party SDK를 안 넣었으므로 Privacy Manifest·ATT 부담이 없다. 조회는 `GET /api/admin/analytics`. 퍼널 분석이 필요해지면 그때 외부 SDK를 검토 |
 | Universal Links                     | URL Scheme만 존재 — Associated Domains entitlement 없음(2026-09-11 재확인) | 🟠 P2    | Associated Domains + apple-app-site-association. **URL scheme·App Group·BGTask identifier는 출시 직전 signing/딥링크 회귀 위험 때문에 이번에 건드리지 않는다**(사용자 지시) |
 | 출시 사후 review 응대 SOP           | 없음                                     | 🟠 P2    | App Store Connect 리뷰 응답 템플릿(한/영) 준비                                                |
