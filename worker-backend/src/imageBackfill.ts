@@ -26,6 +26,12 @@ const MAX_IMAGES_PER_ITEM = 12;
 // TourAPI 갤러리는 행사가 임박해야 채워지는 경우가 많다. 아직 시작 전이고 사진이
 // 한 장뿐인 행은 이 기간이 지나면 한 번 더 조회해, 나중에 올라온 사진을 받는다.
 const RECHECK_AFTER_DAYS = 30;
+// 재조회 큐는 "30일이 막 지난" 이 기간 안의 행만 본다. 상한이 없으면 이미 시작했거나
+// 사진이 충분해 다시 볼 일이 없는 옛 행까지 (source, images_checked_at) 범위에 영원히 남아,
+// 회차마다 약 3천 행을 읽고 0건을 돌려줬다(2026-10-12 실측, 하루 40만 행). 이 기간이면 약 500행이다.
+// ponytail: backfill이 이 기간보다 오래 멈추면 그 사이 30일이 지난 행은 재조회를 놓친다.
+// 행이 사라지는 건 아니고 사진 보강 한 번을 건너뛸 뿐이라 감수한다.
+const RECHECK_WINDOW_DAYS = 7;
 
 type ImageSourceKind = "kopis" | "tourapi";
 
@@ -93,6 +99,9 @@ export async function runImageBackfill(
   const recheckBefore = new Date(
     now.getTime() - RECHECK_AFTER_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
+  const recheckAfter = new Date(
+    now.getTime() - (RECHECK_AFTER_DAYS + RECHECK_WINDOW_DAYS) * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const placeholders = sources.map(() => "?").join(",");
   // 예전에는 "처음 조회"와 "재조회"를 OR 하나로 묶어 한 번에 뽑았다. OR 안에
   // json_valid()/json_array_length()가 섞여 있어 B-tree가 후보를 좁히기 전에
@@ -122,6 +131,7 @@ export async function runImageBackfill(
         `SELECT id, source, source_item_id, image_url, images_json
            FROM discovery_items
           WHERE source IN (${placeholders})
+            AND images_checked_at >= ?
             AND images_checked_at < ?
             AND start_date >= ?
             AND (end_date IS NULL OR end_date >= ?)
@@ -133,7 +143,7 @@ export async function runImageBackfill(
           ORDER BY start_date
           LIMIT ?`,
       )
-      .bind(...sources, recheckBefore, today, today, remaining)
+      .bind(...sources, recheckAfter, recheckBefore, today, today, remaining)
       .all<BackfillRow>();
     targets.push(...(recheck.results ?? []));
   }

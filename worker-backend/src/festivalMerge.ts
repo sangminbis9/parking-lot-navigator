@@ -21,7 +21,7 @@ import { validCoordinate } from "./discoverySnapshot.js";
 //
 // Worker 무료 플랜 CPU 10ms 안에 끝나야 한다. 전 행(8천여 건)을 매회 제목 정규화·묶음하면
 // 25~50ms가 들어 invocation이 조용히 죽는다. 그래서
-//   1) 제목 키를 행에 저장해 두고(migration 0035) SQL 창 함수로 "같은 키를 가진 진행/예정 행이
+//   1) 제목 키를 행에 저장해 두고(migration 0035) SQL 집계로 "같은 키를 가진 진행/예정 행이
 //      둘 이상"인 후보와 이미 병합 표시가 있는 행만 읽는다.
 //   2) 표시가 이미 맞는 묶음은 건드리지 않는다. 전체 행(raw_payload)을 읽어 대표를 다시 고르는 것은
 //      표시가 어긋난 묶음과, donor 내용 변화를 반영하려고 하루 한 번 도는 순번 몫뿐이고
@@ -54,21 +54,26 @@ const FILL_LIMIT = 400;
 const MAX_CLUSTERS_PER_RUN = 20;
 
 // ?1 = 오늘(KST). 끝난 행사는 스냅샷에 있어도 앱이 걸러 내므로 새로 묶지 않는다.
+// 중복 키는 진행/예정 행만 GROUP BY로 센다. 예전 창 함수 두 개(PARTITION BY)는 끝난 행까지
+// 정렬해 회차당 약 6.2만 행을 읽었고, 같은 결과를 이 형태는 약 3만 행으로 낸다(2026-10-12 실측).
+// 행 수만큼 JS로 받아 세는 쪽은 읽기가 7천 행이지만 응답 파싱·Map 집계가 CPU 10ms를 넘는다.
 const CANDIDATE_QUERY = `
+WITH live_rows AS (
+  SELECT merge_title_key, merge_word_key
+    FROM discovery_items
+   WHERE type = 'festival' AND COALESCE(end_date, start_date) >= ?1
+)
 SELECT id, source, title, start_date, end_date, lat, lng, merge_title_key, merge_word_key,
-       merged_into, has_donors, live
-  FROM (
-    SELECT id, source, title, start_date, end_date, lat, lng, merge_title_key, merge_word_key,
-           merged_into,
-           merge_donors_json IS NOT NULL AS has_donors,
-           COALESCE(end_date, start_date) >= ?1 AS live,
-           SUM(COALESCE(end_date, start_date) >= ?1) OVER (PARTITION BY merge_title_key) AS title_count,
-           SUM(COALESCE(end_date, start_date) >= ?1) OVER (PARTITION BY merge_word_key) AS word_count
-      FROM discovery_items
-     WHERE type = 'festival'
-  )
- WHERE merged_into IS NOT NULL OR has_donors
-    OR (live AND (merge_title_key IS NULL OR title_count > 1 OR word_count > 1))
+       merged_into,
+       merge_donors_json IS NOT NULL AS has_donors,
+       COALESCE(end_date, start_date) >= ?1 AS live
+  FROM discovery_items
+ WHERE type = 'festival'
+   AND (merged_into IS NOT NULL OR merge_donors_json IS NOT NULL
+        OR (COALESCE(end_date, start_date) >= ?1
+            AND (merge_title_key IS NULL
+                 OR merge_title_key IN (SELECT merge_title_key FROM live_rows GROUP BY merge_title_key HAVING COUNT(*) > 1)
+                 OR merge_word_key IN (SELECT merge_word_key FROM live_rows GROUP BY merge_word_key HAVING COUNT(*) > 1))))
  ORDER BY id`;
 
 export interface FestivalMergeResult {
@@ -104,7 +109,7 @@ export async function runFestivalMerge(db: D1Database, now = new Date()): Promis
     wordKey: row.merge_word_key ?? undefined,
   });
 
-  // 키가 빈 행(새 행·제목이 바뀐 행)을 먼저 채운다. 이번 조회의 창 함수 집계에는 그 행들이
+  // 키가 빈 행(새 행·제목이 바뀐 행)을 먼저 채운다. 이번 조회의 중복 키 집계에는 그 행들이
   // 빠져 있어 짝을 놓칠 수 있으므로, 채운 회차는 묶지 않고 다음 회차에 맡긴다.
   const missing = rows.filter((row) => row.live && row.merge_title_key === null).slice(0, FILL_LIMIT);
   if (missing.length > 0) {

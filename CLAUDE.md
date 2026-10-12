@@ -451,8 +451,10 @@ pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator -
   node 실측 25~50ms였다 — 무료 플랜이면 invocation이 예외 없이 죽는다. 그래서:
   - migration `0035`가 정규화 키 `merge_title_key`/`merge_word_key`를 행에 저장한다(인덱스 없음,
     0032 스냅샷 트리거 컬럼 목록에도 없음). 제목이 바뀌면 트리거가 두 키를 NULL로 되돌린다.
-  - `runFestivalMerge`는 SQL 창 함수 한 번으로 "진행/예정 행 중 같은 키가 둘 이상" + "키가 빈 행" +
-    "이미 병합 표시가 있는 행"만 읽는다. 키가 빈 행이 있으면 회차당 `FILL_LIMIT`(400)건 채우고
+  - `runFestivalMerge`는 SQL 한 번으로 "진행/예정 행 중 같은 키가 둘 이상" + "키가 빈 행" +
+    "이미 병합 표시가 있는 행"만 읽는다. 중복 키는 진행/예정 행만 `GROUP BY`로 센다 — 예전 창 함수
+    두 개는 끝난 행까지 정렬해 회차당 약 6.2만 행을 읽었고 지금은 약 3만 행이다(2026-10-12 실측,
+    insights상 하루 약 47회 돈다 — 가드는 시간당 1회인데 2회씩 잡히는 이유는 아직 모른다). 키가 빈 행이 있으면 회차당 `FILL_LIMIT`(400)건 채우고
     **묶지 않고 끝낸다**(그 회차의 집계에 새 키가 빠져 있어서다).
   - 표시가 이미 맞는 묶음(대표 1개 + 나머지 전원이 대표를 가리킴)은 건드리지 않는다. 전체 행을 읽어
     `pickCanonicalFestival`로 대표를 다시 고르는 것은 어긋난 묶음과, donor 내용 변화를 반영하는

@@ -146,4 +146,20 @@ describe("runImageBackfill 대상 선택", () => {
     );
     expect(recheck).not.toContain("images_checked_at IS NULL");
   });
+
+  it("재조회 큐는 30일이 막 지난 7일 창만 본다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => emptyDetail()));
+    const calls: FakeCall[] = [];
+    const db = fakeDb([], rows("old-", 1), calls);
+    const now = new Date("2026-10-12T04:00:00Z");
+
+    await runImageBackfill(db, env, { maxItems: 2, now });
+
+    // 상한이 없으면 다시 볼 일 없는 옛 행까지 회차마다 수천 행을 읽는다.
+    const recheck = selectCalls(calls)[1];
+    expect(recheck.sql).toContain("images_checked_at >= ?");
+    const lower = recheck.args.indexOf("2026-09-05T04:00:00.000Z");
+    expect(lower).toBeGreaterThan(0);
+    expect(recheck.args[lower + 1]).toBe("2026-09-12T04:00:00.000Z");
+  });
 });
