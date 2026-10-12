@@ -775,24 +775,20 @@ struct MapHomeView: View {
                 kind: .festival(festival),
                 layerTint: tint,
                 isLive: live,
-                // 대표 이미지는 진행 중 행사만 붙인다. 이미지 유무와 LIVE 라벨이 함께 "지금 하는 행사"를 알린다.
+                // 대표 이미지가 있으면 진행 여부와 관계없이 붙인다. "지금 하는 행사"는 LIVE 라벨이 알린다.
                 // imageUrl이 비고 imageUrls에만 이미지가 있는 행이 있어 상세 화면과 같은 순서로 fallback한다.
-                photo: live ? pinPhotos.photo(for: festival.imageUrl ?? festival.imageUrls.first) : nil
+                photo: pinPhotos.photo(for: festival.imageUrl ?? festival.imageUrls.first)
             )
         case .event(let event, let tint):
             let live = event.timelineStatus == .ongoing
-            let alwaysShowsPhoto = event.isMerchantSubmitted
             return MapPinItem(
                 id: "event-\(event.id)",
                 coordinate: coordinate,
                 kind: .event(event),
                 layerTint: tint,
                 isLive: live,
-                // 사장님 등록 이벤트는 진행 여부와 관계없이 꽃 핀 중앙에 대표 사진을 표시한다.
-                // 일반 이벤트는 기존처럼 진행 중일 때만 사진 핀을 사용한다.
-                photo: (live || alwaysShowsPhoto)
-                    ? pinPhotos.photo(for: event.primaryImageUrl, prioritized: alwaysShowsPhoto)
-                    : nil
+                // 대표 사진이 있으면 진행 여부와 관계없이 표시한다. 사장님 등록 이벤트는 대기열 앞에 둔다.
+                photo: pinPhotos.photo(for: event.primaryImageUrl, prioritized: event.isMerchantSubmitted)
             )
         }
     }
