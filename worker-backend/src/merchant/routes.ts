@@ -51,6 +51,13 @@ import {
   type MerchantEventRow,
 } from "./events.js";
 import { queryLocalEventViews } from "../analytics.js";
+import {
+  FREE_REGISTRATION_LAST_DAY,
+  FREE_REGISTRATION_LAST_DAY_LABEL,
+  PAID_REGISTRATION_START_LABEL,
+  launchPromoEnabled,
+} from "./promotion.js";
+export { FREE_REGISTRATION_LAST_DAY } from "./promotion.js";
 import { addMonths, confirmTossPayment } from "./toss.js";
 import type { BackgroundJob } from "../jobs.js";
 import { sendMerchantEventCreatedSlackCard } from "./slack.js";
@@ -84,16 +91,6 @@ export type MerchantEnv = {
 
 const EVENT_PRICE_KRW = 9900;
 const EVENT_DURATION_MONTHS = 1;
-// 무료 등록은 2026년까지만 연다. 2027년부터는 유료로 다시 등록해야 한다.
-export const FREE_REGISTRATION_LAST_DAY = "2026-12-31";
-
-function launchPromoEnabled(env: MerchantEnv): boolean {
-  const raw = (env.MERCHANT_LAUNCH_PROMO_FREE ?? "").trim().toLowerCase();
-  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") {
-    return false;
-  }
-  return true;
-}
 
 const EVENT_TYPES: readonly MerchantEventType[] = [
   "discount",
@@ -532,7 +529,7 @@ export function createMerchantApp() {
       (promoFree &&
       (values.startDate > FREE_REGISTRATION_LAST_DAY ||
         values.endDate > FREE_REGISTRATION_LAST_DAY)
-        ? "무료 등록은 2026년 12월 31일까지 게시하는 이벤트만 가능합니다. 2027년부터는 유료로 전환되어 다시 등록하셔야 합니다."
+        ? `무료 등록은 ${FREE_REGISTRATION_LAST_DAY_LABEL}까지 게시하는 이벤트만 가능합니다. ${PAID_REGISTRATION_START_LABEL}는 유료로 전환되어 다시 등록하셔야 합니다.`
         : null);
     if (periodError) {
       return c.html(

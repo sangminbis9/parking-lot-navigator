@@ -1,5 +1,10 @@
 import type { MerchantRow } from "./store.js";
 import {
+  FREE_REGISTRATION_LAST_DAY,
+  FREE_REGISTRATION_LAST_DAY_LABEL,
+  PAID_REGISTRATION_START_LABEL,
+} from "./promotion.js";
+import {
   isRenewableEvent,
   MERCHANT_WITHDRAWAL_REASON,
   type AdminMerchantEventRow,
@@ -182,11 +187,11 @@ export function renderLanding(opts: {
     );
   }
   const pricingLine = opts.launchPromoFree
-    ? `<p>월 <s>₩9,900</s> → <strong style="color:#dc2626;">2026년 12월 31일까지 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
-    <p class="muted">2026년 12월 31일까지 결제 없이 무료로 게시할 수 있어요. 2027년부터는 월 ₩9,900입니다.</p>`
+    ? `<p>월 <s>₩9,900</s> → <strong style="color:#dc2626;">${FREE_REGISTRATION_LAST_DAY_LABEL}까지 무료</strong>. 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>
+    <p class="muted">${FREE_REGISTRATION_LAST_DAY_LABEL}까지 결제 없이 무료로 게시할 수 있어요. ${PAID_REGISTRATION_START_LABEL}는 월 ₩9,900입니다.</p>`
     : `<p>월 ₩9,900(1개월 게시). 등록한 이벤트는 앱 지도와 리스트에 노출됩니다.</p>`;
   const description = opts.launchPromoFree
-    ? "할인·무료 증정·한정 메뉴·오픈 이벤트를 이벤트다 앱 지도에 올리세요. 2026년 12월 31일까지 무료."
+    ? `할인·무료 증정·한정 메뉴·오픈 이벤트를 이벤트다 앱 지도에 올리세요. ${FREE_REGISTRATION_LAST_DAY_LABEL}까지 무료.`
     : "할인·무료 증정·한정 메뉴·오픈 이벤트를 이벤트다 앱 지도에 올리세요. 월 ₩9,900.";
   return layout(
     "이벤트다 사장님 — 내 가게 이벤트 홍보",
@@ -484,17 +489,16 @@ export function renderEventForm(opts: {
       ? "결제하기"
       : "결제 단계로 이동";
   const footerNote = opts.launchPromoFree
-    ? `오픈 기념 프로모션: 월 <s>₩9,900</s> → 2026년 12월 31일까지 무료로 노출됩니다.`
+    ? `오픈 기념 프로모션: 월 <s>₩9,900</s> → ${FREE_REGISTRATION_LAST_DAY_LABEL}까지 무료로 노출됩니다.`
     : `월 ₩9,900 결제가 완료되면 1개월간 앱에 노출됩니다.`;
-  // 무료 등록은 2026-12-31까지만 게시된다(routes.ts FREE_REGISTRATION_LAST_DAY).
-  const dateMax = opts.launchPromoFree ? ` max="2026-12-31"` : "";
+  const dateMax = opts.launchPromoFree ? ` max="${FREE_REGISTRATION_LAST_DAY}"` : "";
   const endDateHelp = opts.launchPromoFree
-    ? "무료 등록은 2026년 12월 31일까지만 게시됩니다. 상시 이벤트는 2026년 12월 31일까지 게시됩니다."
+    ? `무료 등록은 ${FREE_REGISTRATION_LAST_DAY_LABEL}까지만 게시됩니다. 상시 이벤트는 ${FREE_REGISTRATION_LAST_DAY_LABEL}까지 게시됩니다.`
     : "상시 이벤트는 결제 후 1개월간 게시됩니다.";
   const submitScript = opts.launchPromoFree
     ? `
   form.addEventListener('submit', function(e) {
-    if (!window.confirm('무료 등록은 2026년 12월 31일까지만 게시됩니다.\\n2027년부터는 유료로 전환되어 다시 등록하셔야 합니다. 등록할까요?')) e.preventDefault();
+    if (!window.confirm('무료 등록은 ${FREE_REGISTRATION_LAST_DAY_LABEL}까지만 게시됩니다.\\n${PAID_REGISTRATION_START_LABEL}는 유료로 전환되어 다시 등록하셔야 합니다. 등록할까요?')) e.preventDefault();
   });`
     : "";
   const formAction = renewId
@@ -678,14 +682,14 @@ export function renderFreeClaim(opts: { event: MerchantEventRow }): string {
   <div class="card">
     <h1>${htmlEscape(opts.event.title)}</h1>
     <p class="muted">${htmlEscape(opts.event.store_name)} · ${htmlEscape(opts.event.address)}</p>
-    <p>게시 요금 월 <s>₩9,900</s> → <strong style="color:#dc2626;">2026년 12월 31일까지 무료</strong></p>
+    <p>게시 요금 월 <s>₩9,900</s> → <strong style="color:#dc2626;">${FREE_REGISTRATION_LAST_DAY_LABEL}까지 무료</strong></p>
     <p class="muted">별도 공지 전까지 결제 없이 등록할 수 있어요. 등록 즉시 앱 지도와 리스트에 노출됩니다.</p>
   </div>
   <div class="card">
     <form method="post" action="/merchant/event/${htmlEscape(opts.event.id)}/claim-free">
       <button class="btn btn-primary" type="submit">무료로 등록 완료</button>
     </form>
-    <p class="muted" style="margin-top: 10px;">등록 후 2026년 12월 31일까지 노출됩니다.</p>
+    <p class="muted" style="margin-top: 10px;">최대 ${FREE_REGISTRATION_LAST_DAY_LABEL}까지 노출됩니다. 설정한 이벤트 종료일이 더 빠르면 해당 날짜까지만 노출됩니다.</p>
   </div>
 </div>
 `,

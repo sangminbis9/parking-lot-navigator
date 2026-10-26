@@ -14,7 +14,7 @@
 
 ## iOS 앱 현재 상태
 
-- 현재 빌드번호: `322` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
+- 현재 빌드번호: `323` (`ios-app/project.yml` `CURRENT_PROJECT_VERSION`) — 빌드번호를 올릴 때 이 줄도 같이 고친다.
 - iOS 최소 지원 버전: 16+, SwiftUI
 
 ### 공연 기능 구조 (build 178 이후)
@@ -530,8 +530,9 @@ pnpm -C worker-backend exec wrangler d1 migrations apply parking-lot-navigator -
   `paid_until`이 이미 지났으면 다시 게시해도 앱에 안 보인다. 반영은 local snapshot 경로라 몇 시간~반나절 걸린다.
 - 사장님 쪽 연장/재등록(`/merchant/event/:id/renew`): 게시 기간이 끝났거나(`paid_until` 경과) 숨김·종료된
   이벤트를 기존 내용이 채워진 폼으로 다시 제출하면 같은 행이 `pending_payment`로 돌아가 결제(`/pay`)로 간다.
-  요금은 월 9,900원 / 1개월(`EVENT_PRICE_KRW`/`EVENT_DURATION_MONTHS`), 무료 프로모션 등록은 2026-12-31까지 게시.
-  만료 배치는 없다 — 앱은 `paid_until`로 숨기므로 2027-01-01에 무료 이벤트가 일제히 내려간다.
+  요금은 월 9,900원 / 1개월(`EVENT_PRICE_KRW`/`EVENT_DURATION_MONTHS`), 신규 무료 프로모션 등록은 최대 2027-06-30까지 게시.
+  무료 여부와 안내 날짜는 `merchant/promotion.ts`가 관리하며 KST 2027-07-01 00:00부터 유료 등록으로 전환한다.
+  만료 배치는 없다 — 앱은 `paid_until`과 행사 종료일로 숨긴다. 기존 등록의 행사·게시 종료일은 자동 변경하지 않는다.
 - 등록자 성함·전화번호·이메일은 `/merchant/event/new`에서 필수이고 이벤트가 아니라 `merchants`
   (`contact_name` / `phone` / `contact_email`, migration `0033`)에 저장된다. `display_name`/`email`은
   OAuth 로그인마다 덮어써지므로 쓰지 않는다. 전화번호는 서버 `normalizeKoreanPhone`(store.ts)과

@@ -15,6 +15,7 @@ import {
 } from "../src/merchant/routes.js";
 import { createSessionToken } from "../src/merchant/session.js";
 import { normalizeKoreanPhone } from "../src/merchant/store.js";
+import { FREE_REGISTRATION_LAST_DAY, launchPromoEnabled } from "../src/merchant/promotion.js";
 
 const event: MerchantEventRow = {
   id: "event-1",
@@ -72,24 +73,59 @@ describe("merchant event period", () => {
 });
 
 describe("free registration last day", () => {
-  it("caps the free publication period at 2026-12-31", () => {
+  it("caps the free publication period at 2027-06-30", () => {
     expect(resolveApprovalPeriod(
       { start_date: null, end_date: null },
       new Date("2026-11-01T03:00:00.000Z"),
-      "2026-12-31",
+      FREE_REGISTRATION_LAST_DAY,
     )).toEqual({
       startDate: "2026-11-01",
-      endDate: "2026-12-31",
-      paidUntil: "2026-12-31",
+      endDate: "2027-06-30",
+      paidUntil: "2027-06-30",
     });
   });
 
   it("limits the date pickers and confirms the paid transition on submit", () => {
     const html = renderEventForm({ values: EMPTY_FORM, launchPromoFree: true });
-    expect(html).toContain('name="end_date" type="date" max="2026-12-31"');
-    expect(html).toContain("2027년부터는 유료로 전환되어 다시 등록하셔야 합니다");
+    expect(html).toContain('name="end_date" type="date" max="2027-06-30"');
+    expect(html).toContain("2027년 7월부터는 유료로 전환되어 다시 등록하셔야 합니다");
     const paid = renderEventForm({ values: EMPTY_FORM, launchPromoFree: false });
-    expect(paid).not.toContain('max="2026-12-31"');
+    expect(paid).not.toContain('max="2027-06-30"');
+  });
+
+  it("includes the last Korean day and stops at July 1 midnight even with the flag on", () => {
+    expect(launchPromoEnabled({}, new Date("2027-06-30T14:59:59.999Z"))).toBe(true);
+    expect(launchPromoEnabled({}, new Date("2027-06-30T15:00:00.000Z"))).toBe(false);
+    expect(launchPromoEnabled({ MERCHANT_LAUNCH_PROMO_FREE: "true" }, new Date("2027-07-01T00:00:00Z"))).toBe(false);
+    expect(launchPromoEnabled({ MERCHANT_LAUNCH_PROMO_FREE: "off" }, new Date("2027-01-01T00:00:00Z"))).toBe(false);
+  });
+
+  it("keeps an explicit event end date while granting the extended free publication period", () => {
+    expect(resolveApprovalPeriod(
+      { start_date: "2027-03-01", end_date: "2027-03-31" },
+      new Date("2027-01-01T03:00:00Z"),
+      FREE_REGISTRATION_LAST_DAY,
+    )).toEqual({ startDate: "2027-03-01", endDate: "2027-03-31", paidUntil: "2027-06-30" });
+  });
+
+  it("switches the landing page and rejects free claims after the Korean deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2027-06-30T14:59:59Z"));
+      const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
+      const env = { DB: { prepare } as unknown as D1Database };
+      const app = createMerchantApp();
+      const before = await app.request("/", {}, env);
+      expect(await before.text()).toContain("2027년 6월 30일까지 무료");
+      vi.setSystemTime(new Date("2027-06-30T15:00:00Z"));
+      const after = await app.request("/", {}, env);
+      expect(await after.text()).not.toContain("2027년 6월 30일까지 무료");
+      const claim = await app.request("/event/event-1/claim-free", { method: "POST" }, env);
+      expect(claim.status).toBe(403);
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("requires an end date unless the ongoing checkbox is checked", async () => {
@@ -117,6 +153,36 @@ describe("free registration last day", () => {
     expect(response.status).toBe(400);
     expect(await response.text()).toContain("종료일을 선택하거나 상시 이벤트를 체크해 주세요");
     expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["2027-06-30", "지도 꽃 핀에 표시할 대표 이미지를 등록해 주세요"],
+    ["2027-07-01", "무료 등록은 2027년 6월 30일까지 게시하는 이벤트만 가능합니다"],
+  ])("validates free event end date %s against the extended deadline", async (endDate, message) => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2027-01-01T03:00:00Z"));
+      const secret = "test-session-secret";
+      const token = await createSessionToken({ merchantId: "merchant-1", provider: "kakao" }, secret);
+      const form = new FormData();
+      for (const [key, value] of Object.entries({
+        title: "행사", description: "상세", benefit: "할인", event_type: "discount",
+        store_name: "매장", address: "인천 연수구 테스트로 1", agree_legal: "on",
+        contact_name: "홍길동", contact_phone: "01012345678", contact_email: "owner@example.com",
+        start_date: "2027-01-01", end_date: endDate,
+      })) form.set(key, value);
+      const prepare = vi.fn(() => { throw new Error("unexpected database access"); });
+      const response = await createMerchantApp().request(
+        "/event/new",
+        { method: "POST", headers: { cookie: `__merchant_session=${token}` }, body: form },
+        { DB: { prepare } as unknown as D1Database, MERCHANT_SESSION_SECRET: secret },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain(message);
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
