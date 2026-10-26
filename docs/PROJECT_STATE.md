@@ -11,6 +11,8 @@
 - 최신 `origin/master` `f8eec4d` 기반 별도 worktree에서 작업했다. Worker 타입 검사, 테스트 **48개 파일/445개**, Wrangler dry-run이 통과했다. 최종 문구 보정 후 merchant 테스트 53개도 통과했다.
 - 운영 Worker **`92352246-dcb1-4ebb-9dba-c466a1756ef7`** 배포 완료(`--keep-vars`). 운영 `/merchant`와 `/health` HTTP 200, 새 무료 종료일·7월 유료 전환·Naver/Kakao 로그인 링크 보존, 이전 무료 종료 문구 제거를 확인했다. 앱에서 여는 외부 등록 페이지도 반영 완료다. 공개 스냅샷 검증도 12,332개 항목/129개 part로 통과했다.
 - 사용자가 커밋·푸시 후 앱 빌드 진행을 승인했다. 이 변경을 포함하는 master push의 `iOS Simulator Build`와 `Deploy Worker` 결과는 GitHub Actions에서 확인한다. 앱스토어에 배포된 상태로 간주하지 않는다.
+- 구현 커밋 `40cc142`를 master에 푸시했다. Worker CI `40375691604`는 verify/migrate/deploy/smoke/snapshot 모두 성공했고 최종 운영 버전은 `e4d9579c-9b8a-46c1-a97c-740ac0c67dc2`다. iOS CI `40375691257`는 시뮬레이터 컴파일 성공 후 테스트를 진행했다.
+- 앱 마케팅 버전은 사용자 지정 **1.3**, 프로젝트 빌드는 **323**이다. Codemagic 설정 스크립트의 기본 빌드번호를 자체 실행번호가 아닌 `ios-app/project.yml`에서 읽도록 수정했다. 두 설정 스크립트를 임시 폴더에서 실행해 `CURRENT_PROJECT_VERSION = 323` 생성을 확인했다. 명시적인 `APP_BUILD_NUMBER` override는 유지한다.
 - 기존 작업 폴더 `marketing/2026-10-pinned/`의 3개 이미지·미리보기·캡션·게시 안내와 ZIP을 갱신했다. 1080×1440 3장, 글꼴 로드·정확한 재조립·넘침 검사 오류 0건. 이전 운영 HTML은 변경 전 증거로 보존했다.
 
 ## 2026-09-16 사장님 이벤트 직접 게시 종료
