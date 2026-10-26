@@ -110,11 +110,13 @@ final class NotificationInboxStoreTests: XCTestCase {
 
     private var defaults: UserDefaults!
     private var suiteName: String!
+    private var referenceDate = Date()
 
     override func setUp() {
         super.setUp()
         suiteName = "notificationInboxTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
+        referenceDate = Date()
     }
 
     override func tearDown() {
@@ -123,43 +125,57 @@ final class NotificationInboxStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    private func item(
-        id: String,
-        date: String = "2026-09-10",
-        kind: String = AppNotificationKind.festivalKind,
-        title: String = "A",
-        receivedAt: Date = Date(timeIntervalSince1970: 1_756_000_000)
-    ) -> AppNotificationItem {
-        AppNotificationItem(
-            eventKind: kind, eventId: id, occurrenceDate: date,
-            notificationKind: AppNotificationKind.upcomingD7, title: title,
-            venueName: nil, imageUrl: nil, receivedAt: receivedAt, isRead: false)
+    // Capture one clock value per test so fixture IDs stay stable across midnight.
+    private func occurrenceDate(daysFromReference offset: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        let day = calendar.date(byAdding: .day, value: offset, to: referenceDate)!
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: day)
     }
 
-    func testSameOccurrenceIsOneCard() {
+    private func item(
+        id: String,
+        date: String? = nil,
+        kind: String = AppNotificationKind.festivalKind,
+        title: String = "A",
+        receivedAt: Date? = nil
+    ) -> AppNotificationItem {
+        AppNotificationItem(
+            eventKind: kind, eventId: id, occurrenceDate: date ?? occurrenceDate(daysFromReference: 0),
+            notificationKind: AppNotificationKind.upcomingD7, title: title,
+            venueName: nil, imageUrl: nil, receivedAt: receivedAt ?? referenceDate, isRead: false)
+    }
+
+    func testSameOccurrenceIsOneCard() throws {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "f1")])
-        store.markRead(id: "festival|f1|2026-09-10")
+        let original = item(id: "f1")
+        store.ingest([original])
+        store.markRead(id: original.id)
         store.ingest([item(id: "f1", title: "A \u{C0C8} \u{C81C}\u{BAA9}")])
 
         XCTAssertEqual(store.items.count, 1)
-        XCTAssertEqual(store.items[0].title, "A \u{C0C8} \u{C81C}\u{BAA9}")
+        XCTAssertEqual(try XCTUnwrap(store.items.first).title, "A \u{C0C8} \u{C81C}\u{BAA9}")
         // 같은 회차가 다시 오면 다시 안 읽음으로 돌아온다.
         XCTAssertEqual(store.unreadCount, 1)
     }
 
     func testDifferentOccurrenceStaysSeparate() {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "f1", date: "2026-09-10"), item(id: "f1", date: "2026-10-01")])
+        store.ingest([item(id: "f1"), item(id: "f1", date: occurrenceDate(daysFromReference: 7))])
         XCTAssertEqual(store.items.count, 2)
     }
 
     func testMarkReadAndMarkAllRead() {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "f1"), item(id: "f2"), item(id: "f3")])
+        let second = item(id: "f2")
+        store.ingest([item(id: "f1"), second, item(id: "f3")])
         XCTAssertEqual(store.unreadCount, 3)
 
-        store.markRead(id: "festival|f2|2026-09-10")
+        store.markRead(id: second.id)
         XCTAssertEqual(store.unreadCount, 2)
 
         store.markAllRead()
@@ -168,8 +184,9 @@ final class NotificationInboxStoreTests: XCTestCase {
 
     func testStateSurvivesRelaunch() {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "f1"), item(id: "f2")])
-        store.markRead(id: "festival|f1|2026-09-10")
+        let first = item(id: "f1")
+        store.ingest([first, item(id: "f2")])
+        store.markRead(id: first.id)
 
         let relaunched = NotificationInboxStore(defaults: defaults)
         XCTAssertEqual(relaunched.items.count, 2)
@@ -178,12 +195,17 @@ final class NotificationInboxStoreTests: XCTestCase {
 
     func testOldOccurrencesArePrunedAndCountIsCapped() {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "old", date: "2020-01-01"), item(id: "fresh", date: "2999-01-01")])
+        // Exercise both sides of the 30-day cutoff without depending on today's calendar date.
+        store.ingest([
+            item(id: "old", date: occurrenceDate(daysFromReference: -31)),
+            item(id: "fresh", date: occurrenceDate(daysFromReference: -29)),
+        ])
         XCTAssertEqual(store.items.map(\.eventId), ["fresh"])
 
+        let futureDay = occurrenceDate(daysFromReference: 7)
         let many = (0..<260).map {
-            item(id: "e\($0)", date: "2999-01-01",
-                 receivedAt: Date(timeIntervalSince1970: 1_756_000_000 + Double($0)))
+            item(id: "e\($0)", date: futureDay,
+                 receivedAt: referenceDate.addingTimeInterval(Double($0)))
         }
         store.ingest(many)
         XCTAssertEqual(store.items.count, 200)
@@ -194,8 +216,9 @@ final class NotificationInboxStoreTests: XCTestCase {
 
     func testRemoveDropsCard() {
         let store = NotificationInboxStore(defaults: defaults)
-        store.ingest([item(id: "f1")])
-        store.remove(id: "festival|f1|2026-09-10")
+        let notification = item(id: "f1")
+        store.ingest([notification])
+        store.remove(id: notification.id)
         XCTAssertTrue(store.items.isEmpty)
     }
 }

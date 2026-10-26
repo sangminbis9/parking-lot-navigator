@@ -13,6 +13,8 @@
 - 사용자가 커밋·푸시 후 앱 빌드 진행을 승인했다. 이 변경을 포함하는 master push의 `iOS Simulator Build`와 `Deploy Worker` 결과는 GitHub Actions에서 확인한다. 앱스토어에 배포된 상태로 간주하지 않는다.
 - 구현 커밋 `40cc142`를 master에 푸시했다. Worker CI `40375691604`는 verify/migrate/deploy/smoke/snapshot 모두 성공했고 최종 운영 버전은 `e4d9579c-9b8a-46c1-a97c-740ac0c67dc2`다. iOS CI `40375691257`는 시뮬레이터 컴파일 성공 후 테스트를 진행했다.
 - 앱 마케팅 버전은 사용자 지정 **1.3**, 프로젝트 빌드는 **323**이다. Codemagic 설정 스크립트의 기본 빌드번호를 자체 실행번호가 아닌 `ios-app/project.yml`에서 읽도록 수정했다. 두 설정 스크립트를 임시 폴더에서 실행해 `CURRENT_PROJECT_VERSION = 323` 생성을 확인했다. 명시적인 `APP_BUILD_NUMBER` override는 유지한다.
+- iOS CI `40375691257`의 앱 컴파일과 핵심 UI 테스트 5개는 성공했지만, 기존 `NotificationInboxStoreTests`의 2026-09-10 고정 fixture가 30일 보관 기준을 지나 단위 테스트가 실패했다. 테스트 타겟에서 실행일 기준 상대 날짜와 fixture ID를 사용하도록 보정하고, 31일 전 삭제/29일 전 유지·200개 상한 검증은 보존했다. 제품 소스·앱 버전·빌드번호는 바꾸지 않았다.
+- Codemagic 설치용 `ios-testflight` 빌드 `6adf9a534a72334e32e571a5`를 `0ded3a3` 기준으로 요청했다. App Store Connect에는 1.3이 제출 준비 중이며, 설치용 빌드 완료·처리·스토어 배포는 별도 확인이 필요하다.
 - 기존 작업 폴더 `marketing/2026-10-pinned/`의 3개 이미지·미리보기·캡션·게시 안내와 ZIP을 갱신했다. 1080×1440 3장, 글꼴 로드·정확한 재조립·넘침 검사 오류 0건. 이전 운영 HTML은 변경 전 증거로 보존했다.
 
 ## 2026-09-16 사장님 이벤트 직접 게시 종료
