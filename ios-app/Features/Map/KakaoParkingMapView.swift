@@ -332,7 +332,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
 
         func cameraStoppedHandler(_ param: CameraActionEventParam) {
             guard let mapView = param.view as? KakaoMap else { return }
-            let viewport = viewport(for: mapView)
+            guard let viewport = viewport(for: mapView) else { return }
             latestCamera = MapCameraTarget(coordinate: viewport.center, zoomLevel: viewport.zoomLevel)
             renderedCamera = latestCamera
             onCameraIdle?(viewport)
@@ -343,13 +343,15 @@ struct KakaoParkingMapView: UIViewRepresentable {
             onCameraWillMove?()
         }
 
-        private func viewport(for mapView: KakaoMap) -> MapViewport {
+        private func viewport(for mapView: KakaoMap) -> MapViewport? {
             let size = container?.bounds.size ?? mapView.viewRect.size
             let width = max(size.width, 1)
             let height = max(size.height, 1)
             let centerPoint = CGPoint(x: width / 2, y: height / 2)
             let center = mapView.getPosition(centerPoint).wgsCoord
             let centerCoordinate = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude)
+            guard CLLocationCoordinate2DIsValid(centerCoordinate),
+                  center.latitude.isFinite, center.longitude.isFinite else { return nil }
             let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
             // 회전/기울기에서 우하단 한 점만 재면 다른 화면 모서리를 놓칠 수 있다.
             let radiusMeters = [
@@ -359,6 +361,7 @@ struct KakaoParkingMapView: UIViewRepresentable {
                 let corner = mapView.getPosition(point).wgsCoord
                 return centerLocation.distance(from: CLLocation(latitude: corner.latitude, longitude: corner.longitude))
             }.max() ?? 800
+            guard radiusMeters.isFinite, radiusMeters >= 0, radiusMeters < Double(Int.max) / 1.1 else { return nil }
             return MapViewport(
                 center: centerCoordinate,
                 zoomLevel: mapView.zoomLevel,

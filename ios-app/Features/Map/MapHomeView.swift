@@ -532,6 +532,8 @@ struct MapHomeView: View {
         var groups: [OverlayGroupKey: [(id: String, source: Source)]] = [:]
         groups.reserveCapacity(sources.count)
         for source in sources {
+            guard CLLocationCoordinate2DIsValid(source.coordinate),
+                  source.coordinate.latitude.isFinite, source.coordinate.longitude.isFinite else { continue }
             let cell = overlayCell(for: source.coordinate, zoomLevel: mapZoomLevel)
             let key = OverlayGroupKey(x: cell.x, y: cell.y, group: source.clusterGroupKey)
             groups[key, default: []].append((source.id, source))
