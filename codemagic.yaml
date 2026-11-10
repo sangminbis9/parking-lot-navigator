@@ -125,6 +125,10 @@ workflows:
           XCCONFIG_API_BASE_URL=$(printf '%s' "$API_BASE_URL" | sed 's#://#:/\$()/#')
           XCCONFIG_SNAPSHOT_BASE_URL=$(printf '%s' "${DISCOVERY_SNAPSHOT_BASE_URL:-}" | sed 's#://#:/\$()/#')
           APP_BUILD_NUMBER="${APP_BUILD_NUMBER:-${PROJECT_BUILD_NUMBER:-${BUILD_NUMBER:-105}}}"
+          case "$APP_BUILD_NUMBER" in
+            ''|*[!0-9]*) echo "Invalid iOS build number: $APP_BUILD_NUMBER"; exit 1 ;;
+          esac
+          if [ "$APP_BUILD_NUMBER" -lt 324 ]; then APP_BUILD_NUMBER=324; fi
           cat > ios-app/Config/Debug.xcconfig <<EOF
           API_BASE_URL = $XCCONFIG_API_BASE_URL
           DISCOVERY_SNAPSHOT_BASE_URL = $XCCONFIG_SNAPSHOT_BASE_URL
