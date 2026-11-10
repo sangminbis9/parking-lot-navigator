@@ -148,7 +148,15 @@ workflows:
         script: |
           cd ios-app
           xcodegen generate
-      - name: 코드 서명 프로파일 적용
+      - name: 지도 핀 이미지 회귀 테스트
+        script: |
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; ids=[x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']]; print(ids[0] if ids else '')")
+          if [ -z "$DEVICE_ID" ]; then echo "No iPhone simulator available"; exit 1; fi
+          xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" \
+            -destination "id=$DEVICE_ID" \
+            -only-testing:ParkingLotNavigatorTests/MapPinBitmapTests \
+            CODE_SIGNING_ALLOWED=NO test
+      - name: 아카이브 코드 서명 프로파일 적용
         script: |
           xcode-project use-profiles
       - name: IPA 빌드

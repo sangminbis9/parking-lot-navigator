@@ -303,14 +303,14 @@ struct KakaoParkingMapView: UIViewRepresentable {
             // 현재 위치/목적지 핀은 기존 디자인을 유지하며 1회만 등록한다.
             // 카테고리(주차장/축제/이벤트)·클러스터 핀은 테마·선택 상태를 styleID에 담아
             // renderPins에서 on-demand 등록한다 (테마 변경 시 자동 갱신).
-            manager.addPoiStyle(
-                makeStyle(
+            if let style = makeStyle(
                     id: "current-location",
                     image: .currentLocationPin,
                     anchor: CGPoint(x: 0.5, y: 0.5)
-                )
-            )
-            manager.addPoiStyle(makeStyle(id: "destination", image: .destinationPin))
+                ) { manager.addPoiStyle(style) }
+            if let style = makeStyle(id: "destination", image: .destinationPin) {
+                manager.addPoiStyle(style)
+            }
             stylesReady = true
         }
 
@@ -369,8 +369,12 @@ struct KakaoParkingMapView: UIViewRepresentable {
             )
         }
 
-        private func makeStyle(id: String, image: UIImage, anchor: CGPoint = CGPoint(x: 0.5, y: 1.0)) -> PoiStyle {
-            let iconStyle = PoiIconStyle(symbol: image, anchorPoint: anchor)
+        private func makeStyle(id: String, image: UIImage, anchor: CGPoint = CGPoint(x: 0.5, y: 1.0)) -> PoiStyle? {
+            guard let bitmap = MapPinBitmap.normalized(image) else {
+                AppLogger.app.error("Unable to normalize map pin bitmap")
+                return nil
+            }
+            let iconStyle = PoiIconStyle(symbol: bitmap, anchorPoint: anchor)
             return PoiStyle(styleID: id, styles: [
                 PerLevelPoiStyle(iconStyle: iconStyle, level: 0)
             ])
@@ -428,7 +432,8 @@ struct KakaoParkingMapView: UIViewRepresentable {
                         if case .cluster = pin.kind { return CGPoint(x: 0.5, y: 0.5) }
                         return CGPoint(x: 0.5, y: 1.0)
                     }()
-                    manager.addPoiStyle(makeStyle(id: style.id, image: style.image, anchor: anchor))
+                    guard let normalizedStyle = makeStyle(id: style.id, image: style.image, anchor: anchor) else { continue }
+                    manager.addPoiStyle(normalizedStyle)
                     registeredDynamicStyleIDs.insert(style.id)
                 }
                 let option = PoiOptions(styleID: styleID, poiID: poiID)
